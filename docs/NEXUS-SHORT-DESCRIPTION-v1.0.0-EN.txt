@@ -1,1 +1,1 @@
-Change BodySlide presets and skins on the player or NPCs, edit player tint masks in real time, and instantly distribute bodies and skins to NPCs using conditions configured entirely in game.
+Change BodySlide presets and skins on the player or NPCs, edit player tint masks in real time, instantly distribute bodies and skins to NPCs using conditions in game.
