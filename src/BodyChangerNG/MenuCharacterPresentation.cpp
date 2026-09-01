@@ -9,9 +9,9 @@
 
 namespace
 {
-    constexpr auto kLeftCameraHorizontalOffset = 85.0F;
-    constexpr auto kRightCameraHorizontalOffset = -85.0F;
-    constexpr auto kCameraVerticalOffset = -40.0F;
+    constexpr auto kLeftCameraHorizontalOffset = 70.0F;
+    constexpr auto kRightCameraHorizontalOffset = -70.0F;
+    constexpr auto kCameraVerticalOffset = -45.0F;
     constexpr auto kCameraDistance = 140.0F;
     constexpr auto kMenuWorldFov = 70.0F;
     constexpr auto kPlayerPitch = 0.0F;
@@ -23,12 +23,12 @@ namespace
     constexpr auto kTintCameraDistance = 60.0F;
     constexpr auto kTintWorldFov = 45.0F;
     constexpr auto kTintVerticalOffset = 0.0F;
-    // Projection-matched to the normal 140/FOV70/+-85 framing. This keeps the
+    // Projection-matched to the normal 140/FOV70/+-70 framing. This keeps the
     // actor at the same screen-space side position while the face zooms in.
-    constexpr auto kLeftTintCameraHorizontalOffset = 22.0F;
-    constexpr auto kRightTintCameraHorizontalOffset = -22.0F;
+    constexpr auto kLeftTintCameraHorizontalOffset = 18.0F;
+    constexpr auto kRightTintCameraHorizontalOffset = -18.0F;
     constexpr auto kTintPitchZoomOffset = 0.46F;
-    constexpr auto kNormalPitchZoomOffset = 0.10F;
+    constexpr auto kNormalPitchZoomOffset = 0.0F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
 
