@@ -40,6 +40,9 @@ native control and ownership layer around that shared morph mechanism:
   work;
 - explicit, ordered Body and Skin pools with independent distribute/exclude
   decisions;
+- native in-game condition/pool/priority editing with separate **Distribute to
+  loaded NPCs now** and **Distribute on next game launch** actions;
+- persistent Body, Skin, and Tint favorites with per-tab favorites-only views;
 - save-specific actor selections and apply signatures that avoid repeating a
   complete unchanged distribution pass; and
 - integrated actor skins, player tint detail, and RaceMenu rebuild recovery.
@@ -47,6 +50,32 @@ native control and ownership layer around that shared morph mechanism:
 This is a different workflow rather than a claim that RaceMenu receives a new
 kind of morph. OBody NG remains optional and is not required for Body Changer
 NG's body application.
+
+## Compared with the legacy BodyChange
+
+The installed **BodyChange - A Multi-Bodyshape System** architecture defines
+fixed `CustomSet` slots. BodySlide writes a separate body NIF into each slot,
+and its Papyrus effect calls `SetSkin`, `ChangeHeadPart`, and
+`SetFaceTextureSet` to switch the corresponding ESP records together. A skin
+choice is therefore coupled to a prepared mesh and record set.
+
+Body Changer NG does not use that ESP/Papyrus replacement path. It keeps the
+actor's current Skin Armor, HeadPart, and NIFs; body shape is applied through
+RaceMenu BodyMorph, while Skin uses ownership-aware RaceMenu/NiOverride texture
+overrides against the actor's exact loaded body, hand, foot, and face parts.
+Body and Skin can consequently be mixed independently, for the player or NPCs,
+without building one mesh copy per skin slot.
+
+There are no fixed `CustomSet1`-`CustomSet20` catalog slots. BodySlide preset
+XML files and top-level Skin/Tint pack folders are scanned into the UI. They can
+be added while Skyrim is running and discovered with the relevant **Refresh**
+button. Player Tint also supports immediate per-layer color and opacity edits,
+plus restoration of the pre-change RaceMenu value.
+
+NPC Body/Skin conditions, pool contents, and priority are edited in the same
+in-game GUI. The result can be distributed to currently loaded NPCs immediately
+or saved for the next launch without changing the active session. Body, Skin,
+and Tint catalogs each support persistent stars and a favorites-only view.
 
 ## Installation
 
@@ -109,8 +138,8 @@ in-game distribution editor updates this JSON; OBody's JSON remains a separate,
 explicit import source.
 
 The **Refresh** button in each tab rescans that tab's catalog, including files
-added while the game is running. Skin and tint pack
-names may contain Unicode characters. CBBE and CBBE 3BA presets are presented
+added while the game is running. Skin and tint pack names may contain Unicode
+characters. CBBE and CBBE 3BA presets are presented
 as one `CBBE 3BA` family.
 
 Each top-level `BodySkin` or `TintMask` folder appears as one list row. Skin

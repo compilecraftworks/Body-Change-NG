@@ -27,12 +27,47 @@ shared morph pipeline:
   category while the other category continues to use its selected pool.
 - **Visible top-down priority:** the first matching rule owns both decisions,
   making broad-to-specific ordering straightforward to inspect and edit.
+- **In-game distribution editing:** edit targets, sex, priority, Body/Skin
+  pools, and each category's distribute/exclude mode in the native GUI.
+- **Apply now or next launch:** immediately reevaluate currently loaded NPCs,
+  or save the edits for the next game launch without changing this session.
 - **Save-specific results without full repeat work:** selected results and
   application signatures are kept in the SKSE co-save so unchanged actors do
   not need a complete redistribution on every load.
 - **One integrated workflow:** actor skin overrides, player tint detail,
   RaceMenu rebuild recovery, and body distribution share the same UI and state
   model rather than being separate tools.
+- **Favorites:** star Body presets, Skin packs, and Tint packs, then show only
+  those favorites in each catalog.
+
+## How this differs from the legacy BodyChange
+
+The legacy **BodyChange - A Multi-Bodyshape System** builds a separate body
+mesh for each `CustomSet`, then uses Papyrus to replace predeclared ESP Skin
+Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also
+requires the matching built mesh and records.
+
+Body Changer NG is not a port of that ESP/Papyrus system. It uses a different
+native SKSE architecture:
+
+- **Skin is independent of mesh sets:** it keeps the actor's existing Skin
+  Armor, HeadPart, and NIFs, and changes only supported texture channels on the
+  exact loaded body, hand, foot, and face parts through RaceMenu/NiOverride.
+- **Body and Skin are freely composable:** body shape is a BodyMorph preset;
+  skin is a separate texture override. Either can change without forcing a
+  matching copy of the other.
+- **No fixed `CustomSet1`-`CustomSet20` slots:** catalogs are built from the
+  installed BodySlide XML files and skin/tint folders.
+- **Runtime installation and refresh:** add a BodySlide XML file or a skin/tint
+  folder while Skyrim is running, press that tab's Refresh button, and select
+  it without rebuilding an ESP slot or restarting the game.
+- **Player and NPC support:** direct selection, conditional NPC Body/Skin
+  distribution, and save-specific evaluated results share one implementation.
+- **In-game rules with immediate distribution:** edit conditions and pools
+  without leaving Skyrim, then apply them to loaded NPCs immediately.
+- **Direct tint editing:** choose player tint assets, immediately edit each
+  layer's color and opacity, and restore an individual layer to the RaceMenu
+  value captured before Body Changer NG changed it.
 
 ## Main features
 
@@ -58,8 +93,8 @@ shared morph pipeline:
 
 - Install multiple tint packs and choose a pack from the Tint tab.
 - The usable DDS for each layer is selected automatically for the player's race.
-- Adjust color and opacity per layer, or restore the exact RaceMenu value
-  captured before Body Changer NG's first change.
+- Adjust color and opacity per layer immediately in game, or restore the exact
+  RaceMenu value captured before Body Changer NG's first change.
 - Tint is player-only and is rebuilt after leaving RaceMenu.
 
 ### NPC distribution
@@ -71,6 +106,8 @@ shared morph pipeline:
 - Choose one fixed preset/skin or multiple stable random choices per rule.
 - Rules are portable in `BodyChangerNGdistribution.json`; evaluated actor
   results are kept in the SKSE co-save to avoid redistributing unchanged NPCs.
+- Edit the rules in game and either distribute to loaded NPCs immediately or
+  save the edits for the next game launch only.
 
 ### Outfit correction
 
@@ -89,8 +126,8 @@ shared morph pipeline:
 - Korean, English, and Simplified Chinese UI.
 - Mouse, keyboard arrows/WASD, and gamepad D-pad navigation with gamepad
   confirm/cancel actions.
-- Native IME text input, Backspace, searches, per-tab favorites, and resizable
-  dropdowns/panes.
+- Native IME text input, Backspace, searches, Body/Skin/Tint favorites with
+  favorites-only filtering, and resizable dropdowns/panes.
 - Scales consistently from 1080p through 4K.
 - Optional symmetric left/right character presentation and player tint close-up.
 - Paused right-drag orbits the camera without rotating the actor root, avoiding
@@ -117,6 +154,9 @@ VR-specific layouts have not yet been verified.
 3. Put BodySlide XML files, skin packs, and tint packs in the included folders
    or in separate enabled MO2 mods using the same paths.
 4. Launch through SKSE and press F7.
+
+If Skyrim is already running, newly added BodySlide XML files and skin/tint
+folders are discovered by pressing the corresponding tab's **Refresh** button.
 
 The archive includes README files in every user asset folder and a valid
 schema-3 distribution JSON with eight editable starter exclusions.

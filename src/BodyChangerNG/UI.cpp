@@ -1577,7 +1577,33 @@ namespace
         EnsureDistributionEditor();
         const auto popupTitle = std::string{ Text("NPC 배포 규칙", "NPC distribution rules", "NPC 分发规则") } + "###DistributionPopup";
         ImGui::OpenPopup(popupTitle.c_str());
-        ImGui::SetNextWindowSize(DefaultWindowSize(920.0F, 520.0F), ImGuiCond_Appearing);
+        const std::array footerLabels{
+            Text("+ 규칙 추가", "+ Add rule", "+ 添加规则"),
+            Text("- 규칙 삭제", "- Delete rule", "- 删除规则"),
+            Text("위 우선순위", "Move priority up", "提高优先级"),
+            Text("아래 우선순위", "Move priority down", "降低优先级"),
+            Text("저장 값 불러오기", "Load saved values", "加载保存值"),
+            Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"),
+            Text("다음 게임 실행 시 배포", "Distribute on next game launch", "下次启动游戏时分发")
+        };
+        const auto& style = ImGui::GetStyle();
+        auto footerContentWidth = style.ItemSpacing.x * static_cast<float>(footerLabels.size() - 1U);
+        for (const auto* label : footerLabels) {
+            footerContentWidth += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0F;
+        }
+        auto popupSize = DefaultWindowSize(920.0F, 520.0F);
+        const auto footerWindowWidth = footerContentWidth + style.WindowPadding.x * 2.0F;
+        popupSize.x = (std::max)(popupSize.x, footerWindowWidth);
+        auto maximumSize = ImVec2(FLT_MAX, FLT_MAX);
+        if (const auto* viewport = ImGui::GetMainViewport()) {
+            maximumSize = ImVec2(viewport->WorkSize.x * 0.96F, viewport->WorkSize.y * 0.94F);
+            popupSize.x = (std::min)(popupSize.x, maximumSize.x);
+        }
+        // The footer is deliberately one unbroken row.  Prevent manual popup
+        // resizing from making it narrower than the seven localized buttons.
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(popupSize.x, Scaled(360.0F)), maximumSize);
+        ImGui::SetNextWindowSize(popupSize, ImGuiCond_Appearing);
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showDistribution,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
                 ImGuiWindowFlags_NoScrollWithMouse)) {
@@ -1594,12 +1620,11 @@ namespace
             ImGui::Separator();
             const auto ruleListWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.36F,
                 Scaled(280.0F), Scaled(380.0F));
-            // Reserve two complete footer rows. Without NoHostExtendY, a table
+            // Reserve one complete footer row. Without NoHostExtendY, a table
             // row containing zero-height children may grow to the host window's
             // bottom and permanently push the action buttons out of view even
             // when the popup itself is resized.
-            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() * 2.0F +
-                ImGui::GetStyle().ItemSpacing.y + Scaled(2.0F);
+            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() + Scaled(2.0F);
             const auto editorHeight = (std::max)(Scaled(220.0F),
                 ImGui::GetContentRegionAvail().y - footerHeight);
             if (ImGui::BeginTable("DistributionEditor", 2,
@@ -1851,6 +1876,7 @@ namespace
                 std::swap(g_distributionRules[g_selectedDistributionRule], g_distributionRules[g_selectedDistributionRule + 1U]);
                 ++g_selectedDistributionRule;
             }
+            ImGui::SameLine();
             if (ImGui::Button(Text("저장 값 불러오기", "Load saved values", "加载保存值"))) {
                 const auto loaded = bcn::Distribution::Get().Load();
                 const auto imported = bcn::Distribution::Get().ImportOBodyDefaults();
