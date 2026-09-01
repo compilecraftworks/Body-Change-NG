@@ -15,6 +15,11 @@ shared morph pipeline:
 
 - **Native GUI instead of an MCM:** press F7 to manage loaded actors, bodies,
   skins, player tint, and distribution rules in one scalable ImGui window.
+- **Actor-matched Body list:** the main Body tab detects the selected actor's
+  BodyFamily and prioritizes presets for that body family, so unrelated body
+  types are not indiscriminately mixed into one list. If detection or preset
+  classification is uncertain, the safe fallback keeps usable candidates
+  visible instead of blocking the feature.
 - **Gamepad navigation:** move through rows and tabs with the D-pad, then select
   or close with the primary and cancel face buttons.
 - **Isolated live preview:** committed body, preview, and outfit correction use

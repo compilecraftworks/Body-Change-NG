@@ -29,12 +29,14 @@ namespace
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
     // The Tint tab and its detail popup intentionally share one close-up. Keep
-    // FOV fixed and scale all three camera offsets by the distance ratio so the
-    // actor remains at the same screen-space side and height while zooming in.
-    constexpr auto kTintCameraDistance = 60.0F;
+    // FOV fixed and scale the lateral offset with distance so both presentation
+    // sides remain symmetric. Use a separate positive vertical offset for the
+    // close-up: lowering camera PosZ moves the rendered actor upward, while a
+    // higher PosZ brings the player's face down into the visible frame.
+    constexpr auto kTintCameraDistance = 100.0F;
     constexpr auto kTintCameraScale = kTintCameraDistance / kCameraDistance;
     constexpr auto kTintWorldFov = kMenuWorldFov;
-    constexpr auto kTintVerticalOffset = kCameraVerticalOffset * kTintCameraScale;
+    constexpr auto kTintVerticalOffset = 20.0F;
     constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kNormalPitchZoomOffset = 0.1F;
