@@ -181,8 +181,7 @@ code, build scripts, and matching version tags are available on
 with version 1.0.0, Nexus provides the MO2-ready Release ZIP only.
 
 Credits to the authors of CommonLibSSE-NG, Dear ImGui, pugixml,
-nlohmann/json, SKSE64, Address Library for SKSE Plugins, and RaceMenu. Dear
-ImGui is statically linked; no separate ImGui or menu-framework installation is
-required. Detailed third-party notices and license texts are included in the
-GitHub source release. All respective rights belong to their original authors.
-Referenced mods and compatible JSON files are not bundled with Body Changer NG.
+nlohmann/json, SKSE64, Address Library for SKSE Plugins, and RaceMenu. Detailed
+third-party notices and license texts are included in the GitHub source
+release. All respective rights belong to their original authors. Referenced
+mods and compatible JSON files are not bundled with Body Changer NG.
