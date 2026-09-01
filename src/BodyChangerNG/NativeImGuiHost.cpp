@@ -73,7 +73,6 @@ namespace
     bool g_menuVisible{};
     bool g_menuPausesGame{};
     bool g_characterRotationUnpauseActive{};
-    bool g_cameraPresentationUnpauseActive{};
     bool g_skyrimTextInputAllowed{};
     float g_resolutionScale{ 1.0F };
 
@@ -478,7 +477,6 @@ namespace
     void ResetRenderer()
     {
         bcn::ui::OnClosed();
-        bcn::native_ui::EndCameraPresentationUnpause();
         bcn::native_ui::EndCharacterRotationUnpause();
         g_menuVisible = false;
         g_menuPausesGame = false;
@@ -689,7 +687,6 @@ namespace
                 break;
             case RE::UI_MESSAGE_TYPE::kHide:
                 bcn::ui::OnClosed();
-                bcn::native_ui::EndCameraPresentationUnpause();
                 bcn::native_ui::EndCharacterRotationUnpause();
                 g_open = false;
                 g_openRequested = false;
@@ -855,32 +852,6 @@ namespace bcn::native_ui
             ++ui->numPausesGame;
         }
         g_characterRotationUnpauseActive = false;
-    }
-
-    bool IsCameraPresentationPauseConfigured()
-    {
-        return g_menuVisible && g_menuPausesGame;
-    }
-
-    bool BeginCameraPresentationUnpause()
-    {
-        if (g_cameraPresentationUnpauseActive) return true;
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui || !g_menuVisible || !g_menuPausesGame || ui->numPausesGame == 0) return false;
-        --ui->numPausesGame;
-        g_cameraPresentationUnpauseActive = true;
-        return true;
-    }
-
-    void EndCameraPresentationUnpause()
-    {
-        if (!g_cameraPresentationUnpauseActive) return;
-        if (auto* ui = RE::UI::GetSingleton(); ui && g_menuVisible) {
-            // kPausesGame stayed set, so the ordinary hide path consumes this
-            // restored Body Changer NG contribution exactly once.
-            ++ui->numPausesGame;
-        }
-        g_cameraPresentationUnpauseActive = false;
     }
 
     void SubmitMouseWheel(const float delta) noexcept

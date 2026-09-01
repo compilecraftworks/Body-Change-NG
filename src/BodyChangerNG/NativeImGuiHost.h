@@ -13,12 +13,6 @@ namespace bcn::native_ui
     // releases only that contribution so SMP can advance for the drag frame.
     [[nodiscard]] bool BeginCharacterRotationUnpause();
     void EndCharacterRotationUnpause();
-    // Menu presentation needs a few ordinary frames before a pausing menu
-    // freezes the third-person transform. Keep the live menu flag intact and
-    // borrow only Body Changer NG's already-accounted pause contribution.
-    [[nodiscard]] bool IsCameraPresentationPauseConfigured();
-    [[nodiscard]] bool BeginCameraPresentationUnpause();
-    void EndCameraPresentationUnpause();
     void SubmitMouseWheel(float a_delta) noexcept;
     // PollInputDevices may consume RMB before Skyrim creates a Scaleform
     // event. Queue the same button transition directly for ImGui so actor

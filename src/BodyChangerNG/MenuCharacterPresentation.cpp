@@ -40,11 +40,6 @@ namespace
     constexpr auto kNormalPitchZoomOffset = 0.0F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
-    constexpr auto kCameraRootPositionSettleEpsilon = 0.05F;
-    constexpr auto kCameraRootRotationSettleEpsilon = 0.0005F;
-    constexpr auto kCameraZoomSettleEpsilon = 0.01F;
-    constexpr std::uint8_t kCameraSettleStableFrames = 3U;
-    constexpr std::uint8_t kCameraSettleMaxFrames = 30U;
 
     enum class CameraZoomUpdate : std::uint8_t
     {
@@ -57,9 +52,6 @@ namespace
     std::atomic<CameraZoomUpdate> g_pendingCameraZoomUpdate{ CameraZoomUpdate::refresh };
     std::atomic<float> g_savedTargetZoom{};
     std::atomic<float> g_savedCurrentZoom{};
-    std::atomic_uint64_t g_nextCameraCompletionRequest{};
-    std::atomic_uint64_t g_pendingCameraCompletionRequest{};
-    std::atomic_uint64_t g_completedCameraCompletionRequest{};
 
     [[nodiscard]] float NormalizeAngle(float angle)
     {
@@ -72,18 +64,6 @@ namespace
     [[nodiscard]] float VectorLength(const RE::NiPoint3& vector)
     {
         return std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
-    }
-
-    [[nodiscard]] float MatrixMaxDelta(const RE::NiMatrix3& left, const RE::NiMatrix3& right)
-    {
-        float maximum{};
-        for (std::size_t row{}; row < 3U; ++row) {
-            for (std::size_t column{}; column < 3U; ++column) {
-                maximum = (std::max)(maximum,
-                    std::abs(left.entry[row][column] - right.entry[row][column]));
-            }
-        }
-        return maximum;
     }
 
     void ApplyPresentationWorldFov(RE::PlayerCamera* camera, const float worldFov)
@@ -145,15 +125,9 @@ namespace
         return state ? static_cast<RE::ThirdPersonState*>(state.get()) : nullptr;
     }
 
-    std::uint64_t QueueCameraUpdate(const CameraZoomUpdate zoomUpdate = CameraZoomUpdate::refresh,
-        const float savedTargetZoom = 0.0F, const float savedCurrentZoom = 0.0F,
-        const bool trackCompletion = false) noexcept
+    void QueueCameraUpdate(const CameraZoomUpdate zoomUpdate = CameraZoomUpdate::refresh,
+        const float savedTargetZoom = 0.0F, const float savedCurrentZoom = 0.0F) noexcept
     {
-        const auto completionRequest = trackCompletion ?
-            g_nextCameraCompletionRequest.fetch_add(1U, std::memory_order_acq_rel) + 1U : 0U;
-        if (completionRequest != 0U) {
-            g_pendingCameraCompletionRequest.store(completionRequest, std::memory_order_release);
-        }
         if (zoomUpdate == CameraZoomUpdate::restoreSaved) {
             g_savedTargetZoom.store(savedTargetZoom, std::memory_order_release);
             g_savedCurrentZoom.store(savedCurrentZoom, std::memory_order_release);
@@ -163,34 +137,21 @@ namespace
         if (zoomUpdate != CameraZoomUpdate::refresh) {
             g_pendingCameraZoomUpdate.store(zoomUpdate, std::memory_order_release);
         }
-        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return completionRequest;
+        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
 
         const auto update = [] {
             g_cameraUpdateQueued.store(false, std::memory_order_release);
-            const auto completionRequest =
-                g_pendingCameraCompletionRequest.exchange(0U, std::memory_order_acq_rel);
-            const auto complete = [completionRequest] {
-                if (completionRequest != 0U) {
-                    g_completedCameraCompletionRequest.store(completionRequest, std::memory_order_release);
-                }
-            };
             const auto requestedZoomUpdate =
                 g_pendingCameraZoomUpdate.exchange(CameraZoomUpdate::refresh, std::memory_order_acq_rel);
             auto* camera = RE::PlayerCamera::GetSingleton();
-            if (!camera) {
-                complete();
-                return;
-            }
+            if (!camera) return;
 
             // Let Skyrim derive targetZoomOffset from the temporary distance
             // first. A paused menu otherwise freezes interpolation at the old
             // currentZoomOffset and frames differently from an unpaused menu.
             camera->Update();
             auto* thirdPersonState = GetThirdPersonState(camera);
-            if (!thirdPersonState) {
-                complete();
-                return;
-            }
+            if (!thirdPersonState) return;
             if (requestedZoomUpdate == CameraZoomUpdate::snapCurrentToTarget) {
                 thirdPersonState->currentZoomOffset = thirdPersonState->targetZoomOffset;
                 camera->Update();
@@ -200,20 +161,12 @@ namespace
                 thirdPersonState->targetZoomOffset = g_savedTargetZoom.load(std::memory_order_acquire);
                 thirdPersonState->currentZoomOffset = g_savedCurrentZoom.load(std::memory_order_acquire);
             }
-            complete();
         };
         if (auto* tasks = SKSE::GetTaskInterface()) {
             tasks->AddTask(update);
-            return completionRequest;
+            return;
         }
         update();
-        return completionRequest;
-    }
-
-    [[nodiscard]] bool CameraUpdateCompleted(const std::uint64_t request) noexcept
-    {
-        return request != 0U &&
-            g_completedCameraCompletionRequest.load(std::memory_order_acquire) >= request;
     }
 
     void SetCameraHandle(RE::ThirdPersonState* state, RE::RefHandle& handle)
@@ -257,13 +210,6 @@ namespace bcn::menu_character
 
         bool active{};
         bool rotating{};
-        bool cameraPausePending{};
-        bool cameraPauseDeferred{};
-        bool cameraPauseVerifyPending{};
-        bool hasCameraSettleSample{};
-        std::uint8_t cameraSettleFrames{};
-        std::uint8_t cameraSettleStableFrames{};
-        std::uint64_t cameraSettleCompletionRequest{};
         TintFocus tintFocus{ TintFocus::uninitialized };
         CharacterPosition side{ CharacterPosition::disabled };
         CharacterPosition requestedSide{ CharacterPosition::disabled };
@@ -274,14 +220,6 @@ namespace bcn::menu_character
         RE::NiPoint3 posOffsetExpected{};
         RE::NiPoint3 posOffsetActual{};
         RE::NiPoint3 desiredPosOffset{};
-        RE::NiPoint3 lastCameraRootTranslation{};
-        RE::NiMatrix3 lastCameraRootRotation{};
-        float lastCameraSettleZoomOffset{};
-        RE::NiPoint3 settledCameraRootTranslation{};
-        RE::NiMatrix3 settledCameraRootRotation{};
-        RE::NiPoint3 settledStateTranslation{};
-        float settledCurrentZoomOffset{};
-        float settledTargetZoomOffset{};
         RE::NiPoint2 freeRotation{};
         float actorAngleX{};
         float actorAngleZ{};
@@ -363,13 +301,6 @@ namespace bcn::menu_character
         state_->side = side;
         state_->active = true;
         state_->rotating = false;
-        state_->cameraPausePending = false;
-        state_->cameraPauseDeferred = false;
-        state_->cameraPauseVerifyPending = false;
-        state_->hasCameraSettleSample = false;
-        state_->cameraSettleFrames = 0U;
-        state_->cameraSettleStableFrames = 0U;
-        state_->cameraSettleCompletionRequest = 0U;
         // Force the normal framing branch below on the first activation.
         state_->tintFocus = State::TintFocus::uninitialized;
 
@@ -391,10 +322,6 @@ namespace bcn::menu_character
         if (state_->actorPitchModified) presentedActor->data.angle.x = kPlayerPitch;
         thirdPersonState->freeRotation = { NormalizeAngle(angleChange), 0.0F };
         SetTintFocus(false);
-        // ProcessMessage(kShow) precedes Skyrim's pause-count accounting. Do
-        // not decrement here: a non-zero value could belong to another menu.
-        // The first ordinary ImGui frame acquires our contribution instead.
-        state_->cameraPausePending = native_ui::IsCameraPresentationPauseConfigured();
         SKSE::log::debug("Body Changer NG applied menu character presentation to {:08X}", presentedActor->GetFormID());
     }
 
@@ -450,7 +377,6 @@ namespace bcn::menu_character
 
     void Presentation::Restore()
     {
-        native_ui::EndCameraPresentationUnpause();
         native_ui::EndCharacterRotationUnpause();
         if (!state_) return;
         state_->requestedSide = CharacterPosition::disabled;
@@ -503,26 +429,11 @@ namespace bcn::menu_character
         state_->presentedActorHandle.reset();
         state_->originalCameraTarget.reset();
         state_->desiredPosOffset = {};
-        state_->lastCameraRootTranslation = {};
-        state_->lastCameraRootRotation = {};
-        state_->lastCameraSettleZoomOffset = 0.0F;
-        state_->settledCameraRootTranslation = {};
-        state_->settledCameraRootRotation = {};
-        state_->settledStateTranslation = {};
-        state_->settledCurrentZoomOffset = 0.0F;
-        state_->settledTargetZoomOffset = 0.0F;
         state_->cameraSettings = {};
         state_->headTrackingModified = false;
         state_->actorPitchModified = false;
         state_->side = CharacterPosition::disabled;
         state_->rotating = false;
-        state_->cameraPausePending = false;
-        state_->cameraPauseDeferred = false;
-        state_->cameraPauseVerifyPending = false;
-        state_->hasCameraSettleSample = false;
-        state_->cameraSettleFrames = 0U;
-        state_->cameraSettleStableFrames = 0U;
-        state_->cameraSettleCompletionRequest = 0U;
         state_->drawWorldFov = 0.0F;
         state_->hasDrawWorldFov = false;
         state_->tintFocus = State::TintFocus::uninitialized;
@@ -534,17 +445,6 @@ namespace bcn::menu_character
     void Presentation::UpdateRotationInteraction()
     {
         if (!state_ || ImGui::GetCurrentContext() == nullptr) {
-            if (state_) {
-                state_->cameraPausePending = false;
-                state_->cameraPauseDeferred = false;
-                state_->cameraPauseVerifyPending = false;
-                state_->hasCameraSettleSample = false;
-                state_->cameraSettleFrames = 0U;
-                state_->cameraSettleStableFrames = 0U;
-                state_->cameraSettleCompletionRequest = 0U;
-                state_->rotating = false;
-            }
-            native_ui::EndCameraPresentationUnpause();
             native_ui::EndCharacterRotationUnpause();
             return;
         }
@@ -553,131 +453,7 @@ namespace bcn::menu_character
             Apply(state_->requestedSide, requestedActor.get());
         }
         if (!state_->active) {
-            native_ui::EndCameraPresentationUnpause();
             native_ui::EndCharacterRotationUnpause();
-            return;
-        }
-        if (state_->cameraPauseVerifyPending) {
-            auto* camera = RE::PlayerCamera::GetSingleton();
-            auto* thirdPersonState = GetThirdPersonState(camera);
-            if (camera && camera->cameraRoot && thirdPersonState) {
-                const auto rootPositionDelta = VectorLength(
-                    camera->cameraRoot->world.translate - state_->settledCameraRootTranslation);
-                const auto rootRotationDelta = MatrixMaxDelta(
-                    camera->cameraRoot->world.rotate, state_->settledCameraRootRotation);
-                const auto stateTranslationDelta = VectorLength(
-                    thirdPersonState->translation - state_->settledStateTranslation);
-                SKSE::log::info(
-                    "Post-pause Body Changer NG camera delta: rootPos={:.4f}, rootRot={:.6f}, "
-                    "stateTranslation={:.4f}, zoom={:.4f}->{:.4f} (settled {:.4f}->{:.4f}), "
-                    "playerFov={:.2f}, drawWorldFov={:.2f}",
-                    rootPositionDelta, rootRotationDelta, stateTranslationDelta,
-                    thirdPersonState->currentZoomOffset, thirdPersonState->targetZoomOffset,
-                    state_->settledCurrentZoomOffset, state_->settledTargetZoomOffset,
-                    camera->GetRuntimeData2().worldFOV, RE::DrawWorld::GetSingleton().worldFOV);
-            }
-            state_->cameraPauseVerifyPending = false;
-        }
-        if (state_->cameraPausePending) {
-            if (!native_ui::IsCameraPresentationPauseConfigured()) {
-                state_->cameraPausePending = false;
-            } else if (native_ui::BeginCameraPresentationUnpause()) {
-                state_->cameraPausePending = false;
-                state_->cameraPauseDeferred = true;
-                state_->cameraPauseVerifyPending = false;
-                state_->hasCameraSettleSample = false;
-                state_->cameraSettleFrames = 0U;
-                state_->cameraSettleStableFrames = 0U;
-                state_->cameraSettleCompletionRequest = 0U;
-                SKSE::log::info("Released Body Changer NG pause contribution after menu show");
-            } else {
-                // Skyrim has not accounted for this menu yet. Retry without
-                // borrowing a pause contribution during the next UI frame.
-                return;
-            }
-        }
-        if (state_->cameraPauseDeferred) {
-            auto presentedActor = state_->presentedActorHandle.get();
-            auto* camera = RE::PlayerCamera::GetSingleton();
-            auto* thirdPersonState = GetThirdPersonState(camera);
-            if (!presentedActor || !camera || !thirdPersonState || camera->currentState.get() != thirdPersonState) {
-                state_->cameraPauseDeferred = false;
-                state_->cameraPauseVerifyPending = false;
-                state_->hasCameraSettleSample = false;
-                state_->cameraSettleFrames = 0U;
-                state_->cameraSettleStableFrames = 0U;
-                state_->cameraSettleCompletionRequest = 0U;
-                native_ui::EndCameraPresentationUnpause();
-                return;
-            }
-            if (state_->cameraSettleCompletionRequest != 0U) {
-                if (!CameraUpdateCompleted(state_->cameraSettleCompletionRequest)) return;
-                state_->cameraSettleCompletionRequest = 0U;
-
-                ++state_->cameraSettleFrames;
-                const bool hasCameraRoot = camera->cameraRoot != nullptr;
-                if (state_->hasCameraSettleSample && hasCameraRoot) {
-                    const auto rootPositionDelta = VectorLength(
-                        camera->cameraRoot->world.translate - state_->lastCameraRootTranslation);
-                    const auto rootRotationDelta = MatrixMaxDelta(
-                        camera->cameraRoot->world.rotate, state_->lastCameraRootRotation);
-                    const auto zoomDelta = std::abs(
-                        thirdPersonState->currentZoomOffset - state_->lastCameraSettleZoomOffset);
-                    const auto targetZoomDelta = std::abs(
-                        thirdPersonState->currentZoomOffset - thirdPersonState->targetZoomOffset);
-                    if (rootPositionDelta <= kCameraRootPositionSettleEpsilon &&
-                        rootRotationDelta <= kCameraRootRotationSettleEpsilon &&
-                        zoomDelta <= kCameraZoomSettleEpsilon &&
-                        targetZoomDelta <= kCameraZoomSettleEpsilon) {
-                        ++state_->cameraSettleStableFrames;
-                    } else {
-                        state_->cameraSettleStableFrames = 0U;
-                    }
-                } else if (hasCameraRoot) {
-                    state_->hasCameraSettleSample = true;
-                }
-                if (hasCameraRoot) {
-                    state_->lastCameraRootTranslation = camera->cameraRoot->world.translate;
-                    state_->lastCameraRootRotation = camera->cameraRoot->world.rotate;
-                    state_->lastCameraSettleZoomOffset = thirdPersonState->currentZoomOffset;
-                }
-
-                if (state_->cameraSettleStableFrames >= kCameraSettleStableFrames ||
-                    state_->cameraSettleFrames >= kCameraSettleMaxFrames) {
-                    const auto settledFrames = state_->cameraSettleFrames;
-                    if (hasCameraRoot) {
-                        state_->settledCameraRootTranslation = camera->cameraRoot->world.translate;
-                        state_->settledCameraRootRotation = camera->cameraRoot->world.rotate;
-                    }
-                    state_->settledStateTranslation = thirdPersonState->translation;
-                    state_->settledCurrentZoomOffset = thirdPersonState->currentZoomOffset;
-                    state_->settledTargetZoomOffset = thirdPersonState->targetZoomOffset;
-                    state_->cameraPauseDeferred = false;
-                    state_->cameraPauseVerifyPending = true;
-                    state_->hasCameraSettleSample = false;
-                    state_->cameraSettleFrames = 0U;
-                    state_->cameraSettleStableFrames = 0U;
-                    native_ui::EndCameraPresentationUnpause();
-                    SKSE::log::info(
-                        "Settled Body Changer NG menu camera before pausing in {} frame(s)", settledFrames);
-                    return;
-                }
-            }
-
-            thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
-            thirdPersonState->posOffsetActual = state_->desiredPosOffset;
-            if (camera->cameraTarget != state_->presentedActorHandle) {
-                camera->cameraTarget = state_->presentedActorHandle;
-                auto handle = state_->presentedActorHandle.native_handle();
-                SetCameraHandle(thirdPersonState, handle);
-            }
-            ApplyPresentationWorldFov(camera, state_->tintFocus == State::TintFocus::tint ?
-                kTintWorldFov : kMenuWorldFov);
-            // Camera::Update stays on the game task so DLSS/post-processing
-            // cannot tint the native ImGui pass. Sample only after that exact
-            // snap/update request has completed.
-            state_->cameraSettleCompletionRequest = QueueCameraUpdate(
-                CameraZoomUpdate::snapCurrentToTarget, 0.0F, 0.0F, true);
             return;
         }
         auto& io = ImGui::GetIO();
