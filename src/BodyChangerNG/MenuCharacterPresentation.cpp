@@ -1,6 +1,7 @@
 #include "BodyChangerNG/MenuCharacterPresentation.h"
 
 #include "BodyChangerNG/NativeImGuiHost.h"
+#include "BodyChangerNG/RuntimeLayout.h"
 #include "BodyChangerNG/SmoothCamIntegration.h"
 
 #include <SKSE/Logger.h>
@@ -21,23 +22,22 @@ namespace
     constexpr auto kLeftCameraHorizontalOffset = 70.0F;
     constexpr auto kRightCameraHorizontalOffset = -70.0F;
     constexpr auto kCameraVerticalOffset = -45.0F;
-    constexpr auto kCameraDistance = 140.0F;
+    constexpr auto kCameraDistance = 200.0F;
     constexpr auto kMenuWorldFov = 70.0F;
-    constexpr auto kPlayerPitch = 0.0F;
+    constexpr auto kPlayerPitch = 0.1F;
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
-    // The Tint tab and its detail popup intentionally share one close-up so
-    // opening the picker cannot shift the character. A zero vertical offset
-    // raises the character substantially from the former detail value (15).
+    // The Tint tab and its detail popup intentionally share one close-up. Keep
+    // FOV fixed and scale all three camera offsets by the distance ratio so the
+    // actor remains at the same screen-space side and height while zooming in.
     constexpr auto kTintCameraDistance = 60.0F;
-    constexpr auto kTintWorldFov = 45.0F;
-    constexpr auto kTintVerticalOffset = 0.0F;
-    // Projection-matched to the normal 140/FOV70/+-70 framing. This keeps the
-    // actor at the same screen-space side position while the face zooms in.
-    constexpr auto kLeftTintCameraHorizontalOffset = 18.0F;
-    constexpr auto kRightTintCameraHorizontalOffset = -18.0F;
-    constexpr auto kTintPitchZoomOffset = 0.46F;
+    constexpr auto kTintCameraScale = kTintCameraDistance / kCameraDistance;
+    constexpr auto kTintWorldFov = kMenuWorldFov;
+    constexpr auto kTintVerticalOffset = kCameraVerticalOffset * kTintCameraScale;
+    constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
+    constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kNormalPitchZoomOffset = 0.0F;
+    constexpr auto kTintPitchZoomOffset = kNormalPitchZoomOffset;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
 
@@ -66,8 +66,17 @@ namespace
         return std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
     }
 
-    void ApplyPresentationWorldFov(RE::PlayerCamera* camera, const float worldFov)
+    [[nodiscard]] float* ResolveWorldFovOffset()
     {
+        const auto layout = bcn::runtime::ResolveWorldFovOffset(REL::Module::get().version());
+        if (!layout || layout->relocationID == 0U) return nullptr;
+        return reinterpret_cast<float*>(REL::ID(layout->relocationID).address());
+    }
+
+    void ApplyPresentationWorldFov(RE::PlayerCamera* camera, const float worldFov,
+        float* worldFovOffset)
+    {
+        if (worldFovOffset) *worldFovOffset = 0.0F;
         if (camera) camera->GetRuntimeData2().worldFOV = worldFov;
         // PlayerCamera is the gameplay-side source. DrawWorld is consumed when
         // the render camera updates its projection; a pausing menu can freeze
@@ -229,7 +238,8 @@ namespace bcn::menu_character
         float pitchZoomOffset{};
         float worldFov{};
         float drawWorldFov{};
-        bool hasDrawWorldFov{};
+        float* worldFovOffset{};
+        float originalWorldFovOffset{};
         bool freeRotationEnabled{};
         bool toggleAnimCam{};
         bool headTrackingEnabled{};
@@ -295,7 +305,16 @@ namespace bcn::menu_character
         state_->pitchZoomOffset = thirdPersonState->pitchZoomOffset;
         state_->worldFov = camera->GetRuntimeData2().worldFOV;
         state_->drawWorldFov = RE::DrawWorld::GetSingleton().worldFOV;
-        state_->hasDrawWorldFov = true;
+        if (auto* worldFovOffset = ResolveWorldFovOffset();
+            worldFovOffset && std::isfinite(*worldFovOffset)) {
+            state_->worldFovOffset = worldFovOffset;
+            state_->originalWorldFovOffset = *worldFovOffset;
+            *worldFovOffset = 0.0F;
+        } else {
+            state_->worldFovOffset = nullptr;
+            state_->originalWorldFovOffset = 0.0F;
+            SKSE::log::warn("Body Changer NG could not resolve a finite world-FOV offset; additive FOV was left unchanged");
+        }
         state_->freeRotationEnabled = thirdPersonState->freeRotationEnabled;
         state_->toggleAnimCam = thirdPersonState->toggleAnimCam;
         state_->side = side;
@@ -366,7 +385,8 @@ namespace bcn::menu_character
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
         thirdPersonState->pitchZoomOffset = focus == State::TintFocus::tint ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
         ApplyPresentationWorldFov(camera,
-            focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov);
+            focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov,
+            state_->worldFovOffset);
         // Camera::Update can touch the active game render pipeline. Running it
         // inside the native ImGui PostDisplay pass made the whole UI change
         // tone for a frame on DLSS/post-processing setups when switching the
@@ -417,9 +437,10 @@ namespace bcn::menu_character
         for (const auto& [setting, originalValue] : state_->cameraSettings) {
             if (setting) setting->data.f = originalValue;
         }
-        if (state_->hasDrawWorldFov) {
-            RE::DrawWorld::GetSingleton().worldFOV = state_->drawWorldFov;
+        if (state_->worldFovOffset) {
+            *state_->worldFovOffset = state_->originalWorldFovOffset;
         }
+        RE::DrawWorld::GetSingleton().worldFOV = state_->drawWorldFov;
         if (camera) {
             camera->GetRuntimeData2().worldFOV = state_->worldFov;
             QueueCameraUpdate(CameraZoomUpdate::restoreSaved,
@@ -435,7 +456,8 @@ namespace bcn::menu_character
         state_->side = CharacterPosition::disabled;
         state_->rotating = false;
         state_->drawWorldFov = 0.0F;
-        state_->hasDrawWorldFov = false;
+        state_->worldFovOffset = nullptr;
+        state_->originalWorldFovOffset = 0.0F;
         state_->tintFocus = State::TintFocus::uninitialized;
         state_->active = false;
         smoothcam::ReleaseCameraControl();
@@ -485,7 +507,7 @@ namespace bcn::menu_character
             SetCameraHandle(thirdPersonState, handle);
         }
         ApplyPresentationWorldFov(camera, state_->tintFocus == State::TintFocus::tint ?
-            kTintWorldFov : kMenuWorldFov);
+            kTintWorldFov : kMenuWorldFov, state_->worldFovOffset);
         if (!state_->rotating || io.MouseDelta.x == 0.0F) return;
         const auto delta = std::clamp(-io.MouseDelta.x * kMouseRotationRadiansPerPixel,
             -kMaxMouseRotationRadiansPerFrame, kMaxMouseRotationRadiansPerFrame);

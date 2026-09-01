@@ -20,6 +20,11 @@ namespace bcn::runtime
         const char* name{};
     };
 
+    struct WorldFovOffsetLayout
+    {
+        std::uint64_t relocationID{};
+    };
+
     // Direct ImGui rendering needs a verified point immediately after Skyrim
     // creates the D3D11 renderer.  Never guess a future layout: an absent
     // entry leaves the UI disabled instead of installing a wrong trampoline.
@@ -76,6 +81,37 @@ namespace bcn::runtime
         case 1170:
         case 1179:
             return InputPollHookLayout{ 68617, 0x7B, "Skyrim AE 1.6.x" };
+        default:
+            return std::nullopt;
+        }
+    }
+
+    // Engine-global additive offset applied after PlayerCamera::worldFOV.
+    // Only resolve it on the same explicitly verified flat runtimes supported
+    // by the native menu hooks; VR and unknown future layouts fail closed.
+    [[nodiscard]] constexpr std::optional<WorldFovOffsetLayout> ResolveWorldFovOffset(
+        const REL::Version version) noexcept
+    {
+        if (version == REL::Version{ 1, 5, 97, 0 }) {
+            return WorldFovOffsetLayout{ 527997 };
+        }
+        if (version.major() != 1 || version.minor() != 6 || version.build() != 0) {
+            return std::nullopt;
+        }
+        switch (version.patch()) {
+        case 317:
+        case 318:
+        case 323:
+        case 342:
+        case 353:
+        case 629:
+        case 640:
+        case 659:
+        case 678:
+        case 1130:
+        case 1170:
+        case 1179:
+            return WorldFovOffsetLayout{ 414942 };
         default:
             return std::nullopt;
         }
