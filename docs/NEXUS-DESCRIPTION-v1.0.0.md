@@ -179,7 +179,7 @@ Body Changer NG's own code is GPL-3.0. Source is published in the
 the open-source components included in the distribution retain their original
 licenses.
 
-- CommonLibSSE-NG — MIT License
-- Dear ImGui — MIT License
-- pugixml — MIT License
-- nlohmann/json — MIT License
+Referenced mods and compatible JSON files remain the property of their
+respective authors and are not bundled with Body Changer NG.
+
+- CommonLibSSE-NG, Dear ImGui, pugixml, nlohmann/json
