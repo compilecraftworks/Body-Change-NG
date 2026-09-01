@@ -4,7 +4,7 @@ BodySkin\<skin name>\
   Textures\              (copy the skin mod's textures folder here)
   profile.json            (optional)
 
-Without profile.json, Body Changer NG automatically detects standard
+Without profile.json, Body Change NG automatically detects standard
 femalebody/femalehands/femalefeet and malebody/malehands/malefeet texture
 names plus their femalehead/malehead face textures. Player selection and NPC
 distribution rules use the catalog separately.

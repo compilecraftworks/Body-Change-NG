@@ -1,19 +1,19 @@
-#include "BodyChangerNG/ActorEvents.h"
-#include "BodyChangerNG/ActorRegistry.h"
-#include "BodyChangerNG/ActorWorkQueue.h"
-#include "BodyChangerNG/BodyFamily.h"
-#include "BodyChangerNG/InputSink.h"
-#include "BodyChangerNG/NativeImGuiHost.h"
-#include "BodyChangerNG/OutfitRefit.h"
-#include "BodyChangerNG/PresetCatalog.h"
-#include "BodyChangerNG/RaceMenuBodyMorph.h"
-#include "BodyChangerNG/Distribution.h"
-#include "BodyChangerNG/Settings.h"
-#include "BodyChangerNG/SkinOverrides.h"
-#include "BodyChangerNG/SkinProfiles.h"
-#include "BodyChangerNG/SmoothCamIntegration.h"
-#include "BodyChangerNG/TextInputFilter.h"
-#include "BodyChangerNG/UI.h"
+#include "BodyChangeNG/ActorEvents.h"
+#include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/ActorWorkQueue.h"
+#include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/InputSink.h"
+#include "BodyChangeNG/NativeImGuiHost.h"
+#include "BodyChangeNG/OutfitRefit.h"
+#include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/SmoothCamIntegration.h"
+#include "BodyChangeNG/TextInputFilter.h"
+#include "BodyChangeNG/UI.h"
 
 #include <SKSE/Logger.h>
 
@@ -25,9 +25,9 @@ namespace
     {
         auto directory = SKSE::log::log_directory();
         if (!directory) SKSE::stl::report_and_fail("Unable to resolve the SKSE log directory");
-        const auto path = *directory / "BodyChangerNG.log";
+        const auto path = *directory / "BodyChangeNG.log";
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
-        auto logger = std::make_shared<spdlog::logger>("BodyChangerNG", std::move(sink));
+        auto logger = std::make_shared<spdlog::logger>("BodyChangeNG", std::move(sink));
         logger->set_level(spdlog::level::info);
         logger->flush_on(spdlog::level::info);
         spdlog::set_default_logger(std::move(logger));
@@ -47,7 +47,7 @@ namespace
             bcn::racemenu::Initialize();
             bcn::PresetCatalog::Get().Refresh();
             bcn::SkinProfiles::Get().Refresh();
-            [[maybe_unused]] const auto loadedBodyChangerRules = bcn::Distribution::Get().Load();
+            [[maybe_unused]] const auto loadedBodyChangeRules = bcn::Distribution::Get().Load();
             // OBody's JSON is deliberately not read at startup. Outfit-
             // correction rules are registered only by the explicit popup action.
             bcn::OutfitRefit::Get().ClearLegacyRules();
@@ -91,8 +91,8 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     if (auto* messaging = SKSE::GetMessagingInterface()) {
         messaging->RegisterListener(OnSkseMessage);
     }
-    SKSE::log::info("Body Changer NG {} loaded; native UI renderer hook {}; text-focus input filter {}",
-        BODY_CHANGER_NG_VERSION,
+    SKSE::log::info("Body Change NG {} loaded; native UI renderer hook {}; text-focus input filter {}",
+        BODY_CHANGE_NG_VERSION,
         rendererHookInstalled ? "installed" : "unavailable for this runtime",
         textInputFilterInstalled ? "installed" : "unavailable for this runtime");
     return true;

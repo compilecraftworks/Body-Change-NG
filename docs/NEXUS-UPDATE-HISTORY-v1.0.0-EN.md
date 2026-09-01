@@ -1,4 +1,4 @@
-# Body Changer NG
+# Body Change NG
 
 ## Development & Update History
 
@@ -25,7 +25,7 @@
 ### v0.2.11–v0.2.17 — Skin/Tint Ownership and RaceMenu Recovery
 
 - Mapped body, hands, feet, face, vampire face, and supported texture channels to their correct NiOverride keys.
-- Restricted cleanup to Body Changer NG-owned keys so another mod's overrides are not deleted.
+- Restricted cleanup to Body Change NG-owned keys so another mod's overrides are not deleted.
 - After RaceMenu rebuilds meshes, NiOverride data, and tint arrays, restored confirmed state in Body → outfit correction → Skin → Tint order.
 - Added generation checks so an older asynchronous task from rapid selection cannot overwrite the newest choice.
 
@@ -47,6 +47,6 @@
 - Moved camera presentation updates outside the ImGui render pass, preventing whole-UI color shifts in DLSS and post-processing environments.
 - Cleaned queued work and temporary Body/Skin state when actors unload, and blocked stale tasks after save changes.
 - Fixed missing footer buttons in the NPC Distribution window and refreshed the tint color chip after restoring a tint value.
-- Completed the v1.0.0 DLL build with all eight regression test suites passing.
+- Completed the v1.0.0 DLL build with all nine regression test suites passing.
 
-v1.0.0 is the first stable public baseline for Body Changer NG.
+v1.0.0 is the first stable public baseline for Body Change NG.

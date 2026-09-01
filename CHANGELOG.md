@@ -1,6 +1,6 @@
 # Changelog
 
-All notable public changes to Body Changer NG are documented here.
+All notable public changes to Body Change NG are documented here.
 
 ## 1.0.0 — 2026-09-02
 
@@ -24,7 +24,7 @@ First stable public release.
   actor without editing NIF, Skin Armor, or equipment records.
 - Supports body, hands, feet, face, vampire face, diffuse, normal, subsurface,
   specular, and compatible FaceGen detail textures.
-- Tracks ownership precisely so cleanup removes only Body Changer NG's keys.
+- Tracks ownership precisely so cleanup removes only Body Change NG's keys.
 
 ### Player tint
 
@@ -45,7 +45,7 @@ First stable public release.
   exclusions for both sexes.
 - Uses stable per-actor pool selection and stores evaluated actor results in the
   SKSE co-save. Global rules remain in
-  `Data\SKSE\Plugins\BodyChangerNGdistribution.json`.
+  `Data\SKSE\Plugins\BodyChangeNGdistribution.json`.
 - Resolves persistent NPC identities across load-order changes and avoids full
   redistribution of unchanged actors on every load.
 - Imports OBody distribution rules only through the explicit editor action.
@@ -85,6 +85,11 @@ First stable public release.
 
 ### Reliability
 
+- Uses `BodyChangeNG` consistently for the DLL, log, settings directory,
+  distribution JSON, morph keys, texture-cache namespace, source targets, and
+  release archives. Valid legacy `BodyChangerNG` settings and distribution
+  files are migrated to the new paths, while old morph and texture-override
+  ownership remains recognized so existing saves do not stack or leak state.
 - Reapplies committed Body, Skin, and Tint state after RaceMenu closes, with
   generation checks that prevent superseded asynchronous work from winning.
 - Coalesces equipment and actor work, stores ActorHandles instead of raw actor
@@ -92,9 +97,10 @@ First stable public release.
   state on a new save session.
 - Ships a valid schema-3 starter JSON and README files in every user asset
   folder.
-- Verified by the release build and eight regression test executables covering
+- Verified by the release build and nine regression test executables covering
   actor state, asset catalogs, body-family classification, hotkeys, outfit
-  rules, preset parsing, runtime layouts, and skin-override ownership.
+  rules, path migration, preset parsing, runtime layouts, and skin-override
+  ownership.
 
 ## Pre-release development history
 

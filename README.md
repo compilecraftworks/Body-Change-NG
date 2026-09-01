@@ -1,6 +1,6 @@
-# Body Changer NG
+# Body Change NG
 
-Body Changer NG is a GPL-3.0 native SKSE manager for BodySlide morphs, actor
+Body Change NG is a GPL-3.0 native SKSE manager for BodySlide morphs, actor
 skin textures, and the player's RaceMenu tint layers. It combines direct
 in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
@@ -26,15 +26,15 @@ silently loaded at startup.
 
 ## Compared with OBody NG
 
-OBody NG and Body Changer NG both ultimately write BodySlide slider values
+OBody NG and Body Change NG both ultimately write BodySlide slider values
 through RaceMenu's BodyMorph interface and display them through built TRI data.
-Body Changer NG does not replace the actor's body mesh. Its distinction is the
+Body Change NG does not replace the actor's body mesh. Its distinction is the
 native control and ownership layer around that shared morph mechanism:
 
 - a standalone F7 native ImGui interface, not an MCM;
 - D-pad list/tab navigation with gamepad confirm and cancel actions;
-- separate `BodyChangerNG`, `BodyChangerNGPreview`, and
-  `BodyChangerNGOutfit` morph keys for committed, live-preview, and outfit
+- separate `BodyChangeNG`, `BodyChangeNGPreview`, and
+  `BodyChangeNGOutfit` morph keys for committed, live-preview, and outfit
   states;
 - latest-selection generation checks that discard superseded preview/apply
   work;
@@ -48,7 +48,7 @@ native control and ownership layer around that shared morph mechanism:
 - integrated actor skins, player tint detail, and RaceMenu rebuild recovery.
 
 This is a different workflow rather than a claim that RaceMenu receives a new
-kind of morph. OBody NG remains optional and is not required for Body Changer
+kind of morph. OBody NG remains optional and is not required for Body Change
 NG's body application.
 
 ## Compared with the legacy BodyChange
@@ -59,7 +59,7 @@ and its Papyrus effect calls `SetSkin`, `ChangeHeadPart`, and
 `SetFaceTextureSet` to switch the corresponding ESP records together. A skin
 choice is therefore coupled to a prepared mesh and record set.
 
-Body Changer NG does not use that ESP/Papyrus replacement path. It keeps the
+Body Change NG does not use that ESP/Papyrus replacement path. It keeps the
 actor's current Skin Armor, HeadPart, and NIFs; body shape is applied through
 RaceMenu BodyMorph, while Skin uses ownership-aware RaceMenu/NiOverride texture
 overrides against the actor's exact loaded body, hand, foot, and face parts.
@@ -122,7 +122,7 @@ button after adding files:
   unconditionally released when the field or menu closes.
 - While the window remains open, the actual Skyrim `CursorMenu` state is
   checked every frame. If another mod closes its own UI and hides the shared
-  cursor, Body Changer NG restores it without claiming or forcibly hiding a
+  cursor, Body Change NG restores it without claiming or forcibly hiding a
   cursor that belongs to another open menu.
 
 ## Runtime asset folders
@@ -130,7 +130,7 @@ button after adding files:
 - BodySlide presets: `CalienteTools\BodySlide\SliderPresets\*.xml`
 - Skin packs: `BodySkin\<pack name>\Textures\...`
 - Player tint packs: `TintMask\<pack name>\textures\...\tintmasks\*.dds`
-- Distribution rules: `SKSE\Plugins\BodyChangerNGdistribution.json`
+- Distribution rules: `SKSE\Plugins\BodyChangeNGdistribution.json`
 
 The release includes a `README.txt` in each asset folder and a valid schema-3
 distribution file containing the eight initial body/skin exclusion rows. The
@@ -145,7 +145,7 @@ as one `CBBE 3BA` family.
 Each top-level `BodySkin` or `TintMask` folder appears as one list row. Skin
 rows show sex and mapped texture count; tint rows show sex and DDS count. The
 first tint entry restores the original layers captured immediately before Body
-Changer NG first changes each layer in that save. The tint-detail footer lists
+Change NG first changes each layer in that save. The tint-detail footer lists
 only active layers for which the selected pack has a usable DDS. Its DDS is
 chosen automatically for the player's current race; race-specific files for a
 different race are not offered as fallbacks. Each available layer can be color
@@ -166,7 +166,7 @@ normal (`_msn`), subsurface (`_sk`), specular (`_s`), and compatible FaceGen
 detail DDS channels are handled without changing NIFs, Skin Armor records, or
 equipment slots.
 
-When the player leaves RaceMenu, Body Changer NG waits for RaceMenu's final
+When the player leaves RaceMenu, Body Change NG waits for RaceMenu's final
 geometry and tint-array rebuild, then restores the currently confirmed body,
 skin, and tint selections. Tint reconstruction applies the selected pack first,
 then its per-layer detail edits and original-value restores. A default selection
@@ -175,7 +175,7 @@ override.
 
 Actor results are stored in the SKSE co-save with resolvable actor references,
 so unchanged NPCs are not fully redistributed every time a save loads. Rules
-remain global in `BodyChangerNGdistribution.json`; evaluated actor results are
+remain global in `BodyChangeNGdistribution.json`; evaluated actor results are
 save-specific. New or changed actors are coalesced through a handle-based work
 queue, and detached actors do not leave stale preview or apply generations.
 
@@ -188,16 +188,16 @@ body's `-Refit` preset, the sex-wide fallback, and the procedural fallback.
 The
 [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
 by SlickSilk is explicitly supported as an optional import source. Its JSON and
-assets are not redistributed by Body Changer NG.
+assets are not redistributed by Body Change NG.
 
 ## Source and license
 
-Body Changer NG is released under GPL-3.0. The Git repository uses pinned
+Body Change NG is released under GPL-3.0. The Git repository uses pinned
 submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`. Referenced
 mods and compatible JSON files retain their respective authors' copyright and
-licenses and are not bundled with Body Changer NG.
+licenses and are not bundled with Body Change NG.
 
 ## Credits
 

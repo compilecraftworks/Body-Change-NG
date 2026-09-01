@@ -1,5 +1,5 @@
-#include "BodyChangerNG/RuntimeLayout.h"
-#include "BodyChangerNG/MenuCameraProjection.h"
+#include "BodyChangeNG/RuntimeLayout.h"
+#include "BodyChangeNG/MenuCameraProjection.h"
 
 #include <cmath>
 #include <iostream>

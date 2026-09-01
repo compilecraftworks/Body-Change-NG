@@ -1,0 +1,599 @@
+#include "BodyChangeNG/MenuCharacterPresentation.h"
+
+#include "BodyChangeNG/MenuCameraProjection.h"
+#include "BodyChangeNG/SmoothCamIntegration.h"
+
+#include <SKSE/Logger.h>
+
+namespace RE
+{
+    class ShadowSceneNode;
+}
+
+#include <RE/D/DrawWorld.h>
+#include <RE/N/NiCamera.h>
+#include <RE/RTTI.h>
+
+#include <imgui.h>
+
+#include <cmath>
+
+namespace
+{
+    constexpr auto kLeftCameraHorizontalOffset = 70.0F;
+    constexpr auto kRightCameraHorizontalOffset = -70.0F;
+    constexpr auto kCameraVerticalOffset = -45.0F;
+    constexpr auto kCameraDistance = 200.0F;
+    constexpr auto kMenuWorldFov = 70.0F;
+    constexpr auto kPlayerPitch = 0.1F;
+    constexpr auto kLeftFacingCorrection = 0.35F;
+    constexpr auto kRightFacingCorrection = -0.35F;
+    // The Tint tab and its detail popup intentionally share one close-up. Keep
+    // FOV fixed and scale the lateral offset with distance so both presentation
+    // sides remain symmetric. Use a separate positive vertical offset for the
+    // close-up: lowering camera PosZ moves the rendered actor upward, while a
+    // higher PosZ brings the player's face down into the visible frame.
+    constexpr auto kTintCameraDistance = 80.0F;
+    constexpr auto kTintCameraScale = kTintCameraDistance / kCameraDistance;
+    constexpr auto kTintWorldFov = kMenuWorldFov;
+    constexpr auto kTintVerticalOffset = 10.0F;
+    constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
+    constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
+    constexpr auto kNormalPitchZoomOffset = 0.1F;
+    constexpr auto kTintPitchZoomOffset = kNormalPitchZoomOffset;
+    constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
+    constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
+
+    enum class CameraZoomUpdate : std::uint8_t
+    {
+        refresh,
+        snapCurrentToTarget,
+        restoreSaved
+    };
+
+    std::atomic_bool g_cameraUpdateQueued{};
+    std::atomic<CameraZoomUpdate> g_pendingCameraZoomUpdate{ CameraZoomUpdate::refresh };
+    std::atomic<float> g_savedTargetZoom{};
+    std::atomic<float> g_savedCurrentZoom{};
+    std::atomic_bool g_presentationProjectionActive{};
+    std::mutex g_fovRestoreLock;
+    RE::NiPointer<RE::NiCamera> g_presentationFovCamera;
+    RE::NiPointer<RE::NiCamera> g_restoreFovCamera;
+    RE::NiFrustum g_restoreViewFrustum{};
+    bool g_restoreViewFrustumSaved{};
+
+    [[nodiscard]] float NormalizeAngle(float angle)
+    {
+        constexpr auto twoPi = std::numbers::pi_v<float> * 2.0F;
+        while (angle > std::numbers::pi_v<float>) angle -= twoPi;
+        while (angle < -std::numbers::pi_v<float>) angle += twoPi;
+        return angle;
+    }
+
+    [[nodiscard]] float VectorLength(const RE::NiPoint3& vector)
+    {
+        return std::sqrt(vector.x * vector.x + vector.y * vector.y + vector.z * vector.z);
+    }
+
+    [[nodiscard]] RE::NiCamera* GetActiveNiCamera(RE::PlayerCamera* camera)
+    {
+        if (!camera || !camera->cameraRoot) return nullptr;
+        for (const auto& child : camera->cameraRoot->GetChildren()) {
+            if (auto* niCamera = skyrim_cast<RE::NiCamera*>(child.get())) return niCamera;
+        }
+        return nullptr;
+    }
+
+    void ApplyPresentationWorldFov(RE::PlayerCamera* camera, const float worldFov)
+    {
+        if (camera) camera->GetRuntimeData2().worldFOV = worldFov;
+        // PlayerCamera is the gameplay-side source. DrawWorld is consumed when
+        // the render camera updates its projection; a pausing menu can freeze
+        // that value before it observes PlayerCamera's new FOV.
+        RE::DrawWorld::GetSingleton().worldFOV = worldFov;
+    }
+
+    [[nodiscard]] bool ApplyPresentationViewFrustum(RE::NiCamera* camera,
+        const float worldFov)
+    {
+        if (!camera) return false;
+        return bcn::camera_projection::SetHorizontalFov(
+            camera->GetRuntimeData2().viewFrustum, worldFov);
+    }
+
+    void RestorePendingViewFrustum()
+    {
+        RE::NiPointer<RE::NiCamera> savedCamera;
+        RE::NiFrustum savedFrustum{};
+        bool saved{};
+        {
+            const std::scoped_lock lock(g_fovRestoreLock);
+            savedCamera = g_restoreFovCamera;
+            savedFrustum = g_restoreViewFrustum;
+            saved = g_restoreViewFrustumSaved;
+            g_restoreFovCamera.reset();
+            g_restoreViewFrustum = {};
+            g_restoreViewFrustumSaved = false;
+        }
+        if (saved && savedCamera) savedCamera->GetRuntimeData2().viewFrustum = savedFrustum;
+    }
+
+    [[nodiscard]] RE::NiPoint3 ProjectVector(const RE::NiPoint3& vector, const RE::NiPoint3& axis)
+    {
+        const auto denominator = axis.x * axis.x + axis.y * axis.y + axis.z * axis.z;
+        if (denominator <= 0.0001F) return {};
+        const auto scale = (vector.x * axis.x + vector.y * axis.y + vector.z * axis.z) / denominator;
+        return axis * scale;
+    }
+
+    [[nodiscard]] RE::NiPoint2 RotateVector(const RE::NiPoint2& vector, const float angle)
+    {
+        const auto sine = std::sin(angle);
+        const auto cosine = std::cos(angle);
+        return { vector.x * cosine - vector.y * sine, vector.x * sine + vector.y * cosine };
+    }
+
+    [[nodiscard]] float GetAngle(const RE::NiPoint2& from, const RE::NiPoint2& to)
+    {
+        return std::atan2(from.x * to.y - from.y * to.x, from.x * to.x + from.y * to.y);
+    }
+
+    [[nodiscard]] float GetCameraAlignedActorYaw(RE::Actor* actor, RE::PlayerCamera* camera)
+    {
+        if (!actor || !camera || !camera->cameraRoot) return actor ? actor->data.angle.z : 0.0F;
+        const auto actorPosition = actor->GetPosition();
+        const auto cameraPosition = camera->cameraRoot->world.translate;
+        const auto targetPosition = actor->GetLookingAtLocation();
+        auto actorDirectionToTarget = targetPosition - actorPosition;
+        if (VectorLength(actorDirectionToTarget) <= 0.0001F) return actor->data.angle.z;
+        actorDirectionToTarget.Unitize();
+        const auto cameraToActor = actorPosition - cameraPosition;
+        const auto projected = ProjectVector(cameraToActor, actorDirectionToTarget);
+        const auto projectedPosition = cameraPosition + projected;
+        auto projectedDirectionToTarget = targetPosition - projectedPosition;
+        if (VectorLength(projectedDirectionToTarget) <= 0.0001F) return actor->data.angle.z;
+        projectedDirectionToTarget.Unitize();
+        const auto currentDirection = RotateVector({ 0.0F, 1.0F }, actor->data.angle.z);
+        const RE::NiPoint2 projectedDirection{ -projectedDirectionToTarget.x, projectedDirectionToTarget.y };
+        return NormalizeAngle(actor->data.angle.z + GetAngle(currentDirection, projectedDirection));
+    }
+
+    [[nodiscard]] RE::ThirdPersonState* GetThirdPersonState(RE::PlayerCamera* camera)
+    {
+        // SFS itself is SE/AE-only. The menu camera presentation deliberately
+        // fails closed on VR until its separate camera-state layout has been
+        // validated; the rest of Body Change NG remains usable on VR.
+        if (!camera || REL::Module::IsVR()) return nullptr;
+        const auto& state = camera->GetRuntimeData().cameraStates[RE::CameraState::kThirdPerson];
+        return state ? static_cast<RE::ThirdPersonState*>(state.get()) : nullptr;
+    }
+
+    void QueueCameraUpdate(const CameraZoomUpdate zoomUpdate = CameraZoomUpdate::refresh,
+        const float savedTargetZoom = 0.0F, const float savedCurrentZoom = 0.0F,
+        RE::NiCamera* savedFovCamera = nullptr,
+        const RE::NiFrustum* savedViewFrustum = nullptr) noexcept
+    {
+        if (zoomUpdate == CameraZoomUpdate::restoreSaved) {
+            g_savedTargetZoom.store(savedTargetZoom, std::memory_order_release);
+            g_savedCurrentZoom.store(savedCurrentZoom, std::memory_order_release);
+            const std::scoped_lock lock(g_fovRestoreLock);
+            g_restoreFovCamera.reset(savedFovCamera);
+            g_restoreViewFrustumSaved = savedFovCamera && savedViewFrustum;
+            if (g_restoreViewFrustumSaved) g_restoreViewFrustum = *savedViewFrustum;
+        }
+        // Rotation-only refreshes must not erase a pending zoom snap/restore.
+        // A newer substantive request represents a newer menu state and wins.
+        if (zoomUpdate != CameraZoomUpdate::refresh) {
+            g_pendingCameraZoomUpdate.store(zoomUpdate, std::memory_order_release);
+        }
+        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
+
+        const auto update = [] {
+            g_cameraUpdateQueued.store(false, std::memory_order_release);
+            const auto requestedZoomUpdate =
+                g_pendingCameraZoomUpdate.exchange(CameraZoomUpdate::refresh, std::memory_order_acq_rel);
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            if (!camera) {
+                if (requestedZoomUpdate == CameraZoomUpdate::restoreSaved) RestorePendingViewFrustum();
+                return;
+            }
+
+            // Let Skyrim derive targetZoomOffset from the temporary distance
+            // first. A paused menu otherwise freezes interpolation at the old
+            // currentZoomOffset and frames differently from an unpaused menu.
+            camera->Update();
+            auto* thirdPersonState = GetThirdPersonState(camera);
+            if (thirdPersonState && requestedZoomUpdate == CameraZoomUpdate::snapCurrentToTarget) {
+                thirdPersonState->currentZoomOffset = thirdPersonState->targetZoomOffset;
+                camera->Update();
+            } else if (thirdPersonState && requestedZoomUpdate == CameraZoomUpdate::restoreSaved) {
+                // Reassert both original values after refresh so closing the
+                // menu cannot retain either Body Change NG zoom value.
+                thirdPersonState->targetZoomOffset = g_savedTargetZoom.load(std::memory_order_acquire);
+                thirdPersonState->currentZoomOffset = g_savedCurrentZoom.load(std::memory_order_acquire);
+            }
+            if (requestedZoomUpdate == CameraZoomUpdate::restoreSaved) {
+                RestorePendingViewFrustum();
+            } else if (g_presentationProjectionActive.load(std::memory_order_acquire)) {
+                ApplyPresentationWorldFov(camera, kMenuWorldFov);
+                RE::NiPointer<RE::NiCamera> ownedFovCamera;
+                {
+                    const std::scoped_lock lock(g_fovRestoreLock);
+                    ownedFovCamera = g_presentationFovCamera;
+                }
+                if (auto* activeCamera = GetActiveNiCamera(camera);
+                    ownedFovCamera && activeCamera == ownedFovCamera.get()) {
+                    static_cast<void>(ApplyPresentationViewFrustum(activeCamera, kMenuWorldFov));
+                }
+            }
+        };
+        if (auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddTask(update);
+            return;
+        }
+        update();
+    }
+
+    void SetCameraHandle(RE::ThirdPersonState* state, RE::RefHandle& handle)
+    {
+        if (!state || REL::Module::IsVR()) return;
+        // Verified CommonLibSSE-NG slots: SE/AE 0x09; VR has the extra
+        // TESCameraState slot at 0x0A. Do not emit an unconditional virtual call.
+        using SetCameraHandle = void (RE::ThirdPersonState::*)(RE::RefHandle&);
+        REL::RelocateVirtual<SetCameraHandle>(0x09, 0x0A, state, handle);
+    }
+
+    [[nodiscard]] bool CanPresentActor(RE::PlayerCharacter* player, RE::Actor* actor,
+        RE::PlayerCamera* camera, RE::ThirdPersonState* thirdPersonState)
+    {
+        if (REL::Module::IsVR() || !player || !actor || !camera || !thirdPersonState || !player->Is3DLoaded() ||
+            !actor->Is3DLoaded() || player->IsOnMount() || camera->IsInFreeCameraMode()) {
+            return false;
+        }
+        const auto* actorState = player->AsActorState();
+        if (!actorState || actorState->GetSitSleepState() >= RE::SIT_SLEEP_STATE::kWantToSit) return false;
+        return camera->currentState.get() == thirdPersonState;
+    }
+}
+
+namespace bcn::menu_character
+{
+    struct Presentation::State
+    {
+        enum class TintFocus : std::uint8_t
+        {
+            uninitialized,
+            normal,
+            tint
+        };
+
+        struct SavedSetting
+        {
+            RE::Setting* setting{};
+            float originalValue{};
+        };
+
+        bool active{};
+        bool rotating{};
+        TintFocus tintFocus{ TintFocus::uninitialized };
+        CharacterPosition side{ CharacterPosition::disabled };
+        CharacterPosition requestedSide{ CharacterPosition::disabled };
+        RE::ActorHandle presentedActorHandle{};
+        RE::ActorHandle requestedActorHandle{};
+        RE::ActorHandle originalCameraTarget{};
+        RE::TESCameraState* originalCameraState{};
+        RE::NiPoint3 posOffsetExpected{};
+        RE::NiPoint3 posOffsetActual{};
+        RE::NiPoint3 desiredPosOffset{};
+        RE::NiPoint2 freeRotation{};
+        float actorAngleX{};
+        float actorAngleZ{};
+        bool actorPitchModified{};
+        RE::NiPointer<RE::NiCamera> fovCamera{};
+        RE::NiFrustum viewFrustum{};
+        bool viewFrustumSaved{};
+        float targetZoomOffset{};
+        float currentZoomOffset{};
+        float pitchZoomOffset{};
+        float worldFov{};
+        float drawWorldFov{};
+        bool freeRotationEnabled{};
+        bool toggleAnimCam{};
+        bool headTrackingEnabled{};
+        bool headTrackingModified{};
+        std::array<SavedSetting, 9> cameraSettings{};
+    };
+
+    Presentation& Presentation::Get()
+    {
+        static Presentation presentation;
+        static State state;
+        presentation.state_ = std::addressof(state);
+        return presentation;
+    }
+
+    void Presentation::Apply(const CharacterPosition side, RE::Actor* actor)
+    {
+        if (!state_) return;
+        if (side == CharacterPosition::disabled) {
+            Restore();
+            return;
+        }
+        // A stale temporary FormID must not silently turn into the player.
+        // The UI owns the selected actor and will explicitly select Player
+        // when that reference expires.
+        if (!actor) {
+            Restore();
+            return;
+        }
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        auto* presentedActor = actor;
+        const auto requestedHandle = presentedActor ? presentedActor->GetHandle() : RE::ActorHandle{};
+        if (state_->active) {
+            if (state_->side == side && state_->presentedActorHandle == requestedHandle) {
+                state_->requestedSide = side;
+                state_->requestedActorHandle = requestedHandle;
+                return;
+            }
+            Restore();
+        }
+        state_->requestedSide = side;
+        state_->requestedActorHandle = requestedHandle;
+
+        auto* camera = RE::PlayerCamera::GetSingleton();
+        auto* thirdPersonState = GetThirdPersonState(camera);
+        if (!CanPresentActor(player, presentedActor, camera, thirdPersonState)) {
+            SKSE::log::debug("Body Change NG deferred character presentation: actor/camera state is not ready");
+            return;
+        }
+        if (!smoothcam::AcquireCameraControl()) return;
+
+        state_->originalCameraState = camera->currentState.get();
+        state_->originalCameraTarget = camera->cameraTarget;
+        state_->presentedActorHandle = requestedHandle;
+        state_->posOffsetExpected = thirdPersonState->posOffsetExpected;
+        state_->posOffsetActual = thirdPersonState->posOffsetActual;
+        state_->freeRotation = thirdPersonState->freeRotation;
+        state_->actorAngleX = presentedActor->data.angle.x;
+        state_->actorAngleZ = presentedActor->data.angle.z;
+        state_->actorPitchModified = presentedActor == player;
+        state_->targetZoomOffset = thirdPersonState->targetZoomOffset;
+        state_->currentZoomOffset = thirdPersonState->currentZoomOffset;
+        state_->pitchZoomOffset = thirdPersonState->pitchZoomOffset;
+        state_->worldFov = camera->GetRuntimeData2().worldFOV;
+        state_->drawWorldFov = RE::DrawWorld::GetSingleton().worldFOV;
+        if (auto* niCamera = GetActiveNiCamera(camera)) {
+            state_->fovCamera.reset(niCamera);
+            state_->viewFrustum = niCamera->GetRuntimeData2().viewFrustum;
+            state_->viewFrustumSaved = true;
+        }
+        {
+            const std::scoped_lock lock(g_fovRestoreLock);
+            g_presentationFovCamera = state_->fovCamera;
+            // A new presentation supersedes any queued restore. Restore() has
+            // already reasserted that old frustum synchronously.
+            g_restoreFovCamera.reset();
+            g_restoreViewFrustum = {};
+            g_restoreViewFrustumSaved = false;
+        }
+        state_->freeRotationEnabled = thirdPersonState->freeRotationEnabled;
+        state_->toggleAnimCam = thirdPersonState->toggleAnimCam;
+        state_->side = side;
+        state_->active = true;
+        g_presentationProjectionActive.store(true, std::memory_order_release);
+        state_->rotating = false;
+        // Force the normal framing branch below on the first activation.
+        state_->tintFocus = State::TintFocus::uninitialized;
+
+        camera->cameraTarget = requestedHandle;
+        auto cameraTargetHandle = requestedHandle.native_handle();
+        SetCameraHandle(thirdPersonState, cameraTargetHandle);
+        camera->SetState(thirdPersonState);
+        thirdPersonState->freeRotationEnabled = true;
+        thirdPersonState->toggleAnimCam = true;
+
+        if (presentedActor == player && player->GetGraphVariableBool("IsNPC", state_->headTrackingEnabled)) {
+            player->SetGraphVariableBool("IsNPC", false);
+            state_->headTrackingModified = true;
+        }
+
+        const auto correction = side == CharacterPosition::left ? kLeftFacingCorrection : kRightFacingCorrection;
+        const auto angleChange = std::numbers::pi_v<float> + correction;
+        presentedActor->SetHeading(NormalizeAngle(GetCameraAlignedActorYaw(presentedActor, camera) - angleChange));
+        if (state_->actorPitchModified) presentedActor->data.angle.x = kPlayerPitch;
+        thirdPersonState->freeRotation = { NormalizeAngle(angleChange), 0.0F };
+        SetTintFocus(false);
+        SKSE::log::debug("Body Change NG applied menu character presentation to {:08X}", presentedActor->GetFormID());
+    }
+
+    void Presentation::SetTintFocus(const bool tintTab)
+    {
+        if (!state_ || !state_->active) return;
+        const auto focus = tintTab ? State::TintFocus::tint : State::TintFocus::normal;
+        if (state_->tintFocus == focus) return;
+        state_->tintFocus = focus;
+        auto* camera = RE::PlayerCamera::GetSingleton();
+        auto* thirdPersonState = GetThirdPersonState(camera);
+        auto presentedActor = state_->presentedActorHandle.get();
+        if (!camera || !thirdPersonState || !presentedActor) return;
+
+        const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
+        const auto tintHorizontal = state_->side == CharacterPosition::left ?
+            kLeftTintCameraHorizontalOffset : kRightTintCameraHorizontalOffset;
+        const auto horizontal = focus == State::TintFocus::tint ? tintHorizontal : normalHorizontal;
+        const auto vertical = focus == State::TintFocus::tint ? kTintVerticalOffset : kCameraVerticalOffset;
+        const auto distance = focus == State::TintFocus::tint ? kTintCameraDistance : kCameraDistance;
+        state_->desiredPosOffset = { horizontal, 0.0F, vertical };
+        if (auto* ini = RE::INISettingCollection::GetSingleton()) {
+            const std::array settings{
+                std::pair{ "fOverShoulderCombatPosX:Camera", horizontal },
+                std::pair{ "fOverShoulderCombatAddY:Camera", 0.0F },
+                std::pair{ "fOverShoulderCombatPosZ:Camera", vertical },
+                std::pair{ "fOverShoulderPosX:Camera", horizontal },
+                std::pair{ "fOverShoulderPosZ:Camera", vertical },
+                std::pair{ "fAutoVanityModeDelay:Camera", 10800.0F },
+                std::pair{ "fVanityModeMinDist:Camera", distance },
+                std::pair{ "fVanityModeMaxDist:Camera", distance },
+                std::pair{ "fMouseWheelZoomSpeed:Camera", 10000.0F }
+            };
+            for (std::size_t index{}; index < settings.size(); ++index) {
+                if (auto* setting = ini->GetSetting(settings[index].first)) {
+                    if (!state_->cameraSettings[index].setting) state_->cameraSettings[index] = { setting, setting->GetFloat() };
+                    setting->data.f = settings[index].second;
+                }
+            }
+        }
+        thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
+        thirdPersonState->posOffsetActual = state_->desiredPosOffset;
+        thirdPersonState->pitchZoomOffset = focus == State::TintFocus::tint ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
+        const auto presentationFov = focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov;
+        ApplyPresentationWorldFov(camera, presentationFov);
+        if (auto* activeCamera = GetActiveNiCamera(camera);
+            state_->viewFrustumSaved && state_->fovCamera.get() == activeCamera) {
+            static_cast<void>(ApplyPresentationViewFrustum(activeCamera, presentationFov));
+        }
+        // Camera::Update can touch the active game render pipeline. Running it
+        // inside the native ImGui PostDisplay pass made the whole UI change
+        // tone for a frame on DLSS/post-processing setups when switching the
+        // left/right presentation. Apply it on the game task instead.
+        QueueCameraUpdate(CameraZoomUpdate::snapCurrentToTarget);
+        presentedActor->Update3DPosition(true);
+    }
+
+    void Presentation::Restore()
+    {
+        g_presentationProjectionActive.store(false, std::memory_order_release);
+        if (!state_) return;
+        state_->requestedSide = CharacterPosition::disabled;
+        state_->requestedActorHandle.reset();
+        if (!state_->active) {
+            smoothcam::ReleaseCameraControl();
+            return;
+        }
+        auto presentedActor = state_->presentedActorHandle.get();
+        auto* camera = RE::PlayerCamera::GetSingleton();
+        auto* thirdPersonState = GetThirdPersonState(camera);
+        if (camera) camera->cameraTarget = state_->originalCameraTarget;
+        if (thirdPersonState) {
+            auto originalHandle = state_->originalCameraTarget.native_handle();
+            SetCameraHandle(thirdPersonState, originalHandle);
+        }
+        if (camera && state_->originalCameraState && camera->currentState.get() != state_->originalCameraState) {
+            camera->SetState(state_->originalCameraState);
+        }
+        if (presentedActor) {
+            if (state_->actorPitchModified) presentedActor->data.angle.x = state_->actorAngleX;
+            presentedActor->SetHeading(state_->actorAngleZ);
+            if (state_->headTrackingModified) {
+                presentedActor->SetGraphVariableBool("IsNPC", state_->headTrackingEnabled);
+            }
+            if (presentedActor->Is3DLoaded()) presentedActor->Update3DPosition(true);
+        }
+        if (thirdPersonState) {
+            thirdPersonState->posOffsetExpected = state_->posOffsetExpected;
+            thirdPersonState->posOffsetActual = state_->posOffsetActual;
+            thirdPersonState->freeRotation = state_->freeRotation;
+            thirdPersonState->targetZoomOffset = state_->targetZoomOffset;
+            thirdPersonState->currentZoomOffset = state_->currentZoomOffset;
+            thirdPersonState->pitchZoomOffset = state_->pitchZoomOffset;
+            thirdPersonState->freeRotationEnabled = state_->freeRotationEnabled;
+            thirdPersonState->toggleAnimCam = state_->toggleAnimCam;
+        }
+        for (const auto& [setting, originalValue] : state_->cameraSettings) {
+            if (setting) setting->data.f = originalValue;
+        }
+        RE::DrawWorld::GetSingleton().worldFOV = state_->drawWorldFov;
+        if (state_->viewFrustumSaved && state_->fovCamera) {
+            state_->fovCamera->GetRuntimeData2().viewFrustum = state_->viewFrustum;
+        }
+        if (camera) {
+            camera->GetRuntimeData2().worldFOV = state_->worldFov;
+            QueueCameraUpdate(CameraZoomUpdate::restoreSaved,
+                state_->targetZoomOffset, state_->currentZoomOffset,
+                state_->fovCamera.get(), state_->viewFrustumSaved ? std::addressof(state_->viewFrustum) : nullptr);
+        }
+        {
+            const std::scoped_lock lock(g_fovRestoreLock);
+            g_presentationFovCamera.reset();
+        }
+        state_->originalCameraState = nullptr;
+        state_->presentedActorHandle.reset();
+        state_->originalCameraTarget.reset();
+        state_->desiredPosOffset = {};
+        state_->cameraSettings = {};
+        state_->headTrackingModified = false;
+        state_->actorPitchModified = false;
+        state_->side = CharacterPosition::disabled;
+        state_->rotating = false;
+        state_->drawWorldFov = 0.0F;
+        state_->fovCamera.reset();
+        state_->viewFrustum = {};
+        state_->viewFrustumSaved = false;
+        state_->tintFocus = State::TintFocus::uninitialized;
+        state_->active = false;
+        smoothcam::ReleaseCameraControl();
+        SKSE::log::debug("Body Change NG restored menu character presentation");
+    }
+
+    void Presentation::UpdateRotationInteraction()
+    {
+        if (!state_ || ImGui::GetCurrentContext() == nullptr) {
+            return;
+        }
+        if (!state_->active && state_->requestedSide != CharacterPosition::disabled) {
+            auto requestedActor = state_->requestedActorHandle.get();
+            Apply(state_->requestedSide, requestedActor.get());
+        }
+        if (!state_->active) {
+            return;
+        }
+        auto& io = ImGui::GetIO();
+        const auto popupOpen = ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+        const auto overUi = ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow | ImGuiHoveredFlags_AllowWhenBlockedByActiveItem);
+        const auto characterSide = state_->side == CharacterPosition::right ? io.MousePos.x >= io.DisplaySize.x * 0.55F :
+            io.MousePos.x <= io.DisplaySize.x * 0.45F;
+        if (state_->rotating && (!ImGui::IsMouseDown(ImGuiMouseButton_Right) || popupOpen || io.AppFocusLost)) {
+            state_->rotating = false;
+        }
+        if (!state_->rotating && !popupOpen && !overUi && characterSide && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+            state_->rotating = true;
+        }
+        auto presentedActor = state_->presentedActorHandle.get();
+        auto* camera = RE::PlayerCamera::GetSingleton();
+        auto* thirdPersonState = GetThirdPersonState(camera);
+        if (!presentedActor || !camera || !thirdPersonState || camera->currentState.get() != thirdPersonState) {
+            state_->rotating = false;
+            return;
+        }
+        thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
+        thirdPersonState->posOffsetActual = state_->desiredPosOffset;
+        if (camera->cameraTarget != state_->presentedActorHandle) {
+            camera->cameraTarget = state_->presentedActorHandle;
+            auto handle = state_->presentedActorHandle.native_handle();
+            SetCameraHandle(thirdPersonState, handle);
+        }
+        const auto presentationFov = state_->tintFocus == State::TintFocus::tint ?
+            kTintWorldFov : kMenuWorldFov;
+        ApplyPresentationWorldFov(camera, presentationFov);
+        if (auto* activeCamera = GetActiveNiCamera(camera);
+            state_->viewFrustumSaved && state_->fovCamera.get() == activeCamera) {
+            static_cast<void>(ApplyPresentationViewFrustum(activeCamera, presentationFov));
+        }
+        if (!state_->rotating || io.MouseDelta.x == 0.0F) return;
+        const auto delta = std::clamp(-io.MouseDelta.x * kMouseRotationRadiansPerPixel,
+            -kMaxMouseRotationRadiansPerFrame, kMaxMouseRotationRadiansPerFrame);
+        auto* ui = RE::UI::GetSingleton();
+        const auto gamePaused = ui && ui->GameIsPaused();
+        if (gamePaused) {
+            // FSMP writes its last simulated world transforms while paused.
+            // Rotating the actor root in that state separates physics bones
+            // from the mesh, so orbit only the owned menu camera instead.
+            thirdPersonState->freeRotation.x = NormalizeAngle(thirdPersonState->freeRotation.x - delta);
+        } else {
+            presentedActor->SetHeading(NormalizeAngle(presentedActor->data.angle.z + delta));
+            thirdPersonState->freeRotation.x = NormalizeAngle(thirdPersonState->freeRotation.x - delta);
+            presentedActor->Update3DPosition(true);
+        }
+        QueueCameraUpdate();
+    }
+}

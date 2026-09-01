@@ -1,5 +1,5 @@
 [center]
-[size=6][color=#74C7F5][b]BODY CHANGER NG[/b][/color][/size]
+[size=6][color=#74C7F5][b]BODY CHANGE NG[/b][/color][/size]
 [size=4][color=#B7DDF2]Change BodySlide presets, actor skins, and player tint masks in real time[/color][/size]
 
 [color=#9AD7F5][b]NATIVE IN-GAME GUI  •  GAMEPAD SUPPORT  •  LIVE NPC DISTRIBUTION[/b][/color]
@@ -9,17 +9,17 @@
 
 [size=5][color=#5FB8E8][b]OVERVIEW[/b][/color][/size]
 
-Body Changer NG manages BodySlide body morphs, actor skin textures, and player RaceMenu tint layers from one native in-game interface. Select the player or a loaded NPC, preview changes immediately, edit NPC distribution conditions in game, and either distribute to loaded NPCs now or save the rules for the next launch.
+Body Change NG manages BodySlide body morphs, actor skin textures, and player RaceMenu tint layers from one native in-game interface. Select the player or a loaded NPC, preview changes immediately, edit NPC distribution conditions in game, and either distribute to loaded NPCs now or save the rules for the next launch.
 
 [b]No MCM. No manual distribution-JSON editing. No runtime body-mesh replacement.[/b]
 
 [line]
 
-[size=5][color=#5FB8E8][b]WHY BODY CHANGER NG?[/b][/color][/size]
+[size=5][color=#5FB8E8][b]WHY BODY CHANGE NG?[/b][/color][/size]
 
 [size=4][color=#9AD7F5][b]Compared with OBody NG[/b][/color][/size]
 
-Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data. Body Changer NG does not swap in a separate body mesh. The difference is the selection, distribution, and state-management layer built above that shared morph pipeline.
+Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data. Body Change NG does not swap in a separate body mesh. The difference is the selection, distribution, and state-management layer built above that shared morph pipeline.
 
 [list]
 [*][b]Native GUI instead of an MCM[/b] — press F7 to manage loaded actors, bodies, skins, player tint, and distribution rules in one scalable window
@@ -37,7 +37,7 @@ Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data
 
 Legacy mesh-slot systems build a separate body mesh for each predefined slot, then use Papyrus to replace prepared ESP Skin Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also requires its matching built mesh and records.
 
-Body Changer NG instead uses a native SKSE architecture without predefined ESP body slots.
+Body Change NG instead uses a native SKSE architecture without predefined ESP body slots.
 
 [list]
 [*][b]Skin is independent of mesh sets[/b] — the actor keeps its existing Skin Armor, HeadPart, and NIFs while supported texture channels are changed on the loaded body, hands, feet, and face through RaceMenu/NiOverride
@@ -72,7 +72,7 @@ Body Changer NG instead uses a native SKSE architecture without predefined ESP b
 [*]Install multiple tint packs and choose a pack from the Tint tab
 [*]Automatically select a usable DDS for each layer and the player's current race
 [*]Adjust color and opacity per layer immediately in game
-[*]Restore the exact RaceMenu value captured before Body Changer NG first changed that layer
+[*]Restore the exact RaceMenu value captured before Body Change NG first changed that layer
 [*]Reapply the confirmed tint selection after RaceMenu rebuilds the player
 [/list]
 
@@ -87,7 +87,7 @@ Body Changer NG instead uses a native SKSE architecture without predefined ESP b
 [/list]
 
 [b]Rules file[/b]
-[b]Data\SKSE\Plugins\BodyChangerNGdistribution.json[/b]
+[b]Data\SKSE\Plugins\BodyChangeNGdistribution.json[/b]
 
 The in-game editor writes this file, so manual JSON editing is not required. To preserve your rules when reinstalling the mod, Skyrim, or an MO2 profile, back up the file, copy it back to the same path, and press [b]Load saved values[/b] in the NPC Distribution window.
 
@@ -132,7 +132,7 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 [size=5][color=#5FB8E8][b]ADDING BODY PRESETS, SKIN PACKS, AND TINT PACKS[/b][/color][/size]
 
-All paths below are relative to an MO2 mod root. You may place these assets inside Body Changer NG or in separate enabled MO2 mods that provide the same virtual paths.
+All paths below are relative to an MO2 mod root. You may place these assets inside Body Change NG or in separate enabled MO2 mods that provide the same virtual paths.
 
 [size=4][color=#9AD7F5][b]Body Preset XML[/b][/color][/size]
 [b]CalienteTools\BodySlide\SliderPresets\*.xml[/b]
@@ -159,28 +159,28 @@ The archive includes a README in every user-asset folder and a valid schema-3 di
 
 [size=5][color=#5FB8E8][b]OPTIONAL OBODY NG JSON COMPATIBILITY[/b][/color][/size]
 
-[b]This is optional.[/b] Body Changer NG works without OBody NG or its JSON. Use this only if you want to reuse OBody NG-format distribution conditions, outfit-correction rules, or both.
+[b]This is optional.[/b] Body Change NG works without OBody NG or its JSON. Use this only if you want to reuse OBody NG-format distribution conditions, outfit-correction rules, or both.
 
 [b]Optional OBody NG file[/b]
 [b]Data\SKSE\Plugins\OBody_presetDistributionConfig.json[/b]
 
-Place it beside [b]BodyChangerNGdistribution.json[/b] under [b]Data\SKSE\Plugins[/b]. Do not rename either file, merge the two JSON files, or replace Body Changer NG's own JSON.
+Place it beside [b]BodyChangeNGdistribution.json[/b] under [b]Data\SKSE\Plugins[/b]. Do not rename either file, merge the two JSON files, or replace Body Change NG's own JSON.
 
 [list]
 [*][b]Distribution conditions[/b] — press [b]Load saved values[/b] in the NPC Distribution window to import supported OBody distribution rules when the file exists
 [*][b]Outfit-correction rules[/b] — press [b]Register OBody NG outfit-correction rules[/b] in the Outfit · randomization window
 [*][b]Independent choices[/b] — import only distribution conditions, register only outfit-correction rules, or use both
-[*][b]Read only[/b] — the OBody JSON is never read automatically at startup and is never modified by Body Changer NG
+[*][b]Read only[/b] — the OBody JSON is never read automatically at startup and is never modified by Body Change NG
 [/list]
 
-The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Next Generation ORefit JSON Master List[/b][/url] is a supported optional source. Its JSON and assets are not redistributed with Body Changer NG.
+The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Next Generation ORefit JSON Master List[/b][/url] is a supported optional source. Its JSON and assets are not redistributed with Body Change NG.
 
 [line]
 
 [size=5][color=#5FB8E8][b]COMPATIBILITY NOTES[/b][/color][/size]
 
 [list]
-[*]Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records, or equipped slots
+[*]Body Change NG does not edit NIFs, Skin Armor records, ArmorAddon records, or equipped slots
 [*]Confirmed Body, Skin, and Tint selections are reapplied after RaceMenu closes
 [/list]
 
@@ -188,6 +188,6 @@ The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Nex
 
 [size=5][color=#5FB8E8][b]CREDITS & LICENSE[/b][/color][/size]
 
-Body Changer NG is licensed under [url=https://www.gnu.org/licenses/gpl-3.0.html][b]GNU GPLv3[/b][/url]. The complete source code, build scripts, and matching version tags are available on [url=https://github.com/compilecraftworks/Body-Changer-NG][b]GitHub[/b][/url]. Nexus provides the MO2-ready Release ZIP only.
+Body Change NG is licensed under [url=https://www.gnu.org/licenses/gpl-3.0.html][b]GNU GPLv3[/b][/url]. The complete source code, build scripts, and matching version tags are available on [url=https://github.com/compilecraftworks/Body-Change-NG][b]GitHub[/b][/url]. Nexus provides the MO2-ready Release ZIP only.
 
 Credits to the authors of SKSE64, Address Library for SKSE Plugins, and RaceMenu. Detailed third-party notices and license texts are included in the distribution ZIP. All respective rights belong to their original authors.

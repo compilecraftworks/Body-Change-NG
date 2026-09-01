@@ -1,13 +1,13 @@
 # Third-party notices
 
-Body Changer NG is licensed under GNU GPLv3. The complete corresponding source,
+Body Change NG is licensed under GNU GPLv3. The complete corresponding source,
 build scripts, dependency pins, and matching version tags are published at:
 
-https://github.com/compilecraftworks/Body-Changer-NG
+https://github.com/compilecraftworks/Body-Change-NG
 
 The source release preserves the original license files for vendored
 dependencies. The MO2-ready binary distribution includes this notice and the
-Body Changer NG GPLv3 license.
+Body Change NG GPLv3 license.
 
 ## CommonLibSSE-NG
 

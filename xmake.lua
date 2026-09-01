@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-set_project("BodyChangerNG")
+set_project("BodyChangeNG")
 set_version("1.0.0")
 set_license("GPL-3.0")
 set_languages("c++23")
@@ -20,9 +20,9 @@ add_requires("nlohmann_json v3.12.0")
 
 local version = "1.0.0"
 
-target("BodyChangerNG")
+target("BodyChangeNG")
     set_kind("shared")
-    set_basename("BodyChangerNG")
+    set_basename("BodyChangeNG")
     set_targetdir("build/v" .. version .. "/windows/x64/$(mode)")
     set_encodings("utf-8")
     -- CommonLib's plugin rule emits a Windows .rc file.  Keep the resource
@@ -32,13 +32,13 @@ target("BodyChangerNG")
     add_deps("commonlibsse-ng")
     add_packages("nlohmann_json")
     add_rules("commonlibsse-ng.plugin", {
-        name = "Body Changer NG",
+        name = "Body Change NG",
         author = "compilecraftworks",
         description = "Standalone BodySlide body and skin manager"
     })
 
-    add_defines('BODY_CHANGER_NG_VERSION="' .. version .. '"')
-    add_defines("BODY_CHANGER_NG_RUNTIME")
+    add_defines('BODY_CHANGE_NG_VERSION="' .. version .. '"')
+    add_defines("BODY_CHANGE_NG_RUNTIME")
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
     add_files(
@@ -55,24 +55,24 @@ target("BodyChangerNG")
     add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32")
     set_pcxxheader("src/PCH.h")
 
-target("BodyChangerNGHotkeyTests")
+target("BodyChangeNGHotkeyTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
-    add_files("tests/HotkeyTests.cpp", "src/BodyChangerNG/Hotkey.cpp")
+    add_files("tests/HotkeyTests.cpp", "src/BodyChangeNG/Hotkey.cpp")
     add_includedirs("src")
 
-target("BodyChangerNGPresetCatalogTests")
+target("BodyChangeNGPresetCatalogTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
-    add_files("tests/PresetCatalogTests.cpp", "src/BodyChangerNG/PresetCatalog.cpp", "src/BodyChangerNG/CatalogRoots.cpp",
-        "src/BodyChangerNG/BodyFamilyRules.cpp", "third_party/pugixml/src/pugixml.cpp")
+    add_files("tests/PresetCatalogTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp", "src/BodyChangeNG/CatalogRoots.cpp",
+        "src/BodyChangeNG/BodyFamilyRules.cpp", "third_party/pugixml/src/pugixml.cpp")
     add_includedirs("src", "third_party/pugixml/src")
 
-target("BodyChangerNGAssetCatalogTests")
+target("BodyChangeNGAssetCatalogTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
@@ -81,17 +81,17 @@ target("BodyChangerNGAssetCatalogTests")
     add_packages("nlohmann_json")
     add_files(
         "tests/AssetCatalogTests.cpp",
-        "src/BodyChangerNG/CatalogRoots.cpp",
-        "src/BodyChangerNG/Hotkey.cpp",
-        "src/BodyChangerNG/PlayerTint.cpp",
-        "src/BodyChangerNG/RuntimeAssetCache.cpp",
-        "src/BodyChangerNG/Settings.cpp",
-        "src/BodyChangerNG/SkinProfiles.cpp"
+        "src/BodyChangeNG/CatalogRoots.cpp",
+        "src/BodyChangeNG/Hotkey.cpp",
+        "src/BodyChangeNG/PlayerTint.cpp",
+        "src/BodyChangeNG/RuntimeAssetCache.cpp",
+        "src/BodyChangeNG/Settings.cpp",
+        "src/BodyChangeNG/SkinProfiles.cpp"
     )
     add_includedirs("src")
     set_pcxxheader("src/PCH.h")
 
-target("BodyChangerNGSkinOverrideOwnershipTests")
+target("BodyChangeNGSkinOverrideOwnershipTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
@@ -99,15 +99,15 @@ target("BodyChangerNGSkinOverrideOwnershipTests")
     add_files("tests/SkinOverrideOwnershipTests.cpp")
     add_includedirs("src")
 
-target("BodyChangerNGBodyFamilyTests")
+target("BodyChangeNGBodyFamilyTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
-    add_files("tests/BodyFamilyTests.cpp", "src/BodyChangerNG/BodyFamilyRules.cpp")
+    add_files("tests/BodyFamilyTests.cpp", "src/BodyChangeNG/BodyFamilyRules.cpp")
     add_includedirs("src")
 
-target("BodyChangerNGOutfitRefitRulesTests")
+target("BodyChangeNGOutfitRefitRulesTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
@@ -116,7 +116,7 @@ target("BodyChangerNGOutfitRefitRulesTests")
     add_files("tests/OutfitRefitRulesTests.cpp")
     add_includedirs("src")
 
-target("BodyChangerNGActorStateTests")
+target("BodyChangeNGActorStateTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
@@ -124,7 +124,7 @@ target("BodyChangerNGActorStateTests")
     add_files("tests/ActorStateTests.cpp")
     add_includedirs("src")
 
-target("BodyChangerNGRuntimeLayoutTests")
+target("BodyChangeNGRuntimeLayoutTests")
     set_default(false)
     set_kind("binary")
     set_targetdir("build/v" .. version .. "/tests")
@@ -134,3 +134,11 @@ target("BodyChangerNGRuntimeLayoutTests")
     add_files("tests/RuntimeLayoutTests.cpp")
     add_includedirs("src")
     set_pcxxheader("src/PCH.h")
+
+target("BodyChangeNGPathMigrationTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/PathMigrationTests.cpp")
+    add_includedirs("src")

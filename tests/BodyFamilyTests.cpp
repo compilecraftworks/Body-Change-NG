@@ -1,4 +1,4 @@
-#include "BodyChangerNG/BodyFamily.h"
+#include "BodyChangeNG/BodyFamily.h"
 
 #include <iostream>
 #include <stdexcept>

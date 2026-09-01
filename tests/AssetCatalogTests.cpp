@@ -1,6 +1,7 @@
-#include "BodyChangerNG/PlayerTint.h"
-#include "BodyChangerNG/SkinProfiles.h"
-#include "BodyChangerNG/CatalogRoots.h"
+#include "BodyChangeNG/PlayerTint.h"
+#include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/CatalogRoots.h"
+#include "BodyChangeNG/Settings.h"
 
 #include <filesystem>
 #include <fstream>
@@ -120,8 +121,27 @@ int main(const int argc, char** argv)
         return 0;
     }
 
-    const auto sandbox = std::filesystem::temp_directory_path() / "BodyChangerNGAssetCatalogTests";
+    const auto sandbox = std::filesystem::temp_directory_path() / "BodyChangeNGAssetCatalogTests";
     std::filesystem::remove_all(sandbox);
+
+    const auto originalCurrentPath = std::filesystem::current_path();
+    const auto legacySettings = sandbox / "Data" / "SKSE" / "Plugins" /
+        "BodyChangerNG" / "settings.json";
+    std::filesystem::create_directories(legacySettings.parent_path());
+    {
+        std::ofstream stream(legacySettings);
+        stream << R"({"schemaVersion":1,"openHotkey":{"key":66,"ctrl":true,"shift":false,"alt":false},"language":2,"characterPosition":1,"textScale":1.25})";
+    }
+    std::filesystem::current_path(sandbox);
+    bcn::Settings::Get().Load();
+    std::filesystem::current_path(originalCurrentPath);
+    const auto migratedSettings = sandbox / "Data" / "SKSE" / "Plugins" /
+        "BodyChangeNG" / "settings.json";
+    const auto migratedSnapshot = bcn::Settings::Get().Snapshot();
+    if (!Require(std::filesystem::is_regular_file(migratedSettings),
+            "legacy settings were not copied to the BodyChangeNG path")) return 1;
+    if (!Require(migratedSnapshot.openHotkey.key == 66U && migratedSnapshot.openHotkey.ctrl,
+            "legacy settings values were not preserved during migration")) return 1;
 
     const std::string skinPackName{ "피부팩 简体" };
     const auto female = sandbox / "BodySkin" / std::filesystem::path{ L"피부팩 简体" } /

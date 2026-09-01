@@ -1,4 +1,4 @@
-#include "BodyChangerNG/OutfitRefitRules.h"
+#include "BodyChangeNG/OutfitRefitRules.h"
 
 #include <cassert>
 

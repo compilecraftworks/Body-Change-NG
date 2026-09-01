@@ -1,4 +1,4 @@
-#include "BodyChangerNG/PresetCatalog.h"
+#include "BodyChangeNG/PresetCatalog.h"
 
 #include <filesystem>
 #include <fstream>
@@ -45,7 +45,7 @@ int main(const int argc, char** argv)
         }
         return 0;
     }
-    const auto root = std::filesystem::temp_directory_path() / "BodyChangerNGPresetCatalogTests";
+    const auto root = std::filesystem::temp_directory_path() / "BodyChangeNGPresetCatalogTests";
     std::filesystem::remove_all(root);
     std::filesystem::create_directories(root / "Nested");
     {

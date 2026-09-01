@@ -1,7 +1,7 @@
-# Body Changer NG
+# Body Change NG
 
 Change BodySlide morphs, actor skin textures, and player RaceMenu tint layers
-from one native in-game UI. Body Changer NG supports direct player/NPC editing,
+from one native in-game UI. Body Change NG supports direct player/NPC editing,
 save-specific actor results, top-down NPC distribution rules, RaceMenu rebuild
 recovery, and optional OBody NG rule compatibility without replacing meshes or
 silently taking over another mod's configuration.
@@ -9,7 +9,7 @@ silently taking over another mod's configuration.
 ## How this differs from OBody NG
 
 Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI
-data. Body Changer NG does not swap in a separate body mesh. The difference is
+data. Body Change NG does not swap in a separate body mesh. The difference is
 the selection, distribution, and state-management layer built above that
 shared morph pipeline:
 
@@ -52,7 +52,7 @@ then use Papyrus to replace prepared ESP Skin Armor, HeadPart, and TextureSet
 records as a unit. A skin slot therefore also requires its matching built mesh
 and records.
 
-Body Changer NG instead uses a native SKSE architecture without predefined ESP
+Body Change NG instead uses a native SKSE architecture without predefined ESP
 body slots:
 
 - **Skin is independent of mesh sets:** it keeps the actor's existing Skin
@@ -72,7 +72,7 @@ body slots:
   without leaving Skyrim, then apply them to loaded NPCs immediately.
 - **Direct tint editing:** choose player tint assets, immediately edit each
   layer's color and opacity, and restore an individual layer to the RaceMenu
-  value captured before Body Changer NG changed it.
+  value captured before Body Change NG changed it.
 
 ## Main features
 
@@ -81,7 +81,7 @@ body slots:
 - Select a loaded actor and apply compatible BodySlide presets immediately.
 - Low/high-weight values are interpolated using the actor's current weight.
 - Live preview, committed body, and outfit correction are isolated under
-  separate Body Changer NG-owned morph keys.
+  separate Body Change NG-owned morph keys.
 - Conservative BodyFamily detection keeps the main list relevant without
   blocking uncertain presets or filtering distribution pools.
 - Body application uses RaceMenu BodyMorph; no body mesh is generated or
@@ -99,7 +99,7 @@ body slots:
 - Install multiple tint packs and choose a pack from the Tint tab.
 - The usable DDS for each layer is selected automatically for the player's race.
 - Adjust color and opacity per layer immediately in game, or restore the exact
-  RaceMenu value captured before Body Changer NG's first change.
+  RaceMenu value captured before Body Change NG's first change.
 - Tint is player-only and is rebuilt after leaving RaceMenu.
 
 ### NPC distribution
@@ -110,13 +110,13 @@ body slots:
   names, factions, plugins, and races.
 - Choose one fixed preset/skin or multiple stable random choices per rule.
 - Rules are written by the in-game editor to
-  `Data\SKSE\Plugins\BodyChangerNGdistribution.json`; manual JSON editing is
+  `Data\SKSE\Plugins\BodyChangeNGdistribution.json`; manual JSON editing is
   not required. Evaluated actor results are kept in the SKSE co-save to avoid
   redistributing unchanged NPCs.
 - Edit the rules in game and either distribute to loaded NPCs immediately or
   save the edits for the next game launch only.
 - For a mod, Skyrim, or MO2-profile reinstall, back up
-  `BodyChangerNGdistribution.json`, copy it back to the same path, and press
+  `BodyChangeNGdistribution.json`, copy it back to the same path, and press
   **Load saved values**.
 
 ### Outfit correction
@@ -161,7 +161,7 @@ body slots:
    `<pack name>` folder is one entry in the in-game catalog.
 
 These paths are relative to the MO2 mod root. Assets may be placed inside
-the Body Changer NG mod or in separate enabled MO2 mods that provide the same
+the Body Change NG mod or in separate enabled MO2 mods that provide the same
 virtual paths.
 
 You may add or replace BodySlide preset XML files, skin-pack folders, and
@@ -175,17 +175,17 @@ schema-3 distribution JSON with eight editable starter exclusions.
 ## Optional OBody NG JSON Compatibility
 
 Users who want to reuse OBody NG-format distribution conditions or
-outfit-correction rules may optionally use its configuration file. Body Changer
+outfit-correction rules may optionally use its configuration file. Body Change
 NG works without OBody NG or this JSON.
 
 - The
   [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
   is a supported optional source. Its JSON and assets are not redistributed
-  with Body Changer NG.
-- An optional OBody NG configuration may be placed beside Body Changer NG's
+  with Body Change NG.
+- An optional OBody NG configuration may be placed beside Body Change NG's
   JSON at `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Keep both
   files under `Data\SKSE\Plugins`; do not rename, merge, or replace
-  `BodyChangerNGdistribution.json`.
+  `BodyChangeNGdistribution.json`.
 - The OBody file is never read automatically at startup. **Load saved values**
   imports supported OBody distribution rules when the file exists, and
   **Register OBody NG outfit-correction rules** in the Outfit · randomization
@@ -196,16 +196,16 @@ NG works without OBody NG or this JSON.
 
 ## Compatibility
 
-- Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records,
+- Body Change NG does not edit NIFs, Skin Armor records, ArmorAddon records,
   or equipped slots.
 - Body, Skin, and Tint selections are reapplied after RaceMenu closes.
 
 ## Credits & License
 
-Body Changer NG is licensed under
+Body Change NG is licensed under
 [**GNU GPLv3**](https://www.gnu.org/licenses/gpl-3.0.html). The complete source
 code, build scripts, and matching version tags are available on
-[**GitHub**](https://github.com/compilecraftworks/Body-Changer-NG). Nexus
+[**GitHub**](https://github.com/compilecraftworks/Body-Change-NG). Nexus
 provides the MO2-ready Release ZIP only.
 
 Credits to the authors of SKSE64, Address Library for SKSE Plugins, and

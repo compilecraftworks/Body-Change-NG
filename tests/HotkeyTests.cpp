@@ -1,4 +1,4 @@
-#include "BodyChangerNG/Hotkey.h"
+#include "BodyChangeNG/Hotkey.h"
 
 #include <iostream>
 

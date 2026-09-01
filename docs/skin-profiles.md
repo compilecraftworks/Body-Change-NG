@@ -1,6 +1,6 @@
 # Shared skin profiles
 
-Body Changer NG uses one **catalog** of texture profiles, but player selection
+Body Change NG uses one **catalog** of texture profiles, but player selection
 and NPC distribution are independent. A profile applied to the player is never
 automatically assigned to NPCs. Each NPC distribution rule owns a separate
 body-preset pool and skin-profile pool, so different NPC groups may receive
@@ -25,7 +25,7 @@ BodySkin\
     Textures\...
 ```
 
-The folder name is your skin's display name. With no JSON at all, Body Changer
+The folder name is your skin's display name. With no JSON at all, Body Change
 NG scans the standard body/hands/feet names under `Textures` and creates a
 female and/or male profile automatically. This is the normal setup.
 
@@ -74,5 +74,5 @@ BodyChange-compatible fallback.
 
 RaceMenu skin overrides are shared by property slot rather than by mod owner.
 If another mod changes the same skin texture slot, the last applied override
-wins. Body Changer NG therefore does not use a broad “remove all skin
+wins. Body Change NG therefore does not use a broad “remove all skin
 overrides” reset: that could erase another mod's work.

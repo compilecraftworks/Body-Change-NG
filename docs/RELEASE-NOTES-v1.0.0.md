@@ -1,6 +1,6 @@
-# Body Changer NG v1.0.0
+# Body Change NG v1.0.0
 
-Body Changer NG v1.0.0 is the first stable public release of the native SKSE
+Body Change NG v1.0.0 is the first stable public release of the native SKSE
 body, skin, and player tint manager.
 
 ## Highlights
@@ -33,8 +33,8 @@ default. Existing saved preferences continue to take priority.
 
 ## Files
 
-- `Body Changer NG v1.0.0.zip` — installable MO2 archive
-- `Body Changer NG v1.0.0 Source.zip` — complete corresponding source with
+- `Body Change NG v1.0.0.zip` — installable MO2 archive
+- `Body Change NG v1.0.0 Source.zip` — complete corresponding source with
   pinned vendored dependencies and licenses
 
 ## Requirements
@@ -49,7 +49,7 @@ VR-specific native UI layouts are not yet verified and therefore fail closed.
 ## Upgrade notes
 
 This is the first public baseline. Existing private 0.2.x testers may install
-v1.0.0 over the previous Body Changer NG mod. Keep personal `BodySkin`,
+v1.0.0 over the previous Body Change NG mod. Keep personal `BodySkin`,
 `TintMask`, and SliderPresets assets in separate enabled MO2 mods when possible
 so replacing the main archive cannot remove them. The schema-3 distribution
 file is compatible with the final 0.2.x validation builds.
