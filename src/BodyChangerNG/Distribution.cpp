@@ -1,5 +1,7 @@
 #include "BodyChangerNG/Distribution.h"
 
+#include "BodyChangerNG/ActorRegistry.h"
+#include "BodyChangerNG/ActorWorkQueue.h"
 #include "BodyChangerNG/PresetCatalog.h"
 #include "BodyChangerNG/RaceMenuBodyMorph.h"
 #include "BodyChangerNG/Settings.h"
@@ -20,8 +22,7 @@
 
 namespace
 {
-    constexpr auto kSchemaVersion = 2;
-    constexpr auto kPreviousSchemaVersion = 1;
+    constexpr auto kSchemaVersion = 3;
     [[nodiscard]] bool IsEligibleNPC(RE::Actor* actor, RE::Actor* player)
     {
         return actor && actor != player && !actor->IsDisabled() && !actor->IsDead() && actor->Is3DLoaded() &&
@@ -100,6 +101,34 @@ namespace
             scope == pluginFile || scope == raceEditorID || scope == modInstalledFollower || scope == elderNPC;
     }
 
+    [[nodiscard]] std::uint32_t LocalFormID(const RE::TESForm* form, const RE::TESFile* file)
+    {
+        return form && file ? form->GetFormID() & (file->IsLight() ? 0xFFFU : 0xFFFFFFU) : 0U;
+    }
+
+    [[nodiscard]] bool SetStableNPCIdentity(bcn::DistributionRule& rule, RE::TESNPC* base)
+    {
+        const auto* file = base ? base->GetFile(0) : nullptr;
+        if (!base || !file || file->GetFilename().empty()) return false;
+        rule.npcBaseFormID = base->GetFormID();
+        rule.npcPlugin = std::string{ file->GetFilename() };
+        rule.npcLocalFormID = LocalFormID(base, file);
+        return rule.npcLocalFormID != 0U;
+    }
+
+    [[nodiscard]] bool ResolveStableNPCIdentity(bcn::DistributionRule& rule)
+    {
+        if (rule.scope != bcn::DistributionScope::npcBaseForm) return true;
+        if (rule.npcPlugin.empty() || rule.npcLocalFormID == 0U) {
+            rule.npcBaseFormID = 0U;
+            return false;
+        }
+        auto* data = RE::TESDataHandler::GetSingleton();
+        auto* base = data ? data->LookupForm<RE::TESNPC>(rule.npcLocalFormID, rule.npcPlugin) : nullptr;
+        rule.npcBaseFormID = base ? base->GetFormID() : 0U;
+        return base != nullptr;
+    }
+
     [[nodiscard]] bool MatchesTarget(const bcn::DistributionRule& rule, RE::Actor* actor)
     {
         if (!rule.enabled || !actor) return false;
@@ -165,25 +194,33 @@ namespace
     };
 
     [[nodiscard]] std::optional<std::string> ChooseFromPool(const bcn::DistributionRule& rule,
-                                                              const std::vector<std::string>& pool,
-                                                              RE::Actor* actor, const std::string_view kind)
+        const std::vector<std::string>& pool, RE::Actor* actor, const std::string_view kind,
+        const std::string_view previous)
     {
         if (pool.empty()) return std::nullopt;
+        if (!previous.empty() && std::ranges::find(pool, previous) != pool.end()) {
+            return std::string{ previous };
+        }
         const auto base = actor->GetActorBase();
         const auto key = rule.id + ":" + std::string{ kind };
         const auto index = static_cast<std::size_t>(StableHash(key, base->GetFormID(), actor->GetFormID()) % pool.size());
         return pool[index];
     }
 
-    [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules, RE::Actor* actor)
+    [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
+        RE::Actor* actor, const std::optional<bcn::ActorState>& previous)
     {
         for (const auto& rule : rules) {
             if (!MatchesTarget(rule, actor)) continue;
             return RuleSelection{
                 .bodyExcluded = rule.bodyExcluded,
                 .skinExcluded = rule.skinExcluded,
-                .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, rule.presetIds, actor, "body"),
-                .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, rule.skinProfileIds, actor, "skin")
+                .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, rule.presetIds,
+                    actor, "body", previous && !previous->manualBody ?
+                        std::string_view{ previous->selectedBodyId } : std::string_view{}),
+                .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, rule.skinProfileIds,
+                    actor, "skin", previous && !previous->manualSkin ?
+                        std::string_view{ previous->selectedSkinId } : std::string_view{})
             };
         }
         return {};
@@ -254,13 +291,6 @@ namespace
         };
     }
 
-    void PrependDefaultExclusionRules(std::vector<bcn::DistributionRule>& rules)
-    {
-        auto defaults = DefaultExclusionRules();
-        defaults.insert(defaults.end(), std::make_move_iterator(rules.begin()), std::make_move_iterator(rules.end()));
-        rules = std::move(defaults);
-    }
-
     [[nodiscard]] std::vector<bcn::DistributionRule> NormalizeRules(std::vector<bcn::DistributionRule> rules)
     {
         if (rules.size() > 256U) rules.resize(256U);
@@ -279,6 +309,21 @@ namespace
             }
             if (rule.name.empty()) rule.name = rule.female ? "All female NPCs" : "All male NPCs";
             if (!IsValidScope(rule.scope)) rule.scope = bcn::DistributionScope::allNPCs;
+            if (rule.scope == bcn::DistributionScope::npcBaseForm) {
+                if (rule.npcPlugin.empty() && rule.npcBaseFormID != 0U) {
+                    if (auto* form = RE::TESForm::LookupByID(rule.npcBaseFormID)) {
+                        RE::TESNPC* base{};
+                        if (auto* actor = form->As<RE::Actor>()) base = actor->GetActorBase();
+                        else if (form->GetFormType() == RE::FormType::NPC) base = static_cast<RE::TESNPC*>(form);
+                        [[maybe_unused]] const auto normalized = SetStableNPCIdentity(rule, base);
+                    }
+                }
+                [[maybe_unused]] const auto resolved = ResolveStableNPCIdentity(rule);
+            } else {
+                rule.npcBaseFormID = 0U;
+                rule.npcPlugin.clear();
+                rule.npcLocalFormID = 0U;
+            }
             if (rule.excluded) {
                 rule.bodyExcluded = true;
                 rule.skinExcluded = true;
@@ -320,8 +365,7 @@ namespace
     }
 
     [[nodiscard]] bool WriteDistributionFile(const std::filesystem::path& path,
-        const std::vector<bcn::DistributionRule>& rules,
-        const std::vector<bcn::ManualAssignment>& manualAssignments)
+        const std::vector<bcn::DistributionRule>& rules)
     {
         try {
             std::filesystem::create_directories(path.parent_path());
@@ -333,30 +377,21 @@ namespace
                     { "enabled", rule.enabled },
                     { "female", rule.female },
                     { "scope", static_cast<std::uint8_t>(rule.scope) },
-                    { "npcBaseFormID", rule.npcBaseFormID },
+                    { "npcPlugin", rule.npcPlugin },
+                    { "npcLocalFormID", rule.npcLocalFormID },
                     { "target", rule.target },
                     { "bodyFamily", rule.bodyFamily },
                     { "presetIds", rule.presetIds },
                     { "skinProfileIds", rule.skinProfileIds },
                     { "excluded", rule.bodyExcluded && rule.skinExcluded },
                     { "bodyExcluded", rule.bodyExcluded },
-                    { "skinExcluded", rule.skinExcluded }
-                });
-            }
-            nlohmann::json serializedManualAssignments = nlohmann::json::array();
-            for (const auto& assignment : manualAssignments) {
-                serializedManualAssignments.push_back({
-                    { "actorFormID", assignment.actorFormID },
-                    { "presetId", assignment.presetId },
-                    { "skinProfileId", assignment.skinProfileId },
-                    { "useDefaultBody", assignment.useDefaultBody },
-                    { "useDefaultSkin", assignment.useDefaultSkin }
+                    { "skinExcluded", rule.skinExcluded },
+                    { "source", rule.importedFromOBody ? "obody" : "bodychangerng" }
                 });
             }
             const nlohmann::json root{
                 { "schemaVersion", kSchemaVersion },
-                { "rules", std::move(serializedRules) },
-                { "manualAssignments", std::move(serializedManualAssignments) }
+                { "rules", std::move(serializedRules) }
             };
             const auto temporary = path.string() + ".new";
             {
@@ -382,6 +417,17 @@ namespace
 
 namespace bcn
 {
+    bool SetDistributionRuleNPC(DistributionRule& rule, RE::TESForm* form)
+    {
+        RE::TESNPC* base{};
+        if (auto* actor = form ? form->As<RE::Actor>() : nullptr) {
+            base = actor->GetActorBase();
+        } else if (form && form->GetFormType() == RE::FormType::NPC) {
+            base = static_cast<RE::TESNPC*>(form);
+        }
+        return SetStableNPCIdentity(rule, base);
+    }
+
     Distribution& Distribution::Get()
     {
         static Distribution distribution;
@@ -397,19 +443,16 @@ namespace bcn
     {
         const auto path = Path();
         std::vector<DistributionRule> loaded;
-        std::vector<ManualAssignment> loadedManualAssignments;
-        bool migrated{};
         try {
             if (!std::filesystem::exists(path)) {
                 std::scoped_lock lock(lock_);
                 rules_ = DefaultExclusionRules();
-                manualAssignments_.clear();
                 return false;
             }
             std::ifstream stream(path);
             const auto root = nlohmann::json::parse(stream);
             const auto schemaVersion = root.value("schemaVersion", 0);
-            if ((schemaVersion != kPreviousSchemaVersion && schemaVersion != kSchemaVersion) ||
+            if (schemaVersion != kSchemaVersion ||
                 !root.contains("rules") || !root["rules"].is_array()) {
                 throw std::runtime_error("unsupported distribution schema");
             }
@@ -421,14 +464,16 @@ namespace bcn
                     .enabled = source.value("enabled", true),
                     .female = source.value("female", true),
                     .scope = static_cast<DistributionScope>(source.value("scope", 0)),
-                    .npcBaseFormID = source.value("npcBaseFormID", 0U),
+                    .npcPlugin = source.value("npcPlugin", std::string{}),
+                    .npcLocalFormID = source.value("npcLocalFormID", 0U),
                     .target = source.value("target", std::string{}),
                     .bodyFamily = source.value("bodyFamily", std::string{}),
                     .presetIds = source.value("presetIds", std::vector<std::string>{}),
                     .skinProfileIds = source.value("skinProfileIds", std::vector<std::string>{}),
                     .excluded = source.value("excluded", false),
                     .bodyExcluded = source.value("bodyExcluded", false),
-                    .skinExcluded = source.value("skinExcluded", false)
+                    .skinExcluded = source.value("skinExcluded", false),
+                    .importedFromOBody = source.value("source", std::string{}) == "obody"
                 };
                 if (rule.id.empty()) rule.id = GenerateRuleId(loaded.size());
                 if (rule.name.empty()) rule.name = rule.female ? "All female NPCs" : "All male NPCs";
@@ -440,41 +485,16 @@ namespace bcn
                 std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
                 loaded.push_back(std::move(rule));
             }
-            if (const auto assignments = root.find("manualAssignments"); assignments != root.end() && assignments->is_array()) {
-                std::unordered_set<RE::FormID> knownActors;
-                for (const auto& source : *assignments) {
-                    if (!source.is_object() || loadedManualAssignments.size() >= 512U) continue;
-                    const auto actorFormID = source.value("actorFormID", 0U);
-                    auto presetId = source.value("presetId", std::string{});
-                    auto skinProfileId = source.value("skinProfileId", std::string{});
-                    const auto useDefaultBody = source.value("useDefaultBody", false);
-                    const auto useDefaultSkin = source.value("useDefaultSkin", false);
-                    if (actorFormID == 0 || (!useDefaultBody && !useDefaultSkin && presetId.empty() && skinProfileId.empty()) || presetId.size() > 1024U ||
-                        skinProfileId.size() > 1024U || !knownActors.insert(actorFormID).second) {
-                        continue;
-                    }
-                    loadedManualAssignments.push_back({ actorFormID, std::move(presetId), std::move(skinProfileId), useDefaultBody, useDefaultSkin });
-                }
-            }
-            if (schemaVersion == kPreviousSchemaVersion) {
-                PrependDefaultExclusionRules(loaded);
-                migrated = true;
-            }
             loaded = NormalizeRules(std::move(loaded));
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Changer NG could not load distribution rules: {}", exception.what());
             std::scoped_lock lock(lock_);
             rules_ = DefaultExclusionRules();
-            manualAssignments_.clear();
             return false;
         }
         {
             std::scoped_lock lock(lock_);
             rules_ = std::move(loaded);
-            manualAssignments_ = std::move(loadedManualAssignments);
-        }
-        if (migrated && !Save()) {
-            SKSE::log::warn("Body Changer NG loaded legacy distribution data but could not save it to {}", path.string());
         }
         return true;
     }
@@ -483,24 +503,17 @@ namespace bcn
     {
         const auto path = Path();
         std::vector<DistributionRule> rules;
-        std::vector<ManualAssignment> manualAssignments;
         {
             std::scoped_lock lock(lock_);
             rules = rules_;
-            manualAssignments = manualAssignments_;
         }
-        return WriteDistributionFile(path, rules, manualAssignments);
+        return WriteDistributionFile(path, rules);
     }
 
     bool Distribution::SaveRulesForNextGame(std::vector<DistributionRule> rules) const
     {
         rules = NormalizeRules(std::move(rules));
-        std::vector<ManualAssignment> manualAssignments;
-        {
-            std::scoped_lock lock(lock_);
-            manualAssignments = manualAssignments_;
-        }
-        return WriteDistributionFile(Path(), rules, manualAssignments);
+        return WriteDistributionFile(Path(), rules);
     }
 
     std::vector<DistributionRule> Distribution::Snapshot() const
@@ -518,124 +531,50 @@ namespace bcn
 
     void Distribution::SetManualAssignment(RE::Actor* actor, std::string presetId)
     {
-        if (!actor || presetId.empty() || presetId.size() > 1024U) return;
-        const auto actorFormID = actor->GetFormID();
-        if (actorFormID == 0) return;
-        std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(manualAssignments_, actorFormID, &ManualAssignment::actorFormID);
-        if (found != manualAssignments_.end()) {
-            found->presetId = std::move(presetId);
-            found->useDefaultBody = false;
-            return;
-        }
-        if (manualAssignments_.size() < 512U) {
-            manualAssignments_.push_back({ actorFormID, std::move(presetId), {}, false, false });
-        }
+        ActorRegistry::Get().SetManualBody(actor, std::move(presetId), false);
     }
 
     void Distribution::SetManualSkinAssignment(RE::Actor* actor, std::string profileId)
     {
-        if (!actor || profileId.empty() || profileId.size() > 1024U) return;
-        const auto actorFormID = actor->GetFormID();
-        if (actorFormID == 0) return;
-        std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(manualAssignments_, actorFormID, &ManualAssignment::actorFormID);
-        if (found != manualAssignments_.end()) {
-            found->skinProfileId = std::move(profileId);
-            found->useDefaultSkin = false;
-            return;
-        }
-        if (manualAssignments_.size() < 512U) {
-            manualAssignments_.push_back({ actorFormID, {}, std::move(profileId), false, false });
-        }
+        ActorRegistry::Get().SetManualSkin(actor, std::move(profileId), false);
     }
 
     void Distribution::SetManualDefaultBody(RE::Actor* actor)
     {
-        if (!actor) return;
-        const auto actorFormID = actor->GetFormID();
-        if (actorFormID == 0) return;
-        std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(manualAssignments_, actorFormID, &ManualAssignment::actorFormID);
-        if (found != manualAssignments_.end()) {
-            found->presetId.clear();
-            found->useDefaultBody = true;
-            return;
-        }
-        if (manualAssignments_.size() < 512U) {
-            manualAssignments_.push_back({ actorFormID, {}, {}, true, false });
-        }
+        ActorRegistry::Get().SetManualBody(actor, {}, true);
     }
 
     void Distribution::SetManualDefaultSkin(RE::Actor* actor)
     {
-        if (!actor) return;
-        const auto actorFormID = actor->GetFormID();
-        if (actorFormID == 0) return;
-        std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(manualAssignments_, actorFormID, &ManualAssignment::actorFormID);
-        if (found != manualAssignments_.end()) {
-            found->skinProfileId.clear();
-            found->useDefaultSkin = true;
-            return;
-        }
-        if (manualAssignments_.size() < 512U) {
-            manualAssignments_.push_back({ actorFormID, {}, {}, false, true });
-        }
+        ActorRegistry::Get().SetManualSkin(actor, {}, true);
     }
 
     bool Distribution::RemoveManualAssignment(RE::Actor* actor)
     {
-        if (!actor) return false;
-        const auto actorFormID = actor->GetFormID();
-        std::scoped_lock lock(lock_);
-        const auto oldSize = manualAssignments_.size();
-        std::erase_if(manualAssignments_, [actorFormID](const auto& assignment) {
-            return assignment.actorFormID == actorFormID;
-        });
-        return manualAssignments_.size() != oldSize;
+        return ActorRegistry::Get().RemoveManual(actor);
     }
 
     bool Distribution::RemoveManualBodyAssignment(RE::Actor* actor)
     {
-        if (!actor) return false;
-        const auto actorFormID = actor->GetFormID();
-        std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(manualAssignments_, actorFormID, &ManualAssignment::actorFormID);
-        if (found == manualAssignments_.end() || (found->presetId.empty() && !found->useDefaultBody)) return false;
-        found->presetId.clear();
-        found->useDefaultBody = false;
-        if (found->skinProfileId.empty() && !found->useDefaultSkin) manualAssignments_.erase(found);
-        return true;
+        return ActorRegistry::Get().RemoveManualBody(actor);
     }
 
     void Distribution::ClearManualAssignments()
     {
-        std::scoped_lock lock(lock_);
-        manualAssignments_.clear();
+        ActorRegistry::Get().ClearManualSelections();
     }
 
     void Distribution::ClearManualBodyAssignments()
     {
-        std::scoped_lock lock(lock_);
-        for (auto& assignment : manualAssignments_) {
-            assignment.presetId.clear();
-            assignment.useDefaultBody = false;
-        }
-        std::erase_if(manualAssignments_, [](const auto& assignment) { return assignment.skinProfileId.empty() && !assignment.useDefaultSkin; });
+        ActorRegistry::Get().ClearManualBodySelections();
     }
 
     bool Distribution::HasManualAssignment(const RE::Actor* actor) const
     {
-        if (!actor) return false;
-        const auto actorFormID = actor->GetFormID();
-        std::scoped_lock lock(lock_);
-        return std::ranges::any_of(manualAssignments_, [actorFormID](const auto& assignment) {
-            return assignment.actorFormID == actorFormID;
-        });
+        return ActorRegistry::Get().HasManualSelection(actor);
     }
 
-    std::size_t Distribution::ApplyLoadedNPCs() const
+    std::size_t Distribution::ApplyLoadedNPCs()
     {
         auto* player = RE::PlayerCharacter::GetSingleton();
         auto* processes = RE::ProcessLists::GetSingleton();
@@ -647,7 +586,7 @@ namespace bcn
             if (!IsEligibleNPC(actor, player) || !seen.insert(actor->GetFormID()).second) {
                 return RE::BSContainer::ForEachResult::kContinue;
             }
-            if (ApplyActor(actor)) {
+            if (ActorWorkQueue::Get().Request(actor, ActorWorkReason::bulkLoad)) {
                 ++queued;
             }
             return RE::BSContainer::ForEachResult::kContinue;
@@ -675,6 +614,7 @@ namespace bcn
         // RaceMenu, so blindly removing it could erase another mod's override.
         // The reset action intentionally concerns Body Changer NG body morphs.
         ClearManualBodyAssignments();
+        ActorRegistry::Get().InvalidateAllBodyResults();
         return queued;
     }
 
@@ -682,35 +622,34 @@ namespace bcn
     {
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!IsEligibleNPC(actor, player)) return false;
-        std::optional<ManualAssignment> manual;
-        {
-            std::scoped_lock lock(lock_);
-            const auto found = std::ranges::find(manualAssignments_, actor->GetFormID(), &ManualAssignment::actorFormID);
-            if (found != manualAssignments_.end()) manual = *found;
-        }
-        if (manual) {
-            bool queued{};
-            if (manual->useDefaultBody && racemenu::IsReady()) {
-                racemenu::QueueClearBodyChangerMorphs(actor);
-                queued = true;
-            } else if (!manual->presetId.empty()) {
-                queued = racemenu::QueueApply(actor, manual->presetId, racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
-            }
-            if (manual->useDefaultSkin) {
-                queued = skin_override::QueueClear(actor) == skin_override::ApplyResult::queued || queued;
-            } else if (!manual->skinProfileId.empty()) {
-                queued = skin_override::QueueApply(actor, manual->skinProfileId) == skin_override::ApplyResult::queued || queued;
-            }
-            return queued;
-        }
+        const auto manual = ActorRegistry::Get().ManualSelection(actor);
+        const auto previous = ActorRegistry::Get().Snapshot(actor);
         const auto rules = Snapshot();
-        const auto selection = ChooseRuleSelection(rules, actor);
-        if (!selection.HasSelection()) return false;
+        const auto selection = ChooseRuleSelection(rules, actor, previous);
+        ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
         bool queued{};
-        if (selection.presetId) {
+
+        if (manual && manual->hasBody && manual->useDefaultBody && racemenu::IsReady() &&
+            ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
+            racemenu::QueueClearBodyChangerMorphs(actor);
+            queued = true;
+        } else if (manual && manual->hasBody && !manual->bodyId.empty() &&
+            ActorRegistry::Get().NeedsBodyApply(actor, manual->bodyId, false)) {
+            queued = racemenu::QueueApply(actor, manual->bodyId,
+                racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
+        } else if ((!manual || !manual->hasBody) && selection.presetId &&
+            ActorRegistry::Get().NeedsBodyApply(actor, *selection.presetId, false)) {
             queued = racemenu::QueueApply(actor, *selection.presetId, racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
         }
-        if (selection.skinProfileId) {
+
+        if (manual && manual->hasSkin && manual->useDefaultSkin &&
+            ActorRegistry::Get().NeedsSkinApply(actor, {}, true)) {
+            queued = skin_override::QueueClear(actor) == skin_override::ApplyResult::queued || queued;
+        } else if (manual && manual->hasSkin && !manual->skinId.empty() &&
+            ActorRegistry::Get().NeedsSkinApply(actor, manual->skinId, false)) {
+            queued = skin_override::QueueApply(actor, manual->skinId) == skin_override::ApplyResult::queued || queued;
+        } else if ((!manual || !manual->hasSkin) && selection.skinProfileId &&
+            ActorRegistry::Get().NeedsSkinApply(actor, *selection.skinProfileId, false)) {
             queued = skin_override::QueueApply(actor, *selection.skinProfileId) == skin_override::ApplyResult::queued || queued;
         }
         return queued;
@@ -731,14 +670,20 @@ namespace bcn
                 for (const auto& value : *found) if (value.is_string()) blacklisted.insert(value.get<std::string>());
             }
             std::vector<DistributionRule> imported;
-            const auto matchingPresetIds = [&catalog](const std::vector<std::string>& names, const bool female) {
+            std::size_t requestedPresetNames{};
+            std::unordered_set<std::string> missingPresetNames;
+            const auto matchingPresetIds = [&catalog, &requestedPresetNames, &missingPresetNames](
+                                               const std::vector<std::string>& names, const bool female) {
                 std::vector<std::string> ids;
                 for (const auto& name : names) {
+                    ++requestedPresetNames;
                     const auto found = std::ranges::find_if(catalog, [&](const auto& preset) {
                         return preset.male == !female && preset.name == name;
                     });
                     if (found != catalog.end() && std::ranges::find(ids, found->PersistentId()) == ids.end()) {
                         ids.push_back(found->PersistentId());
+                    } else if (found == catalog.end()) {
+                        missingPresetNames.insert(name);
                     }
                 }
                 return ids;
@@ -754,7 +699,8 @@ namespace bcn
                     .npcBaseFormID = baseFormID,
                     .target = std::move(target),
                     .presetIds = matchingPresetIds(presetNames, female),
-                    .bodyExcluded = excluded
+                    .bodyExcluded = excluded,
+                    .importedFromOBody = true
                 };
                 if (excluded || !rule.presetIds.empty()) imported.push_back(std::move(rule));
             };
@@ -853,8 +799,19 @@ namespace bcn
             }
             addRule("Imported OBody female default", DistributionScope::allNPCs, true, {}, 0U, femaleDefaultNames);
             addRule("Imported OBody male default", DistributionScope::allNPCs, false, {}, 0U, maleDefaultNames);
-            PrependDefaultExclusionRules(imported);
-            SetRules(std::move(imported));
+            auto merged = Snapshot();
+            std::erase_if(merged, [](const DistributionRule& rule) {
+                return rule.importedFromOBody || rule.id.starts_with("obody-import-");
+            });
+            merged.insert(merged.end(), std::make_move_iterator(imported.begin()),
+                std::make_move_iterator(imported.end()));
+            SetRules(std::move(merged));
+            SKSE::log::info(
+                "Body Changer NG imported {} OBody distribution rules; preset references={} unique-missing={}",
+                imported.size(), requestedPresetNames, missingPresetNames.size());
+            for (const auto& name : missingPresetNames) {
+                SKSE::log::warn("Body Changer NG could not match imported OBody preset '{}'", name);
+            }
             return true;
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Changer NG could not import OBody defaults: {}", exception.what());

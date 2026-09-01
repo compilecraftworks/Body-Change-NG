@@ -603,6 +603,7 @@ namespace bcn::player_tint
 
     void Catalog::Refresh()
     {
+        bcn::runtime_assets::ClearGameRelativeSources("TintMask\\");
         std::vector<Asset> loaded;
         for (const auto& root : bcn::catalog_roots::Discover(RootPath())) {
             for (auto& asset : ScanDirectory(root)) {
@@ -820,5 +821,50 @@ namespace bcn::player_tint
             RestoreAllNow(handle, backups, generation);
         });
         return ApplyResult::queued;
+    }
+
+    PersistedState SnapshotPersistedState()
+    {
+        const auto current = CurrentState();
+        PersistedState state{ .pack = current.pack };
+        state.layers.reserve(current.layerOverrides.size() + current.restoredLayers.size());
+        for (const auto& [layer, selection] : current.layerOverrides) {
+            state.layers.push_back(PersistedLayerState{
+                .layer = layer,
+                .assetID = selection.assetID,
+                .color = selection.color
+            });
+        }
+        for (const auto layer : current.restoredLayers) {
+            state.layers.push_back(PersistedLayerState{ .layer = layer, .restored = true });
+        }
+        return state;
+    }
+
+    void RestorePersistedState(PersistedState state)
+    {
+        CurrentTintState restored;
+        if (state.pack && state.pack->size() <= 1024U) restored.pack = std::move(state.pack);
+        for (auto& layer : state.layers) {
+            if (static_cast<std::uint8_t>(layer.layer) > static_cast<std::uint8_t>(Layer::dirt)) continue;
+            if (layer.restored) {
+                restored.restoredLayers.insert(layer.layer);
+                continue;
+            }
+            if (layer.assetID.empty() || layer.assetID.size() > 1024U) continue;
+            restored.layerOverrides[layer.layer] = LayerOverride{
+                .assetID = std::move(layer.assetID),
+                .color = layer.color
+            };
+        }
+        std::scoped_lock lock(g_currentTintStateLock);
+        g_currentTintState = std::move(restored);
+    }
+
+    void ResetPersistedState()
+    {
+        g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel);
+        std::scoped_lock lock(g_currentTintStateLock);
+        g_currentTintState = {};
     }
 }

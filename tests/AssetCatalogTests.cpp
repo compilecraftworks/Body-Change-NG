@@ -1,5 +1,6 @@
 #include "BodyChangerNG/PlayerTint.h"
 #include "BodyChangerNG/SkinProfiles.h"
+#include "BodyChangerNG/CatalogRoots.h"
 
 #include <filesystem>
 #include <fstream>
@@ -133,6 +134,12 @@ int main(const int argc, char** argv)
     }
 
     const auto skins = bcn::SkinProfiles::ScanDirectory(sandbox / "BodySkin");
+    const auto discoveredSkinRoots = bcn::catalog_roots::Discover(sandbox / "BodySkin");
+    std::error_code equivalentError;
+    if (!Require(!discoveredSkinRoots.empty() &&
+            std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
+            !equivalentError,
+            "catalog root discovery climbed above the physical BodySkin provider")) return 1;
     if (!Require(skins.size() == 1U, "skin scanner did not collapse one top-level folder into one pack row")) return 1;
     for (const auto& skin : skins) {
         if (!Require(skin.sex == bcn::SkinSex::female, "skin scanner leaked the pack into the wrong sex")) return 1;

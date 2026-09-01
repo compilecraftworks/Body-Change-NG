@@ -7,6 +7,12 @@
 #include <string>
 #include <vector>
 
+namespace RE
+{
+    class Actor;
+    class TESForm;
+}
+
 namespace bcn
 {
     enum class DistributionScope : std::uint8_t
@@ -28,7 +34,12 @@ namespace bcn
         bool enabled{ true };
         bool female{ true };
         DistributionScope scope{ DistributionScope::allNPCs };
+        // Runtime-only resolved Base FormID. Persistent rules use the plugin
+        // name and local BaseID below so load-order changes cannot retarget a
+        // rule to another NPC.
         std::uint32_t npcBaseFormID{};
+        std::string npcPlugin;
+        std::uint32_t npcLocalFormID{};
         // Name, faction EditorID, plugin file name, or race EditorID depending
         // on scope.  Form rules use the resolved runtime FormID above.
         std::string target;
@@ -46,20 +57,14 @@ namespace bcn
         bool excluded{};
         bool bodyExcluded{};
         bool skinExcluded{};
+        // Source tagging lets repeated OBody imports replace only their own
+        // generated rows while preserving Body Changer NG user rules.
+        bool importedFromOBody{};
     };
 
-    // A direct selection is deliberately stored separately from rule priority.
-    // When the player locks an NPC manually, its currently selected preset must
-    // survive later actor-init distribution passes without altering a broad
-    // race/faction/plugin rule.
-    struct ManualAssignment final
-    {
-        std::uint32_t actorFormID{};
-        std::string presetId;
-        std::string skinProfileId;
-        bool useDefaultBody{};
-        bool useDefaultSkin{};
-    };
+    // Accepts either an NPC base form or an actor reference and normalizes it
+    // to a persistent plugin + local NPC BaseID rule target.
+    [[nodiscard]] bool SetDistributionRuleNPC(DistributionRule& a_rule, RE::TESForm* a_form);
 
     class Distribution final
     {
@@ -88,7 +93,7 @@ namespace bcn
         // Returns true if a body morph or texture-profile application was
         // accepted by the SKSE task queue for this actor.
         [[nodiscard]] bool ApplyActor(RE::Actor* a_actor) const;
-        [[nodiscard]] std::size_t ApplyLoadedNPCs() const;
+        [[nodiscard]] std::size_t ApplyLoadedNPCs();
         [[nodiscard]] std::size_t ResetLoadedNPCs();
         [[nodiscard]] bool ImportOBodyDefaults();
 
@@ -96,6 +101,5 @@ namespace bcn
         [[nodiscard]] static std::filesystem::path Path();
         mutable std::mutex lock_;
         std::vector<DistributionRule> rules_;
-        std::vector<ManualAssignment> manualAssignments_;
     };
 }

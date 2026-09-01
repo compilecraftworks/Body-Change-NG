@@ -80,7 +80,6 @@ namespace
     DistributionPool g_distributionPool{ DistributionPool::body };
     std::array<bool, 3> g_favoritesOnlyByTab{};
     bool g_showDistribution{};
-    bool g_showDistributionLoadSource{};
     bool g_showOutfit{};
     bool g_orefitRulesRegistered{};
     bool g_showSettings{};
@@ -565,7 +564,6 @@ namespace
     void ResetDistributionEditor()
     {
         g_distributionEditorLoaded = false;
-        g_showDistributionLoadSource = false;
         g_distributionRules.clear();
         g_selectedDistributionRule = 0;
         g_distributionPool = DistributionPool::body;
@@ -651,9 +649,10 @@ namespace
         const auto base = actor ? actor->GetActorBase() : nullptr;
         if (!base) return;
         switch (rule.scope) {
-        case bcn::DistributionScope::npcBaseForm:
-            rule.npcBaseFormID = base->GetFormID();
+        case bcn::DistributionScope::npcBaseForm: {
+            [[maybe_unused]] const auto normalized = bcn::SetDistributionRuleNPC(rule, base);
             break;
+        }
         case bcn::DistributionScope::npcName:
             rule.target = base->GetName();
             break;
@@ -846,9 +845,6 @@ namespace
             auto* player = RE::PlayerCharacter::GetSingleton();
             if (actor && actor != player) {
                 bcn::Distribution::Get().SetManualAssignment(actor, item.id);
-                if (!bcn::Distribution::Get().Save()) {
-                    bcn::ui::Notify(Text("NPC 직접 선택 값을 저장하지 못했습니다.", "Could not save the direct NPC selection.", "无法保存 NPC 直接选择。"));
-                }
             }
             bcn::OutfitRefit::Get().ProcessActor(actor);
         }
@@ -863,9 +859,6 @@ namespace
         const auto* player = RE::PlayerCharacter::GetSingleton();
         if (!actor || actor == player) return;
         bcn::Distribution::Get().SetManualSkinAssignment(actor, profileId);
-        if (!bcn::Distribution::Get().Save()) {
-            bcn::ui::Notify(Text("NPC 스킨 직접 선택 값을 저장하지 못했습니다.", "Could not save the direct NPC skin selection.", "无法保存 NPC 皮肤直接选择。"));
-        }
     }
 
     void SaveManualDefaultBodyIfNeeded(RE::Actor* actor)
@@ -873,9 +866,6 @@ namespace
         const auto* player = RE::PlayerCharacter::GetSingleton();
         if (!actor || actor == player) return;
         bcn::Distribution::Get().SetManualDefaultBody(actor);
-        if (!bcn::Distribution::Get().Save()) {
-            bcn::ui::Notify(Text("기본 바디는 적용했지만 NPC 직접 선택 값을 저장하지 못했습니다.", "The default body was applied, but the direct NPC selection could not be saved.", "已应用默认身体，但无法保存 NPC 直接选择。"));
-        }
     }
 
     void SaveManualDefaultSkinIfNeeded(RE::Actor* actor)
@@ -883,9 +873,6 @@ namespace
         const auto* player = RE::PlayerCharacter::GetSingleton();
         if (!actor || actor == player) return;
         bcn::Distribution::Get().SetManualDefaultSkin(actor);
-        if (!bcn::Distribution::Get().Save()) {
-            bcn::ui::Notify(Text("기본 스킨은 적용했지만 NPC 직접 선택 값을 저장하지 못했습니다.", "The default skin was applied, but the direct NPC selection could not be saved.", "已应用默认皮肤，但无法保存 NPC 直接选择。"));
-        }
     }
 
     [[nodiscard]] bool QueueDefaultBody(const bool persistSelection)
@@ -1547,7 +1534,7 @@ namespace
         const auto title = std::string{ Text("틴트 상세 값", "Tint details", "色调详情") } + "###TintDetails";
         ImGui::OpenPopup(title.c_str());
         if (BeginUndimmedPopupModal(title.c_str(), &g_showTintDetails, ImGuiWindowFlags_AlwaysAutoResize)) {
-            if (!g_showDistributionLoadSource && EscapePressed()) {
+            if (EscapePressed()) {
                 g_showTintDetails = false;
                 ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
@@ -1677,6 +1664,8 @@ namespace
                     if (DistributionScopeCombo(rule.scope)) {
                         rule.target.clear();
                         rule.npcBaseFormID = 0;
+                        rule.npcPlugin.clear();
+                        rule.npcLocalFormID = 0;
                         if (rule.scope == bcn::DistributionScope::modInstalledFollower ||
                             rule.scope == bcn::DistributionScope::elderNPC) {
                             rule.bodyExcluded = true;
@@ -1685,11 +1674,23 @@ namespace
                         }
                     }
                     if (rule.scope == bcn::DistributionScope::npcBaseForm) {
-                        ImGui::TextUnformatted("FormID");
+                        ImGui::TextUnformatted(Text("NPC BaseID 또는 RefID", "NPC BaseID or RefID", "NPC BaseID 或 RefID"));
                         ImGui::SetNextItemWidth(-1.0F);
-                        ImGui::InputScalar("##ruleFormID", ImGuiDataType_U32, &rule.npcBaseFormID,
+                        if (ImGui::InputScalar("##ruleFormID", ImGuiDataType_U32, &rule.npcBaseFormID,
                             nullptr, nullptr, "%08X", ImGuiInputTextFlags_CharsHexadecimal |
-                            ImGuiInputTextFlags_CharsUppercase);
+                            ImGuiInputTextFlags_CharsUppercase)) {
+                            if (auto* form = RE::TESForm::LookupByID(rule.npcBaseFormID);
+                                !bcn::SetDistributionRuleNPC(rule, form)) {
+                                rule.npcPlugin.clear();
+                                rule.npcLocalFormID = 0U;
+                            }
+                        }
+                        if (!rule.npcPlugin.empty()) {
+                            ImGui::TextDisabled("%s · %06X", rule.npcPlugin.c_str(), rule.npcLocalFormID);
+                        } else if (rule.npcBaseFormID != 0U) {
+                            ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s",
+                                Text("NPC Base 또는 Ref를 찾지 못했습니다.", "No NPC base or reference was found.", "找不到 NPC 基础或引用。"));
+                        }
                     } else if (rule.scope == bcn::DistributionScope::npcName) {
                         ImGui::TextUnformatted(TargetLabel(rule.scope));
                         ImGui::SetNextItemWidth(-1.0F);
@@ -1836,61 +1837,34 @@ namespace
                 ++g_selectedDistributionRule;
             }
             if (ImGui::Button(Text("저장 값 불러오기", "Load saved values", "加载保存值"))) {
-                g_showDistributionLoadSource = true;
+                const auto loaded = bcn::Distribution::Get().Load();
+                const auto imported = bcn::Distribution::Get().ImportOBodyDefaults();
+                g_distributionRules = bcn::Distribution::Get().Snapshot();
+                g_selectedDistributionRule = 0;
+                bcn::ui::Notify(loaded ?
+                    (imported ?
+                        Text("저장값과 OBody 호환 규칙을 함께 불러왔습니다.", "Loaded saved values and OBody-compatible rules.", "已加载保存值和 OBody 兼容规则。") :
+                        Text("저장값을 불러왔습니다.", "Loaded saved values.", "已加载保存值。")) :
+                    (imported ?
+                        Text("기본 샘플 조건과 OBody 호환 규칙을 불러왔습니다.", "Loaded the default sample rules and OBody-compatible rules.", "已加载默认示例规则和 OBody 兼容规则。") :
+                        Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。")));
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发到已加载 NPC"))) {
+            if (ImGui::Button(Text("저장 후 지금 적용", "Save and apply now", "保存并立即应用"))) {
                 if (SaveActiveDistributionRules()) {
                     const auto queued = bcn::Distribution::Get().ApplyLoadedNPCs();
-                    bcn::ui::Notify(std::to_string(queued) + Text("명의 로드된 NPC에 배포를 시작하고 저장했습니다.", " loaded NPC distributions started and the rules were saved.", " 名已加载 NPC 已开始分发，规则也已保存。"));
+                    bcn::ui::Notify(std::to_string(queued) + Text("명의 변경 대상 NPC를 확인하고 규칙을 저장했습니다.", " changed loaded NPCs were checked and the rules were saved.", " 名已加载 NPC 的变更已检查，规则也已保存。"));
                 } else {
                     bcn::ui::Notify(Text("NPC 배포 규칙을 저장하지 못해 즉시 배포하지 않았습니다.", "The rules could not be saved, so immediate distribution was not started.", "无法保存 NPC 分发规则，因此未开始立即分发。"));
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("다음 게임 실행 시 배포", "Distribute on next game start", "下次启动游戏时分发"))) {
+            if (ImGui::Button(Text("저장만 · 다음 실행부터 적용", "Save only · Apply next launch", "仅保存 · 下次启动时应用"))) {
                 if (bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules)) {
-                    bcn::ui::Notify(Text("현재 편집 값을 저장했습니다. 다음 게임 실행 시 배포합니다.", "Saved the edited values for distribution on the next game start.", "已保存当前编辑值，将在下次启动游戏时分发。"));
+                    bcn::ui::Notify(Text("현재 편집 값을 저장했습니다. 현재 게임의 배포 규칙은 바꾸지 않습니다.", "Saved the edited values without changing this session's active distribution rules.", "已保存当前编辑值，不更改本次游戏的有效分发规则。"));
                 } else {
                     bcn::ui::Notify(Text("다음 게임 실행용 배포 규칙을 저장하지 못했습니다.", "Could not save the distribution rules for the next game start.", "无法保存下次启动游戏时使用的分发规则。"));
                 }
-            }
-
-            const auto loadTitle = std::string{ Text("저장 값 불러오기", "Load saved values", "加载保存值") } + "###DistributionLoadSource";
-            if (g_showDistributionLoadSource) ImGui::OpenPopup(loadTitle.c_str());
-            ImGui::SetNextWindowSize(DefaultWindowSize(430.0F, 150.0F), ImGuiCond_Appearing);
-            if (BeginUndimmedPopupModal(loadTitle.c_str(), &g_showDistributionLoadSource,
-                    ImGuiWindowFlags_AlwaysAutoResize)) {
-                if (EscapePressed()) {
-                    g_showDistributionLoadSource = false;
-                    ImGui::CloseCurrentPopup();
-                } else {
-                    ImGui::TextWrapped("%s", Text("불러올 저장 형식을 선택합니다.", "Choose the saved format to load.", "请选择要加载的保存格式。"));
-                    if (ImGui::Button(Text("Body Changer NG 저장값", "Body Changer NG saved values", "Body Changer NG 保存值"))) {
-                        const auto loaded = bcn::Distribution::Get().Load();
-                        g_distributionRules = bcn::Distribution::Get().Snapshot();
-                        g_selectedDistributionRule = 0;
-                        bcn::ui::Notify(loaded ?
-                            Text("Body Changer NG 저장값을 불러왔습니다.", "Loaded the Body Changer NG saved values.", "已加载 Body Changer NG 保存值。") :
-                            Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。"));
-                        g_showDistributionLoadSource = false;
-                        ImGui::CloseCurrentPopup();
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Text("OBody 호환 JSON", "OBody-compatible JSON", "OBody 兼容 JSON"))) {
-                        const auto imported = bcn::Distribution::Get().ImportOBodyDefaults();
-                        if (imported) {
-                            g_distributionRules = bcn::Distribution::Get().Snapshot();
-                            g_selectedDistributionRule = 0;
-                        }
-                        bcn::ui::Notify(imported ?
-                            Text("OBody 호환 JSON을 편집 값으로 불러왔습니다.", "Loaded the OBody-compatible JSON into the editor.", "已将 OBody 兼容 JSON 加载到编辑器。") :
-                            Text("OBody 호환 JSON을 불러오지 못했습니다.", "Could not load the OBody-compatible JSON.", "无法加载 OBody 兼容 JSON。"));
-                        g_showDistributionLoadSource = false;
-                        ImGui::CloseCurrentPopup();
-                    }
-                }
-                ImGui::EndPopup();
             }
             ImGui::EndPopup();
         }
@@ -1912,30 +1886,30 @@ namespace
             ImGui::Separator();
             auto settings = bcn::Settings::Get().Snapshot();
             auto settingsChanged = false;
-            const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Refit breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
+            const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Correct breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
             settingsChanged |= refitChanged;
             ImGui::Indent();
             if (!settings.orefitEnabled) ImGui::BeginDisabled();
-            const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 슬라이드 보정", "Refit nipple sliders while clothed", "穿衣时修正乳头滑块"), &settings.orefitNippleMorphing);
+            const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 보정", "Correct nipples while clothed", "穿衣时修正乳头"), &settings.orefitNippleMorphing);
             settingsChanged |= nippleRefitChanged;
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
-            if (ImGui::Button(Text("ORefit 규칙 등록", "Register ORefit rules", "注册 ORefit 规则"))) {
+            if (ImGui::Button(Text("OBody NG 의상 보정 규칙 등록", "Register OBody NG outfit-correction rules", "注册 OBody NG 服装修正规则"))) {
                 const auto registered = bcn::OutfitRefit::Get().LoadOBodyRules();
                 if (registered) {
                     g_orefitRulesRegistered = true;
                     bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
                 }
                 bcn::ui::Notify(registered ?
-                    Text("ORefit 규칙을 등록했습니다.", "Registered ORefit rules.", "已注册 ORefit 规则。") :
-                    Text("ORefit 규칙을 등록하지 못했습니다.", "Could not register ORefit rules.", "无法注册 ORefit 规则。"));
+                    Text("OBody NG 의상 보정 규칙을 등록했습니다.", "Registered OBody NG outfit-correction rules.", "已注册 OBody NG 服装修正规则。") :
+                    Text("OBody NG 의상 보정 규칙을 등록하지 못했습니다.", "Could not register OBody NG outfit-correction rules.", "无法注册 OBody NG 服装修正规则。"));
             }
             ImGui::SameLine();
             if (g_orefitRulesRegistered) {
                 ImGui::TextColored(ImVec4(.38F, .86F, .62F, 1.0F), "%s",
-                    Text("OBody NG ORefit MasterList 등록됨", "OBody NG ORefit MasterList registered", "OBody NG ORefit MasterList 已注册"));
+                    Text("OBody NG 의상 보정 규칙 등록됨", "OBody NG outfit-correction rules registered", "OBody NG 服装修正规则已注册"));
             } else {
-                ImGui::TextDisabled("%s", "OBody NG ORefit MasterList");
+                ImGui::TextDisabled("%s", Text("OBody NG 의상 보정 규칙", "OBody NG outfit-correction rules", "OBody NG 服装修正规则"));
             }
             ImGui::Separator();
             const auto nippleRandomizationChanged = ImGui::Checkbox(
@@ -1956,6 +1930,13 @@ namespace
                 // removes values that were generated by the previous state.
                 if (nippleRandomizationChanged || genitalRandomizationChanged) {
                     bcn::racemenu::QueueReapplyCurrent(SelectedActor());
+                }
+                if (refitChanged || nippleRefitChanged || nippleRandomizationChanged ||
+                    genitalRandomizationChanged) {
+                    // Signatures keep unchanged channels cheap: this scan
+                    // updates only the body/outfit result whose option bits
+                    // changed, and performance mode spreads distant actors.
+                    [[maybe_unused]] const auto queued = bcn::Distribution::Get().ApplyLoadedNPCs();
                 }
             }
             ImGui::EndPopup();
@@ -2027,30 +2008,25 @@ namespace
             }
             settingsChanged |= ImGui::Checkbox(Text("성능 모드", "Performance mode", "性能模式"), &settings.performanceMode);
             TextDisabledWrapped(Text(
-                "켜면 새로 만난 NPC의 배포 작업을 다음 게임 작업으로 넘겨 끊김을 줄입니다. 끄면 3D가 준비된 NPC에 즉시 처리하므로 등장 시 변화는 덜 보일 수 있지만 큰 모드 목록에서는 끊길 수 있습니다.",
-                "When enabled, newly encountered NPC distribution is deferred to the next game task to reduce stutter. When disabled, actors with ready 3D are processed immediately, which can reduce visible late changes but may stutter in large load orders.",
-                "启用后，新遇到的 NPC 分发会延迟到下一个游戏任务以减少卡顿。禁用后，会立即处理 3D 已就绪的角色，可减少延迟变化，但大型模组列表中可能出现卡顿。"));
+                "켜면 화면 가까이 새로 나타난 NPC와 직접 선택·의상 보정은 즉시 처리하고, 세이브 로드의 먼 NPC 대량 작업만 프레임별로 나눕니다. 끄면 변경 대상 NPC를 발견 즉시 확인합니다. 최종 결과는 같습니다.",
+                "When enabled, newly visible nearby NPCs, direct selections, and outfit corrections stay immediate; only distant bulk save-load work is spread across frames. When disabled, changed NPCs are checked as soon as they are found. Final results are identical.",
+                "启用后，附近新出现的 NPC、直接选择和服装修正会立即处理；只有读取存档时远处的大批任务会分帧执行。禁用后会在发现时立即检查需要更改的 NPC。最终结果相同。"));
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
             }
             if (ImGui::Button(Text("선택 액터 바디 모프 초기화", "Reset selected actor body morphs", "重置所选角色身体形态"))) {
                 auto* actor = SelectedActor();
-                const auto removedManualLock = bcn::Distribution::Get().RemoveManualBodyAssignment(actor);
+                [[maybe_unused]] const auto removedManualLock = bcn::Distribution::Get().RemoveManualBodyAssignment(actor);
                 bcn::racemenu::QueueClearBodyChangerMorphs(actor);
-                if (removedManualLock && !bcn::Distribution::Get().Save()) {
-                    bcn::ui::Notify(Text("모프는 초기화했지만 NPC 직접 선택 값을 저장하지 못했습니다.", "Morphs were cleared, but the direct NPC selection could not be saved.", "已重置形态，但无法保存 NPC 直接选择。"));
-                } else {
-                    bcn::ui::Notify(Text("선택 액터의 Body Changer NG 모프를 초기화했습니다.", "Cleared Body Changer NG morphs on the selected actor.", "已清除所选角色的 Body Changer NG 形态。"));
-                }
+                bcn::ui::Notify(Text("선택 액터의 Body Changer NG 모프와 직접 선택을 초기화했습니다.", "Cleared Body Changer NG morphs and the direct selection on the selected actor.", "已清除所选角色的 Body Changer NG 形态及直接选择。"));
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("전체 배포 바디 결과 초기화", "Reset all distributed body results", "重置全部已分发身体结果"))) {
                 bcn::Distribution::Get().ClearManualBodyAssignments();
                 const auto started = bcn::racemenu::QueueClearAllBodyChangerMorphs();
-                const auto saved = bcn::Distribution::Get().Save();
-                bcn::ui::Notify(started && saved ?
+                bcn::ui::Notify(started ?
                     Text("저장에 남아 있는 모든 Body Changer NG 바디 모프와 NPC 직접 선택 값의 초기화를 시작했습니다.", "Started clearing all saved Body Changer NG body morphs and direct NPC selections.", "已开始清除存档中全部 Body Changer NG 身体形态及 NPC 直接选择。") :
-                    Text("전체 바디 결과 초기화를 시작하지 못했거나 직접 선택 값을 저장하지 못했습니다.", "Could not start the full body reset or save the direct-selection changes.", "无法开始完整身体重置，或无法保存直接选择更改。"));
+                    Text("전체 바디 결과 초기화를 시작하지 못했습니다.", "Could not start the full body reset.", "无法开始完整身体重置。"));
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("닫기", "Close", "关闭"))) g_showSettings = false;

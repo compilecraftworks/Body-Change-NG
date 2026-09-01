@@ -35,6 +35,22 @@ namespace
         return std::ranges::any_of(tokens, [value](const auto& token) { return token.contains(value); });
     }
 
+    [[nodiscard]] bool HasSequence(const std::vector<std::string>& tokens,
+        const std::initializer_list<std::string_view> sequence)
+    {
+        if (sequence.size() == 0U || sequence.size() > tokens.size()) return false;
+        for (std::size_t offset{}; offset + sequence.size() <= tokens.size(); ++offset) {
+            auto token = tokens.begin() + static_cast<std::ptrdiff_t>(offset);
+            auto expected = sequence.begin();
+            while (expected != sequence.end() && *token == *expected) {
+                ++token;
+                ++expected;
+            }
+            if (expected == sequence.end()) return true;
+        }
+        return false;
+    }
+
     [[nodiscard]] unsigned CountBits(std::uint32_t value) noexcept
     {
         unsigned result{};
@@ -90,11 +106,14 @@ namespace bcn::body_family
         if (sex == Sex::female) {
             const auto cbbe = HasFragment(tokens, "cbbe");
             const auto threeBa = HasFragment(tokens, "3ba");
+            // This is the canonical 3BA BodySlide set name even though it
+            // contains neither the literal CBBE nor 3BA token.
+            const auto threeBbbBodyAmazing = HasSequence(tokens, { "3bbb", "body", "amazing" });
             const auto unp = HasFragment(tokens, "bhunp") || HasFragment(tokens, "uunp") ||
                 HasFragment(tokens, "unpb") || HasToken(tokens, "unp");
             const auto ube = HasToken(tokens, "ube") || HasToken(tokens, "ube2") ||
                 HasFragment(tokens, "ubebody");
-            if (cbbe || threeBa) detected |= Bit(Family::cbbe);
+            if (cbbe || threeBa || threeBbbBodyAmazing) detected |= Bit(Family::cbbe);
             if (unp) detected |= Bit(Family::unp);
             if (ube) detected |= Bit(Family::ube);
             // 3BBB belongs to both CBBE and BHUNP ecosystems.  It may only

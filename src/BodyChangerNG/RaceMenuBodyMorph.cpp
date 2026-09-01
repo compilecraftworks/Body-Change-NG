@@ -1,4 +1,6 @@
 #include "BodyChangerNG/RaceMenuBodyMorph.h"
+
+#include "BodyChangerNG/ActorRegistry.h"
 #include "BodyChangerNG/BodyFamily.h"
 #include "BodyChangerNG/PresetCatalog.h"
 #include "BodyChangerNG/Settings.h"
@@ -97,6 +99,7 @@ namespace
     std::mutex g_applyGenerationLock;
     RE::ActorHandle g_previewActor;
     std::uint64_t g_previewGeneration{};
+    std::atomic_uint64_t g_nextApplyGeneration{ 1U };
     std::unordered_map<RE::FormID, std::string> g_currentPresetIds;
     std::unordered_map<std::uint64_t, std::uint64_t> g_applyGenerations;
 
@@ -111,7 +114,9 @@ namespace
         const RE::FormID actorFormID, const bcn::racemenu::ApplyMode mode)
     {
         std::scoped_lock lock(g_applyGenerationLock);
-        return ++g_applyGenerations[ApplyGenerationKey(actorFormID, mode)];
+        const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
+        g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode), generation);
+        return generation;
     }
 
     [[nodiscard]] bool IsCurrentApply(const RE::FormID actorFormID,
@@ -135,14 +140,16 @@ namespace
         std::scoped_lock lock(g_applyGenerationLock);
         for (const auto mode : { bcn::racemenu::ApplyMode::preview,
                  bcn::racemenu::ApplyMode::commit, bcn::racemenu::ApplyMode::outfit }) {
-            ++g_applyGenerations[ApplyGenerationKey(actorFormID, mode)];
+            g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode),
+                g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed));
         }
     }
 
     void InvalidateApply(const RE::FormID actorFormID, const bcn::racemenu::ApplyMode mode)
     {
         std::scoped_lock lock(g_applyGenerationLock);
-        const auto generation = ++g_applyGenerations[ApplyGenerationKey(actorFormID, mode)];
+        const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
+        g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode), generation);
         SKSE::log::info("BodyAudit invalidated actor={:08X} mode={} generation={}",
             actorFormID, static_cast<std::uint32_t>(mode), generation);
     }
@@ -293,7 +300,8 @@ namespace
     }
 
     void ApplyNow(RE::ActorHandle actorHandle, bcn::BodyPreset preset, const bcn::racemenu::ApplyMode mode,
-                  const std::uint64_t applyGeneration, const std::uint64_t previewGeneration = 0)
+                  const std::uint64_t applyGeneration, const std::uint64_t previewGeneration = 0,
+                  const std::uint64_t outfitSignature = 0U)
     {
         const auto startedAt = std::chrono::steady_clock::now();
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
@@ -440,12 +448,17 @@ namespace
             std::chrono::duration_cast<std::chrono::milliseconds>(
                 std::chrono::steady_clock::now() - startedAt).count());
         if (mode == bcn::racemenu::ApplyMode::commit) {
-            std::scoped_lock lock(g_selectionLock);
-            g_currentPresetIds[actor->GetFormID()] = preset.PersistentId();
+            {
+                std::scoped_lock lock(g_selectionLock);
+                g_currentPresetIds[actor->GetFormID()] = preset.PersistentId();
+            }
+            bcn::ActorRegistry::Get().MarkBodyApplied(actor.get(), preset.PersistentId(), false);
+        } else if (mode == bcn::racemenu::ApplyMode::outfit) {
+            bcn::ActorRegistry::Get().MarkOutfitApplied(actor.get(), outfitSignature);
         }
     }
 
-    void ApplyProceduralOutfitNow(RE::ActorHandle actorHandle)
+    void ApplyProceduralOutfitNow(RE::ActorHandle actorHandle, const std::uint64_t outfitSignature)
     {
         auto* bodyMorph = Interface();
         const auto actor = actorHandle.get();
@@ -490,6 +503,7 @@ namespace
             derive("NipplePerkManga", -0.25F);
         }
         ApplyVisibleMorphs(*bodyMorph, actor.get());
+        bcn::ActorRegistry::Get().MarkOutfitApplied(actor.get(), outfitSignature);
     }
 }
 
@@ -525,6 +539,19 @@ namespace bcn::racemenu
         SKSE::log::info("Body Changer NG received RaceMenu BodyMorph interface version {}", version);
     }
 
+    void ResetSessionState()
+    {
+        {
+            std::scoped_lock lock(g_applyGenerationLock);
+            g_applyGenerations.clear();
+        }
+        {
+            std::scoped_lock lock(g_selectionLock);
+            g_currentPresetIds.clear();
+        }
+        [[maybe_unused]] const auto previousPreview = CancelPreviewTracking();
+    }
+
     bool IsReady() noexcept
     {
         return Interface() != nullptr;
@@ -546,9 +573,12 @@ namespace bcn::racemenu
     std::optional<std::string> CurrentPresetId(const RE::Actor* actor)
     {
         if (!actor) return std::nullopt;
-        std::scoped_lock lock(g_selectionLock);
-        const auto found = g_currentPresetIds.find(actor->GetFormID());
-        return found == g_currentPresetIds.end() ? std::nullopt : std::optional{ found->second };
+        {
+            std::scoped_lock lock(g_selectionLock);
+            const auto found = g_currentPresetIds.find(actor->GetFormID());
+            if (found != g_currentPresetIds.end()) return found->second;
+        }
+        return bcn::ActorRegistry::Get().AppliedBodyId(actor);
     }
 
     void ForgetActorState(const std::uint32_t actorFormID)
@@ -558,7 +588,8 @@ namespace bcn::racemenu
         g_currentPresetIds.erase(actorFormID);
     }
 
-    ApplyResult QueueApply(RE::Actor* actor, std::string presetId, const ApplyMode mode)
+    ApplyResult QueueApply(RE::Actor* actor, std::string presetId, const ApplyMode mode,
+        const std::uint64_t outfitSignature)
     {
         if (!IsReady()) return ApplyResult::unavailable;
         if (!actor) return ApplyResult::invalidActor;
@@ -595,8 +626,8 @@ namespace bcn::racemenu
                 if (previousActor && previousActor != actorHandle) {
                     tasks->AddTask([previousActor] { ClearPreviewNow(previousActor); });
                 }
-                tasks->AddTask([actorHandle, preset = std::move(preset), mode, applyGeneration] mutable {
-                    ApplyNow(actorHandle, std::move(preset), mode, applyGeneration);
+                tasks->AddTask([actorHandle, preset = std::move(preset), mode, applyGeneration, outfitSignature] mutable {
+                    ApplyNow(actorHandle, std::move(preset), mode, applyGeneration, 0U, outfitSignature);
                 });
             }
             return ApplyResult::queued;
@@ -613,9 +644,10 @@ namespace bcn::racemenu
         [[maybe_unused]] const auto result = QueueApply(actor, *presetId, ApplyMode::commit);
     }
 
-    ApplyResult QueueApplyOutfit(RE::Actor* actor, std::string refitPresetId)
+    ApplyResult QueueApplyOutfit(RE::Actor* actor, std::string refitPresetId,
+        const std::uint64_t outfitSignature)
     {
-        return QueueApply(actor, std::move(refitPresetId), ApplyMode::outfit);
+        return QueueApply(actor, std::move(refitPresetId), ApplyMode::outfit, outfitSignature);
     }
 
     void QueueCancelPreview()
@@ -623,20 +655,28 @@ namespace bcn::racemenu
         const auto actorHandle = CancelPreviewTracking();
         if (!actorHandle) return;
         if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([actorHandle] { ClearPreviewNow(actorHandle); });
+            const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+            tasks->AddTask([actorHandle, session] {
+                if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(actorHandle);
+            });
         }
     }
 
-    void QueueApplyProceduralOutfit(RE::Actor* actor)
+    void QueueApplyProceduralOutfit(RE::Actor* actor, const std::uint64_t outfitSignature)
     {
         if (!IsReady() || !actor) return;
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([actorHandle] { ApplyProceduralOutfitNow(actorHandle); });
+            const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+            tasks->AddTask([actorHandle, outfitSignature, session] {
+                if (bcn::ActorRegistry::Get().SessionGeneration() == session) {
+                    ApplyProceduralOutfitNow(actorHandle, outfitSignature);
+                }
+            });
         }
     }
 
-    void QueueClearOutfit(RE::Actor* actor)
+    void QueueClearOutfit(RE::Actor* actor, const std::uint64_t outfitSignature)
     {
         if (!IsReady() || !actor) return;
         // Clearing a refit must never cancel a body preset that was just
@@ -645,12 +685,15 @@ namespace bcn::racemenu
         InvalidateApply(actor->GetFormID(), ApplyMode::outfit);
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([actorHandle] {
+            const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+            tasks->AddTask([actorHandle, outfitSignature, session] {
+                if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
                 auto* bodyMorph = Interface();
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved || !resolved->Is3DLoaded()) return;
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kOutfitKey);
                 ApplyVisibleMorphs(*bodyMorph, resolved.get());
+                bcn::ActorRegistry::Get().MarkOutfitApplied(resolved.get(), outfitSignature);
             });
         }
     }
@@ -665,11 +708,15 @@ namespace bcn::racemenu
         }
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
+            const auto session = bcn::ActorRegistry::Get().SessionGeneration();
             const auto previousActor = CancelPreviewTracking();
             if (previousActor && previousActor != actorHandle) {
-                tasks->AddTask([previousActor] { ClearPreviewNow(previousActor); });
+                tasks->AddTask([previousActor, session] {
+                    if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
+                });
             }
-            tasks->AddTask([actorHandle] {
+            tasks->AddTask([actorHandle, session] {
+                if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
                 auto* bodyMorph = Interface();
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved) return;
@@ -679,6 +726,7 @@ namespace bcn::racemenu
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOBodyKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOClotheKey);
                 if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, resolved.get());
+                bcn::ActorRegistry::Get().MarkBodyApplied(resolved.get(), {}, true);
             });
         }
     }
@@ -693,7 +741,9 @@ namespace bcn::racemenu
             g_currentPresetIds.clear();
         }
         [[maybe_unused]] const auto previousActor = CancelPreviewTracking();
-        tasks->AddTask([] {
+        const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+        tasks->AddTask([session] {
+            if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
             auto* bodyMorph = Interface();
             if (!bodyMorph) return;
             MorphActorCollector collector;

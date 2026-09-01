@@ -63,7 +63,7 @@ namespace
         const auto resolved = FinalPath(entry);
         if (!resolved) return;
         const auto relative = entry.lexically_relative(logicalRoot);
-        if (relative.empty() || relative.is_absolute()) {
+        if (relative.empty() || relative == std::filesystem::path{ "." } || relative.is_absolute()) {
             AddUnique(roots, *resolved);
             return;
         }
@@ -84,7 +84,7 @@ namespace bcn::catalog_roots
         std::size_t inspected{};
         for (std::filesystem::recursive_directory_iterator it(logicalRoot,
                  std::filesystem::directory_options::skip_permission_denied, error), end;
-             it != end && inspected < 512U; it.increment(error)) {
+             it != end && inspected < 4096U; it.increment(error)) {
             if (error) {
                 error.clear();
                 continue;

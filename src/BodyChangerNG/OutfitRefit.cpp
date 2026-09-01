@@ -1,5 +1,7 @@
 #include "BodyChangerNG/OutfitRefit.h"
 
+#include "BodyChangerNG/ActorRegistry.h"
+#include "BodyChangerNG/ActorState.h"
 #include "BodyChangerNG/RaceMenuBodyMorph.h"
 #include "BodyChangerNG/OutfitRefitRules.h"
 #include "BodyChangerNG/PresetCatalog.h"
@@ -104,13 +106,13 @@ namespace bcn
             loaded.femalePresetByOutfit = std::move(imported.femalePresetByOutfit);
             loaded.malePresetByOutfit = std::move(imported.malePresetByOutfit);
         } catch (const std::exception& exception) {
-            SKSE::log::error("Body Changer NG could not register OBody ORefit rules: {}", exception.what());
+            SKSE::log::error("Body Changer NG could not register OBody outfit-correction rules: {}", exception.what());
             return false;
         }
         std::scoped_lock lock(lock_);
         rules_ = std::move(loaded);
         SKSE::log::info(
-            "Body Changer NG registered OBody ORefit rules from {} "
+            "Body Changer NG registered OBody outfit-correction rules from {} "
             "(excluded-names={}, excluded-plugins={}, excluded-forms={}, forced-names={}, forced-forms={}, "
             "female-mappings={}, male-mappings={})",
             path.string(), rules_.blacklistedOutfitNames.size(), rules_.blacklistedPlugins.size(),
@@ -128,8 +130,12 @@ namespace bcn
     void OutfitRefit::ProcessActor(RE::Actor* actor) const
     {
         if (!actor || !actor->Is3DLoaded()) return;
-        if (!Settings::Get().Snapshot().orefitEnabled) {
-            racemenu::QueueClearOutfit(actor);
+        const auto settings = Settings::Get().Snapshot();
+        if (!settings.orefitEnabled) {
+            const auto signature = StableStateSignature("outfit", "disabled", true);
+            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
+                racemenu::QueueClearOutfit(actor, signature);
+            }
             return;
         }
 
@@ -149,7 +155,11 @@ namespace bcn
         }
         forceRefit = forceRefit || HasAnyForcedWornArmor(actor, rules);
         if (!hasEligibleOutfit && !forceRefit) {
-            racemenu::QueueClearOutfit(actor);
+            const auto signature = StableStateSignature("outfit", "clear", true,
+                settings.orefitNippleMorphing ? 1U : 0U);
+            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
+                racemenu::QueueClearOutfit(actor, signature);
+            }
             return;
         }
 
@@ -167,8 +177,10 @@ namespace bcn
         }
         const auto refits = PresetCatalog::Get().RefitSnapshot();
         std::vector<std::string> candidates;
+        std::string currentBodyId;
         if (!presetName.empty()) candidates.push_back(std::move(presetName));
         if (const auto currentID = racemenu::CurrentPresetId(actor)) {
+            currentBodyId = *currentID;
             const auto bodies = PresetCatalog::Get().Snapshot();
             if (const auto current = std::ranges::find(bodies, *currentID, &BodyPreset::PersistentId);
                 current != bodies.end()) {
@@ -185,12 +197,19 @@ namespace bcn
             if (found != refits.end()) break;
         }
         if (found == refits.end()) {
-            racemenu::QueueApplyProceduralOutfit(actor);
+            const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,
+                settings.orefitNippleMorphing ? 1U : 0U);
+            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
+                racemenu::QueueApplyProceduralOutfit(actor, signature);
+            }
             return;
         }
-        const auto result = racemenu::QueueApplyOutfit(actor, found->PersistentId());
+        const auto signature = StableStateSignature("outfit", found->PersistentId() + "|" + currentBodyId, false,
+            settings.orefitNippleMorphing ? 1U : 0U);
+        if (!ActorRegistry::Get().NeedsOutfitApply(actor, signature)) return;
+        const auto result = racemenu::QueueApplyOutfit(actor, found->PersistentId(), signature);
         if (result != racemenu::ApplyResult::queued) {
-            SKSE::log::debug("Body Changer NG could not queue ORefit '{}' for {:08X}", found->name, actor->GetFormID());
+            SKSE::log::debug("Body Changer NG could not queue outfit correction '{}' for {:08X}", found->name, actor->GetFormID());
         }
     }
 }

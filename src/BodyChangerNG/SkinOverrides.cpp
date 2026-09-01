@@ -1,5 +1,6 @@
 #include "BodyChangerNG/SkinOverrides.h"
 
+#include "BodyChangerNG/ActorRegistry.h"
 #include "BodyChangerNG/RaceMenuBodyMorph.h"
 #include "BodyChangerNG/SkinProfiles.h"
 #include "BodyChangerNG/RuntimeAssetCache.h"
@@ -138,6 +139,7 @@ namespace
     std::mutex g_legacyCleanupLock;
     std::unordered_map<RE::FormID, std::string> g_currentProfileIds;
     std::unordered_map<RE::FormID, std::uint64_t> g_applyGenerations;
+    std::atomic_uint64_t g_nextApplyGeneration{ 1U };
     std::unordered_set<RE::FormID> g_legacyCleanupComplete;
     std::atomic<skee_override::IPluginInterface*> g_overrideInterface{};
     std::atomic_uint32_t g_overrideVersion{};
@@ -180,7 +182,9 @@ namespace
     [[nodiscard]] std::uint64_t BeginSkinChange(const RE::FormID actorFormID)
     {
         std::scoped_lock lock(g_generationLock);
-        return ++g_applyGenerations[actorFormID];
+        const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
+        g_applyGenerations.insert_or_assign(actorFormID, generation);
+        return generation;
     }
 
     [[nodiscard]] bool IsCurrentSkinChange(const RE::FormID actorFormID, const std::uint64_t generation)
@@ -1234,6 +1238,7 @@ namespace
                     std::scoped_lock lock(g_selectionLock);
                     g_currentProfileIds[settledActor->GetFormID()] = profile.id;
                 }
+                bcn::ActorRegistry::Get().MarkSkinApplied(settledActor.get(), profile.id, false);
                 SKSE::log::info(
                     "Body Changer NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v1",
                     profile.name, settledActor->GetFormID());
@@ -1292,6 +1297,7 @@ namespace
             }
             SKSE::log::info("Body Changer NG removed its RaceMenu v1 skin texture overrides for actor {:08X}",
                 currentActor->GetFormID());
+            bcn::ActorRegistry::Get().MarkSkinApplied(currentActor.get(), {}, true);
         };
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
@@ -1355,6 +1361,7 @@ namespace
                 std::scoped_lock lock(g_selectionLock);
                 g_currentProfileIds[actor->GetFormID()] = profile.id;
             }
+            bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
             SKSE::log::info("Body Changer NG applied texture skin profile '{}' to actor {:08X} synchronously",
                 profile.name, actor->GetFormID());
             QueueSettledSkinAudit(actorHandle, generation, 0U);
@@ -1392,11 +1399,28 @@ namespace
         }
         SKSE::log::info("Body Changer NG removed its RaceMenu skin texture overrides for actor {:08X}",
             actor->GetFormID());
+        bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), {}, true);
     }
 }
 
 namespace bcn::skin_override
 {
+    void ResetSessionState()
+    {
+        {
+            std::scoped_lock lock(g_generationLock);
+            g_applyGenerations.clear();
+        }
+        {
+            std::scoped_lock lock(g_selectionLock);
+            g_currentProfileIds.clear();
+        }
+        {
+            std::scoped_lock lock(g_legacyCleanupLock);
+            g_legacyCleanupComplete.clear();
+        }
+    }
+
     ApplyResult QueueApply(RE::Actor* actor, std::string profileId)
     {
         if (!actor) return ApplyResult::invalidActor;
@@ -1458,9 +1482,12 @@ namespace bcn::skin_override
     std::optional<std::string> CurrentProfileId(const RE::Actor* actor)
     {
         if (!actor) return std::nullopt;
-        std::scoped_lock lock(g_selectionLock);
-        const auto found = g_currentProfileIds.find(actor->GetFormID());
-        return found == g_currentProfileIds.end() ? std::nullopt : std::optional{ found->second };
+        {
+            std::scoped_lock lock(g_selectionLock);
+            const auto found = g_currentProfileIds.find(actor->GetFormID());
+            if (found != g_currentProfileIds.end()) return found->second;
+        }
+        return bcn::ActorRegistry::Get().AppliedSkinId(actor);
     }
 
     void AuditNow(RE::Actor* actor, const std::string_view reason)

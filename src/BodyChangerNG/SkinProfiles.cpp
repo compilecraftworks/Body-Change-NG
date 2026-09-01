@@ -484,6 +484,7 @@ namespace bcn
     void SkinProfiles::Refresh()
     {
         const auto root = RootPath();
+        runtime_assets::ClearGameRelativeSources("BodySkin\\");
         std::vector<SkinProfile> loaded;
         for (const auto& scanRoot : catalog_roots::Discover(root)) {
             for (auto& profile : ScanDirectory(scanRoot)) {

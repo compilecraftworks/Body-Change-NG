@@ -22,11 +22,11 @@ int main()
         Require(DetectText("HIMBO V5", Sex::male) == Bit(Family::himbo), "HIMBO");
         Require(DetectText("SAM Light", Sex::male) == Bit(Family::sam), "SAM");
         Require(DetectText("samurai", Sex::male) == 0U, "samurai false positive");
-        const auto cbbe = ClassifyPreset("CBBE 3BBB Body Amazing", "irrelevant", "preset.xml");
+        const auto cbbe = ClassifyPreset("3BBB Body Amazing", "irrelevant", "preset.xml");
         Require(cbbe.families == Bit(Family::cbbe) && !cbbe.male && !cbbe.conflict, "CBBE set classification");
         const auto unp = ClassifyPreset("BHUNP 3BBB", "irrelevant", "preset.xml");
         Require(unp.families == Bit(Family::unp) && !unp.conflict, "BHUNP set classification");
-        const auto ube = ClassifyPreset("CBBE 3BBB Body Amazing UBE Anus", "irrelevant", "preset.xml");
+        const auto ube = ClassifyPreset("3BBB Body Amazing UBE Anus", "irrelevant", "preset.xml");
         Require(ube.families == Bit(Family::cbbe) && !ube.conflict, "UBE Anus must remain CBBE/3BA");
         const auto combined = ClassifyPreset("CBBE 3BA UBE Body", "irrelevant", "preset.xml");
         Require(combined.families == (Bit(Family::cbbe) | Bit(Family::ube)) && !combined.conflict,

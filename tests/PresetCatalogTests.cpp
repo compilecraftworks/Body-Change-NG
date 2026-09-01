@@ -70,7 +70,7 @@ int main(const int argc, char** argv)
         preset << "<SliderPresets>"
                << "<Preset name='Common Only' set=''><SetSlider name='Breasts'/><SetSlider name='Waist'/><SetSlider name='Butt'/></Preset>"
                << "<Preset name='3BBB Only' set='3BBB'><SetSlider name='3BBB'/></Preset>"
-               << "<Preset name='UBE Anus 3BA' set='CBBE 3BBB Body Amazing UBE Anus'/>>"
+               << "<Preset name='UBE Anus 3BA' set='3BBB Body Amazing UBE Anus'/>>"
                << "<Preset name='Dual Female' set='CBBE BHUNP'/></SliderPresets>";
     }
 

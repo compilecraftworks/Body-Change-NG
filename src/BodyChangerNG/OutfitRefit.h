@@ -13,7 +13,7 @@ namespace bcn
     public:
         static OutfitRefit& Get();
 
-        // Registers OBody's complete ORefit rule set from
+        // Registers OBody's complete outfit-correction rule set from
         // OBody_presetDistributionConfig.json without changing that source file:
         // exclusions, force-refit entries and sex-specific outfit mappings.
         // NPC body-distribution entries remain outside this importer.

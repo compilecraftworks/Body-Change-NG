@@ -1,4 +1,6 @@
 #include "BodyChangerNG/ActorEvents.h"
+#include "BodyChangerNG/ActorRegistry.h"
+#include "BodyChangerNG/ActorWorkQueue.h"
 #include "BodyChangerNG/BodyFamily.h"
 #include "BodyChangerNG/InputSink.h"
 #include "BodyChangerNG/NativeImGuiHost.h"
@@ -7,6 +9,7 @@
 #include "BodyChangerNG/RaceMenuBodyMorph.h"
 #include "BodyChangerNG/Distribution.h"
 #include "BodyChangerNG/Settings.h"
+#include "BodyChangerNG/SkinOverrides.h"
 #include "BodyChangerNG/SkinProfiles.h"
 #include "BodyChangerNG/SmoothCamIntegration.h"
 #include "BodyChangerNG/TextInputFilter.h"
@@ -45,8 +48,8 @@ namespace
             bcn::PresetCatalog::Get().Refresh();
             bcn::SkinProfiles::Get().Refresh();
             [[maybe_unused]] const auto loadedBodyChangerRules = bcn::Distribution::Get().Load();
-            // OBody's JSON is deliberately not read at startup.  ORefit outfit
-            // ORefit rules are registered only from the explicit outfit-popup action.
+            // OBody's JSON is deliberately not read at startup. Outfit-
+            // correction rules are registered only by the explicit popup action.
             bcn::OutfitRefit::Get().ClearLegacyRules();
             bcn::ActorEvents::Get().Register();
         }
@@ -55,6 +58,10 @@ namespace
         }
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame) {
+            bcn::ActorWorkQueue::Get().ResetSession();
+            bcn::ActorEvents::Get().ResetSessionState();
+            bcn::racemenu::ResetSessionState();
+            bcn::skin_override::ResetSessionState();
             bcn::body_family::ResetRuntimeCaches();
             // Existing-save actors may never emit TESInitScriptEvent again.
             // Apply the saved rules to every currently loaded process actor as
@@ -76,6 +83,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     // verified text-focus input call hook.
     SKSE::AllocTrampoline(1 << 12);
     bcn::Settings::Get().Load();
+    bcn::ActorRegistry::Get().RegisterSerialization();
     bcn::ui::Initialize();
 
     const auto textInputFilterInstalled = bcn::text_input::Install();

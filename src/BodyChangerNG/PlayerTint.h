@@ -54,6 +54,20 @@ namespace bcn::player_tint
         float alpha{ 1.0F };
     };
 
+    struct PersistedLayerState final
+    {
+        Layer layer{};
+        bool restored{};
+        std::string assetID;
+        Color color{};
+    };
+
+    struct PersistedState final
+    {
+        std::optional<std::string> pack;
+        std::vector<PersistedLayerState> layers;
+    };
+
     enum class ApplyResult : std::uint8_t
     {
         queued,
@@ -104,4 +118,10 @@ namespace bcn::player_tint
     // first change, i.e. the values authored in the current save/RaceMenu
     // character preset.
     [[nodiscard]] ApplyResult QueueRestoreAll();
+    // The current tint selection is save-specific.  SKSE serialization keeps
+    // this small descriptor so RaceMenu rebuilds can restore the same pack and
+    // detailed edits without storing texture data in the global settings file.
+    [[nodiscard]] PersistedState SnapshotPersistedState();
+    void RestorePersistedState(PersistedState a_state);
+    void ResetPersistedState();
 }

@@ -1,5 +1,7 @@
 #include "BodyChangerNG/ActorEvents.h"
 
+#include "BodyChangerNG/ActorRegistry.h"
+#include "BodyChangerNG/ActorWorkQueue.h"
 #include "BodyChangerNG/Distribution.h"
 #include "BodyChangerNG/OutfitRefit.h"
 #include "BodyChangerNG/PlayerTint.h"
@@ -16,39 +18,49 @@ namespace bcn
     namespace
     {
         std::atomic_uint64_t g_raceMenuRestoreGeneration{};
+        std::mutex g_equipmentLock;
+        std::unordered_map<RE::FormID, std::uint64_t> g_equipmentGeneration;
 
-        void ApplyActorNow(const RE::ActorHandle& handle)
+        [[nodiscard]] std::uint64_t BeginEquipmentChange(const RE::FormID actorFormID)
         {
-            const auto actor = handle.get();
-            if (!actor || !actor->Is3DLoaded()) return;
-            [[maybe_unused]] const auto result = Distribution::Get().ApplyActor(actor.get());
-            OutfitRefit::Get().ProcessActor(actor.get());
+            std::scoped_lock lock(g_equipmentLock);
+            return ++g_equipmentGeneration[actorFormID];
         }
 
-        void ApplyActorForMode(RE::Actor* actor)
+        [[nodiscard]] bool IsCurrentEquipmentChange(const RE::FormID actorFormID,
+            const std::uint64_t generation, const std::uint64_t session)
         {
-            if (!actor) return;
-            const auto handle = actor->GetHandle();
-            if (!Settings::Get().Snapshot().performanceMode && actor->Is3DLoaded()) {
-                ApplyActorNow(handle);
-                return;
-            }
-            if (const auto* tasks = SKSE::GetTaskInterface()) tasks->AddTask([handle] { ApplyActorNow(handle); });
+            if (ActorRegistry::Get().SessionGeneration() != session) return false;
+            std::scoped_lock lock(g_equipmentLock);
+            const auto found = g_equipmentGeneration.find(actorFormID);
+            return found != g_equipmentGeneration.end() && found->second == generation;
         }
 
-        void ReapplySkinAfterEquipmentChange(const RE::ActorHandle& handle, const std::uint32_t remainingHops)
+        void ReconcileEquipmentChange(const RE::ActorHandle& handle, const std::uint32_t remainingHops,
+            const std::uint64_t generation, const std::uint64_t session)
         {
             const auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) return;
-            tasks->AddTask([handle, remainingHops] {
+            tasks->AddTask([handle, remainingHops, generation, session] {
                 const auto actor = handle.get();
-                if (!actor || !actor->Is3DLoaded()) return;
+                if (!actor || !IsCurrentEquipmentChange(actor->GetFormID(), generation, session)) return;
                 if (remainingHops != 0U) {
-                    ReapplySkinAfterEquipmentChange(handle, remainingHops - 1U);
+                    ReconcileEquipmentChange(handle, remainingHops - 1U, generation, session);
                     return;
                 }
+                if (!actor->Is3DLoaded()) return;
+                // The Biped clone is now settled. Rebuild only the outfit key
+                // and repaint the already selected skin onto new embedded body
+                // geometry; body distribution is deliberately not rerun.
+                ActorRegistry::Get().InvalidateOutfit(actor.get());
+                OutfitRefit::Get().ProcessActor(actor.get());
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
                     [[maybe_unused]] const auto result = skin_override::QueueApply(actor.get(), *skin);
+                }
+                std::scoped_lock lock(g_equipmentLock);
+                const auto found = g_equipmentGeneration.find(actor->GetFormID());
+                if (found != g_equipmentGeneration.end() && found->second == generation) {
+                    g_equipmentGeneration.erase(found);
                 }
             });
         }
@@ -92,6 +104,7 @@ namespace bcn
                     // morph key. RaceMenu may rebuild that visible geometry
                     // along with the naked body, so regenerate it after the
                     // committed body task and before repainting textures.
+                    ActorRegistry::Get().InvalidateOutfit(actor.get());
                     OutfitRefit::Get().ProcessActor(actor.get());
                 }
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
@@ -134,6 +147,13 @@ namespace bcn
         }
     }
 
+    void ActorEvents::ResetSessionState()
+    {
+        g_raceMenuRestoreGeneration.fetch_add(1U, std::memory_order_acq_rel);
+        std::scoped_lock lock(g_equipmentLock);
+        g_equipmentGeneration.clear();
+    }
+
     RE::BSEventNotifyControl ActorEvents::ProcessEvent(
         const RE::TESCellAttachDetachEvent* event,
         RE::BSTEventSource<RE::TESCellAttachDetachEvent>*)
@@ -143,8 +163,14 @@ namespace bcn
         }
         if (auto* actor = event->reference->As<RE::Actor>()) {
             if (event->attached) {
-                ApplyActorForMode(actor);
+                [[maybe_unused]] const auto requested =
+                    ActorWorkQueue::Get().Request(actor, ActorWorkReason::cellAttached);
             } else if (actor != RE::PlayerCharacter::GetSingleton()) {
+                ActorWorkQueue::Get().NotifyDetached(actor->GetFormID());
+                {
+                    std::scoped_lock lock(g_equipmentLock);
+                    g_equipmentGeneration.erase(actor->GetFormID());
+                }
                 racemenu::ForgetActorState(actor->GetFormID());
                 skin_override::ForgetActorState(actor->GetFormID());
             }
@@ -156,11 +182,12 @@ namespace bcn
         const RE::TESInitScriptEvent* event,
         RE::BSTEventSource<RE::TESInitScriptEvent>*)
     {
-        if (!event || !event->objectInitialized || !event->objectInitialized->Is3DLoaded()) {
+        if (!event || !event->objectInitialized) {
             return RE::BSEventNotifyControl::kContinue;
         }
         if (auto* actor = event->objectInitialized->As<RE::Actor>()) {
-            ApplyActorForMode(actor);
+            [[maybe_unused]] const auto requested =
+                ActorWorkQueue::Get().Request(actor, ActorWorkReason::initialized);
         }
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -175,11 +202,12 @@ namespace bcn
             return RE::BSEventNotifyControl::kContinue;
         }
         if (auto* actor = event->actor->As<RE::Actor>()) {
-            OutfitRefit::Get().ProcessActor(actor);
             // TESEquipEvent is emitted before the replacement BipedAnim clone
-            // is always available.  Wait two game-task turns, then repaint the
-            // embedded skin geometry in the newly equipped/unequipped addon.
-            ReapplySkinAfterEquipmentChange(actor->GetHandle(), 2U);
+            // is always available. Consecutive equipment events are coalesced;
+            // only the newest settled outfit is corrected and repainted.
+            const auto generation = BeginEquipmentChange(actor->GetFormID());
+            ReconcileEquipmentChange(actor->GetHandle(), 2U, generation,
+                ActorRegistry::Get().SessionGeneration());
         }
         return RE::BSEventNotifyControl::kContinue;
     }

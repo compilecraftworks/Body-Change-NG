@@ -19,6 +19,8 @@ namespace bcn::skin_override
         noTaskInterface
     };
 
+    void ResetSessionState();
+
     // Applies a shared texture profile to either the player or an NPC. It does
     // not change the actor's Skin Armor, NIF path, inventory, or equipment slots.
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_profileId);

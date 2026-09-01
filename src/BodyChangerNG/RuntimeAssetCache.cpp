@@ -51,6 +51,15 @@ namespace
 
 namespace bcn::runtime_assets
 {
+    void ClearGameRelativeSources(const std::string_view prefix)
+    {
+        const auto normalized = NormalizeGamePath(prefix);
+        std::scoped_lock lock(g_registeredSourcesLock);
+        std::erase_if(g_registeredSources, [&normalized](const auto& entry) {
+            return entry.first.starts_with(normalized);
+        });
+    }
+
     void RegisterGameRelativeSource(const std::string_view path,
         const std::filesystem::path& source)
     {
