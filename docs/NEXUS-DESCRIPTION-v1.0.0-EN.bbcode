@@ -119,7 +119,7 @@ You may add or replace BodySlide preset XML files, skin-pack folders, and tint-p
 
 The archive includes README files in every user asset folder and a valid schema-3 distribution JSON with eight editable starter exclusions.
 
-[size=5][b]Distribution Rules, Outfit Correction, and JSON Backup[/b][/size]
+[size=5][b]Distribution Rules, Outfit Correction, and Body Changer NG JSON Backup[/b][/size]
 
 [b]NPC distribution rules[/b]
 [list]
@@ -132,12 +132,19 @@ The archive includes README files in every user asset folder and a valid schema-
 
 Body Changer NG stores these rules at [b]Data\SKSE\Plugins\BodyChangerNGdistribution.json[/b]. The in-game editor writes this file, so users do not need to edit it manually. To preserve your rules when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it back to the same path, then press [b]Load saved values[/b] in the NPC Distribution window.
 
-[b]Outfit correction and optional OBody NG JSON[/b]
+[b]Outfit correction[/b]
 [list]
 [*]The Outfit · randomization window provides breast correction while clothed, a separate nipple-correction toggle, and stable nipple/genital shape randomization
+[/list]
+
+[size=5][b]Optional OBody NG JSON Compatibility[/b][/size]
+
+Users who want to reuse OBody NG-format distribution conditions or outfit-correction rules may optionally use its configuration file. Body Changer NG works without OBody NG or this JSON.
+
+[list]
 [*]An optional OBody NG configuration may be placed beside Body Changer NG's JSON at [b]Data\SKSE\Plugins\OBody_presetDistributionConfig.json[/b]. Keep both files under [b]Data\SKSE\Plugins[/b]; do not rename, merge, or replace [b]BodyChangerNGdistribution.json[/b]
 [*]The OBody file is never read automatically at startup. [b]Load saved values[/b] imports supported OBody distribution rules when the file exists, and [b]Register OBody NG outfit-correction rules[/b] in the Outfit · randomization window registers its supported outfit-correction data
-[*]The original OBody JSON is only read and is not modified. OBody NG itself is optional
+[*]Use only the distribution import, only the outfit-correction registration, or both, depending on which OBody NG rules you want. The original OBody JSON is read only and is never modified
 [/list]
 
 [size=5][b]Compatibility[/b][/size]

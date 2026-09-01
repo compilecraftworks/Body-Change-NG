@@ -171,7 +171,7 @@ without restarting the game.
 The archive includes README files in every user asset folder and a valid
 schema-3 distribution JSON with eight editable starter exclusions.
 
-## Distribution Rules, Outfit Correction, and JSON Backup
+## Distribution Rules, Outfit Correction, and Body Changer NG JSON Backup
 
 ### NPC distribution rules
 
@@ -194,11 +194,18 @@ when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it
 back to the same path, then press **Load saved values** in the NPC Distribution
 window.
 
-### Outfit correction and optional OBody NG JSON
+### Outfit correction
 
 - The **Outfit · randomization** window provides breast correction while
   clothed, a separate nipple-correction toggle, and stable nipple/genital shape
   randomization.
+
+## Optional OBody NG JSON Compatibility
+
+Users who want to reuse OBody NG-format distribution conditions or
+outfit-correction rules may optionally use its configuration file. Body Changer
+NG works without OBody NG or this JSON.
+
 - An optional OBody NG configuration may be placed beside Body Changer NG's
   JSON at `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Keep both
   files under `Data\SKSE\Plugins`; do not rename, merge, or replace
@@ -207,8 +214,9 @@ window.
   imports supported OBody distribution rules when the file exists, and
   **Register OBody NG outfit-correction rules** in the Outfit · randomization
   window registers its supported outfit-correction data.
-- The original OBody JSON is only read and is not modified. OBody NG itself is
-  optional.
+- Use only the distribution import, only the outfit-correction registration, or
+  both, depending on which OBody NG rules you want. The original OBody JSON is
+  read only and is never modified.
 
 ## Compatibility
 
