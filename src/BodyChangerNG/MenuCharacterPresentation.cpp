@@ -17,13 +17,18 @@ namespace
     constexpr auto kPlayerPitch = 0.27F;
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
-    constexpr auto kFaceCameraDistance = 75.0F;
-    constexpr auto kFaceWorldFov = 55.0F;
+    constexpr auto kTintCameraDistance = 75.0F;
+    constexpr auto kTintWorldFov = 55.0F;
     // Raise the close-up camera center slightly so the presented character is
     // lower in frame and the forehead is no longer crowded against the top.
-    constexpr auto kFaceVerticalOffset = 8.0F;
-    constexpr auto kFaceCameraSideMultiplier = 0.42F;
-    constexpr auto kFacePitchZoomOffset = 0.40F;
+    constexpr auto kTintVerticalOffset = 8.0F;
+    constexpr auto kTintCameraSideMultiplier = 0.42F;
+    constexpr auto kTintPitchZoomOffset = 0.40F;
+    constexpr auto kTintDetailCameraDistance = 58.0F;
+    constexpr auto kTintDetailWorldFov = 45.0F;
+    constexpr auto kTintDetailVerticalOffset = 15.0F;
+    constexpr auto kTintDetailCameraSideMultiplier = 0.28F;
+    constexpr auto kTintDetailPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
@@ -131,6 +136,14 @@ namespace bcn::menu_character
 {
     struct Presentation::State
     {
+        enum class TintFocus : std::uint8_t
+        {
+            uninitialized,
+            normal,
+            tab,
+            detail
+        };
+
         struct SavedSetting
         {
             RE::Setting* setting{};
@@ -139,7 +152,7 @@ namespace bcn::menu_character
 
         bool active{};
         bool rotating{};
-        bool tintDetailFocus{};
+        TintFocus tintFocus{ TintFocus::uninitialized };
         CharacterPosition side{ CharacterPosition::disabled };
         CharacterPosition requestedSide{ CharacterPosition::disabled };
         RE::ActorHandle presentedActorHandle{};
@@ -226,8 +239,8 @@ namespace bcn::menu_character
         state_->rotating = false;
         // Force the normal framing branch below on the first activation.  A
         // freshly zero-initialized false value would otherwise make
-        // SetTintDetailFocus(false) return before it applies any framing.
-        state_->tintDetailFocus = true;
+        // Force the normal framing branch below on the first activation.
+        state_->tintFocus = State::TintFocus::uninitialized;
 
         camera->cameraTarget = requestedHandle;
         auto cameraTargetHandle = requestedHandle.native_handle();
@@ -246,23 +259,30 @@ namespace bcn::menu_character
         presentedActor->SetHeading(NormalizeAngle(GetCameraAlignedActorYaw(presentedActor, camera) - angleChange));
         if (state_->actorPitchModified) presentedActor->data.angle.x = kPlayerPitch;
         thirdPersonState->freeRotation = { NormalizeAngle(angleChange), 0.0F };
-        SetTintDetailFocus(false);
+        SetTintFocus(false, false);
         SKSE::log::debug("Body Changer NG applied menu character presentation to {:08X}", presentedActor->GetFormID());
     }
 
-    void Presentation::SetTintDetailFocus(const bool enabled)
+    void Presentation::SetTintFocus(const bool tintTab, const bool detailPopup)
     {
-        if (!state_ || !state_->active || state_->tintDetailFocus == enabled) return;
-        state_->tintDetailFocus = enabled;
+        if (!state_ || !state_->active) return;
+        const auto focus = !tintTab ? State::TintFocus::normal :
+            detailPopup ? State::TintFocus::detail : State::TintFocus::tab;
+        if (state_->tintFocus == focus) return;
+        state_->tintFocus = focus;
         auto* camera = RE::PlayerCamera::GetSingleton();
         auto* thirdPersonState = GetThirdPersonState(camera);
         auto presentedActor = state_->presentedActorHandle.get();
         if (!camera || !thirdPersonState || !presentedActor) return;
 
         const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
-        const auto horizontal = enabled ? normalHorizontal * kFaceCameraSideMultiplier : normalHorizontal;
-        const auto vertical = enabled ? kFaceVerticalOffset : kCameraVerticalOffset;
-        const auto distance = enabled ? kFaceCameraDistance : kCameraDistance;
+        const auto horizontal = focus == State::TintFocus::detail ?
+            normalHorizontal * kTintDetailCameraSideMultiplier :
+            focus == State::TintFocus::tab ? normalHorizontal * kTintCameraSideMultiplier : normalHorizontal;
+        const auto vertical = focus == State::TintFocus::detail ? kTintDetailVerticalOffset :
+            focus == State::TintFocus::tab ? kTintVerticalOffset : kCameraVerticalOffset;
+        const auto distance = focus == State::TintFocus::detail ? kTintDetailCameraDistance :
+            focus == State::TintFocus::tab ? kTintCameraDistance : kCameraDistance;
         state_->desiredPosOffset = { horizontal, 0.0F, vertical };
         if (auto* ini = RE::INISettingCollection::GetSingleton()) {
             const std::array settings{
@@ -285,8 +305,10 @@ namespace bcn::menu_character
         }
         thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
-        thirdPersonState->pitchZoomOffset = enabled ? kFacePitchZoomOffset : kNormalPitchZoomOffset;
-        camera->GetRuntimeData2().worldFOV = enabled ? kFaceWorldFov : kMenuWorldFov;
+        thirdPersonState->pitchZoomOffset = focus == State::TintFocus::detail ? kTintDetailPitchZoomOffset :
+            focus == State::TintFocus::tab ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
+        camera->GetRuntimeData2().worldFOV = focus == State::TintFocus::detail ? kTintDetailWorldFov :
+            focus == State::TintFocus::tab ? kTintWorldFov : kMenuWorldFov;
         // Camera::Update can touch the active game render pipeline. Running it
         // inside the native ImGui PostDisplay pass made the whole UI change
         // tone for a frame on DLSS/post-processing setups when switching the
@@ -349,7 +371,7 @@ namespace bcn::menu_character
         state_->actorPitchModified = false;
         state_->side = CharacterPosition::disabled;
         state_->rotating = false;
-        state_->tintDetailFocus = false;
+        state_->tintFocus = State::TintFocus::uninitialized;
         state_->active = false;
         smoothcam::ReleaseCameraControl();
         SKSE::log::debug("Body Changer NG restored menu character presentation");
