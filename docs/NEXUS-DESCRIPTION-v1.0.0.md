@@ -6,12 +6,42 @@ save-specific actor results, top-down NPC distribution rules, RaceMenu rebuild
 recovery, and optional OBody NG rule compatibility without replacing meshes or
 silently taking over another mod's configuration.
 
+## How this differs from OBody NG
+
+Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI
+data. Body Changer NG does not swap in a separate body mesh. The difference is
+the selection, distribution, and state-management layer built above that
+shared morph pipeline:
+
+- **Native GUI instead of an MCM:** press F7 to manage loaded actors, bodies,
+  skins, player tint, and distribution rules in one scalable ImGui window.
+- **Gamepad navigation:** move through rows and tabs with the D-pad, then select
+  or close with the primary and cancel face buttons.
+- **Isolated live preview:** committed body, preview, and outfit correction use
+  separate owned morph keys. Superseded rapid selections are discarded so an
+  older task cannot overwrite the latest click.
+- **Explicit rule pools:** choose exactly which body presets and skin packs each
+  rule may distribute instead of automatically treating every installed preset
+  as a candidate.
+- **Independent Body and Skin decisions:** distribute or exclude either
+  category while the other category continues to use its selected pool.
+- **Visible top-down priority:** the first matching rule owns both decisions,
+  making broad-to-specific ordering straightforward to inspect and edit.
+- **Save-specific results without full repeat work:** selected results and
+  application signatures are kept in the SKSE co-save so unchanged actors do
+  not need a complete redistribution on every load.
+- **One integrated workflow:** actor skin overrides, player tint detail,
+  RaceMenu rebuild recovery, and body distribution share the same UI and state
+  model rather than being separate tools.
+
 ## Main features
 
 ### Body
 
 - Select a loaded actor and apply compatible BodySlide presets immediately.
 - Low/high-weight values are interpolated using the actor's current weight.
+- Live preview, committed body, and outfit correction are isolated under
+  separate Body Changer NG-owned morph keys.
 - Conservative BodyFamily detection keeps the main list relevant without
   blocking uncertain presets or filtering distribution pools.
 - Body application uses RaceMenu BodyMorph; no body mesh is generated or
@@ -49,11 +79,16 @@ silently taking over another mod's configuration.
 - Explicitly register OBody NG exclusions, forced outfits, and outfit-specific
   correction presets from its JSON. The source file is never modified or read
   silently at startup.
+- The
+  [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+  `OBody_presetDistributionConfig.json` is a supported optional import source.
+  Its file and assets are not redistributed with Body Changer NG.
 
 ### UI and camera
 
 - Korean, English, and Simplified Chinese UI.
-- Mouse, keyboard arrows/WASD, and gamepad D-pad navigation.
+- Mouse, keyboard arrows/WASD, and gamepad D-pad navigation with gamepad
+  confirm/cancel actions.
 - Native IME text input, Backspace, searches, per-tab favorites, and resizable
   dropdowns/panes.
 - Scales consistently from 1080p through 4K.
@@ -103,12 +138,16 @@ distribution JSON remains compatible.
 
 ## Source and permissions
 
-GPL-3.0. The GitHub repository and every GitHub release provide the source. A
-complete source archive with pinned vendored dependencies and applicable
-licenses is attached to the release.
+Body Changer NG's own code is GPL-3.0. The GitHub repository and every GitHub
+release provide the source. A complete source archive with pinned vendored
+dependencies and applicable licenses is attached to the release. Referenced
+mods and compatible JSON files remain under their respective authors'
+copyright and licenses and are not bundled with Body Changer NG.
 
 ## Credits
 
 - OBody NG for established BodySlide distribution and ORefit behavior
+- [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+  by SlickSilk, as an optional JSON-format compatibility and validation target
 - Skyrim Fitting System for GPL-3.0 menu-presentation reference work
 - CommonLibSSE-NG, Dear ImGui, pugixml, and nlohmann/json

@@ -7,12 +7,28 @@ Body Changer NG는 BodySlide 바디 모프, 액터별 스킨 텍스처, 플레�
 
 실행 중 바디 메쉬를 교체하거나 NIF, Skin Armor, ArmorAddon, 장비 슬롯, OBody 원본 JSON을 수정하지 않습니다.
 
+[size=5][b]OBody NG와 무엇이 다른가[/b][/size]
+
+두 모드 모두 최종 바디 변형에는 RaceMenu BodyMorph와 빌드된 TRI를 사용합니다. 따라서 Body Changer NG도 별도 바디 메쉬를 갈아 끼우는 방식이 아닙니다. 차이는 그 위의 선택·배포·상태 관리 구조입니다.
+
+[list]
+[*][b]MCM이 아닌 네이티브 GUI[/b] — F7로 여는 ImGui 창에서 플레이어와 로드된 NPC, 바디, 스킨, 틴트, 배포 규칙을 한 번에 관리
+[*][b]게임패드 탐색[/b] — D-pad로 목록과 탭을 이동하고 기본·취소 버튼으로 선택과 닫기 지원
+[*][b]즉시 미리보기와 확정 적용 분리[/b] — BodyChangerNG, Preview, Outfit 전용 morph key를 분리하고 빠른 연속 선택에서 오래된 적용 작업이 뒤늦게 덮어쓰지 않도록 차단
+[*][b]명시적인 배포 풀[/b] — 폴더의 모든 프리셋을 자동 후보로 삼는 대신 각 규칙에서 사용할 바디와 스킨을 직접 선택
+[*][b]바디·스킨 독립 제어[/b] — 같은 규칙 안에서도 바디만 제외하고 스킨은 배포하거나, 반대로 스킨만 제외하고 바디는 배포 가능
+[*][b]읽기 쉬운 우선순위[/b] — 규칙을 위에서부터 평가해 처음 일치한 한 규칙의 바디·스킨 결정을 사용
+[*][b]세이브별 결과와 불필요한 재작업 억제[/b] — 선택 결과와 적용 서명을 SKSE 코세이브에 보존하고, 바뀌지 않은 액터는 매 로드마다 전체 작업을 반복하지 않음
+[*][b]통합 관리[/b] — OBody NG의 바디 배포 범위를 넘어 액터별 스킨과 플레이어 틴트, RaceMenu 재진입 복원까지 같은 UI와 상태 구조로 처리
+[/list]
+
 [size=5][b]주요 기능[/b][/size]
 
 [b]바디[/b]
 [list]
 [*]플레이어 또는 현재 로드된 NPC에게 BodySlide 프리셋 즉시 적용
 [*]액터 체중에 맞춰 Low/High Weight 값을 보간
+[*]메뉴 선택 중 실시간 미리보기, 확정 적용, 의상 보정을 서로 다른 소유 morph key로 격리
 [*]액터 바디 계열을 보수적으로 감지해 메인 바디 목록만 필터링
 [*]불확실하거나 여러 계열에 해당하는 프리셋은 안전하게 함께 표시
 [*]NPC 배포 풀에는 자동 바디 계열 필터를 적용하지 않음
@@ -50,13 +66,14 @@ Body Changer NG는 BodySlide 바디 모프, 액터별 스킨 텍스처, 플레�
 [*]의상 착용 시 가슴 보정 및 별도 유두 보정 옵션
 [*]유두·생식기 형태의 안정적인 랜덤화 옵션
 [*]OBody NG의 제외 의상·강제 보정·의상별 프리셋 규칙 등록
-[*]OBody JSON은 버튼을 눌렀을 때만 읽으며 원본 파일은 수정하지 않음
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url]의 OBody_presetDistributionConfig.json 호환
+[*]호환 JSON은 버튼을 눌렀을 때만 Body Changer NG로 가져오며, 원본 파일은 수정하거나 배포본에 포함하지 않음
 [/list]
 
 [b]UI·입력·카메라[/b]
 [list]
 [*]한국어·영어·중국어 UI
-[*]마우스, 방향키/WASD, 게임패드 D-pad 탐색
+[*]마우스, 방향키/WASD, 게임패드 D-pad 탐색과 게임패드 선택·취소
 [*]한글 IME, Backspace, 검색, 탭별 즐겨찾기, 크기 조절 가능한 드롭다운·배포창
 [*]1080p부터 4K까지 동일 비율 스케일링
 [*]좌우 대칭 캐릭터 배치와 플레이어 틴트 확대
@@ -93,11 +110,14 @@ v1.0.0은 Skyrim VR 전용 렌더러/입력 레이아웃이 아직 검증되지 
 
 [size=5][b]소스 및 라이선스[/b][/size]
 
-GPL-3.0. GitHub 저장소와 GitHub Release에서 소스를 공개하며, 각 릴리스에는 고정된 의존성과 라이선스를 포함한 전체 소스 압축 파일을 함께 제공합니다.
+Body Changer NG 자체 코드는 GPL-3.0입니다. GitHub 저장소와 GitHub Release에서 소스를 공개하며, 각 릴리스에는 고정된 의존성과 적용되는 라이선스를 포함한 전체 소스 압축 파일을 함께 제공합니다.
+
+호환 대상으로 언급한 다른 모드와 JSON의 저작권·라이선스는 각 원저작자에게 있으며, 해당 파일이나 자산은 Body Changer NG 배포본에 포함하지 않습니다.
 
 [size=5][b]크레딧[/b][/size]
 [list]
 [*]OBody NG — BodySlide 배포 및 ORefit 동작 참고
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] — SlickSilk; 선택적 JSON 형식 호환 및 검증 기준
 [*]Skyrim Fitting System — GPL-3.0 메뉴 캐릭터 표시 참고
 [*]CommonLibSSE-NG, Dear ImGui, pugixml, nlohmann/json
 [/list]

@@ -24,6 +24,30 @@ through its public API when present. OBody NG is used only when the user
 explicitly imports distribution or outfit-correction rules; its JSON is never
 silently loaded at startup.
 
+## Compared with OBody NG
+
+OBody NG and Body Changer NG both ultimately write BodySlide slider values
+through RaceMenu's BodyMorph interface and display them through built TRI data.
+Body Changer NG does not replace the actor's body mesh. Its distinction is the
+native control and ownership layer around that shared morph mechanism:
+
+- a standalone F7 native ImGui interface, not an MCM;
+- D-pad list/tab navigation with gamepad confirm and cancel actions;
+- separate `BodyChangerNG`, `BodyChangerNGPreview`, and
+  `BodyChangerNGOutfit` morph keys for committed, live-preview, and outfit
+  states;
+- latest-selection generation checks that discard superseded preview/apply
+  work;
+- explicit, ordered Body and Skin pools with independent distribute/exclude
+  decisions;
+- save-specific actor selections and apply signatures that avoid repeating a
+  complete unchanged distribution pass; and
+- integrated actor skins, player tint detail, and RaceMenu rebuild recovery.
+
+This is a different workflow rather than a claim that RaceMenu receives a new
+kind of morph. OBody NG remains optional and is not required for Body Changer
+NG's body application.
+
 ## Installation
 
 Install the release archive with MO2 or another mod manager. Keep the included
@@ -132,18 +156,26 @@ plugin and FormID exclusions, name and FormID force-refit entries, and the
 female/male outfit-to-refit-preset mappings are imported without modifying the
 OBody source file. An outfit-specific mapping is evaluated before the current
 body's `-Refit` preset, the sex-wide fallback, and the procedural fallback.
+The
+[OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+by SlickSilk is explicitly supported as an optional import source. Its JSON and
+assets are not redistributed by Body Changer NG.
 
 ## Source and license
 
 Body Changer NG is released under GPL-3.0. The Git repository uses pinned
 submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
-the release build. Exact versions are listed in `DEPENDENCIES.md`.
+the release build. Exact versions are listed in `DEPENDENCIES.md`. Referenced
+mods and compatible JSON files retain their respective authors' copyright and
+licenses and are not bundled with Body Changer NG.
 
 ## Credits
 
 - OBody NG — established BodySlide distribution and ORefit JSON compatibility
   behavior.
+- [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+  by SlickSilk — optional JSON-format compatibility and validation target.
 - Skyrim Fitting System — public GPL-3.0 reference for the optional menu
   character presentation and its safe pause/rotation lifecycle.
 - CommonLibSSE-NG, Dear ImGui, pugixml, and nlohmann/json — see their bundled
