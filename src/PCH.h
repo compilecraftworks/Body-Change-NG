@@ -1,0 +1,80 @@
+#pragma once
+
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+
+#include <SKSE/SKSE.h>
+
+#include <RE/B/BSInputDeviceManager.h>
+#include <RE/B/BSGeometry.h>
+#include <RE/B/BGSBipedObjectForm.h>
+#include <RE/B/BGSHeadPart.h>
+#include <RE/B/BGSKeyword.h>
+#include <RE/B/BGSKeywordForm.h>
+#include <RE/B/BGSListForm.h>
+#include <RE/B/BGSTextureSet.h>
+#include <RE/B/BGSVoiceType.h>
+#include <RE/B/BSUIScaleformData.h>
+#include <RE/B/BSShaderProperty.h>
+#include <RE/B/ButtonEvent.h>
+#include <RE/C/Console.h>
+#include <RE/C/CrosshairPickData.h>
+#include <RE/C/CursorMenu.h>
+#include <RE/G/GFxEvent.h>
+#include <RE/G/GFxKey.h>
+#include <RE/I/IMenu.h>
+#include <RE/I/INISettingCollection.h>
+#include <RE/I/InputEvent.h>
+#include <RE/M/MenuCursor.h>
+#include <RE/N/NiAVObject.h>
+#include <RE/N/NiGeometry.h>
+#include <RE/N/NiNode.h>
+#include <RE/N/NiSourceTexture.h>
+#include <RE/P/PlayerCharacter.h>
+#include <RE/P/PlayerCamera.h>
+#include <RE/R/Renderer.h>
+#include <RE/S/ScriptEventSourceHolder.h>
+#include <RE/T/TES.h>
+#include <RE/T/TESDataHandler.h>
+#include <RE/T/TESEquipEvent.h>
+#include <RE/T/TESInitScriptEvent.h>
+#include <RE/T/TESFaction.h>
+#include <RE/T/TESFile.h>
+#include <RE/T/TESNPC.h>
+#include <RE/T/TESObjectARMO.h>
+#include <RE/T/TESObjectARMA.h>
+#include <RE/T/TESRace.h>
+#include <RE/T/TintMask.h>
+#include <RE/T/ThirdPersonState.h>
+#include <RE/U/UI.h>
+#include <RE/U/UIMessage.h>
+#include <RE/U/UIMessageQueue.h>
+#include <RE/V/VirtualMachine.h>
+
+#include <nlohmann/json.hpp>
+
+#include <Windows.h>
+#include <d3d11.h>
+#include <dxgi.h>
+
+#include <algorithm>
+#include <array>
+#include <atomic>
+#include <chrono>
+#include <cmath>
+#include <cstdint>
+#include <filesystem>
+#include <format>
+#include <fstream>
+#include <functional>
+#include <mutex>
+#include <numbers>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <thread>
+#include <unordered_set>
+#include <unordered_map>
+#include <utility>
+#include <vector>

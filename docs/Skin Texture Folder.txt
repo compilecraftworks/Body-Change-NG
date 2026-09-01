@@ -1,0 +1,12 @@
+Required skin-pack layout:
+
+BodySkin\<skin name>\Textures\
+
+Copy a skin mod's existing textures folder contents directly here. For example:
+
+BodySkin\Zhizhen's Skins\Textures\actors\character\female\femalebody_1.dds
+
+Every skin stays self-contained under its own BodySkin folder. Body Changer NG
+shows one row per top-level skin folder and filters rows by the selected
+actor's sex. If you add a profile.json, use a relative path such as
+Textures\actors\character\female\femalebody_1.dds.

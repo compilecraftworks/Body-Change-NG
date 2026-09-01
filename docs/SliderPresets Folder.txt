@@ -1,0 +1,7 @@
+Body Changer NG scans BodySlide preset XML files from:
+
+Data\CalienteTools\BodySlide\SliderPresets\
+
+Put BodySlide XML preset files in this folder or provide the same path through
+another enabled MO2 mod. The files are not bundled with Body Changer NG because
+they belong to the installed body/preset mods.
