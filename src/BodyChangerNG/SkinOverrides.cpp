@@ -1502,7 +1502,17 @@ namespace bcn::skin_override
     void ForgetActorState(const std::uint32_t actorFormID)
     {
         if (actorFormID == 0) return;
-        std::scoped_lock lock(g_selectionLock);
-        g_currentProfileIds.erase(actorFormID);
+        {
+            std::scoped_lock lock(g_selectionLock);
+            g_currentProfileIds.erase(actorFormID);
+        }
+        {
+            std::scoped_lock lock(g_generationLock);
+            g_applyGenerations.erase(actorFormID);
+        }
+        {
+            std::scoped_lock lock(g_legacyCleanupLock);
+            g_legacyCleanupComplete.erase(actorFormID);
+        }
     }
 }

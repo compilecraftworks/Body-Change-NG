@@ -1,5 +1,7 @@
 #include "BodyChangerNG/RuntimeLayout.h"
+#include "BodyChangerNG/MenuCameraProjection.h"
 
+#include <cmath>
 #include <iostream>
 
 namespace
@@ -16,35 +18,56 @@ namespace
 
 int main()
 {
-    using bcn::runtime::ResolveWorldFovOffset;
+    const auto seRenderer = bcn::runtime::ResolveRendererHook(REL::Version{ 1, 5, 97, 0 });
+    const auto seInput = bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 5, 97, 0 });
+    Expect(seRenderer && seRenderer->relocationID == 75595 && seRenderer->callOffset == 0x50,
+        "Skyrim SE 1.5.97 renderer hook layout must remain verified");
+    Expect(seInput && seInput->relocationID == 67315 && seInput->callOffset == 0x7B,
+        "Skyrim SE 1.5.97 input hook layout must remain verified");
 
-    const auto se = ResolveWorldFovOffset(REL::Version{ 1, 5, 97, 0 });
-    Expect(se && se->relocationID == 527997,
-        "Skyrim SE 1.5.97 must use the verified world-FOV offset ID");
+    const auto aeRenderer = bcn::runtime::ResolveRendererHook(REL::Version{ 1, 6, 1170, 0 });
+    const auto aeInput = bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 6, 1179, 0 });
+    Expect(aeRenderer && aeRenderer->relocationID == 77226 && aeRenderer->callOffset == 0x2BC,
+        "Skyrim AE 1.6.1170 renderer hook layout must remain verified");
+    Expect(aeInput && aeInput->relocationID == 68617 && aeInput->callOffset == 0x7B,
+        "Skyrim AE 1.6.1179 input hook layout must remain verified");
 
-    const auto aeFirst = ResolveWorldFovOffset(REL::Version{ 1, 6, 317, 0 });
-    const auto aeBoundary = ResolveWorldFovOffset(REL::Version{ 1, 6, 629, 0 });
-    const auto aeSteam = ResolveWorldFovOffset(REL::Version{ 1, 6, 1170, 0 });
-    const auto aeGog = ResolveWorldFovOffset(REL::Version{ 1, 6, 1179, 0 });
-    Expect(aeFirst && aeFirst->relocationID == 414942,
-        "first supported AE runtime must use the verified world-FOV offset ID");
-    Expect(aeBoundary && aeBoundary->relocationID == 414942,
-        "Skyrim AE 1.6.629 must use the verified world-FOV offset ID");
-    Expect(aeSteam && aeSteam->relocationID == 414942,
-        "Skyrim AE 1.6.1170 must use the verified world-FOV offset ID");
-    Expect(aeGog && aeGog->relocationID == 414942,
-        "Skyrim AE 1.6.1179 must use the verified world-FOV offset ID");
-
-    Expect(!ResolveWorldFovOffset(REL::Version{ 1, 5, 96, 0 }),
-        "unverified SE runtimes must fail closed");
-    Expect(!ResolveWorldFovOffset(REL::Version{ 1, 6, 628, 0 }),
-        "unverified AE boundary runtimes must fail closed");
-    Expect(!ResolveWorldFovOffset(REL::Version{ 1, 6, 641, 0 }),
+    Expect(!bcn::runtime::ResolveRendererHook(REL::Version{ 1, 6, 641, 0 }) &&
+        !bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 6, 641, 0 }),
         "unknown AE runtimes must fail closed");
-    Expect(!ResolveWorldFovOffset(REL::Version{ 1, 4, 15, 0 }),
-        "Skyrim VR must not select a flat runtime layout");
-    Expect(!ResolveWorldFovOffset(REL::Version{ 1, 7, 99, 0 }),
-        "future unverified runtimes must fail closed");
+    Expect(!bcn::runtime::ResolveRendererHook(REL::Version{ 1, 4, 15, 0 }) &&
+        !bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 4, 15, 0 }),
+        "Skyrim VR must not select unverified flat hook layouts");
+
+    RE::NiFrustum perspective{ -0.916331F, 0.916331F, 0.515436F,
+        -0.515436F, 0.1F, 10000.0F, false };
+    const auto originalAspect = perspective.fTop / perspective.fRight;
+    Expect(bcn::camera_projection::SetHorizontalFov(perspective, 70.0F),
+        "perspective menu camera FOV must be adjustable");
+    Expect(std::abs(perspective.fRight - 0.700208F) < 0.00001F &&
+        std::abs(perspective.fLeft + 0.700208F) < 0.00001F,
+        "menu camera frustum must encode horizontal FOV 70");
+    Expect(std::abs(perspective.fTop / perspective.fRight - originalAspect) < 0.00001F,
+        "menu camera FOV scaling must preserve viewport aspect ratio");
+    Expect(perspective.fNear == 0.1F && perspective.fFar == 10000.0F,
+        "menu camera FOV scaling must preserve near and far planes");
+
+    const auto onceApplied = perspective;
+    Expect(bcn::camera_projection::SetHorizontalFov(perspective, 70.0F) &&
+        std::abs(perspective.fRight - onceApplied.fRight) < 0.000001F &&
+        std::abs(perspective.fTop - onceApplied.fTop) < 0.000001F,
+        "reapplying menu camera FOV must be stable");
+
+    RE::NiFrustum orthographic{ -1.0F, 1.0F, 1.0F, -1.0F,
+        0.1F, 10000.0F, true };
+    Expect(!bcn::camera_projection::SetHorizontalFov(orthographic, 70.0F) &&
+        orthographic.fRight == 1.0F,
+        "orthographic projection must fail closed");
+
+    RE::NiFrustum invalid{ 0.0F, 0.0F, 1.0F, -1.0F,
+        0.1F, 10000.0F, false };
+    Expect(!bcn::camera_projection::SetHorizontalFov(invalid, 70.0F),
+        "degenerate perspective projection must fail closed");
 
     if (failures != 0) {
         std::cerr << failures << " runtime layout test(s) failed\n";

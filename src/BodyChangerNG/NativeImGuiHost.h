@@ -9,10 +9,6 @@ namespace bcn::native_ui
     bool Open();
     bool Toggle();
     bool Close();
-    // When the menu owns a pause contribution, character rotation briefly
-    // releases only that contribution so SMP can advance for the drag frame.
-    [[nodiscard]] bool BeginCharacterRotationUnpause();
-    void EndCharacterRotationUnpause();
     void SubmitMouseWheel(float a_delta) noexcept;
     // PollInputDevices may consume RMB before Skyrim creates a Scaleform
     // event. Queue the same button transition directly for ImGui so actor

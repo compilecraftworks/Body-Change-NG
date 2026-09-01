@@ -160,11 +160,10 @@ namespace bcn
     {
         if (actorFormID == 0U) return;
         std::scoped_lock lock(g_lock);
-        const auto found = g_pending.find(actorFormID);
-        if (found != g_pending.end()) {
-            found->second.queued = false;
-            found->second.waitingFor3D = true;
-        }
+        // A later attach event submits a fresh request and handle. Retaining
+        // an unloaded actor here only grows the wait map for NPCs that never
+        // return to the current game session.
+        g_pending.erase(actorFormID);
     }
 
     void ActorWorkQueue::ResetSession()

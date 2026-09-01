@@ -70,9 +70,6 @@ namespace
     bool g_rendererReady{};
     ImGuiStyle g_baseStyle{};
     bool g_baseStyleReady{};
-    bool g_menuVisible{};
-    bool g_menuPausesGame{};
-    bool g_characterRotationUnpauseActive{};
     bool g_skyrimTextInputAllowed{};
     float g_resolutionScale{ 1.0F };
 
@@ -477,9 +474,6 @@ namespace
     void ResetRenderer()
     {
         bcn::ui::OnClosed();
-        bcn::native_ui::EndCharacterRotationUnpause();
-        g_menuVisible = false;
-        g_menuPausesGame = false;
         g_cursorShowPending = false;
         g_escapeRequested = false;
         g_wantsTextInput = false;
@@ -681,19 +675,14 @@ namespace
                 g_openRequested = true;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
-                g_menuVisible = true;
-                g_menuPausesGame = menuFlags.all(RE::UI_MENU_FLAGS::kPausesGame);
                 bcn::ui::OnOpened();
                 break;
             case RE::UI_MESSAGE_TYPE::kHide:
                 bcn::ui::OnClosed();
-                bcn::native_ui::EndCharacterRotationUnpause();
                 g_open = false;
                 g_openRequested = false;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
-                g_menuVisible = false;
-                g_menuPausesGame = false;
                 g_mouseWheelSteps = 0;
                 g_rightMouseState = -1;
                 g_wantsTextInput = false;
@@ -833,25 +822,6 @@ namespace bcn::native_ui
         if (!g_registered || (!g_open && !g_openRequested)) return false;
         QueueVisibility(false);
         return true;
-    }
-
-    bool BeginCharacterRotationUnpause()
-    {
-        if (g_characterRotationUnpauseActive) return true;
-        auto* ui = RE::UI::GetSingleton();
-        if (!ui || !g_menuVisible || !g_menuPausesGame || ui->numPausesGame == 0) return false;
-        --ui->numPausesGame;
-        g_characterRotationUnpauseActive = true;
-        return true;
-    }
-
-    void EndCharacterRotationUnpause()
-    {
-        if (!g_characterRotationUnpauseActive) return;
-        if (auto* ui = RE::UI::GetSingleton(); ui && g_menuVisible) {
-            ++ui->numPausesGame;
-        }
-        g_characterRotationUnpauseActive = false;
     }
 
     void SubmitMouseWheel(const float delta) noexcept

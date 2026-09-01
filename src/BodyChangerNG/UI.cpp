@@ -1588,9 +1588,18 @@ namespace
             ImGui::Separator();
             const auto ruleListWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.36F,
                 Scaled(280.0F), Scaled(380.0F));
+            // Reserve two complete footer rows. Without NoHostExtendY, a table
+            // row containing zero-height children may grow to the host window's
+            // bottom and permanently push the action buttons out of view even
+            // when the popup itself is resized.
+            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() * 2.0F +
+                ImGui::GetStyle().ItemSpacing.y + Scaled(2.0F);
+            const auto editorHeight = (std::max)(Scaled(220.0F),
+                ImGui::GetContentRegionAvail().y - footerHeight);
             if (ImGui::BeginTable("DistributionEditor", 2,
-                    ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV |
-                    ImGuiTableFlags_Resizable, ImVec2(0.0F, -Scaled(96.0F)))) {
+                ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV |
+                    ImGuiTableFlags_Resizable | ImGuiTableFlags_NoHostExtendY,
+                    ImVec2(0.0F, editorHeight))) {
                 ImGui::TableSetupColumn(Text("규칙 우선순위", "Rule priority", "规则优先级"),
                     ImGuiTableColumnFlags_WidthFixed, ruleListWidth);
                 ImGui::TableSetupColumn(Text("선택한 규칙", "Selected rule", "当前规则"), ImGuiTableColumnFlags_WidthStretch);
@@ -1850,7 +1859,7 @@ namespace
                         Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。")));
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("저장 후 지금 적용", "Save and apply now", "保存并立即应用"))) {
+            if (ImGui::Button(Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"))) {
                 if (SaveActiveDistributionRules()) {
                     const auto queued = bcn::Distribution::Get().ApplyLoadedNPCs();
                     bcn::ui::Notify(std::to_string(queued) + Text("명의 변경 대상 NPC를 확인하고 규칙을 저장했습니다.", " changed loaded NPCs were checked and the rules were saved.", " 名已加载 NPC 的变更已检查，规则也已保存。"));
@@ -1859,7 +1868,7 @@ namespace
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("저장만 · 다음 실행부터 적용", "Save only · Apply next launch", "仅保存 · 下次启动时应用"))) {
+            if (ImGui::Button(Text("다음 게임 실행 시 배포", "Distribute on next game launch", "下次启动游戏时分发"))) {
                 if (bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules)) {
                     bcn::ui::Notify(Text("현재 편집 값을 저장했습니다. 현재 게임의 배포 규칙은 바꾸지 않습니다.", "Saved the edited values without changing this session's active distribution rules.", "已保存当前编辑值，不更改本次游戏的有效分发规则。"));
                 } else {
@@ -1899,10 +1908,9 @@ namespace
                 if (registered) {
                     g_orefitRulesRegistered = true;
                     bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
+                } else {
+                    bcn::ui::Notify(Text("OBody NG 의상 보정 규칙을 등록하지 못했습니다.", "Could not register OBody NG outfit-correction rules.", "无法注册 OBody NG 服装修正规则。"));
                 }
-                bcn::ui::Notify(registered ?
-                    Text("OBody NG 의상 보정 규칙을 등록했습니다.", "Registered OBody NG outfit-correction rules.", "已注册 OBody NG 服装修正规则。") :
-                    Text("OBody NG 의상 보정 규칙을 등록하지 못했습니다.", "Could not register OBody NG outfit-correction rules.", "无法注册 OBody NG 服装修正规则。"));
             }
             ImGui::SameLine();
             if (g_orefitRulesRegistered) {

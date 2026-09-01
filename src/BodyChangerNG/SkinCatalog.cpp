@@ -1,5 +1,7 @@
 #include "BodyChangerNG/SkinCatalog.h"
 
+#include "BodyChangerNG/ActorRegistry.h"
+
 #include <SKSE/Logger.h>
 
 #include <algorithm>
@@ -147,8 +149,11 @@ namespace bcn
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return SkinApplyResult::noTaskInterface;
         const auto playerHandle = player->GetHandle();
-        tasks->AddTask([playerHandle, entry = std::move(entry)] mutable {
-            ApplyToPlayerNow(playerHandle, std::move(entry));
+        const auto session = ActorRegistry::Get().SessionGeneration();
+        tasks->AddTask([playerHandle, entry = std::move(entry), session] mutable {
+            if (ActorRegistry::Get().SessionGeneration() == session) {
+                ApplyToPlayerNow(playerHandle, std::move(entry));
+            }
         });
         return SkinApplyResult::queued;
     }

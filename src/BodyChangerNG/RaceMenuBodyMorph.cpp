@@ -584,8 +584,16 @@ namespace bcn::racemenu
     void ForgetActorState(const std::uint32_t actorFormID)
     {
         if (actorFormID == 0) return;
-        std::scoped_lock lock(g_selectionLock);
-        g_currentPresetIds.erase(actorFormID);
+        {
+            std::scoped_lock lock(g_selectionLock);
+            g_currentPresetIds.erase(actorFormID);
+        }
+        {
+            std::scoped_lock lock(g_applyGenerationLock);
+            for (const auto mode : { ApplyMode::preview, ApplyMode::commit, ApplyMode::outfit }) {
+                g_applyGenerations.erase(ApplyGenerationKey(actorFormID, mode));
+            }
+        }
     }
 
     ApplyResult QueueApply(RE::Actor* actor, std::string presetId, const ApplyMode mode,
@@ -613,10 +621,13 @@ namespace bcn::racemenu
                 g_currentPresetIds[actor->GetFormID()] = found->PersistentId();
             }
             auto preset = *found;
+            const auto session = bcn::ActorRegistry::Get().SessionGeneration();
             if (mode == ApplyMode::preview) {
                 const auto [previousActor, generation] = BeginPreview(actorHandle);
                 if (previousActor && previousActor != actorHandle) {
-                    tasks->AddTask([previousActor] { ClearPreviewNow(previousActor); });
+                    tasks->AddTask([previousActor, session] {
+                        if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
+                    });
                 }
                 tasks->AddTask([actorHandle, preset = std::move(preset), applyGeneration, generation] mutable {
                     ApplyNow(actorHandle, std::move(preset), ApplyMode::preview, applyGeneration, generation);
@@ -624,7 +635,9 @@ namespace bcn::racemenu
             } else {
                 const auto previousActor = mode == ApplyMode::commit ? CancelPreviewTracking() : RE::ActorHandle{};
                 if (previousActor && previousActor != actorHandle) {
-                    tasks->AddTask([previousActor] { ClearPreviewNow(previousActor); });
+                    tasks->AddTask([previousActor, session] {
+                        if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
+                    });
                 }
                 tasks->AddTask([actorHandle, preset = std::move(preset), mode, applyGeneration, outfitSignature] mutable {
                     ApplyNow(actorHandle, std::move(preset), mode, applyGeneration, 0U, outfitSignature);

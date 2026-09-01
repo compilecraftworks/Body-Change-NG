@@ -36,19 +36,40 @@ namespace bcn
             return found != g_equipmentGeneration.end() && found->second == generation;
         }
 
-        void ReconcileEquipmentChange(const RE::ActorHandle& handle, const std::uint32_t remainingHops,
+        void FinishEquipmentChange(const RE::FormID actorFormID,
+            const std::uint64_t generation)
+        {
+            std::scoped_lock lock(g_equipmentLock);
+            const auto found = g_equipmentGeneration.find(actorFormID);
+            if (found != g_equipmentGeneration.end() && found->second == generation) {
+                g_equipmentGeneration.erase(found);
+            }
+        }
+
+        void ReconcileEquipmentChange(const RE::ActorHandle& handle, const RE::FormID actorFormID,
+            const std::uint32_t remainingHops,
             const std::uint64_t generation, const std::uint64_t session)
         {
             const auto* tasks = SKSE::GetTaskInterface();
-            if (!tasks) return;
-            tasks->AddTask([handle, remainingHops, generation, session] {
+            if (!tasks) {
+                FinishEquipmentChange(actorFormID, generation);
+                return;
+            }
+            tasks->AddTask([handle, actorFormID, remainingHops, generation, session] {
+                if (!IsCurrentEquipmentChange(actorFormID, generation, session)) return;
                 const auto actor = handle.get();
-                if (!actor || !IsCurrentEquipmentChange(actor->GetFormID(), generation, session)) return;
-                if (remainingHops != 0U) {
-                    ReconcileEquipmentChange(handle, remainingHops - 1U, generation, session);
+                if (!actor || actor->GetFormID() != actorFormID) {
+                    FinishEquipmentChange(actorFormID, generation);
                     return;
                 }
-                if (!actor->Is3DLoaded()) return;
+                if (remainingHops != 0U) {
+                    ReconcileEquipmentChange(handle, actorFormID, remainingHops - 1U, generation, session);
+                    return;
+                }
+                if (!actor->Is3DLoaded()) {
+                    FinishEquipmentChange(actorFormID, generation);
+                    return;
+                }
                 // The Biped clone is now settled. Rebuild only the outfit key
                 // and repaint the already selected skin onto new embedded body
                 // geometry; body distribution is deliberately not rerun.
@@ -57,11 +78,7 @@ namespace bcn
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
                     [[maybe_unused]] const auto result = skin_override::QueueApply(actor.get(), *skin);
                 }
-                std::scoped_lock lock(g_equipmentLock);
-                const auto found = g_equipmentGeneration.find(actor->GetFormID());
-                if (found != g_equipmentGeneration.end() && found->second == generation) {
-                    g_equipmentGeneration.erase(found);
-                }
+                FinishEquipmentChange(actorFormID, generation);
             });
         }
 
@@ -206,7 +223,7 @@ namespace bcn
             // is always available. Consecutive equipment events are coalesced;
             // only the newest settled outfit is corrected and repainted.
             const auto generation = BeginEquipmentChange(actor->GetFormID());
-            ReconcileEquipmentChange(actor->GetHandle(), 2U, generation,
+            ReconcileEquipmentChange(actor->GetHandle(), actor->GetFormID(), 2U, generation,
                 ActorRegistry::Get().SessionGeneration());
         }
         return RE::BSEventNotifyControl::kContinue;

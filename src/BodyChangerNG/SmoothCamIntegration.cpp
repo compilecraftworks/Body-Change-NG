@@ -139,7 +139,9 @@ namespace bcn::smoothcam
         }
         g_controlOwned = true;
         g_denialLogged = false;
-        static_cast<void>(g_interface->RequestInterpolatorUpdates(SKSE::GetPluginHandle(), true));
+        // RequestCameraControl already suspends SmoothCam's interpolator.
+        // Re-enabling it while this menu owns the camera makes the two camera
+        // controllers compete and produces pause-dependent framing.
         return true;
     }
 
