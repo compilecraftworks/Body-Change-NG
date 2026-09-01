@@ -9,28 +9,24 @@
 
 namespace
 {
-    // Skyrim's third-person shoulder pivot is not screen-space symmetric.
-    // Keep the visually correct right framing and pull the left framing
-    // inward so the character is not pushed against the left edge.
-    constexpr auto kLeftCameraHorizontalOffset = 60.0F;
-    constexpr auto kRightCameraHorizontalOffset = -78.0F;
+    constexpr auto kLeftCameraHorizontalOffset = 90.0F;
+    constexpr auto kRightCameraHorizontalOffset = -90.0F;
     constexpr auto kCameraVerticalOffset = -30.0F;
-    constexpr auto kCameraDistance = 150.0F;
-    constexpr auto kMenuWorldFov = 90.0F;
+    constexpr auto kCameraDistance = 200.0F;
+    constexpr auto kMenuWorldFov = 70.0F;
     constexpr auto kPlayerPitch = 0.27F;
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
     // The Tint tab and its detail popup intentionally share one close-up so
     // opening the picker cannot shift the character. A zero vertical offset
     // raises the character substantially from the former detail value (15).
-    constexpr auto kTintCameraDistance = 58.0F;
+    constexpr auto kTintCameraDistance = 60.0F;
     constexpr auto kTintWorldFov = 45.0F;
     constexpr auto kTintVerticalOffset = 0.0F;
-    // The right close-up already lands correctly. On the left, compensate for
-    // the third-person shoulder pivot and the narrower FOV so zooming does not
-    // push the actor out through the screen edge.
-    constexpr auto kLeftTintCameraSideMultiplier = 0.16F;
-    constexpr auto kRightTintCameraSideMultiplier = 0.28F;
+    // Projection-matched to the normal 200/FOV70/+-90 framing. This keeps the
+    // actor at the same screen-space side position while the face zooms in.
+    constexpr auto kLeftTintCameraHorizontalOffset = 16.0F;
+    constexpr auto kRightTintCameraHorizontalOffset = -16.0F;
     constexpr auto kTintPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
@@ -275,10 +271,9 @@ namespace bcn::menu_character
         if (!camera || !thirdPersonState || !presentedActor) return;
 
         const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
-        const auto tintSideMultiplier = state_->side == CharacterPosition::left ?
-            kLeftTintCameraSideMultiplier : kRightTintCameraSideMultiplier;
-        const auto horizontal = focus == State::TintFocus::tint ?
-            normalHorizontal * tintSideMultiplier : normalHorizontal;
+        const auto tintHorizontal = state_->side == CharacterPosition::left ?
+            kLeftTintCameraHorizontalOffset : kRightTintCameraHorizontalOffset;
+        const auto horizontal = focus == State::TintFocus::tint ? tintHorizontal : normalHorizontal;
         const auto vertical = focus == State::TintFocus::tint ? kTintVerticalOffset : kCameraVerticalOffset;
         const auto distance = focus == State::TintFocus::tint ? kTintCameraDistance : kCameraDistance;
         state_->desiredPosOffset = { horizontal, 0.0F, vertical };
