@@ -1,0 +1,19 @@
+[b]Body Changer NG v1.0.0 — First Stable Public Release[/b]
+
+[list]
+[*]Integrated BodySlide body morphs, per-actor skin textures, and player RaceMenu tint masks in one native in-game UI.
+[*]Added top-down, first-match NPC distribution rules with independent Body and Skin distribute/exclude decisions.
+[*]Stored global rules in BodyChangerNGdistribution.json and evaluated actor results in the SKSE co-save to reduce unnecessary redistribution after loading a save.
+[*]Included eight starter exclusions: Body exclusion for female/male custom followers and elders, plus Skin exclusion for female/male Argonians and Khajiit.
+[*]Added explicit-button import of supported OBody NG distribution and outfit-correction rules.
+[*]Added breast and nipple correction while clothed, plus stable nipple and genital shape randomization.
+[*]Safely reapplied confirmed Body, Skin, and Tint state after RaceMenu closes without deleting NiOverride keys owned by other mods.
+[*]Added native IME input, Backspace, search, favorites, keyboard navigation, and gamepad support.
+[*]Added actor-matched BodyFamily filtering with a safe fallback for uncertain or multi-family presets.
+[*]Added runtime Refresh for BodySlide XML presets and Skin/Tint folders placed while Skyrim is running.
+[*]Finalized symmetric character framing and restoration of the original camera target, facing, FOV, projection, and current/target zoom when the menu closes.
+[*]Fixed missing NPC Distribution footer buttons, blank dropdown selections, delayed text input/deletion, and the tint color chip after restoring tint values.
+[*]Supports Skyrim SE 1.5.97 and verified AE 1.6.x runtimes through 1.6.1179; all eight regression test suites pass.
+[/list]
+
+See the included CHANGELOG and the GitHub update history for the full development record.
