@@ -109,19 +109,20 @@ native SKSE architecture:
 - Targets include all NPCs, custom followers, elders, exact NPC base FormIDs,
   names, factions, plugins, and races.
 - Choose one fixed preset/skin or multiple stable random choices per rule.
-- Rules are portable in `BodyChangerNGdistribution.json`; evaluated actor
-  results are kept in the SKSE co-save to avoid redistributing unchanged NPCs.
+- Rules are written by the in-game editor to
+  `Data\SKSE\Plugins\BodyChangerNGdistribution.json`; manual JSON editing is
+  not required. Evaluated actor results are kept in the SKSE co-save to avoid
+  redistributing unchanged NPCs.
 - Edit the rules in game and either distribute to loaded NPCs immediately or
   save the edits for the next game launch only.
+- For a mod, Skyrim, or MO2-profile reinstall, back up
+  `BodyChangerNGdistribution.json`, copy it back to the same path, and press
+  **Load saved values**.
 
 ### Outfit correction
 
 - Optional breast correction while clothed with a separate nipple toggle.
 - Optional stable nipple and genital slider randomization.
-- The
-  [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
-  `OBody_presetDistributionConfig.json` is a supported optional import source.
-  Its file and assets are not redistributed with Body Changer NG.
 
 ### UI and input
 
@@ -171,41 +172,16 @@ without restarting the game.
 The archive includes README files in every user asset folder and a valid
 schema-3 distribution JSON with eight editable starter exclusions.
 
-## Distribution Rules, Outfit Correction, and Body Changer NG JSON Backup
-
-### NPC distribution rules
-
-- Create and edit every condition in game; manual JSON editing is not required.
-- Rules are evaluated from top to bottom, and the first matching rule controls
-  Body and Skin. Either category can distribute selected entries, be excluded
-  from distribution, or be left unchanged.
-- Available targets include all NPCs, custom followers, elders, exact NPC base
-  FormIDs, names, factions, plugins, and races.
-- One selected body preset or skin pack is fixed; multiple selections produce a
-  stable per-NPC random result.
-- **Distribute to loaded NPCs now** saves the rules and checks currently loaded
-  NPCs immediately. **Distribute on next game launch** saves the edited rules
-  without changing the active rules in the current session.
-
-Body Changer NG stores these rules at
-`Data\SKSE\Plugins\BodyChangerNGdistribution.json`. The in-game editor writes
-this file, so users do not need to edit it manually. To preserve your rules
-when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it
-back to the same path, then press **Load saved values** in the NPC Distribution
-window.
-
-### Outfit correction
-
-- The **Outfit · randomization** window provides breast correction while
-  clothed, a separate nipple-correction toggle, and stable nipple/genital shape
-  randomization.
-
 ## Optional OBody NG JSON Compatibility
 
 Users who want to reuse OBody NG-format distribution conditions or
 outfit-correction rules may optionally use its configuration file. Body Changer
 NG works without OBody NG or this JSON.
 
+- The
+  [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+  is a supported optional source. Its JSON and assets are not redistributed
+  with Body Changer NG.
 - An optional OBody NG configuration may be placed beside Body Changer NG's
   JSON at `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Keep both
   files under `Data\SKSE\Plugins`; do not rename, merge, or replace
@@ -220,10 +196,8 @@ NG works without OBody NG or this JSON.
 
 ## Compatibility
 
-- OBody NG is optional. Its distribution and outfit rules are imported only
-  through explicit buttons.
 - Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records,
-  equipped slots, or OBody's JSON.
+  or equipped slots.
 - Body, Skin, and Tint selections are reapplied after RaceMenu closes.
 
 ## Credits & License

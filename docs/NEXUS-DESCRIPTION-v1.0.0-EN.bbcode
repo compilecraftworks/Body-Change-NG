@@ -72,15 +72,15 @@ Body Changer NG is not a port of that ESP/Papyrus system. It uses a different na
 [*]Body and Skin can be distributed or excluded independently
 [*]Targets include all NPCs, custom followers, elders, exact NPC base FormIDs, names, factions, plugins, and races
 [*]Choose one fixed preset/skin or multiple stable random choices per rule
-[*]Rules are portable in BodyChangerNGdistribution.json; evaluated actor results are kept in the SKSE co-save to avoid redistributing unchanged NPCs
+[*]Rules are written by the in-game editor to [b]Data\SKSE\Plugins\BodyChangerNGdistribution.json[/b]; manual JSON editing is not required. Evaluated actor results are kept in the SKSE co-save to avoid redistributing unchanged NPCs
 [*]Edit the rules in game and either distribute to loaded NPCs immediately or save the edits for the next game launch only
+[*]For a mod, Skyrim, or MO2-profile reinstall, back up [b]BodyChangerNGdistribution.json[/b], copy it back to the same path, and press [b]Load saved values[/b]
 [/list]
 
 [b]Outfit correction[/b]
 [list]
 [*]Optional breast correction while clothed with a separate nipple toggle
 [*]Optional stable nipple and genital slider randomization
-[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] OBody_presetDistributionConfig.json is a supported optional import source. Its file and assets are not redistributed with Body Changer NG
 [/list]
 
 [b]UI and input[/b]
@@ -119,29 +119,12 @@ You may add or replace BodySlide preset XML files, skin-pack folders, and tint-p
 
 The archive includes README files in every user asset folder and a valid schema-3 distribution JSON with eight editable starter exclusions.
 
-[size=5][b]Distribution Rules, Outfit Correction, and Body Changer NG JSON Backup[/b][/size]
-
-[b]NPC distribution rules[/b]
-[list]
-[*]Create and edit every condition in game; manual JSON editing is not required
-[*]Rules are evaluated from top to bottom, and the first matching rule controls Body and Skin. Either category can distribute selected entries, be excluded from distribution, or be left unchanged
-[*]Available targets include all NPCs, custom followers, elders, exact NPC base FormIDs, names, factions, plugins, and races
-[*]One selected body preset or skin pack is fixed; multiple selections produce a stable per-NPC random result
-[*][b]Distribute to loaded NPCs now[/b] saves the rules and checks currently loaded NPCs immediately. [b]Distribute on next game launch[/b] saves the edited rules without changing the active rules in the current session
-[/list]
-
-Body Changer NG stores these rules at [b]Data\SKSE\Plugins\BodyChangerNGdistribution.json[/b]. The in-game editor writes this file, so users do not need to edit it manually. To preserve your rules when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it back to the same path, then press [b]Load saved values[/b] in the NPC Distribution window.
-
-[b]Outfit correction[/b]
-[list]
-[*]The Outfit · randomization window provides breast correction while clothed, a separate nipple-correction toggle, and stable nipple/genital shape randomization
-[/list]
-
 [size=5][b]Optional OBody NG JSON Compatibility[/b][/size]
 
 Users who want to reuse OBody NG-format distribution conditions or outfit-correction rules may optionally use its configuration file. Body Changer NG works without OBody NG or this JSON.
 
 [list]
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] is a supported optional source. Its JSON and assets are not redistributed with Body Changer NG
 [*]An optional OBody NG configuration may be placed beside Body Changer NG's JSON at [b]Data\SKSE\Plugins\OBody_presetDistributionConfig.json[/b]. Keep both files under [b]Data\SKSE\Plugins[/b]; do not rename, merge, or replace [b]BodyChangerNGdistribution.json[/b]
 [*]The OBody file is never read automatically at startup. [b]Load saved values[/b] imports supported OBody distribution rules when the file exists, and [b]Register OBody NG outfit-correction rules[/b] in the Outfit · randomization window registers its supported outfit-correction data
 [*]Use only the distribution import, only the outfit-correction registration, or both, depending on which OBody NG rules you want. The original OBody JSON is read only and is never modified
@@ -149,8 +132,7 @@ Users who want to reuse OBody NG-format distribution conditions or outfit-correc
 
 [size=5][b]Compatibility[/b][/size]
 [list]
-[*]OBody NG is optional. Its distribution and outfit rules are imported only through explicit buttons
-[*]Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records, equipped slots, or OBody's JSON
+[*]Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records, or equipped slots
 [*]Body, Skin, and Tint selections are reapplied after RaceMenu closes
 [/list]
 
