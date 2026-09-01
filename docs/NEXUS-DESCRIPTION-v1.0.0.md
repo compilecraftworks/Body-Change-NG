@@ -177,8 +177,8 @@ schema-3 distribution JSON with eight editable starter exclusions.
 Body Changer NG is licensed under
 [**GNU GPLv3**](https://www.gnu.org/licenses/gpl-3.0.html). The complete source
 code, build scripts, and matching version tags are available on
-[**GitHub**](https://github.com/compilecraftworks/Body-Changer-NG). Beginning
-with version 1.0.0, Nexus provides the MO2-ready Release ZIP only.
+[**GitHub**](https://github.com/compilecraftworks/Body-Changer-NG). Nexus
+provides the MO2-ready Release ZIP only.
 
 Credits to the authors of CommonLibSSE-NG, Dear ImGui, pugixml,
 nlohmann/json, SKSE64, Address Library for SKSE Plugins, and RaceMenu. Detailed
