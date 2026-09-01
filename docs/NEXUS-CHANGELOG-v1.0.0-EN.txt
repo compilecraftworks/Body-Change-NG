@@ -1,4 +1,4 @@
-[b]Body Changer NG v1.0.0 — First Stable Public Release[/b]
+[color=#5FB8E8][b]Body Changer NG v1.0.0 — First Stable Public Release[/b][/color]
 
 [list]
 [*]Integrated BodySlide body morphs, per-actor skin textures, and player RaceMenu tint masks in one native in-game UI.
