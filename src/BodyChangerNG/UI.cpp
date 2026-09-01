@@ -2337,11 +2337,9 @@ namespace bcn::ui
         DrawOutfitPopup();
         DrawSettingsPopup();
         DrawTintDetailPopup();
-        // Tint keeps a face-oriented tab view. Its detailed value popup moves
-        // one step closer, then returns to the tab view when closed; leaving
-        // Tint restores the normal left/right presentation immediately.
-        bcn::menu_character::Presentation::Get().SetTintFocus(
-            g_activeTab == ActiveTab::tint, g_showTintDetails);
+        // Tint and its detailed value popup deliberately share one face view;
+        // leaving Tint restores the normal left/right presentation.
+        bcn::menu_character::Presentation::Get().SetTintFocus(g_activeTab == ActiveTab::tint);
         bcn::menu_character::Presentation::Get().UpdateRotationInteraction();
         ImGui::End();
     }

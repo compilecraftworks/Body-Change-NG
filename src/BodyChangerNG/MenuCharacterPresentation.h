@@ -18,7 +18,7 @@ namespace bcn::menu_character
 
         void Apply(CharacterPosition a_side, RE::Actor* a_actor);
         void Restore();
-        void SetTintFocus(bool a_tintTab, bool a_detailPopup);
+        void SetTintFocus(bool a_tintTab);
         void UpdateRotationInteraction();
 
     private:

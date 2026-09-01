@@ -9,7 +9,10 @@
 
 namespace
 {
-    constexpr auto kLeftCameraHorizontalOffset = 78.0F;
+    // Skyrim's third-person shoulder pivot is not screen-space symmetric.
+    // Keep the visually correct right framing and pull the left framing
+    // inward so the character is not pushed against the left edge.
+    constexpr auto kLeftCameraHorizontalOffset = 60.0F;
     constexpr auto kRightCameraHorizontalOffset = -78.0F;
     constexpr auto kCameraVerticalOffset = -30.0F;
     constexpr auto kCameraDistance = 150.0F;
@@ -17,18 +20,14 @@ namespace
     constexpr auto kPlayerPitch = 0.27F;
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
-    constexpr auto kTintCameraDistance = 75.0F;
-    constexpr auto kTintWorldFov = 55.0F;
-    // Raise the close-up camera center slightly so the presented character is
-    // lower in frame and the forehead is no longer crowded against the top.
-    constexpr auto kTintVerticalOffset = 8.0F;
-    constexpr auto kTintCameraSideMultiplier = 0.42F;
-    constexpr auto kTintPitchZoomOffset = 0.40F;
-    constexpr auto kTintDetailCameraDistance = 58.0F;
-    constexpr auto kTintDetailWorldFov = 45.0F;
-    constexpr auto kTintDetailVerticalOffset = 15.0F;
-    constexpr auto kTintDetailCameraSideMultiplier = 0.28F;
-    constexpr auto kTintDetailPitchZoomOffset = 0.46F;
+    // The Tint tab and its detail popup intentionally share one close-up so
+    // opening the picker cannot shift the character. A zero vertical offset
+    // raises the character substantially from the former detail value (15).
+    constexpr auto kTintCameraDistance = 58.0F;
+    constexpr auto kTintWorldFov = 45.0F;
+    constexpr auto kTintVerticalOffset = 0.0F;
+    constexpr auto kTintCameraSideMultiplier = 0.28F;
+    constexpr auto kTintPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
@@ -140,8 +139,7 @@ namespace bcn::menu_character
         {
             uninitialized,
             normal,
-            tab,
-            detail
+            tint
         };
 
         struct SavedSetting
@@ -237,8 +235,6 @@ namespace bcn::menu_character
         state_->side = side;
         state_->active = true;
         state_->rotating = false;
-        // Force the normal framing branch below on the first activation.  A
-        // freshly zero-initialized false value would otherwise make
         // Force the normal framing branch below on the first activation.
         state_->tintFocus = State::TintFocus::uninitialized;
 
@@ -259,15 +255,14 @@ namespace bcn::menu_character
         presentedActor->SetHeading(NormalizeAngle(GetCameraAlignedActorYaw(presentedActor, camera) - angleChange));
         if (state_->actorPitchModified) presentedActor->data.angle.x = kPlayerPitch;
         thirdPersonState->freeRotation = { NormalizeAngle(angleChange), 0.0F };
-        SetTintFocus(false, false);
+        SetTintFocus(false);
         SKSE::log::debug("Body Changer NG applied menu character presentation to {:08X}", presentedActor->GetFormID());
     }
 
-    void Presentation::SetTintFocus(const bool tintTab, const bool detailPopup)
+    void Presentation::SetTintFocus(const bool tintTab)
     {
         if (!state_ || !state_->active) return;
-        const auto focus = !tintTab ? State::TintFocus::normal :
-            detailPopup ? State::TintFocus::detail : State::TintFocus::tab;
+        const auto focus = tintTab ? State::TintFocus::tint : State::TintFocus::normal;
         if (state_->tintFocus == focus) return;
         state_->tintFocus = focus;
         auto* camera = RE::PlayerCamera::GetSingleton();
@@ -276,13 +271,10 @@ namespace bcn::menu_character
         if (!camera || !thirdPersonState || !presentedActor) return;
 
         const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
-        const auto horizontal = focus == State::TintFocus::detail ?
-            normalHorizontal * kTintDetailCameraSideMultiplier :
-            focus == State::TintFocus::tab ? normalHorizontal * kTintCameraSideMultiplier : normalHorizontal;
-        const auto vertical = focus == State::TintFocus::detail ? kTintDetailVerticalOffset :
-            focus == State::TintFocus::tab ? kTintVerticalOffset : kCameraVerticalOffset;
-        const auto distance = focus == State::TintFocus::detail ? kTintDetailCameraDistance :
-            focus == State::TintFocus::tab ? kTintCameraDistance : kCameraDistance;
+        const auto horizontal = focus == State::TintFocus::tint ?
+            normalHorizontal * kTintCameraSideMultiplier : normalHorizontal;
+        const auto vertical = focus == State::TintFocus::tint ? kTintVerticalOffset : kCameraVerticalOffset;
+        const auto distance = focus == State::TintFocus::tint ? kTintCameraDistance : kCameraDistance;
         state_->desiredPosOffset = { horizontal, 0.0F, vertical };
         if (auto* ini = RE::INISettingCollection::GetSingleton()) {
             const std::array settings{
@@ -305,10 +297,8 @@ namespace bcn::menu_character
         }
         thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
-        thirdPersonState->pitchZoomOffset = focus == State::TintFocus::detail ? kTintDetailPitchZoomOffset :
-            focus == State::TintFocus::tab ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
-        camera->GetRuntimeData2().worldFOV = focus == State::TintFocus::detail ? kTintDetailWorldFov :
-            focus == State::TintFocus::tab ? kTintWorldFov : kMenuWorldFov;
+        thirdPersonState->pitchZoomOffset = focus == State::TintFocus::tint ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
+        camera->GetRuntimeData2().worldFOV = focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov;
         // Camera::Update can touch the active game render pipeline. Running it
         // inside the native ImGui PostDisplay pass made the whole UI change
         // tone for a frame on DLSS/post-processing setups when switching the
