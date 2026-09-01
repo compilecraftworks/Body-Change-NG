@@ -13,6 +13,8 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+#include <vector>
+
 // Dear ImGui intentionally keeps this declaration behind an #if 0 in the
 // Win32 backend header so consumers that do not use Windows headers do not
 // inherit them. This translation unit already uses HWND/WPARAM directly.
@@ -53,6 +55,13 @@ namespace
     std::atomic_int g_rightMouseState{ -1 };
     std::atomic_bool g_wantsTextInput{};
     std::mutex g_rendererLock;
+    struct PendingTextInputKey
+    {
+        std::uint32_t scanCode{};
+        bool down{};
+    };
+    std::mutex g_textInputKeyLock;
+    std::vector<PendingTextInputKey> g_pendingTextInputKeys;
     ImGuiContext* g_context{};
     HWND g_window{};
     WNDPROC g_previousWindowProc{};
@@ -66,6 +75,12 @@ namespace
     bool g_characterRotationUnpauseActive{};
     bool g_skyrimTextInputAllowed{};
     float g_resolutionScale{ 1.0F };
+
+    void ClearPendingTextInputKeys() noexcept
+    {
+        std::scoped_lock lock(g_textInputKeyLock);
+        g_pendingTextInputKeys.clear();
+    }
 
     [[nodiscard]] float ResolutionScaleForHeight(const float height) noexcept
     {
@@ -103,6 +118,7 @@ namespace
         if (message == WM_KILLFOCUS ||
             (message == WM_ACTIVATEAPP && wParam == FALSE)) {
             g_wantsTextInput.store(false, std::memory_order_release);
+            ClearPendingTextInputKeys();
             bcn::text_input::Reset();
         }
         // A native IMenu has no Scaleform movie that forwards mouse-button
@@ -143,6 +159,7 @@ namespace
                 // Clear ImGui's cached keyboard state so Shift cannot turn
                 // subsequent vertical wheel input into horizontal scrolling.
                 ImGui::GetIO().ClearInputKeys();
+                ClearPendingTextInputKeys();
             }
             if (auto* controlMap = RE::ControlMap::GetSingleton()) {
                 controlMap->AllowTextInput(wantsText);
@@ -240,6 +257,106 @@ namespace
         case RE::GFxKey::kUp: return ImGuiKey_UpArrow;
         case RE::GFxKey::kDown: return ImGuiKey_DownArrow;
         default: return ImGuiKey_None;
+        }
+    }
+
+    [[nodiscard]] constexpr ImGuiKey ScanCodeToImGuiKey(const std::uint32_t scanCode) noexcept
+    {
+        switch (scanCode) {
+        case 0x01: return ImGuiKey_Escape;
+        case 0x02: return ImGuiKey_1;
+        case 0x03: return ImGuiKey_2;
+        case 0x04: return ImGuiKey_3;
+        case 0x05: return ImGuiKey_4;
+        case 0x06: return ImGuiKey_5;
+        case 0x07: return ImGuiKey_6;
+        case 0x08: return ImGuiKey_7;
+        case 0x09: return ImGuiKey_8;
+        case 0x0A: return ImGuiKey_9;
+        case 0x0B: return ImGuiKey_0;
+        case 0x0C: return ImGuiKey_Minus;
+        case 0x0D: return ImGuiKey_Equal;
+        case 0x0E: return ImGuiKey_Backspace;
+        case 0x0F: return ImGuiKey_Tab;
+        case 0x10: return ImGuiKey_Q;
+        case 0x11: return ImGuiKey_W;
+        case 0x12: return ImGuiKey_E;
+        case 0x13: return ImGuiKey_R;
+        case 0x14: return ImGuiKey_T;
+        case 0x15: return ImGuiKey_Y;
+        case 0x16: return ImGuiKey_U;
+        case 0x17: return ImGuiKey_I;
+        case 0x18: return ImGuiKey_O;
+        case 0x19: return ImGuiKey_P;
+        case 0x1A: return ImGuiKey_LeftBracket;
+        case 0x1B: return ImGuiKey_RightBracket;
+        case 0x1C: return ImGuiKey_Enter;
+        case 0x1D: return ImGuiKey_LeftCtrl;
+        case 0x1E: return ImGuiKey_A;
+        case 0x1F: return ImGuiKey_S;
+        case 0x20: return ImGuiKey_D;
+        case 0x21: return ImGuiKey_F;
+        case 0x22: return ImGuiKey_G;
+        case 0x23: return ImGuiKey_H;
+        case 0x24: return ImGuiKey_J;
+        case 0x25: return ImGuiKey_K;
+        case 0x26: return ImGuiKey_L;
+        case 0x27: return ImGuiKey_Semicolon;
+        case 0x28: return ImGuiKey_Apostrophe;
+        case 0x29: return ImGuiKey_GraveAccent;
+        case 0x2A: return ImGuiKey_LeftShift;
+        case 0x2B: return ImGuiKey_Backslash;
+        case 0x2C: return ImGuiKey_Z;
+        case 0x2D: return ImGuiKey_X;
+        case 0x2E: return ImGuiKey_C;
+        case 0x2F: return ImGuiKey_V;
+        case 0x30: return ImGuiKey_B;
+        case 0x31: return ImGuiKey_N;
+        case 0x32: return ImGuiKey_M;
+        case 0x33: return ImGuiKey_Comma;
+        case 0x34: return ImGuiKey_Period;
+        case 0x35: return ImGuiKey_Slash;
+        case 0x36: return ImGuiKey_RightShift;
+        case 0x38: return ImGuiKey_LeftAlt;
+        case 0x39: return ImGuiKey_Space;
+        case 0x3A: return ImGuiKey_CapsLock;
+        case 0x9C: return ImGuiKey_KeypadEnter;
+        case 0x9D: return ImGuiKey_RightCtrl;
+        case 0xB8: return ImGuiKey_RightAlt;
+        case 0xC7: return ImGuiKey_Home;
+        case 0xC8: return ImGuiKey_UpArrow;
+        case 0xC9: return ImGuiKey_PageUp;
+        case 0xCB: return ImGuiKey_LeftArrow;
+        case 0xCD: return ImGuiKey_RightArrow;
+        case 0xCF: return ImGuiKey_End;
+        case 0xD0: return ImGuiKey_DownArrow;
+        case 0xD1: return ImGuiKey_PageDown;
+        case 0xD2: return ImGuiKey_Insert;
+        case 0xD3: return ImGuiKey_Delete;
+        default: break;
+        }
+        if (scanCode >= 0x3B && scanCode <= 0x44) {
+            return static_cast<ImGuiKey>(ImGuiKey_F1 + (scanCode - 0x3B));
+        }
+        if (scanCode == 0x57) return ImGuiKey_F11;
+        if (scanCode == 0x58) return ImGuiKey_F12;
+        return ImGuiKey_None;
+    }
+
+    static_assert(ScanCodeToImGuiKey(0x0E) == ImGuiKey_Backspace);
+    static_assert(ScanCodeToImGuiKey(0xD3) == ImGuiKey_Delete);
+
+    void DrainTextInputKeys(ImGuiIO& io)
+    {
+        std::vector<PendingTextInputKey> pending;
+        {
+            std::scoped_lock lock(g_textInputKeyLock);
+            pending.swap(g_pendingTextInputKeys);
+        }
+        for (const auto& event : pending) {
+            if (const auto key = ScanCodeToImGuiKey(event.scanCode); key != ImGuiKey_None) {
+                io.AddKeyEvent(key, event.down);
+            }
         }
     }
 
@@ -543,6 +660,7 @@ namespace
                 io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
                 io.AddMouseButtonEvent(ImGuiMouseButton_Right, rightMouse != 0);
             }
+            DrainTextInputKeys(io);
             ImGui::NewFrame();
             SyncTextInput(false);
             if (g_renderCallback) g_renderCallback();
@@ -579,6 +697,7 @@ namespace
                 g_mouseWheelSteps = 0;
                 g_rightMouseState = -1;
                 g_wantsTextInput = false;
+                ClearPendingTextInputKeys();
                 bcn::text_input::Reset();
                 if (g_skyrimTextInputAllowed) {
                     if (auto* controlMap = RE::ControlMap::GetSingleton()) controlMap->AllowTextInput(false);
@@ -744,6 +863,13 @@ namespace bcn::native_ui
     void SubmitRightMouseButton(const bool down) noexcept
     {
         if (g_open) g_rightMouseState.store(down ? 1 : 0, std::memory_order_release);
+    }
+
+    void SubmitTextInputKey(const std::uint32_t scanCode, const bool down) noexcept
+    {
+        if (!g_open || !g_wantsTextInput.load(std::memory_order_acquire)) return;
+        std::scoped_lock lock(g_textInputKeyLock);
+        g_pendingTextInputKeys.push_back({ scanCode, down });
     }
 
     void SubmitEscape() noexcept

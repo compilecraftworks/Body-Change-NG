@@ -98,6 +98,14 @@ namespace
                     const auto scanCode = button->GetIDCode();
                     const bool release = button->IsUp();
 
+                    // PollInputDevices is upstream of the menu's Scaleform
+                    // key event. Preserve editing-key edges before removing
+                    // them from gameplay and shortcut sinks. Character/IME
+                    // input continues through GFxCharEvent separately.
+                    if (suppressionActive && (button->IsDown() || release)) {
+                        bcn::native_ui::SubmitTextInputKey(scanCode, !release);
+                    }
+
                     if (suppressionActive) {
                         if (g_swallowedUntilReleaseButtons.contains(scanCode)) {
                             blockEvent = true;

@@ -27,6 +27,20 @@ namespace
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
+    std::atomic_bool g_cameraUpdateQueued{};
+
+    void QueueCameraUpdate() noexcept
+    {
+        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
+        if (auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddTask([] {
+                g_cameraUpdateQueued.store(false, std::memory_order_release);
+                if (auto* camera = RE::PlayerCamera::GetSingleton()) camera->Update();
+            });
+            return;
+        }
+        g_cameraUpdateQueued.store(false, std::memory_order_release);
+    }
 
     [[nodiscard]] float NormalizeAngle(float angle)
     {
@@ -273,7 +287,11 @@ namespace bcn::menu_character
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
         thirdPersonState->pitchZoomOffset = enabled ? kFacePitchZoomOffset : kNormalPitchZoomOffset;
         camera->GetRuntimeData2().worldFOV = enabled ? kFaceWorldFov : kMenuWorldFov;
-        camera->Update();
+        // Camera::Update can touch the active game render pipeline. Running it
+        // inside the native ImGui PostDisplay pass made the whole UI change
+        // tone for a frame on DLSS/post-processing setups when switching the
+        // left/right presentation. Apply it on the game task instead.
+        QueueCameraUpdate();
         presentedActor->Update3DPosition(true);
     }
 
@@ -320,7 +338,7 @@ namespace bcn::menu_character
         }
         if (camera) {
             camera->GetRuntimeData2().worldFOV = state_->worldFov;
-            camera->Update();
+            QueueCameraUpdate();
         }
         state_->originalCameraState = nullptr;
         state_->presentedActorHandle.reset();
@@ -385,6 +403,6 @@ namespace bcn::menu_character
         presentedActor->SetHeading(NormalizeAngle(presentedActor->data.angle.z + delta));
         thirdPersonState->freeRotation.x = NormalizeAngle(thirdPersonState->freeRotation.x - delta);
         presentedActor->Update3DPosition(true);
-        camera->Update();
+        QueueCameraUpdate();
     }
 }

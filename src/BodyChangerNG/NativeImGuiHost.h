@@ -18,6 +18,11 @@ namespace bcn::native_ui
     // event. Queue the same button transition directly for ImGui so actor
     // rotation remains available while gameplay attack/block never sees it.
     void SubmitRightMouseButton(bool a_down) noexcept;
+    // TextInputFilter removes DirectInput keyboard events before gameplay and
+    // other shortcut sinks see them. Preserve the same press/release edge for
+    // ImGui so Backspace, Delete, navigation, and clipboard shortcuts keep
+    // working while an editable field owns keyboard input.
+    void SubmitTextInputKey(std::uint32_t a_scanCode, bool a_down) noexcept;
     // DirectInput reaches the SKSE input sink even when another UI menu has
     // intercepted the Scaleform key event.  Latch Escape here and consume it
     // once from the ImGui frame so every Body Changer NG window can close

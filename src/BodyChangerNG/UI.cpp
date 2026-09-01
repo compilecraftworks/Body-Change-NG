@@ -1948,9 +1948,16 @@ namespace
         if (!g_showSettings) return;
         const auto popupTitle = std::string{ Text("모드 설정", "Mod settings", "模组设置") } + "###SettingsPopup";
         ImGui::OpenPopup(popupTitle.c_str());
-        ImGui::SetNextWindowSize(DefaultWindowSize(700.0F, 520.0F), ImGuiCond_Appearing);
+        const auto settingsWidth = DefaultWindowSize(700.0F, 0.0F).x;
+        // The settings list is intentionally short enough to fit as one
+        // panel. Let ImGui derive its height from the localized wrapped text
+        // so the final reset/close row is visible without a scrollbar at the
+        // current 1080p/2K/4K scale.
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(settingsWidth, 0.0F), ImVec2(settingsWidth, FLT_MAX));
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showSettings,
-                ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar |
+                ImGuiWindowFlags_NoScrollWithMouse)) {
             if (EscapePressed()) {
                 g_showSettings = false;
                 bcn::InputSink::Get().CancelHotkeyCapture();
