@@ -1,0 +1,154 @@
+[center][size=6][b]Body Changer NG[/b][/size]
+Change BodySlide morphs, actor skin textures, and player RaceMenu tint layers from one native in-game UI.[/center]
+
+[size=5][b]Introduction[/b][/size]
+
+Body Changer NG supports direct player/NPC editing, save-specific actor results, top-down NPC distribution rules, RaceMenu rebuild recovery, and optional OBody NG rule compatibility without replacing meshes or silently taking over another mod's configuration.
+
+[size=5][b]How this differs from OBody NG[/b][/size]
+
+Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data. Body Changer NG does not swap in a separate body mesh. The difference is the selection, distribution, and state-management layer built above that shared morph pipeline.
+
+[list]
+[*][b]Native GUI instead of an MCM[/b] — press F7 to manage loaded actors, bodies, skins, player tint, and distribution rules in one scalable ImGui window
+[*][b]Actor-matched Body list[/b] — the main Body tab detects the selected actor's BodyFamily and prioritizes presets for that body family, so unrelated body types are not indiscriminately mixed into one list. If detection or preset classification is uncertain, the safe fallback keeps usable candidates visible instead of blocking the feature
+[*][b]Gamepad navigation[/b] — move through rows and tabs with the D-pad, then select or close with the primary and cancel face buttons
+[*][b]Isolated live preview[/b] — committed body, preview, and outfit correction use separate owned morph keys. Superseded rapid selections are discarded so an older task cannot overwrite the latest click
+[*][b]Explicit rule pools[/b] — choose exactly which body presets and skin packs each rule may distribute instead of automatically treating every installed preset as a candidate
+[*][b]Independent Body and Skin decisions[/b] — distribute or exclude either category while the other category continues to use its selected pool
+[*][b]Visible top-down priority[/b] — the first matching rule owns both decisions, making broad-to-specific ordering straightforward to inspect and edit
+[*][b]In-game distribution editing[/b] — edit targets, sex, priority, Body/Skin pools, and each category's distribute/exclude mode in the native GUI
+[*][b]Apply now or next launch[/b] — immediately reevaluate currently loaded NPCs, or save the edits for the next game launch without changing this session
+[*][b]Save-specific results without full repeat work[/b] — selected results and application signatures are kept in the SKSE co-save so unchanged actors do not need a complete redistribution on every load
+[*][b]One integrated workflow[/b] — actor skin overrides, player tint detail, RaceMenu rebuild recovery, and body distribution share the same UI and state model rather than being separate tools
+[*][b]Favorites[/b] — star Body presets, Skin packs, and Tint packs, then show only those favorites in each catalog
+[/list]
+
+[size=5][b]How this differs from the legacy BodyChange[/b][/size]
+
+The legacy [b]BodyChange - A Multi-Bodyshape System[/b] builds a separate body mesh for each CustomSet, then uses Papyrus to replace predeclared ESP Skin Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also requires the matching built mesh and records.
+
+Body Changer NG is not a port of that ESP/Papyrus system. It uses a different native SKSE architecture.
+
+[list]
+[*][b]Skin is independent of mesh sets[/b] — it keeps the actor's existing Skin Armor, HeadPart, and NIFs, and changes only supported texture channels on the exact loaded body, hand, foot, and face parts through RaceMenu/NiOverride
+[*][b]Body and Skin are freely composable[/b] — body shape is a BodyMorph preset; skin is a separate texture override. Either can change without forcing a matching copy of the other
+[*][b]No fixed CustomSet1-CustomSet20 slots[/b] — catalogs are built from the installed BodySlide XML files and skin/tint folders
+[*][b]Runtime installation and refresh[/b] — add a BodySlide XML file or a skin/tint folder while Skyrim is running, press that tab's Refresh button, and select it without rebuilding an ESP slot or restarting the game
+[*][b]Player and NPC support[/b] — direct selection, conditional NPC Body/Skin distribution, and save-specific evaluated results share one implementation
+[*][b]In-game rules with immediate distribution[/b] — edit conditions and pools without leaving Skyrim, then apply them to loaded NPCs immediately
+[*][b]Direct tint editing[/b] — choose player tint assets, immediately edit each layer's color and opacity, and restore an individual layer to the RaceMenu value captured before Body Changer NG changed it
+[/list]
+
+[size=5][b]Main features[/b][/size]
+
+[b]Body[/b]
+[list]
+[*]Select a loaded actor and apply compatible BodySlide presets immediately
+[*]Low/high-weight values are interpolated using the actor's current weight
+[*]Live preview, committed body, and outfit correction are isolated under separate Body Changer NG-owned morph keys
+[*]Conservative BodyFamily detection keeps the main list relevant without blocking uncertain presets or filtering distribution pools
+[*]Body application uses RaceMenu BodyMorph; no body mesh is generated or replaced while the game is running
+[/list]
+
+[b]Skin[/b]
+[list]
+[*]Apply independent skin packs to the player or a selected loaded NPC
+[*]Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire face, diffuse, normal, subsurface, specular, and detail textures
+[*]Cleanup is ownership-aware and does not delete another mod's texture keys
+[/list]
+
+[b]Player tint[/b]
+[list]
+[*]Install multiple tint packs and choose a pack from the Tint tab
+[*]The usable DDS for each layer is selected automatically for the player's race
+[*]Adjust color and opacity per layer immediately in game, or restore the exact RaceMenu value captured before Body Changer NG's first change
+[*]Tint is player-only and is rebuilt after leaving RaceMenu
+[/list]
+
+[b]NPC distribution[/b]
+[list]
+[*]Rules are evaluated from top to bottom; the first match owns Body and Skin
+[*]Body and Skin can be distributed or excluded independently
+[*]Targets include all NPCs, custom followers, elders, exact NPC base FormIDs, names, factions, plugins, and races
+[*]Choose one fixed preset/skin or multiple stable random choices per rule
+[*]Rules are portable in BodyChangerNGdistribution.json; evaluated actor results are kept in the SKSE co-save to avoid redistributing unchanged NPCs
+[*]Edit the rules in game and either distribute to loaded NPCs immediately or save the edits for the next game launch only
+[/list]
+
+[b]Outfit correction[/b]
+[list]
+[*]Optional breast correction while clothed with a separate nipple toggle
+[*]Optional stable nipple and genital slider randomization
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] OBody_presetDistributionConfig.json is a supported optional import source. Its file and assets are not redistributed with Body Changer NG
+[/list]
+
+[b]UI and input[/b]
+[list]
+[*]Korean, English, and Simplified Chinese UI
+[*]The default F7 menu hotkey can be rebound in Mod Settings, including Ctrl, Shift, and Ctrl+Shift combinations
+[*]Mouse, keyboard arrows/WASD, and gamepad D-pad navigation with gamepad confirm/cancel actions
+[*]Native IME text input, Backspace, searches, and Body/Skin/Tint favorites with favorites-only filtering
+[/list]
+
+[size=5][b]Requirements[/b][/size]
+[list]
+[*]Skyrim SE 1.5.97 or a verified Skyrim AE 1.6.x runtime through 1.6.1179
+[*]Matching SKSE64
+[*]Address Library for SKSE Plugins
+[*]RaceMenu with BodyMorph and NiOverride
+[/list]
+
+[size=5][b]Installation[/b][/size]
+[list=1]
+[*]Install the main archive with MO2.
+[*]Keep the included folder structure intact and enable the mod.
+[*]Launch through SKSE and press F7.
+[/list]
+
+[size=5][b]Adding Body Presets, Skin Packs, and Tint Packs[/b][/size]
+[list]
+[*][b]Body preset XML[/b] — place standard BodySlide preset XML files at [b]CalienteTools\BodySlide\SliderPresets\*.xml[/b] from the MO2 mod root.
+[*][b]Skin packs[/b] — create one folder per pack at [b]BodySkin\<pack name>\Textures\actors\character\...[/b], preserving the skin mod's original Textures tree and DDS files. Each <pack name> folder becomes one entry in the in-game catalog.
+[*][b]Tint packs[/b] — place RaceMenu tint-mask DDS files at [b]TintMask\<pack name>\textures\actors\character\character assets\tintmasks\*.dds[/b], preserving the tint-mask filenames and folders. Each <pack name> folder becomes one entry in the in-game catalog.
+[/list]
+
+These paths are relative to an MO2 mod root. Assets may be placed inside Body Changer NG or in separate enabled MO2 mods that provide the same virtual paths.
+
+You may add or replace BodySlide preset XML files, skin-pack folders, and tint-pack folders while the game is running. Open the corresponding Body, Skin, or Tint tab and press [b]Refresh[/b] to rescan the files and update the list without restarting the game.
+
+The archive includes README files in every user asset folder and a valid schema-3 distribution JSON with eight editable starter exclusions.
+
+[size=5][b]Distribution Rules, Outfit Correction, and JSON Backup[/b][/size]
+
+[b]NPC distribution rules[/b]
+[list]
+[*]Create and edit every condition in game; manual JSON editing is not required
+[*]Rules are evaluated from top to bottom, and the first matching rule controls Body and Skin. Either category can distribute selected entries, be excluded from distribution, or be left unchanged
+[*]Available targets include all NPCs, custom followers, elders, exact NPC base FormIDs, names, factions, plugins, and races
+[*]One selected body preset or skin pack is fixed; multiple selections produce a stable per-NPC random result
+[*][b]Distribute to loaded NPCs now[/b] saves the rules and checks currently loaded NPCs immediately. [b]Distribute on next game launch[/b] saves the edited rules without changing the active rules in the current session
+[/list]
+
+Body Changer NG stores these rules at [b]Data\SKSE\Plugins\BodyChangerNGdistribution.json[/b]. The in-game editor writes this file, so users do not need to edit it manually. To preserve your rules when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it back to the same path, then press [b]Load saved values[/b] in the NPC Distribution window.
+
+[b]Outfit correction and optional OBody NG JSON[/b]
+[list]
+[*]The Outfit · randomization window provides breast correction while clothed, a separate nipple-correction toggle, and stable nipple/genital shape randomization
+[*]An optional OBody NG configuration may be placed beside Body Changer NG's JSON at [b]Data\SKSE\Plugins\OBody_presetDistributionConfig.json[/b]. Keep both files under [b]Data\SKSE\Plugins[/b]; do not rename, merge, or replace [b]BodyChangerNGdistribution.json[/b]
+[*]The OBody file is never read automatically at startup. [b]Load saved values[/b] imports supported OBody distribution rules when the file exists, and [b]Register OBody NG outfit-correction rules[/b] in the Outfit · randomization window registers its supported outfit-correction data
+[*]The original OBody JSON is only read and is not modified. OBody NG itself is optional
+[/list]
+
+[size=5][b]Compatibility[/b][/size]
+[list]
+[*]OBody NG is optional. Its distribution and outfit rules are imported only through explicit buttons
+[*]Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records, equipped slots, or OBody's JSON
+[*]Body, Skin, and Tint selections are reapplied after RaceMenu closes
+[/list]
+
+[size=5][b]Credits & License[/b][/size]
+
+Body Changer NG is licensed under [url=https://www.gnu.org/licenses/gpl-3.0.html][b]GNU GPLv3[/b][/url]. The complete source code, build scripts, and matching version tags are available on [url=https://github.com/compilecraftworks/Body-Changer-NG][b]GitHub[/b][/url]. Nexus provides the MO2-ready Release ZIP only.
+
+Credits to the authors of SKSE64, Address Library for SKSE Plugins, and RaceMenu. Detailed third-party notices and license texts are included in the distribution ZIP. All respective rights belong to their original authors.

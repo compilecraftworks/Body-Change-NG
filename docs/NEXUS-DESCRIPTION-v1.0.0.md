@@ -126,6 +126,8 @@ native SKSE architecture:
 ### UI and input
 
 - Korean, English, and Simplified Chinese UI.
+- The default F7 menu hotkey can be rebound in Mod Settings, including Ctrl,
+  Shift, and Ctrl+Shift combinations.
 - Mouse, keyboard arrows/WASD, and gamepad D-pad navigation with gamepad
   confirm/cancel actions.
 - Native IME text input, Backspace, searches, Body/Skin/Tint favorites with
@@ -142,27 +144,71 @@ native SKSE architecture:
 
 1. Install the main archive with MO2.
 2. Keep the included folder structure intact and enable the mod.
-3. **Body preset XML:** place standard BodySlide preset files at
+3. Launch through SKSE and press F7.
+
+## Adding Body Presets, Skin Packs, and Tint Packs
+
+1. **Body preset XML:** place standard BodySlide preset files at
    `CalienteTools\BodySlide\SliderPresets\*.xml` from the MO2 mod root.
-4. **Skin packs:** create one folder per pack at
+2. **Skin packs:** create one folder per pack at
    `BodySkin\<pack name>\Textures\actors\character\...`, preserving the skin
    mod's original `Textures` tree and DDS files. Each `<pack name>` folder is
    one entry in the in-game catalog.
-5. **Tint packs:** create one folder per pack at
+3. **Tint packs:** create one folder per pack at
    `TintMask\<pack name>\textures\actors\character\character assets\tintmasks\*.dds`
    and keep the RaceMenu tint-mask filenames and folders intact. Each
    `<pack name>` folder is one entry in the in-game catalog.
-6. Launch through SKSE and press F7.
 
-All paths above are relative to the MO2 mod root. Assets may be placed inside
+These paths are relative to the MO2 mod root. Assets may be placed inside
 the Body Changer NG mod or in separate enabled MO2 mods that provide the same
 virtual paths.
 
-If Skyrim is already running, newly added BodySlide XML files and skin/tint
-folders are discovered by pressing the corresponding tab's **Refresh** button.
+You may add or replace BodySlide preset XML files, skin-pack folders, and
+tint-pack folders while the game is running. Open the corresponding Body,
+Skin, or Tint tab and press **Refresh** to rescan the files and update the list
+without restarting the game.
 
 The archive includes README files in every user asset folder and a valid
 schema-3 distribution JSON with eight editable starter exclusions.
+
+## Distribution Rules, Outfit Correction, and JSON Backup
+
+### NPC distribution rules
+
+- Create and edit every condition in game; manual JSON editing is not required.
+- Rules are evaluated from top to bottom, and the first matching rule controls
+  Body and Skin. Either category can distribute selected entries, be excluded
+  from distribution, or be left unchanged.
+- Available targets include all NPCs, custom followers, elders, exact NPC base
+  FormIDs, names, factions, plugins, and races.
+- One selected body preset or skin pack is fixed; multiple selections produce a
+  stable per-NPC random result.
+- **Distribute to loaded NPCs now** saves the rules and checks currently loaded
+  NPCs immediately. **Distribute on next game launch** saves the edited rules
+  without changing the active rules in the current session.
+
+Body Changer NG stores these rules at
+`Data\SKSE\Plugins\BodyChangerNGdistribution.json`. The in-game editor writes
+this file, so users do not need to edit it manually. To preserve your rules
+when reinstalling the mod, Skyrim, or an MO2 profile, back up this file, copy it
+back to the same path, then press **Load saved values** in the NPC Distribution
+window.
+
+### Outfit correction and optional OBody NG JSON
+
+- The **Outfit · randomization** window provides breast correction while
+  clothed, a separate nipple-correction toggle, and stable nipple/genital shape
+  randomization.
+- An optional OBody NG configuration may be placed beside Body Changer NG's
+  JSON at `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Keep both
+  files under `Data\SKSE\Plugins`; do not rename, merge, or replace
+  `BodyChangerNGdistribution.json`.
+- The OBody file is never read automatically at startup. **Load saved values**
+  imports supported OBody distribution rules when the file exists, and
+  **Register OBody NG outfit-correction rules** in the Outfit · randomization
+  window registers its supported outfit-correction data.
+- The original OBody JSON is only read and is not modified. OBody NG itself is
+  optional.
 
 ## Compatibility
 
@@ -180,8 +226,7 @@ code, build scripts, and matching version tags are available on
 [**GitHub**](https://github.com/compilecraftworks/Body-Changer-NG). Nexus
 provides the MO2-ready Release ZIP only.
 
-Credits to the authors of CommonLibSSE-NG, Dear ImGui, pugixml,
-nlohmann/json, SKSE64, Address Library for SKSE Plugins, and RaceMenu. Detailed
-third-party notices and license texts are included in the GitHub source
-release. All respective rights belong to their original authors. Referenced
-mods and compatible JSON files are not bundled with Body Changer NG.
+Credits to the authors of SKSE64, Address Library for SKSE Plugins, and
+RaceMenu. Detailed
+third-party notices and license texts are included in the distribution ZIP.
+All respective rights belong to their original authors.
