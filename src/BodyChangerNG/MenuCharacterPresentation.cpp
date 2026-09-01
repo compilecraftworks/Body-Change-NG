@@ -5,6 +5,13 @@
 
 #include <SKSE/Logger.h>
 
+namespace RE
+{
+    class ShadowSceneNode;
+}
+
+#include <RE/D/DrawWorld.h>
+
 #include <imgui.h>
 
 #include <cmath>
@@ -77,6 +84,15 @@ namespace
             }
         }
         return maximum;
+    }
+
+    void ApplyPresentationWorldFov(RE::PlayerCamera* camera, const float worldFov)
+    {
+        if (camera) camera->GetRuntimeData2().worldFOV = worldFov;
+        // PlayerCamera is the gameplay-side source. DrawWorld is consumed when
+        // the render camera updates its projection; a pausing menu can freeze
+        // that value before it observes PlayerCamera's new FOV.
+        RE::DrawWorld::GetSingleton().worldFOV = worldFov;
     }
 
     [[nodiscard]] RE::NiPoint3 ProjectVector(const RE::NiPoint3& vector, const RE::NiPoint3& axis)
@@ -274,6 +290,8 @@ namespace bcn::menu_character
         float currentZoomOffset{};
         float pitchZoomOffset{};
         float worldFov{};
+        float drawWorldFov{};
+        bool hasDrawWorldFov{};
         bool freeRotationEnabled{};
         bool toggleAnimCam{};
         bool headTrackingEnabled{};
@@ -338,6 +356,8 @@ namespace bcn::menu_character
         state_->currentZoomOffset = thirdPersonState->currentZoomOffset;
         state_->pitchZoomOffset = thirdPersonState->pitchZoomOffset;
         state_->worldFov = camera->GetRuntimeData2().worldFOV;
+        state_->drawWorldFov = RE::DrawWorld::GetSingleton().worldFOV;
+        state_->hasDrawWorldFov = true;
         state_->freeRotationEnabled = thirdPersonState->freeRotationEnabled;
         state_->toggleAnimCam = thirdPersonState->toggleAnimCam;
         state_->side = side;
@@ -418,7 +438,8 @@ namespace bcn::menu_character
         thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
         thirdPersonState->pitchZoomOffset = focus == State::TintFocus::tint ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
-        camera->GetRuntimeData2().worldFOV = focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov;
+        ApplyPresentationWorldFov(camera,
+            focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov);
         // Camera::Update can touch the active game render pipeline. Running it
         // inside the native ImGui PostDisplay pass made the whole UI change
         // tone for a frame on DLSS/post-processing setups when switching the
@@ -470,6 +491,9 @@ namespace bcn::menu_character
         for (const auto& [setting, originalValue] : state_->cameraSettings) {
             if (setting) setting->data.f = originalValue;
         }
+        if (state_->hasDrawWorldFov) {
+            RE::DrawWorld::GetSingleton().worldFOV = state_->drawWorldFov;
+        }
         if (camera) {
             camera->GetRuntimeData2().worldFOV = state_->worldFov;
             QueueCameraUpdate(CameraZoomUpdate::restoreSaved,
@@ -499,6 +523,8 @@ namespace bcn::menu_character
         state_->cameraSettleFrames = 0U;
         state_->cameraSettleStableFrames = 0U;
         state_->cameraSettleCompletionRequest = 0U;
+        state_->drawWorldFov = 0.0F;
+        state_->hasDrawWorldFov = false;
         state_->tintFocus = State::TintFocus::uninitialized;
         state_->active = false;
         smoothcam::ReleaseCameraControl();
@@ -543,10 +569,12 @@ namespace bcn::menu_character
                     thirdPersonState->translation - state_->settledStateTranslation);
                 SKSE::log::info(
                     "Post-pause Body Changer NG camera delta: rootPos={:.4f}, rootRot={:.6f}, "
-                    "stateTranslation={:.4f}, zoom={:.4f}->{:.4f} (settled {:.4f}->{:.4f})",
+                    "stateTranslation={:.4f}, zoom={:.4f}->{:.4f} (settled {:.4f}->{:.4f}), "
+                    "playerFov={:.2f}, drawWorldFov={:.2f}",
                     rootPositionDelta, rootRotationDelta, stateTranslationDelta,
                     thirdPersonState->currentZoomOffset, thirdPersonState->targetZoomOffset,
-                    state_->settledCurrentZoomOffset, state_->settledTargetZoomOffset);
+                    state_->settledCurrentZoomOffset, state_->settledTargetZoomOffset,
+                    camera->GetRuntimeData2().worldFOV, RE::DrawWorld::GetSingleton().worldFOV);
             }
             state_->cameraPauseVerifyPending = false;
         }
@@ -643,8 +671,8 @@ namespace bcn::menu_character
                 auto handle = state_->presentedActorHandle.native_handle();
                 SetCameraHandle(thirdPersonState, handle);
             }
-            camera->GetRuntimeData2().worldFOV = state_->tintFocus == State::TintFocus::tint ?
-                kTintWorldFov : kMenuWorldFov;
+            ApplyPresentationWorldFov(camera, state_->tintFocus == State::TintFocus::tint ?
+                kTintWorldFov : kMenuWorldFov);
             // Camera::Update stays on the game task so DLSS/post-processing
             // cannot tint the native ImGui pass. Sample only after that exact
             // snap/update request has completed.
@@ -680,6 +708,8 @@ namespace bcn::menu_character
             auto handle = state_->presentedActorHandle.native_handle();
             SetCameraHandle(thirdPersonState, handle);
         }
+        ApplyPresentationWorldFov(camera, state_->tintFocus == State::TintFocus::tint ?
+            kTintWorldFov : kMenuWorldFov);
         if (!state_->rotating || io.MouseDelta.x == 0.0F) return;
         const auto delta = std::clamp(-io.MouseDelta.x * kMouseRotationRadiansPerPixel,
             -kMaxMouseRotationRadiansPerFrame, kMaxMouseRotationRadiansPerFrame);
