@@ -26,7 +26,10 @@ namespace
     constexpr auto kTintCameraDistance = 58.0F;
     constexpr auto kTintWorldFov = 45.0F;
     constexpr auto kTintVerticalOffset = 0.0F;
-    constexpr auto kTintCameraSideMultiplier = 0.28F;
+    // Preserve approximately the same screen-space side placement while the
+    // camera changes from distance 150/FOV 90 to distance 58/FOV 45. Without
+    // this projection-aware reduction, zooming pushes the actor farther out.
+    constexpr auto kTintCameraSideMultiplier = 0.16F;
     constexpr auto kTintPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
