@@ -1,8 +1,39 @@
 # Body Changer NG
 
-GPL-3.0-licensed native SKSE body, skin, and player tint manager for Skyrim
-SE, AE, and VR. Its ImGui window is opened with F7 by default (the shortcut
-supports modifier chords and is configurable in-game).
+Body Changer NG is a GPL-3.0 native SKSE manager for BodySlide morphs, actor
+skin textures, and the player's RaceMenu tint layers. It combines direct
+in-game selection with rule-based NPC distribution in one scalable ImGui UI.
+The window opens with F7 by default; modifier chords are supported and the
+shortcut is configurable in-game.
+
+Version 1.0.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+1.6.x runtimes through 1.6.1179. The unified binary contains VR-compatible
+CommonLib code, but its native renderer/input hooks deliberately fail closed on
+VR until VR-specific layouts are verified.
+
+## Requirements
+
+- SKSE64 matching the installed Skyrim runtime
+- Address Library for SKSE Plugins matching the installed runtime
+- RaceMenu with BodyMorph and NiOverride support
+- BodySlide presets built with **Build Morphs** for body changes
+- Compatible body/outfit TRI data for visible body and outfit correction
+
+SmoothCam and OBody NG are optional. SmoothCam camera control is requested
+through its public API when present. OBody NG is used only when the user
+explicitly imports distribution or outfit-correction rules; its JSON is never
+silently loaded at startup.
+
+## Installation
+
+Install the release archive with MO2 or another mod manager. Keep the included
+folder structure intact, enable the mod, and launch through SKSE. Put personal
+assets in the included folders and press the corresponding in-game **Refresh**
+button after adding files:
+
+- `CalienteTools\BodySlide\SliderPresets` — BodySlide preset XML files
+- `BodySkin\<pack name>\Textures` — skin texture packs
+- `TintMask\<pack name>\textures\...\tintmasks` — player tint DDS packs
 
 ## Runtime UI
 
@@ -16,13 +47,12 @@ supports modifier chords and is configurable in-game).
   not require Windows' optional “Beta: Use Unicode UTF-8” system-locale mode.
 - In SE/AE third-person view, **Character position while open** can frame the
   selected actor on the left or right without moving their world position.
-  Right-drag the outer character area to rotate them. Camera, facing, and the
-  exact pause contribution owned by this menu are restored on target change or
-  close. The presentation safely disables itself on VR until a VR-specific
-  camera-state layout is verified.
-- With **Pause game while open**, right-drag briefly releases only this menu's
-  pause count while dragging so SMP can advance; it restores immediately when
-  dragging stops, focus is lost, or the menu closes.
+  The normal framing uses FOV 70, distance 200, symmetric horizontal offsets
+  ±70, vertical offset -45, and pitch 0.1. Right-drag the outer character area
+  to rotate. While paused, the menu orbits only its camera so FSMP bones are not
+  separated from the actor root; while unpaused, actor and camera rotate
+  together. Camera target, facing, offsets, FOV, projection frustum, and both
+  current and target zoom are restored on target change or close.
 - The actor selector searches every currently loaded, rendered NPC by name or
   hexadecimal FormID and labels entries as `Name, Sex (FormID)`.
 - Body, skin, and tint-pack rows update the live actor on one click. A
@@ -90,12 +120,25 @@ then its per-layer detail edits and original-value restores. A default selection
 leaves that category under RaceMenu's ownership instead of reintroducing an old
 override.
 
+Actor results are stored in the SKSE co-save with resolvable actor references,
+so unchanged NPCs are not fully redistributed every time a save loads. Rules
+remain global in `BodyChangerNGdistribution.json`; evaluated actor results are
+save-specific. New or changed actors are coalesced through a handle-based work
+queue, and detached actors do not leave stale preview or apply generations.
+
 The outfit popup can explicitly register OBody NG's complete ORefit rule set
 from `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Outfit-name,
 plugin and FormID exclusions, name and FormID force-refit entries, and the
 female/male outfit-to-refit-preset mappings are imported without modifying the
 OBody source file. An outfit-specific mapping is evaluated before the current
 body's `-Refit` preset, the sex-wide fallback, and the procedural fallback.
+
+## Source and license
+
+Body Changer NG is released under GPL-3.0. The Git repository uses pinned
+submodules; each GitHub release also provides a complete source archive with
+the vendored dependency sources and applicable licenses needed to reproduce
+the release build. Exact versions are listed in `DEPENDENCIES.md`.
 
 ## Credits
 

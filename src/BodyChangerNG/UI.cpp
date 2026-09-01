@@ -2129,7 +2129,11 @@ namespace bcn::ui
             return;
         }
         if (const auto* viewport = ImGui::GetMainViewport()) {
-            ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+            // Leave the left half of the viewport available for the default
+            // left-side character presentation.  Anchor the window's left
+            // edge at the work-area center while keeping it vertically
+            // centered; ImGui still clamps the window on smaller displays.
+            ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(0.0F, 0.5F));
         }
     }
 

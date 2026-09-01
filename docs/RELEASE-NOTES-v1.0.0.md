@@ -1,0 +1,55 @@
+# Body Changer NG v1.0.0
+
+Body Changer NG v1.0.0 is the first stable public release of the native SKSE
+body, skin, and player tint manager.
+
+## Highlights
+
+- Change BodySlide morphs and persistent skin textures for the player or a
+  selected loaded NPC from one in-game UI.
+- Apply player RaceMenu tint packs, edit color/opacity by layer, and restore the
+  captured original values.
+- Build top-down body/skin NPC distribution rules with independent distribute
+  and exclude modes.
+- Keep evaluated actor results in the SKSE co-save while rules remain in a
+  portable global JSON.
+- Reapply committed body, skin, and tint state after RaceMenu closes.
+- Register OBody NG distribution and complete outfit-correction compatibility
+  only when requested.
+- Use Korean, English, or Simplified Chinese UI with mouse, keyboard, and
+  gamepad navigation at resolutions through 4K.
+
+## Camera and input
+
+The optional third-person presentation uses symmetric left/right framing and a
+separate tint close-up. It restores the original camera target, position,
+facing, FOV, projection, and current/target zoom on actor change or menu close.
+Paused right-drag orbits the camera rather than rotating the actor root, which
+avoids FSMP stretching without modifying Skyrim's pause counter. SmoothCam is
+optional and accessed only through its public API.
+
+A new installation opens unpaused and frames the character on the left by
+default. Existing saved preferences continue to take priority.
+
+## Files
+
+- `Body Changer NG v1.0.0.zip` — installable MO2 archive
+- `Body Changer NG v1.0.0 Source.zip` — complete corresponding source with
+  pinned vendored dependencies and licenses
+
+## Requirements
+
+- Skyrim SE 1.5.97 or a verified Skyrim AE 1.6.x runtime through 1.6.1179
+- Matching SKSE64 and Address Library
+- RaceMenu with BodyMorph/NiOverride
+- BodySlide Build Morphs and compatible TRI data for body/outfit morphing
+
+VR-specific native UI layouts are not yet verified and therefore fail closed.
+
+## Upgrade notes
+
+This is the first public baseline. Existing private 0.2.x testers may install
+v1.0.0 over the previous Body Changer NG mod. Keep personal `BodySkin`,
+`TintMask`, and SliderPresets assets in separate enabled MO2 mods when possible
+so replacing the main archive cannot remove them. The schema-3 distribution
+file is compatible with the final 0.2.x validation builds.

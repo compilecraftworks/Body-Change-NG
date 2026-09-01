@@ -42,19 +42,18 @@ namespace bcn
     {
         input::HotkeyChord openHotkey{};
         UiLanguage language{ UiLanguage::automatic };
-        // Match SFS's safe, user-facing default: frame the character to the
-        // right when third-person presentation is available. The user can
-        // choose Disabled or Left in Mod Settings at any time.
-        CharacterPosition characterPosition{ CharacterPosition::right };
+        // Keep the character in the open left half of the screen on a new
+        // installation. The user can choose Disabled or Right at any time.
+        CharacterPosition characterPosition{ CharacterPosition::left };
         // One scale controls both glyphs and the surrounding controls so the
         // complete interface remains proportional at every resolution.
         float textScale{ 1.0F };
-        // No saved position means the first installation: the UI opens in the
-        // center and records that placement for later sessions.
+        // No saved position means the first installation: the UI opens with
+        // its left edge at screen center and records that placement later.
         bool mainWindowPositionSet{};
         float mainWindowPositionX{};
         float mainWindowPositionY{};
-        bool pauseGameWhenOpen{ true };
+        bool pauseGameWhenOpen{ false };
         bool performanceMode{ true };
         bool orefitEnabled{ true };
         bool orefitNippleMorphing{ true };

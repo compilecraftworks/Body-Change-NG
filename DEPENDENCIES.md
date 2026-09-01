@@ -1,6 +1,6 @@
 # Pinned build dependencies
 
-Body Changer NG v0.2.17 is built with xmake 3.1.0 and the exact dependency
+Body Changer NG v1.0.0 is built with xmake 3.1.0 and the exact dependency
 closure below. `xmake-requires.lock` remains authoritative for xmake packages
 and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
