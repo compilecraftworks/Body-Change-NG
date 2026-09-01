@@ -33,10 +33,10 @@ namespace
     // sides remain symmetric. Use a separate positive vertical offset for the
     // close-up: lowering camera PosZ moves the rendered actor upward, while a
     // higher PosZ brings the player's face down into the visible frame.
-    constexpr auto kTintCameraDistance = 100.0F;
+    constexpr auto kTintCameraDistance = 80.0F;
     constexpr auto kTintCameraScale = kTintCameraDistance / kCameraDistance;
     constexpr auto kTintWorldFov = kMenuWorldFov;
-    constexpr auto kTintVerticalOffset = 20.0F;
+    constexpr auto kTintVerticalOffset = 10.0F;
     constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kNormalPitchZoomOffset = 0.1F;
