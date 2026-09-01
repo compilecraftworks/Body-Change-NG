@@ -25,14 +25,6 @@ namespace
         return value;
     }
 
-    [[nodiscard]] bool IsClothedSet(const std::string& value)
-    {
-        constexpr std::array markers{ "cloth"sv, "outfit"sv, "nevernude"sv, "bikini"sv,
-            "feet"sv, "hands"sv, "push"sv, "cleavage"sv, "armor"sv };
-        const auto lowered = ToLowerAscii(value);
-        return std::ranges::any_of(markers, [&lowered](const auto marker) { return lowered.contains(marker); });
-    }
-
     [[nodiscard]] bool IsUnpSet(const std::string& value)
     {
         const auto lowered = ToLowerAscii(value);
@@ -72,7 +64,11 @@ namespace
         const auto name = std::string(node.attribute("name").as_string());
         const auto bodySet = std::string(node.attribute("set").as_string());
         const auto isRefit = name.ends_with("-Refit");
-        if (name.empty() || (!isRefit && (IsClothedSet(name) || IsClothedSet(bodySet) || IsClothedSet(source)))) return std::nullopt;
+        // Preset packs are frequently distributed inside outfit mods, and
+        // valid reusable body presets often retain the outfit project name in
+        // their name, set or source path.  Never discard a preset merely
+        // because any of those strings contain clothing-related words.
+        if (name.empty()) return std::nullopt;
 
         const auto classification = bcn::body_family::ClassifyPreset(bodySet, name, source);
 

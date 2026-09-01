@@ -58,7 +58,10 @@ int main(const int argc, char** argv)
                << "<Preset name='CBBE Classic' set='CBBE'>"
                << "<SetSlider name='Waist' value='20' size='small'/>"
                << "</Preset>"
-               << "<Preset name='HIMBO Strong' set='HIMBO'/></SliderPresets>";
+               << "<Preset name='HIMBO Strong' set='HIMBO'/>"
+               << "<Preset name='HIMBO Daddy (Clothes)' set='HIMBO'/>"
+               << "<Preset name='Reusable Outfit Body' set='CBBE Bikini Armor Cuirass Dress Panty Overalls NeverNude Feet Hands Push Cleavage'/>"
+               << "</SliderPresets>";
     }
     {
         std::ofstream fallback(root / "single.xml");
@@ -74,8 +77,13 @@ int main(const int argc, char** argv)
                << "<Preset name='Dual Female' set='CBBE BHUNP'/></SliderPresets>";
     }
 
+    {
+        std::ofstream preset(root / "Nested" / "Clothes Outfit Bikini Armor Cuirass Dress Panty Overalls.xml");
+        preset << "<SliderPresets><Preset name='Reusable Preset From Outfit Mod' set='CBBE'/></SliderPresets>";
+    }
+
     const auto presets = bcn::PresetCatalog::ScanDirectory(root);
-    if (!Require(presets.size() == 7U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
+    if (!Require(presets.size() == 10U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
     const auto find = [&](const std::string_view name) {
         return std::ranges::find(presets, name, &bcn::BodyPreset::name);
     };
@@ -90,6 +98,13 @@ int main(const int argc, char** argv)
             "CBBE was not merged into the displayed CBBE 3BA family")) return 1;
     const auto himbo = find("HIMBO Strong");
     if (!Require(himbo != presets.end() && himbo->family == "HIMBO" && himbo->male, "HIMBO preset classification failed")) return 1;
+    const auto himboClothes = find("HIMBO Daddy (Clothes)");
+    if (!Require(himboClothes != presets.end() && himboClothes->family == "HIMBO" && himboClothes->male &&
+            !himboClothes->isRefit, "HIMBO (Clothes) preset was hidden or moved out of the main catalog")) return 1;
+    if (!Require(find("Reusable Outfit Body") != presets.end(),
+            "clothing words in a BodySlide set hid a reusable preset")) return 1;
+    if (!Require(find("Reusable Preset From Outfit Mod") != presets.end(),
+            "clothing words in an XML source path hid a reusable preset")) return 1;
     if (!Require(find("Common Only")->family == "Unclassified", "common sliders incorrectly classified a body family")) return 1;
     if (!Require(find("3BBB Only")->family == "Unclassified", "3BBB-only preset incorrectly classified a body family")) return 1;
     if (!Require(find("UBE Anus 3BA")->family == "CBBE 3BA", "UBE Anus incorrectly replaced the 3BA family")) return 1;
