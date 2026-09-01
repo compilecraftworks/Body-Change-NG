@@ -45,15 +45,15 @@ shared morph pipeline:
 - **Favorites:** star Body presets, Skin packs, and Tint packs, then show only
   those favorites in each catalog.
 
-## How this differs from the legacy BodyChange
+## How this differs from legacy mesh-slot systems
 
-The legacy **BodyChange - A Multi-Bodyshape System** builds a separate body
-mesh for each `CustomSet`, then uses Papyrus to replace predeclared ESP Skin
-Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also
-requires the matching built mesh and records.
+Legacy mesh-slot systems build a separate body mesh for each predefined slot,
+then use Papyrus to replace prepared ESP Skin Armor, HeadPart, and TextureSet
+records as a unit. A skin slot therefore also requires its matching built mesh
+and records.
 
-Body Changer NG is not a port of that ESP/Papyrus system. It uses a different
-native SKSE architecture:
+Body Changer NG instead uses a native SKSE architecture without predefined ESP
+body slots:
 
 - **Skin is independent of mesh sets:** it keeps the actor's existing Skin
   Armor, HeadPart, and NIFs, and changes only supported texture channels on the

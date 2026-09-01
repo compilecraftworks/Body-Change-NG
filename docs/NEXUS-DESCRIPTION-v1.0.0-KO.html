@@ -45,9 +45,9 @@
       <li><strong>즐겨찾기</strong> — 바디 프리셋, 스킨팩, 틴트팩을 별표로 저장하고 즐겨찾기만 모아 보기</li>
     </ul>
 
-    <h2>기존 BodyChange와 무엇이 다른가</h2>
-    <p>기존 BodyChange - A Multi-Bodyshape System은 CustomSet마다 별도 바디 메시를 BodySlide로 출력하고, ESP에 준비된 Skin Armor·HeadPart·TextureSet을 Papyrus로 통째로 교체하는 방식입니다. 따라서 스킨 세트를 쓰려면 그 슬롯에 맞는 메시와 레코드도 함께 준비해야 했습니다.</p>
-    <p>Body Changer NG는 기존 BodyChange의 포트나 ESP 확장이 아니라 구현 구조가 다른 네이티브 SKSE 모드입니다.</p>
+    <h2>기존 메시 슬롯 방식과 무엇이 다른가</h2>
+    <p>기존 메시 슬롯 방식은 미리 정한 슬롯마다 별도 바디 메시를 BodySlide로 출력하고, ESP에 준비된 Skin Armor·HeadPart·TextureSet을 Papyrus로 통째로 교체합니다. 따라서 스킨 세트를 쓰려면 해당 슬롯에 맞는 메시와 레코드도 함께 준비해야 합니다.</p>
+    <p>Body Changer NG는 미리 정의된 ESP 바디 슬롯을 사용하지 않는 네이티브 SKSE 구조입니다.</p>
     <ul>
       <li><strong>스킨과 메시를 분리</strong> — Skin Armor, HeadPart, NIF를 세트마다 교체하지 않고 현재 액터가 실제로 로드한 바디·손·발·얼굴 파트의 텍스처 채널만 RaceMenu/NiOverride로 변경</li>
       <li><strong>바디와 스킨을 자유롭게 조합</strong> — 바디는 BodyMorph 프리셋, 스킨은 텍스처 오버라이드로 독립 적용하므로 같은 스킨에 다른 체형을 사용하거나 같은 체형에 다른 스킨을 사용 가능</li>

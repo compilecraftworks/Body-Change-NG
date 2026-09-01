@@ -33,11 +33,11 @@ Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data
 [*][b]One integrated workflow[/b] — actor skins, player tint detail, RaceMenu rebuild recovery, favorites, and NPC distribution share the same UI and state model
 [/list]
 
-[size=4][color=#9AD7F5][b]Compared with BodyChange - A Multi-Bodyshape System[/b][/color][/size]
+[size=4][color=#9AD7F5][b]Compared with Legacy Mesh-Slot Systems[/b][/color][/size]
 
-The legacy BodyChange builds a separate body mesh for each CustomSet, then uses Papyrus to replace predeclared ESP Skin Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also requires its matching built mesh and records.
+Legacy mesh-slot systems build a separate body mesh for each predefined slot, then use Papyrus to replace prepared ESP Skin Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also requires its matching built mesh and records.
 
-Body Changer NG is not a port of that ESP/Papyrus system. It uses a different native SKSE architecture.
+Body Changer NG instead uses a native SKSE architecture without predefined ESP body slots.
 
 [list]
 [*][b]Skin is independent of mesh sets[/b] — the actor keeps its existing Skin Armor, HeadPart, and NIFs while supported texture channels are changed on the loaded body, hands, feet, and face through RaceMenu/NiOverride
