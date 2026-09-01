@@ -26,10 +26,11 @@ namespace
     constexpr auto kTintCameraDistance = 58.0F;
     constexpr auto kTintWorldFov = 45.0F;
     constexpr auto kTintVerticalOffset = 0.0F;
-    // Preserve approximately the same screen-space side placement while the
-    // camera changes from distance 150/FOV 90 to distance 58/FOV 45. Without
-    // this projection-aware reduction, zooming pushes the actor farther out.
-    constexpr auto kTintCameraSideMultiplier = 0.16F;
+    // The right close-up already lands correctly. On the left, compensate for
+    // the third-person shoulder pivot and the narrower FOV so zooming does not
+    // push the actor out through the screen edge.
+    constexpr auto kLeftTintCameraSideMultiplier = 0.16F;
+    constexpr auto kRightTintCameraSideMultiplier = 0.28F;
     constexpr auto kTintPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
@@ -274,8 +275,10 @@ namespace bcn::menu_character
         if (!camera || !thirdPersonState || !presentedActor) return;
 
         const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
+        const auto tintSideMultiplier = state_->side == CharacterPosition::left ?
+            kLeftTintCameraSideMultiplier : kRightTintCameraSideMultiplier;
         const auto horizontal = focus == State::TintFocus::tint ?
-            normalHorizontal * kTintCameraSideMultiplier : normalHorizontal;
+            normalHorizontal * tintSideMultiplier : normalHorizontal;
         const auto vertical = focus == State::TintFocus::tint ? kTintVerticalOffset : kCameraVerticalOffset;
         const auto distance = focus == State::TintFocus::tint ? kTintCameraDistance : kCameraDistance;
         state_->desiredPosOffset = { horizontal, 0.0F, vertical };
