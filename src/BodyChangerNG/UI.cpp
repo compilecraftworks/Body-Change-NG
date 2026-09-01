@@ -1586,11 +1586,11 @@ namespace
             ImGui::TextWrapped("%s", Text("위에서부터 평가합니다. 처음 일치한 배포 규칙의 바디·스킨만 사용하며, 비어 있는 경우 해당 항목을 바꾸지 않습니다.", "Rules are evaluated top-down. Only the body and skin settings from the first matching rule are used; an empty item is left unchanged.", "规则从上至下评估。只使用第一条匹配规则的身体与皮肤设置；空项目保持不变。"));
             ImGui::PopStyleColor();
             ImGui::Separator();
-            const auto ruleListWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.30F,
-                Scaled(240.0F), Scaled(300.0F));
+            const auto ruleListWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.36F,
+                Scaled(280.0F), Scaled(380.0F));
             if (ImGui::BeginTable("DistributionEditor", 2,
                     ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV |
-                    ImGuiTableFlags_NoSavedSettings, ImVec2(0.0F, -Scaled(96.0F)))) {
+                    ImGuiTableFlags_Resizable, ImVec2(0.0F, -Scaled(96.0F)))) {
                 ImGui::TableSetupColumn(Text("규칙 우선순위", "Rule priority", "规则优先级"),
                     ImGuiTableColumnFlags_WidthFixed, ruleListWidth);
                 ImGui::TableSetupColumn(Text("선택한 규칙", "Selected rule", "当前规则"), ImGuiTableColumnFlags_WidthStretch);
