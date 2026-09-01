@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Changer NG v1.0.0 업데이트 히스토리</title>
+  <style>
+    :root { color-scheme: dark; font-family: "Noto Sans KR", "Malgun Gothic", sans-serif; }
+    body { max-width: 900px; margin: 0 auto; padding: 32px; line-height: 1.7; color: #e8edf2; background: #17232d; }
+    h1 { text-align: center; color: #fff; border-bottom: 1px solid #496274; padding-bottom: 1rem; }
+    h2 { margin-top: 2rem; color: #9fd8ff; }
+    li { margin: .45rem 0; }
+  </style>
+</head>
+<body>
+  <h1>Body Changer NG 업데이트 히스토리</h1>
+
+  <h2>0.1.x — 핵심 적용 기반</h2>
+  <ul>
+    <li>RaceMenu BodyMorph를 이용한 바디 프리셋 적용 기반을 구성했습니다.</li>
+    <li>라이브 액터의 텍스처를 바꾸는 스킨 적용 경로와 기본 ImGui UI를 만들었습니다.</li>
+    <li>F7 단축키, 설정 저장, 해상도별 UI 배율의 초기 구조를 확립했습니다.</li>
+  </ul>
+
+  <h2>0.2.0–0.2.3 — 틴트와 NPC 배포</h2>
+  <ul>
+    <li>플레이어 RaceMenu 틴트팩과 원본 레이어 복원을 추가했습니다.</li>
+    <li>주변 액터 선택과 NPC별 바디·스킨 적용을 추가했습니다.</li>
+    <li>위에서부터 평가하는 첫 일치 배포 규칙과 바디·스킨 독립 풀을 도입했습니다.</li>
+    <li>실행 중 추가한 XML·스킨·틴트 폴더를 새로고침으로 다시 읽도록 카탈로그 경로를 정리했습니다.</li>
+  </ul>
+
+  <h2>0.2.4–0.2.10 — UI와 텍스트 입력 안정화</h2>
+  <ul>
+    <li>한국어·영어·중국어 UTF-8 UI와 Windows IME 입력을 안정화했습니다.</li>
+    <li>Backspace, 한글 조합, 텍스트 포커스 중 게임 단축키 차단을 정리했습니다.</li>
+    <li>마우스 한 번 클릭 실시간 선택, 더블클릭 확정, 키보드·게임패드 탐색을 추가했습니다.</li>
+    <li>탭별 즐겨찾기, 검색, 선택 행 하이라이트, 가변 드롭다운과 팝업 크기를 적용했습니다.</li>
+  </ul>
+
+  <h2>0.2.11–0.2.17 — 스킨·틴트 소유권과 RaceMenu 복원</h2>
+  <ul>
+    <li>바디·손·발·얼굴·뱀파이어 얼굴과 각 텍스처 채널을 정확한 NiOverride 키로 관리하도록 개선했습니다.</li>
+    <li>다른 모드가 만든 키를 지우지 않고 Body Changer NG 소유 키만 제거하도록 정리했습니다.</li>
+    <li>RaceMenu 종료 뒤 메시·NiOverride·틴트 배열이 재생성된 후 바디→의상 보정→스킨→틴트를 재적용하도록 구성했습니다.</li>
+    <li>빠른 연속 선택의 오래된 비동기 작업이 새 선택을 덮지 못하도록 세대 번호 검사를 추가했습니다.</li>
+  </ul>
+
+  <h2>0.2.18–0.2.21 — 상태 저장·배포·의상 보정 완성</h2>
+  <ul>
+    <li>액터 결과를 SKSE 코세이브에 저장하고 로드 순서 변경에도 참조를 다시 해석하도록 Actor Registry를 도입했습니다.</li>
+    <li>전역 배포 규칙과 세이브별 적용 결과를 분리해 불필요한 재배포를 줄였습니다.</li>
+    <li>커스텀 팔로워·노인·아르고니안·카짓 기본 제외 조건 8개와 바디·스킨 독립 배포/제외 UI를 완성했습니다.</li>
+    <li>OBody NG 조건과 의상 보정 JSON을 명시적인 버튼으로만 읽고, 제외·강제·FormID·플러그인·의상별 프리셋 규칙을 호환했습니다.</li>
+    <li>의상 착용 시 가슴·유두 보정과 안정적인 유두·생식기 랜덤화를 추가했습니다.</li>
+    <li>XML의 실제 프리셋 세트 정보를 우선하는 BodyFamily 분류와 안전한 다중 계열 표시를 적용했습니다.</li>
+  </ul>
+
+  <h2>1.0.0 — 첫 정식 공개 버전</h2>
+  <ul>
+    <li>카메라를 FOV 70, 거리 200, 좌우 ±70, 세로 -45, pitch 0.1 기준으로 대칭화했습니다.</li>
+    <li>틴트 확대는 동일 FOV에서 거리·좌우·세로를 같은 비율로 줄입니다.</li>
+    <li>일시정지 중 우클릭은 카메라만 회전시켜 FSMP 늘어짐을 피하고, 일시정지 카운터를 직접 조작하지 않습니다.</li>
+    <li>메뉴 종료 시 원래 카메라 대상, 방향, FOV, 실제 투영 프러스텀, 현재·목표 줌을 복원합니다.</li>
+    <li>DLSS/후처리 환경에서 카메라 갱신 때문에 전체 UI 색이 바뀌던 경로를 ImGui 렌더 패스 밖으로 이동했습니다.</li>
+    <li>액터 이탈 시 대기열·바디·스킨 임시 적용 상태를 정리하고 세이브 전환 뒤 오래된 작업을 차단했습니다.</li>
+    <li>NPC 배포창 하단 버튼이 사라지는 레이아웃과 틴트 값 복원 후 색상 칩이 갱신되지 않는 문제를 수정했습니다.</li>
+    <li>전체 DLL 빌드와 8개 회귀 테스트를 통과한 상태를 v1.0.0 기준으로 확정했습니다.</li>
+  </ul>
+</body>
+</html>

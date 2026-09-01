@@ -1,0 +1,1 @@
+Native no-MCM in-game BodySlide, skin and player tint manager with live preview, gamepad UI, editable Body/Skin NPC rules, instant distribution, favorites, hot refresh, RaceMenu recovery and optional OBody NG JSON compatibility.

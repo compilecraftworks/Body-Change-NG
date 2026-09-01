@@ -1,0 +1,146 @@
+[center][size=6][b]Body Changer NG[/b][/size]
+바디 · 스킨 · 플레이어 틴트를 하나의 인게임 UI에서 변경하고 NPC에게 조건 배포하는 네이티브 SKSE 모드[/center]
+
+[size=5][b]소개[/b][/size]
+
+Body Changer NG는 BodySlide 바디 모프, 액터별 스킨 텍스처, 플레이어 RaceMenu 틴트 레이어를 한 화면에서 관리합니다. 플레이어와 현재 로드된 NPC를 직접 선택할 수 있고, NPC 배포 조건·세이브별 결과 저장·RaceMenu 종료 후 복원·OBody NG 규칙 호환까지 하나의 구조로 제공합니다.
+
+실행 중 바디 메쉬를 교체하거나 NIF, Skin Armor, ArmorAddon, 장비 슬롯, OBody 원본 JSON을 수정하지 않습니다.
+
+[size=5][b]OBody NG와 무엇이 다른가[/b][/size]
+
+두 모드 모두 최종 바디 변형에는 RaceMenu BodyMorph와 빌드된 TRI를 사용합니다. 따라서 Body Changer NG도 별도 바디 메쉬를 갈아 끼우는 방식이 아닙니다. 차이는 그 위의 선택·배포·상태 관리 구조입니다.
+
+[list]
+[*][b]MCM이 아닌 네이티브 GUI[/b] — F7로 여는 ImGui 창에서 플레이어와 로드된 NPC, 바디, 스킨, 틴트, 배포 규칙을 한 번에 관리
+[*][b]게임패드 탐색[/b] — D-pad로 목록과 탭을 이동하고 기본·취소 버튼으로 선택과 닫기 지원
+[*][b]즉시 미리보기와 확정 적용 분리[/b] — BodyChangerNG, Preview, Outfit 전용 morph key를 분리하고 빠른 연속 선택에서 오래된 적용 작업이 뒤늦게 덮어쓰지 않도록 차단
+[*][b]명시적인 배포 풀[/b] — 폴더의 모든 프리셋을 자동 후보로 삼는 대신 각 규칙에서 사용할 바디와 스킨을 직접 선택
+[*][b]바디·스킨 독립 제어[/b] — 같은 규칙 안에서도 바디만 제외하고 스킨은 배포하거나, 반대로 스킨만 제외하고 바디는 배포 가능
+[*][b]읽기 쉬운 우선순위[/b] — 규칙을 위에서부터 평가해 처음 일치한 한 규칙의 바디·스킨 결정을 사용
+[*][b]게임 안에서 배포 규칙 편집[/b] — 조건, 성별, 우선순위, 바디·스킨 풀과 각 항목의 배포/제외를 네이티브 GUI에서 직접 편집
+[*][b]즉시 배포 또는 다음 실행[/b] — 편집값을 현재 로드된 NPC에게 즉시 재평가·배포하거나, 현재 세션은 유지하고 다음 게임 실행용으로만 저장
+[*][b]세이브별 결과와 불필요한 재작업 억제[/b] — 선택 결과와 적용 서명을 SKSE 코세이브에 보존하고, 바뀌지 않은 액터는 매 로드마다 전체 작업을 반복하지 않음
+[*][b]통합 관리[/b] — OBody NG의 바디 배포 범위를 넘어 액터별 스킨과 플레이어 틴트, RaceMenu 재진입 복원까지 같은 UI와 상태 구조로 처리
+[*][b]즐겨찾기[/b] — 바디 프리셋, 스킨팩, 틴트팩을 별표로 저장하고 즐겨찾기만 모아 보기
+[/list]
+
+[size=5][b]기존 BodyChange와 무엇이 다른가[/b][/size]
+
+기존 BodyChange - A Multi-Bodyshape System은 CustomSet마다 별도 바디 메시를 BodySlide로 출력하고, ESP에 준비된 Skin Armor·HeadPart·TextureSet을 Papyrus로 통째로 교체하는 방식입니다. 따라서 스킨 세트를 쓰려면 그 슬롯에 맞는 메시와 레코드도 함께 준비해야 했습니다.
+
+Body Changer NG는 기존 BodyChange의 포트나 ESP 확장이 아니라 구현 구조가 다른 네이티브 SKSE 모드입니다.
+
+[list]
+[*][b]스킨과 메시를 분리[/b] — Skin Armor, HeadPart, NIF를 세트마다 교체하지 않고 현재 액터가 실제로 로드한 바디·손·발·얼굴 파트의 텍스처 채널만 RaceMenu/NiOverride로 변경
+[*][b]바디와 스킨을 자유롭게 조합[/b] — 바디는 BodyMorph 프리셋, 스킨은 텍스처 오버라이드로 독립 적용하므로 같은 스킨에 다른 체형을 사용하거나 같은 체형에 다른 스킨을 사용 가능
+[*][b]고정 CustomSet 슬롯 없음[/b] — 미리 정의한 20개 ESP 슬롯 대신 설치된 XML 프리셋과 폴더형 스킨·틴트 카탈로그를 읽어 목록 구성
+[*][b]게임 실행 중 추가 가능[/b] — 실행 중 BodySlide XML 파일이나 스킨·틴트 폴더를 넣고 해당 탭의 새로고침을 누르면 재검색 후 바로 선택·적용
+[*][b]플레이어와 NPC 모두 지원[/b] — 직접 선택뿐 아니라 조건별 NPC 바디·스킨 배포와 세이브별 결과 유지 제공
+[*][b]인게임 배포 편집·즉시 적용[/b] — 게임을 종료해 설정 파일을 고치지 않고 조건과 풀을 편집한 뒤 현재 로드된 NPC에게 바로 배포
+[*][b]틴트 직접 편집[/b] — 플레이어 틴트팩 선택에 더해 레이어별 색상과 강도를 즉시 수정하고, Body Changer NG가 변경하기 전 원본 값으로 레이어별 복원
+[/list]
+
+[size=5][b]주요 기능[/b][/size]
+
+[b]바디[/b]
+[list]
+[*]플레이어 또는 현재 로드된 NPC에게 BodySlide 프리셋 즉시 적용
+[*]액터 체중에 맞춰 Low/High Weight 값을 보간
+[*]메뉴 선택 중 실시간 미리보기, 확정 적용, 의상 보정을 서로 다른 소유 morph key로 격리
+[*]액터 바디 계열을 보수적으로 감지해 메인 바디 목록만 필터링
+[*]불확실하거나 여러 계열에 해당하는 프리셋은 안전하게 함께 표시
+[*]NPC 배포 풀에는 자동 바디 계열 필터를 적용하지 않음
+[/list]
+
+[b]스킨[/b]
+[list]
+[*]플레이어와 NPC별로 서로 다른 스킨팩 적용
+[*]바디·손·발·얼굴·뱀파이어 얼굴 지원
+[*]Diffuse, Normal, Subsurface, Specular, FaceGen Detail 텍스처 지원
+[*]RaceMenu/NiOverride 영구 키를 사용하며 다른 모드의 키는 삭제하지 않음
+[/list]
+
+[b]플레이어 틴트[/b]
+[list]
+[*]여러 틴트팩 설치 및 선택
+[*]플레이어 종족과 현재 레이어에 맞는 DDS 자동 선택
+[*]게임 안에서 레이어별 색상·강도 값을 즉시 상세 조절
+[*]Body Changer NG가 처음 변경하기 직전의 RaceMenu 원본 값으로 개별 복원
+[*]RaceMenu 종료 후 선택 팩·상세 값·복원 레이어 재적용
+[/list]
+
+[b]NPC 조건 배포[/b]
+[list]
+[*]위에서부터 평가하며 처음 일치한 규칙 사용
+[*]바디와 스킨을 각각 배포 또는 배포 제외로 설정
+[*]전체 NPC, 커스텀 팔로워, 노인, NPC Base FormID, 이름, 팩션, 플러그인, 종족 조건
+[*]한 개 선택 시 고정, 여러 개 선택 시 NPC별 안정적인 랜덤 결과
+[*]규칙은 BodyChangerNGdistribution.json, 적용된 액터 결과는 SKSE 코세이브에 저장
+[*]로드 순서 변경 시 액터 참조 재해석, 변경 없는 NPC의 불필요한 재배포 방지
+[*]게임 안에서 규칙을 편집하고 현재 로드된 NPC에게 즉시 배포하거나 다음 게임 실행용으로만 저장
+[/list]
+
+[b]의상 보정·랜덤화[/b]
+[list]
+[*]의상 착용 시 가슴 보정 및 별도 유두 보정 옵션
+[*]유두·생식기 형태의 안정적인 랜덤화 옵션
+[*]OBody NG의 제외 의상·강제 보정·의상별 프리셋 규칙 등록
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url]의 OBody_presetDistributionConfig.json 호환
+[*]호환 JSON은 버튼을 눌렀을 때만 Body Changer NG로 가져오며, 원본 파일은 수정하거나 배포본에 포함하지 않음
+[/list]
+
+[b]UI·입력·카메라[/b]
+[list]
+[*]한국어·영어·중국어 UI
+[*]마우스, 방향키/WASD, 게임패드 D-pad 탐색과 게임패드 선택·취소
+[*]한글 IME, Backspace, 검색, 바디·스킨·틴트별 즐겨찾기와 즐겨찾기 모아 보기
+[*]크기 조절 가능한 드롭다운과 NPC 배포창
+[*]1080p부터 4K까지 동일 비율 스케일링
+[*]좌우 대칭 캐릭터 배치와 플레이어 틴트 확대
+[*]일시정지 중 우클릭은 카메라만 회전하여 FSMP 늘어짐 방지
+[*]SmoothCam 선택 호환
+[*]새 설치 기본값은 게임 일시정지 해제·캐릭터 왼쪽 배치이며 기존 저장 설정은 유지
+[/list]
+
+[size=5][b]필수 모드[/b][/size]
+[list]
+[*]Skyrim SE 1.5.97 또는 검증된 AE 1.6.x 런타임(1.6.1179까지)
+[*]게임 버전에 맞는 SKSE64
+[*]Address Library for SKSE Plugins
+[*]RaceMenu BodyMorph/NiOverride
+[*]Build Morphs를 켜고 준비한 BodySlide 프리셋
+[*]바디·의상 변화가 보이기 위한 호환 TRI 파일
+[/list]
+
+v1.0.0은 Skyrim VR 전용 렌더러/입력 레이아웃이 아직 검증되지 않아 VR에서 UI 훅을 활성화하지 않습니다.
+
+[size=5][b]설치[/b][/size]
+[list=1]
+[*]메인 파일을 MO2로 설치합니다.
+[*]폴더 구조를 유지한 채 모드를 활성화합니다.
+[*]BodySlide XML, 스킨팩, 틴트팩을 동봉된 폴더 또는 같은 경로의 별도 MO2 모드에 넣습니다.
+[*]SKSE로 게임을 실행하고 F7을 누릅니다.
+[/list]
+
+게임이 이미 실행 중이어도 XML 프리셋 파일이나 스킨·틴트 폴더를 추가한 뒤 해당 탭의 새로고침을 누르면 목록을 다시 읽습니다.
+
+개인 프리셋·스킨·틴트는 메인 모드와 별도 MO2 모드로 관리하면 업데이트할 때 안전합니다. 각 에셋 폴더에는 설치 안내 README가 들어 있으며, 기본 배포 JSON에는 편집 가능한 샘플 제외 조건 8개가 포함됩니다.
+
+[size=5][b]업데이트[/b][/size]
+
+비공개 0.2.x 테스트 버전 사용자는 v1.0.0을 기존 메인 모드 위에 설치할 수 있습니다. 최종 0.2.x의 schema-3 배포 JSON은 그대로 호환됩니다.
+
+[size=5][b]소스 및 라이선스[/b][/size]
+
+Body Changer NG 자체 코드는 GPL-3.0입니다. GitHub 저장소와 GitHub Release에서 소스를 공개하며, 각 릴리스에는 고정된 의존성과 적용되는 라이선스를 포함한 전체 소스 압축 파일을 함께 제공합니다.
+
+호환 대상으로 언급한 다른 모드와 JSON의 저작권·라이선스는 각 원저작자에게 있으며, 해당 파일이나 자산은 Body Changer NG 배포본에 포함하지 않습니다.
+
+[size=5][b]크레딧[/b][/size]
+[list]
+[*]OBody NG — BodySlide 배포 및 ORefit 동작 참고
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] — SlickSilk; 선택적 JSON 형식 호환 및 검증 기준
+[*]Skyrim Fitting System — GPL-3.0 메뉴 캐릭터 표시 참고
+[*]CommonLibSSE-NG, Dear ImGui, pugixml, nlohmann/json
+[/list]
