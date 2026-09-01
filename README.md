@@ -47,6 +47,12 @@ supports modifier chords and is configurable in-game).
 - BodySlide presets: `CalienteTools\BodySlide\SliderPresets\*.xml`
 - Skin packs: `BodySkin\<pack name>\Textures\...`
 - Player tint packs: `TintMask\<pack name>\textures\...\tintmasks\*.dds`
+- Distribution rules: `SKSE\Plugins\BodyChangerNGdistribution.json`
+
+The release includes a `README.txt` in each asset folder and a valid schema-3
+distribution file containing the eight initial body/skin exclusion rows. The
+in-game distribution editor updates this JSON; OBody's JSON remains a separate,
+explicit import source.
 
 The **Refresh** button in each tab rescans that tab's catalog, including files
 added while the game is running. Skin and tint pack

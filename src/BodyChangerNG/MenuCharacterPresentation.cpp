@@ -9,12 +9,12 @@
 
 namespace
 {
-    constexpr auto kLeftCameraHorizontalOffset = 90.0F;
-    constexpr auto kRightCameraHorizontalOffset = -90.0F;
-    constexpr auto kCameraVerticalOffset = -30.0F;
-    constexpr auto kCameraDistance = 200.0F;
+    constexpr auto kLeftCameraHorizontalOffset = 85.0F;
+    constexpr auto kRightCameraHorizontalOffset = -85.0F;
+    constexpr auto kCameraVerticalOffset = -40.0F;
+    constexpr auto kCameraDistance = 140.0F;
     constexpr auto kMenuWorldFov = 70.0F;
-    constexpr auto kPlayerPitch = 0.27F;
+    constexpr auto kPlayerPitch = 0.0F;
     constexpr auto kLeftFacingCorrection = 0.35F;
     constexpr auto kRightFacingCorrection = -0.35F;
     // The Tint tab and its detail popup intentionally share one close-up so
@@ -23,28 +23,26 @@ namespace
     constexpr auto kTintCameraDistance = 60.0F;
     constexpr auto kTintWorldFov = 45.0F;
     constexpr auto kTintVerticalOffset = 0.0F;
-    // Projection-matched to the normal 200/FOV70/+-90 framing. This keeps the
+    // Projection-matched to the normal 140/FOV70/+-85 framing. This keeps the
     // actor at the same screen-space side position while the face zooms in.
-    constexpr auto kLeftTintCameraHorizontalOffset = 16.0F;
-    constexpr auto kRightTintCameraHorizontalOffset = -16.0F;
+    constexpr auto kLeftTintCameraHorizontalOffset = 22.0F;
+    constexpr auto kRightTintCameraHorizontalOffset = -22.0F;
     constexpr auto kTintPitchZoomOffset = 0.46F;
     constexpr auto kNormalPitchZoomOffset = 0.10F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
-    std::atomic_bool g_cameraUpdateQueued{};
 
-    void QueueCameraUpdate() noexcept
+    enum class CameraZoomUpdate : std::uint8_t
     {
-        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
-        if (auto* tasks = SKSE::GetTaskInterface()) {
-            tasks->AddTask([] {
-                g_cameraUpdateQueued.store(false, std::memory_order_release);
-                if (auto* camera = RE::PlayerCamera::GetSingleton()) camera->Update();
-            });
-            return;
-        }
-        g_cameraUpdateQueued.store(false, std::memory_order_release);
-    }
+        refresh,
+        snapCurrentToTarget,
+        restoreSaved
+    };
+
+    std::atomic_bool g_cameraUpdateQueued{};
+    std::atomic<CameraZoomUpdate> g_pendingCameraZoomUpdate{ CameraZoomUpdate::refresh };
+    std::atomic<float> g_savedTargetZoom{};
+    std::atomic<float> g_savedCurrentZoom{};
 
     [[nodiscard]] float NormalizeAngle(float angle)
     {
@@ -109,6 +107,50 @@ namespace
         return state ? static_cast<RE::ThirdPersonState*>(state.get()) : nullptr;
     }
 
+    void QueueCameraUpdate(const CameraZoomUpdate zoomUpdate = CameraZoomUpdate::refresh,
+        const float savedTargetZoom = 0.0F, const float savedCurrentZoom = 0.0F) noexcept
+    {
+        if (zoomUpdate == CameraZoomUpdate::restoreSaved) {
+            g_savedTargetZoom.store(savedTargetZoom, std::memory_order_release);
+            g_savedCurrentZoom.store(savedCurrentZoom, std::memory_order_release);
+        }
+        // Rotation-only refreshes must not erase a pending zoom snap/restore.
+        // A newer substantive request represents a newer menu state and wins.
+        if (zoomUpdate != CameraZoomUpdate::refresh) {
+            g_pendingCameraZoomUpdate.store(zoomUpdate, std::memory_order_release);
+        }
+        if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
+
+        const auto update = [] {
+            g_cameraUpdateQueued.store(false, std::memory_order_release);
+            const auto requestedZoomUpdate =
+                g_pendingCameraZoomUpdate.exchange(CameraZoomUpdate::refresh, std::memory_order_acq_rel);
+            auto* camera = RE::PlayerCamera::GetSingleton();
+            if (!camera) return;
+
+            // Let Skyrim derive targetZoomOffset from the temporary distance
+            // first. A paused menu otherwise freezes interpolation at the old
+            // currentZoomOffset and frames differently from an unpaused menu.
+            camera->Update();
+            auto* thirdPersonState = GetThirdPersonState(camera);
+            if (!thirdPersonState) return;
+            if (requestedZoomUpdate == CameraZoomUpdate::snapCurrentToTarget) {
+                thirdPersonState->currentZoomOffset = thirdPersonState->targetZoomOffset;
+                camera->Update();
+            } else if (requestedZoomUpdate == CameraZoomUpdate::restoreSaved) {
+                // Reassert both original values after refresh so closing the
+                // menu cannot retain either Body Changer NG zoom value.
+                thirdPersonState->targetZoomOffset = g_savedTargetZoom.load(std::memory_order_acquire);
+                thirdPersonState->currentZoomOffset = g_savedCurrentZoom.load(std::memory_order_acquire);
+            }
+        };
+        if (auto* tasks = SKSE::GetTaskInterface()) {
+            tasks->AddTask(update);
+            return;
+        }
+        update();
+    }
+
     void SetCameraHandle(RE::ThirdPersonState* state, RE::RefHandle& handle)
     {
         if (!state || REL::Module::IsVR()) return;
@@ -165,6 +207,7 @@ namespace bcn::menu_character
         float actorAngleZ{};
         bool actorPitchModified{};
         float targetZoomOffset{};
+        float currentZoomOffset{};
         float pitchZoomOffset{};
         float worldFov{};
         bool freeRotationEnabled{};
@@ -228,6 +271,7 @@ namespace bcn::menu_character
         state_->actorAngleZ = presentedActor->data.angle.z;
         state_->actorPitchModified = presentedActor == player;
         state_->targetZoomOffset = thirdPersonState->targetZoomOffset;
+        state_->currentZoomOffset = thirdPersonState->currentZoomOffset;
         state_->pitchZoomOffset = thirdPersonState->pitchZoomOffset;
         state_->worldFov = camera->GetRuntimeData2().worldFOV;
         state_->freeRotationEnabled = thirdPersonState->freeRotationEnabled;
@@ -304,7 +348,7 @@ namespace bcn::menu_character
         // inside the native ImGui PostDisplay pass made the whole UI change
         // tone for a frame on DLSS/post-processing setups when switching the
         // left/right presentation. Apply it on the game task instead.
-        QueueCameraUpdate();
+        QueueCameraUpdate(CameraZoomUpdate::snapCurrentToTarget);
         presentedActor->Update3DPosition(true);
     }
 
@@ -342,6 +386,7 @@ namespace bcn::menu_character
             thirdPersonState->posOffsetActual = state_->posOffsetActual;
             thirdPersonState->freeRotation = state_->freeRotation;
             thirdPersonState->targetZoomOffset = state_->targetZoomOffset;
+            thirdPersonState->currentZoomOffset = state_->currentZoomOffset;
             thirdPersonState->pitchZoomOffset = state_->pitchZoomOffset;
             thirdPersonState->freeRotationEnabled = state_->freeRotationEnabled;
             thirdPersonState->toggleAnimCam = state_->toggleAnimCam;
@@ -351,7 +396,8 @@ namespace bcn::menu_character
         }
         if (camera) {
             camera->GetRuntimeData2().worldFOV = state_->worldFov;
-            QueueCameraUpdate();
+            QueueCameraUpdate(CameraZoomUpdate::restoreSaved,
+                state_->targetZoomOffset, state_->currentZoomOffset);
         }
         state_->originalCameraState = nullptr;
         state_->presentedActorHandle.reset();
