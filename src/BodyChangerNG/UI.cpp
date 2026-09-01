@@ -1511,7 +1511,13 @@ namespace
             ImGui::SameLine();
             if (ImGui::Button(Text("틴트 값 복원", "Restore tint values", "还原色调值"))) {
                 const auto result = bcn::player_tint::QueueRestore(g_selectedTintLayer, g_selectedTintPack);
-                if (result != bcn::player_tint::ApplyResult::queued) bcn::ui::Notify(TintResultText(result));
+                if (result == bcn::player_tint::ApplyResult::queued) {
+                    if (const auto color = bcn::player_tint::OriginalColor(g_selectedTintLayer)) {
+                        g_tintColor = { color->red, color->green, color->blue, color->alpha };
+                    }
+                } else {
+                    bcn::ui::Notify(TintResultText(result));
+                }
             }
         } else {
             ImGui::BeginDisabled();

@@ -673,6 +673,20 @@ namespace bcn::player_tint
         };
     }
 
+    std::optional<Color> OriginalColor(const Layer layer)
+    {
+        const auto settings = Settings::Get().Snapshot();
+        const auto found = std::ranges::find(settings.playerTintBackups,
+            static_cast<std::uint8_t>(layer), &PlayerTintBackup::type);
+        if (found == settings.playerTintBackups.end()) return std::nullopt;
+        return Color{
+            .red = static_cast<float>(found->color[0]) / 255.0F,
+            .green = static_cast<float>(found->color[1]) / 255.0F,
+            .blue = static_cast<float>(found->color[2]) / 255.0F,
+            .alpha = std::clamp(found->alpha, 0.0F, 1.0F)
+        };
+    }
+
     ApplyResult QueueApply(std::string assetID, const Color color)
     {
         const auto asset = Catalog::Get().Find(assetID);

@@ -102,6 +102,10 @@ namespace bcn::player_tint
     // fallbacks; a race-neutral file is used only when the pack provides one.
     [[nodiscard]] std::optional<Asset> BestAssetForPlayer(std::string_view a_pack, Layer a_layer);
     [[nodiscard]] std::optional<Color> CurrentColor(Layer a_layer);
+    // Returns the RaceMenu-authored RGBA captured immediately before this mod
+    // first changed the layer. UI restore controls use the same backup as the
+    // queued world restore so their preview cannot remain stale.
+    [[nodiscard]] std::optional<Color> OriginalColor(Layer a_layer);
     [[nodiscard]] ApplyResult QueueApply(std::string a_assetID, Color a_color);
     // Applies one best-matching DDS for every supported layer in a top-level
     // TintMask pack. Race-specific filenames are preferred over generic ones,

@@ -37,7 +37,7 @@ namespace
     constexpr auto kTintVerticalOffset = kCameraVerticalOffset * kTintCameraScale;
     constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
     constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
-    constexpr auto kNormalPitchZoomOffset = 0.0F;
+    constexpr auto kNormalPitchZoomOffset = 0.1F;
     constexpr auto kTintPitchZoomOffset = kNormalPitchZoomOffset;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
