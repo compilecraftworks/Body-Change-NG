@@ -118,27 +118,18 @@ native SKSE architecture:
 
 - Optional breast correction while clothed with a separate nipple toggle.
 - Optional stable nipple and genital slider randomization.
-- Explicitly register OBody NG exclusions, forced outfits, and outfit-specific
-  correction presets from its JSON. The source file is never modified or read
-  silently at startup.
 - The
   [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
   `OBody_presetDistributionConfig.json` is a supported optional import source.
   Its file and assets are not redistributed with Body Changer NG.
 
-### UI and camera
+### UI and input
 
 - Korean, English, and Simplified Chinese UI.
 - Mouse, keyboard arrows/WASD, and gamepad D-pad navigation with gamepad
   confirm/cancel actions.
 - Native IME text input, Backspace, searches, Body/Skin/Tint favorites with
-  favorites-only filtering, and resizable dropdowns/panes.
-- Scales consistently from 1080p through 4K.
-- Optional symmetric left/right character presentation and player tint close-up.
-- Paused right-drag orbits the camera without rotating the actor root, avoiding
-  FSMP stretching. SmoothCam is optional.
-- New installations open unpaused with the character on the left; saved user
-  preferences continue to take priority.
+  favorites-only filtering.
 
 ## Requirements
 
@@ -146,19 +137,26 @@ native SKSE architecture:
 - Matching SKSE64
 - Address Library for SKSE Plugins
 - RaceMenu with BodyMorph and NiOverride
-- BodySlide presets built with **Build Morphs**
-- Compatible TRI data for visible body/outfit morphing
-
-The v1.0.0 native renderer/input hooks are not enabled on Skyrim VR because the
-VR-specific layouts have not yet been verified.
 
 ## Installation
 
 1. Install the main archive with MO2.
 2. Keep the included folder structure intact and enable the mod.
-3. Put BodySlide XML files, skin packs, and tint packs in the included folders
-   or in separate enabled MO2 mods using the same paths.
-4. Launch through SKSE and press F7.
+3. **Body preset XML:** place standard BodySlide preset files at
+   `CalienteTools\BodySlide\SliderPresets\*.xml` from the MO2 mod root.
+4. **Skin packs:** create one folder per pack at
+   `BodySkin\<pack name>\Textures\actors\character\...`, preserving the skin
+   mod's original `Textures` tree and DDS files. Each `<pack name>` folder is
+   one entry in the in-game catalog.
+5. **Tint packs:** create one folder per pack at
+   `TintMask\<pack name>\textures\actors\character\character assets\tintmasks\*.dds`
+   and keep the RaceMenu tint-mask filenames and folders intact. Each
+   `<pack name>` folder is one entry in the in-game catalog.
+6. Launch through SKSE and press F7.
+
+All paths above are relative to the MO2 mod root. Assets may be placed inside
+the Body Changer NG mod or in separate enabled MO2 mods that provide the same
+virtual paths.
 
 If Skyrim is already running, newly added BodySlide XML files and skin/tint
 folders are discovered by pressing the corresponding tab's **Refresh** button.
@@ -170,29 +168,18 @@ schema-3 distribution JSON with eight editable starter exclusions.
 
 - OBody NG is optional. Its distribution and outfit rules are imported only
   through explicit buttons.
-- SmoothCam is optional and is accessed through its public camera-control API.
 - Body Changer NG does not edit NIFs, Skin Armor records, ArmorAddon records,
   equipped slots, or OBody's JSON.
 - Body, Skin, and Tint selections are reapplied after RaceMenu closes.
 
-## Updating
+## Credits & License
 
-Private 0.2.x testers can install v1.0.0 over the previous main mod. Personal
-asset packs are safest in separate MO2 mods. The final 0.2.x schema-3
-distribution JSON remains compatible.
+Body Changer NG's own code is GPL-3.0. Source is published in the
+[GitHub repository](https://github.com/compilecraftworks/Body-Changer-NG), and
+the open-source components included in the distribution retain their original
+licenses.
 
-## Source and permissions
-
-Body Changer NG's own code is GPL-3.0. The GitHub repository and every GitHub
-release provide the source. A complete source archive with pinned vendored
-dependencies and applicable licenses is attached to the release. Referenced
-mods and compatible JSON files remain under their respective authors'
-copyright and licenses and are not bundled with Body Changer NG.
-
-## Credits
-
-- OBody NG for established BodySlide distribution and ORefit behavior
-- [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
-  by SlickSilk, as an optional JSON-format compatibility and validation target
-- Skyrim Fitting System for GPL-3.0 menu-presentation reference work
-- CommonLibSSE-NG, Dear ImGui, pugixml, and nlohmann/json
+- CommonLibSSE-NG — MIT License
+- Dear ImGui — MIT License
+- pugixml — MIT License
+- nlohmann/json — MIT License

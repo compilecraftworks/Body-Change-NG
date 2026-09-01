@@ -86,22 +86,15 @@ Body Changer NG는 기존 BodyChange의 포트나 ESP 확장이 아니라 구현
 [list]
 [*]의상 착용 시 가슴 보정 및 별도 유두 보정 옵션
 [*]유두·생식기 형태의 안정적인 랜덤화 옵션
-[*]OBody NG의 제외 의상·강제 보정·의상별 프리셋 규칙 등록
 [*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url]의 OBody_presetDistributionConfig.json 호환
 [*]호환 JSON은 버튼을 눌렀을 때만 Body Changer NG로 가져오며, 원본 파일은 수정하거나 배포본에 포함하지 않음
 [/list]
 
-[b]UI·입력·카메라[/b]
+[b]UI·입력[/b]
 [list]
 [*]한국어·영어·중국어 UI
 [*]마우스, 방향키/WASD, 게임패드 D-pad 탐색과 게임패드 선택·취소
 [*]한글 IME, Backspace, 검색, 바디·스킨·틴트별 즐겨찾기와 즐겨찾기 모아 보기
-[*]크기 조절 가능한 드롭다운과 NPC 배포창
-[*]1080p부터 4K까지 동일 비율 스케일링
-[*]좌우 대칭 캐릭터 배치와 플레이어 틴트 확대
-[*]일시정지 중 우클릭은 카메라만 회전하여 FSMP 늘어짐 방지
-[*]SmoothCam 선택 호환
-[*]새 설치 기본값은 게임 일시정지 해제·캐릭터 왼쪽 배치이며 기존 저장 설정은 유지
 [/list]
 
 [size=5][b]필수 모드[/b][/size]
@@ -110,38 +103,31 @@ Body Changer NG는 기존 BodyChange의 포트나 ESP 확장이 아니라 구현
 [*]게임 버전에 맞는 SKSE64
 [*]Address Library for SKSE Plugins
 [*]RaceMenu BodyMorph/NiOverride
-[*]Build Morphs를 켜고 준비한 BodySlide 프리셋
-[*]바디·의상 변화가 보이기 위한 호환 TRI 파일
 [/list]
-
-v1.0.0은 Skyrim VR 전용 렌더러/입력 레이아웃이 아직 검증되지 않아 VR에서 UI 훅을 활성화하지 않습니다.
 
 [size=5][b]설치[/b][/size]
 [list=1]
 [*]메인 파일을 MO2로 설치합니다.
 [*]폴더 구조를 유지한 채 모드를 활성화합니다.
-[*]BodySlide XML, 스킨팩, 틴트팩을 동봉된 폴더 또는 같은 경로의 별도 MO2 모드에 넣습니다.
+[*][b]바디 프리셋 XML[/b] — MO2 모드 루트의 [b]CalienteTools\BodySlide\SliderPresets\*.xml[/b]에 표준 BodySlide 프리셋 XML 파일을 넣습니다.
+[*][b]스킨팩[/b] — 스킨팩마다 [b]BodySkin\<스킨팩 이름>\Textures\actors\character\...[/b] 폴더를 만들고, 스킨 모드의 Textures 폴더 구조와 DDS 파일을 그대로 넣습니다. 각 <스킨팩 이름> 폴더가 게임 목록의 한 항목이 됩니다.
+[*][b]틴트팩[/b] — 틴트팩마다 [b]TintMask\<틴트팩 이름>\textures\actors\character\character assets\tintmasks\*.dds[/b] 구조로 RaceMenu 틴트마스크 DDS를 넣습니다. 각 <틴트팩 이름> 폴더가 게임 목록의 한 항목이 됩니다.
 [*]SKSE로 게임을 실행하고 F7을 누릅니다.
 [/list]
+
+위 경로는 모두 MO2 모드 루트 기준입니다. Body Changer NG 메인 모드 안에 넣어도 되고, 같은 경로를 가진 별도 MO2 모드로 만들어 활성화해도 됩니다.
 
 게임이 이미 실행 중이어도 XML 프리셋 파일이나 스킨·틴트 폴더를 추가한 뒤 해당 탭의 새로고침을 누르면 목록을 다시 읽습니다.
 
 개인 프리셋·스킨·틴트는 메인 모드와 별도 MO2 모드로 관리하면 업데이트할 때 안전합니다. 각 에셋 폴더에는 설치 안내 README가 들어 있으며, 기본 배포 JSON에는 편집 가능한 샘플 제외 조건 8개가 포함됩니다.
 
-[size=5][b]업데이트[/b][/size]
+[size=5][b]크레딧 & 라이센스[/b][/size]
 
-비공개 0.2.x 테스트 버전 사용자는 v1.0.0을 기존 메인 모드 위에 설치할 수 있습니다. 최종 0.2.x의 schema-3 배포 JSON은 그대로 호환됩니다.
+Body Changer NG 자체 코드는 GPL-3.0입니다. [url=https://github.com/compilecraftworks/Body-Changer-NG]GitHub 저장소[/url]에서 소스를 공개하며, 배포본에 포함된 오픈소스 구성요소는 각 원 라이선스를 따릅니다.
 
-[size=5][b]소스 및 라이선스[/b][/size]
-
-Body Changer NG 자체 코드는 GPL-3.0입니다. GitHub 저장소와 GitHub Release에서 소스를 공개하며, 각 릴리스에는 고정된 의존성과 적용되는 라이선스를 포함한 전체 소스 압축 파일을 함께 제공합니다.
-
-호환 대상으로 언급한 다른 모드와 JSON의 저작권·라이선스는 각 원저작자에게 있으며, 해당 파일이나 자산은 Body Changer NG 배포본에 포함하지 않습니다.
-
-[size=5][b]크레딧[/b][/size]
 [list]
-[*]OBody NG — BodySlide 배포 및 ORefit 동작 참고
-[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/105052]OBody Next Generation ORefit JSON Master List[/url] — SlickSilk; 선택적 JSON 형식 호환 및 검증 기준
-[*]Skyrim Fitting System — GPL-3.0 메뉴 캐릭터 표시 참고
-[*]CommonLibSSE-NG, Dear ImGui, pugixml, nlohmann/json
+[*]CommonLibSSE-NG — MIT License
+[*]Dear ImGui — MIT License
+[*]pugixml — MIT License
+[*]nlohmann/json — MIT License
 [/list]
