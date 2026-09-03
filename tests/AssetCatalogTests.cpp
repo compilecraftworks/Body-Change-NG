@@ -46,6 +46,7 @@ namespace
     {
         constexpr std::array stems{
             std::string_view{ "femalebody_1" }, std::string_view{ "femalebody_etc_v2_1" },
+            std::string_view{ "vaginalanalcanal2" },
             std::string_view{ "femalehands_1" },
             std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
             std::string_view{ "femaleheadvampire" }, std::string_view{ "malebody_1" },
@@ -71,6 +72,25 @@ namespace
         if (filename == "femalebody_1_d.dds" || filename == "femalebody_1_n.dds" ||
             filename == "femalehead_d.dds" || filename == "femalehead_n.dds") return true;
         return false;
+    }
+
+    bool HasExactMaterialChannels(
+        const std::vector<bcn::SkinTextureLayer>& layers, const std::string_view stem)
+    {
+        const std::array expected{
+            std::pair{ 0U, std::string{ stem } + ".dds" },
+            std::pair{ 1U, std::string{ stem } + "_msn.dds" },
+            std::pair{ 2U, std::string{ stem } + "_sk.dds" },
+            std::pair{ 7U, std::string{ stem } + "_s.dds" }
+        };
+        return layers.size() == expected.size() &&
+            std::ranges::all_of(expected, [&](const auto& item) {
+                const auto& [index, filename] = item;
+                return std::ranges::any_of(layers, [&](const auto& layer) {
+                    return layer.shaderTextureIndex == index &&
+                        Filename(Lower(layer.path)) == filename;
+                });
+            });
     }
 }
 
@@ -102,7 +122,8 @@ int main(const int argc, char** argv)
                 }
             };
             collect(skin.body);
-            collect(skin.vagina);
+            collect(skin.cbbeGenitalAnal);
+            collect(skin.unpGenitalAnal);
             collect(skin.hands);
             collect(skin.feet);
             collect(skin.face);
@@ -196,6 +217,22 @@ int main(const int argc, char** argv)
     const auto embeddedTint = female.parent_path() / "character assets" / "tintmasks";
     Touch(embeddedTint / "femalehead_lips.dds");
 
+    const std::string unpSkinPackName{ "BnP BHUNP UNP" };
+    const auto unpFemale = sandbox / "BodySkin" / unpSkinPackName /
+        "Textures" / "actors" / "character" / "female";
+    for (const auto* file : {
+             "femalebody_1.dds", "femalebody_1_msn.dds", "femalebody_1_sk.dds", "femalebody_1_s.dds",
+             "femalehands_1.dds", "femalehands_1_msn.dds", "femalehands_1_sk.dds", "femalehands_1_s.dds",
+             "femalefeet_1.dds", "femalefeet_1_msn.dds", "femalefeet_1_sk.dds", "femalefeet_1_s.dds",
+             "femalehead.dds", "femalehead_msn.dds", "femalehead_sk.dds", "femalehead_s.dds" }) {
+        Touch(unpFemale / file);
+    }
+    for (const auto* file : {
+             "VaginalAnalCanal2.dds", "VaginalAnalCanal2_msn.dds",
+             "VaginalAnalCanal2_sk.dds", "VaginalAnalCanal2_s.dds" }) {
+        Touch(unpFemale / "BakaUNP" / file);
+    }
+
     const auto ubeBody = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
         "Textures" / "!UBE" / "Body";
     const auto ubeHead = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
@@ -251,7 +288,7 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 9U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
+    if (!Require(skins.size() == 10U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
     std::size_t argonianRows{};
     std::size_t khajiitRows{};
     for (const auto& skin : skins) {
@@ -279,6 +316,22 @@ int main(const int argc, char** argv)
             if (!Require(std::ranges::all_of(skin.body, [expectedBody](const auto& layer) {
                     return Filename(Lower(layer.path)).starts_with(expectedBody);
                 }), "Khajiit body channels crossed into another part or sex")) return 1;
+            continue;
+        }
+        if (skin.name == unpSkinPackName) {
+            if (!Require(skin.sex == bcn::SkinSex::female &&
+                    skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::unp),
+                    "BHUNP/UNP skin was not isolated to the UNP family")) return 1;
+            if (!Require(HasExactMaterialChannels(skin.body, "femalebody_1") &&
+                    HasExactMaterialChannels(skin.hands, "femalehands_1") &&
+                    HasExactMaterialChannels(skin.feet, "femalefeet_1") &&
+                    HasExactMaterialChannels(skin.face, "femalehead"),
+                    "BHUNP/UNP body, hands, feet, or face channels crossed parts or material slots")) return 1;
+            if (!Require(skin.cbbeGenitalAnal.empty() &&
+                    HasExactMaterialChannels(skin.unpGenitalAnal, "vaginalanalcanal2"),
+                    "BHUNP/UNP genital/anal/canal atlas was omitted or routed as CBBE")) return 1;
+            if (!Require(skin.id.ends_with(":female"),
+                    "BHUNP/UNP conventional profile lost its stable id")) return 1;
             continue;
         }
         if (skin.name == "UBE 2.0 Momo Skin") {
@@ -323,21 +376,22 @@ int main(const int argc, char** argv)
         if (!Require(skin.body.size() == 4U && std::ranges::all_of(skin.body, [](const auto& layer) {
                 return Filename(Lower(layer.path)).starts_with("femalebody_1");
             }), "female genital atlas crossed into the regular body channels")) return 1;
-        constexpr std::array expectedVaginaChannels{
+        constexpr std::array expectedCBBEGenitalAnalChannels{
             std::pair{ 0U, std::string_view{ "femalebody_etc_v2_1.dds" } },
             std::pair{ 1U, std::string_view{ "femalebody_etc_v2_1_msn.dds" } },
             std::pair{ 2U, std::string_view{ "femalebody_etc_v2_1_sk.dds" } },
             std::pair{ 7U, std::string_view{ "femalebody_etc_v2_1_s.dds" } }
         };
-        if (!Require(skin.vagina.size() == expectedVaginaChannels.size(),
-                "female genital texture set did not retain all four material channels")) return 1;
-        for (const auto& [index, filename] : expectedVaginaChannels) {
-            if (!Require(std::ranges::any_of(skin.vagina, [=](const auto& layer) {
+        if (!Require(skin.cbbeGenitalAnal.size() == expectedCBBEGenitalAnalChannels.size() &&
+                skin.unpGenitalAnal.empty(),
+                "CBBE 3BA genital/anal texture set crossed into BHUNP/UNP")) return 1;
+        for (const auto& [index, filename] : expectedCBBEGenitalAnalChannels) {
+            if (!Require(std::ranges::any_of(skin.cbbeGenitalAnal, [=](const auto& layer) {
                     return layer.shaderTextureIndex == index && Filename(Lower(layer.path)) == filename;
-                }), "female genital diffuse/normal/subsurface/specular channel mapping is incorrect")) return 1;
+                }), "CBBE 3BA genital/anal diffuse/normal/subsurface/specular mapping is incorrect")) return 1;
         }
-        if (!Require((skin.bodyFamilies & bcn::body_family::Bit(bcn::body_family::Family::ube)) == 0U,
-                "conventional skin leaked into the UBE family")) return 1;
+        if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::cbbe),
+                "CBBE 3BA genital atlas did not narrow the skin to the CBBE family")) return 1;
         if (!Require(skin.name.contains(skinPackName), "skin pack name was not preserved as UTF-8")) return 1;
         if (!Require(skin.body.front().path.starts_with("BodySkin\\" + skinPackName + "\\Textures\\"),
                 "skin path escaped the virtual Data root or lost UTF-8")) return 1;
@@ -381,7 +435,8 @@ int main(const int argc, char** argv)
             foundExcluded = foundExcluded || std::ranges::any_of(layers, isExcludedBodySkinFile);
         };
         inspectExcluded(skin.body);
-        inspectExcluded(skin.vagina);
+        inspectExcluded(skin.cbbeGenitalAnal);
+        inspectExcluded(skin.unpGenitalAnal);
         inspectExcluded(skin.hands);
         inspectExcluded(skin.feet);
         inspectExcluded(skin.face);
@@ -396,25 +451,58 @@ int main(const int argc, char** argv)
     }
     if (!Require(argonianRows == 2U && khajiitRows == 2U,
             "beast-race packs did not produce separate female and male rows")) return 1;
-    if (!Require(bcn::skin_geometry::IsVagina("3BA_Vagina") &&
-            bcn::skin_geometry::IsVagina("3bbb_vagina") &&
-            !bcn::skin_geometry::IsVagina("3BA_Anus") &&
+    if (!Require(bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Vagina") &&
+            bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_vagina") &&
+            bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Anus") &&
+            bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_anus") &&
+            bcn::skin_geometry::IsUNPGenitalAnal("BaseShapeVagina") &&
+            bcn::skin_geometry::IsUNPGenitalAnal("BaseShapeAnus") &&
+            bcn::skin_geometry::IsUNPGenitalAnal("BaseShapeCanal") &&
             bcn::skin_geometry::Matches("3BA", bcn::skin_geometry::BodySelection::regular) &&
             !bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::regular) &&
-            bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::vagina) &&
-            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::vagina),
-            "female genital geometry routing crossed into body or anus")) return 1;
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::regular) &&
+            !bcn::skin_geometry::Matches("BaseShapeCanal", bcn::skin_geometry::BodySelection::regular) &&
+            bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::cbbeGenitalAnal) &&
+            bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal) &&
+            !bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal) &&
+            bcn::skin_geometry::Matches("BaseShapeVagina", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
+            bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
+            bcn::skin_geometry::Matches("BaseShapeCanal", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
+            bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
+                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)") &&
+            bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
+                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)") &&
+            !bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::unpGenitalAnal,
+                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)") &&
+            bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::unpGenitalAnal,
+                R"(textures\actors\character\female\BakaUNP\VaginalAnalCanal2.dds)") &&
+            bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::unpGenitalAnal,
+                R"(textures\actors\character\female\BakaUNP\VaginalAnalCanal2.dds)") &&
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
+                R"(textures\actors\character\female\BakaUNP\VaginalAnalCanal2.dds)") &&
+            bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::unpGenitalAnal,
+                "textures/actors/character/female/BakaUNP/VaginalAnalCanal2.dds"),
+            "CBBE 3BA and BHUNP/UNP genital/anal geometry routing crossed body or family boundaries")) return 1;
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+    const auto unpFamily = bcn::body_family::Bit(bcn::body_family::Family::unp);
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
     const auto ubeSkin = std::ranges::find(skins, "UBE 2.0 Momo Skin", &bcn::SkinProfile::name);
     const auto standardSkin = std::ranges::find(skins, skinPackName, &bcn::SkinProfile::name);
-    if (!Require(ubeSkin != skins.end() && standardSkin != skins.end(), "expected skin rows are missing")) return 1;
+    const auto unpSkin = std::ranges::find(skins, unpSkinPackName, &bcn::SkinProfile::name);
+    if (!Require(ubeSkin != skins.end() && standardSkin != skins.end() && unpSkin != skins.end(),
+            "expected skin rows are missing")) return 1;
     if (!Require(bcn::SkinMatchesActor(ubeSkin->bodyFamilies, ubeFamily) &&
             !bcn::SkinMatchesActor(ubeSkin->bodyFamilies, standardFamily),
             "UBE skin compatibility leaked into CBBE")) return 1;
     if (!Require(bcn::SkinMatchesActor(standardSkin->bodyFamilies, standardFamily) &&
+            !bcn::SkinMatchesActor(standardSkin->bodyFamilies, unpFamily) &&
             !bcn::SkinMatchesActor(standardSkin->bodyFamilies, ubeFamily),
-            "conventional skin compatibility leaked into UBE")) return 1;
+            "CBBE 3BA skin compatibility leaked into BHUNP/UNP or UBE")) return 1;
+    if (!Require(bcn::SkinMatchesActor(unpSkin->bodyFamilies, unpFamily) &&
+            !bcn::SkinMatchesActor(unpSkin->bodyFamilies, standardFamily) &&
+            !bcn::SkinMatchesActor(unpSkin->bodyFamilies, ubeFamily),
+            "BHUNP/UNP skin compatibility leaked into CBBE 3BA or UBE")) return 1;
     if (!Require(bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::argonian) &&
             !bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::khajiit) &&
             !bcn::SkinRaceMatchesActor(bcn::SkinRace::khajiit, bcn::SkinRace::humanoid),

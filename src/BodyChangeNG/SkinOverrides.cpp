@@ -292,6 +292,17 @@ namespace
         return material && material->GetFeature() == RE::BSShaderMaterial::Feature::kFaceGenRGBTint;
     }
 
+    [[nodiscard]] std::string_view GeometryDiffuseTexture(RE::BSGeometry* geometry)
+    {
+        if (!geometry) return {};
+        auto* shader = geometry->lightingShaderProp_cast();
+        auto* material = shader ? static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+        const auto textureSet = material ? material->GetTextureSet() : nullptr;
+        if (!textureSet) return {};
+        const auto* path = textureSet->GetTexturePath(RE::BSTextureSet::Texture::kDiffuse);
+        return path ? std::string_view{ path } : std::string_view{};
+    }
+
     [[nodiscard]] std::vector<LoadedPartTarget> FindLoadedPartTargets(RE::Actor* actor,
         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
@@ -331,7 +342,8 @@ namespace
                 }
                 const auto* rawName = geometry->name.c_str();
                 const std::string geometryName = rawName && rawName[0] != '\0' ? rawName : "";
-                if (!bcn::skin_geometry::Matches(geometryName, selection)) {
+                if (!bcn::skin_geometry::Matches(
+                        geometryName, selection, GeometryDiffuseTexture(geometry))) {
                     return RE::BSVisit::BSVisitControl::kContinue;
                 }
                 if (std::ranges::find(target->immediateNodes, geometryName) == target->immediateNodes.end()) {
@@ -905,7 +917,8 @@ namespace
                         if (!geometry) return RE::BSVisit::BSVisitControl::kContinue;
                         const auto* rawName = geometry->name.c_str();
                         const std::string_view geometryName = rawName && rawName[0] != '\0' ? rawName : "";
-                        if (!bcn::skin_geometry::Matches(geometryName, selection)) {
+                        if (!bcn::skin_geometry::Matches(
+                                geometryName, selection, GeometryDiffuseTexture(geometry))) {
                             return RE::BSVisit::BSVisitControl::kContinue;
                         }
                         auto* shader = geometry->lightingShaderProp_cast();
@@ -938,9 +951,12 @@ namespace
         verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
             bodyLayers, ProfileBodySlot(profile), UsesUbeBodySlot(profile) ?
                 bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
-        verifyPart("vagina", profile.vagina,
+        verifyPart("cbbe-genital-anal", profile.cbbeGenitalAnal,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-            bcn::skin_geometry::BodySelection::vagina);
+            bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
+        verifyPart("unp-genital-anal", profile.unpGenitalAnal,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::unpGenitalAnal);
         if (UsesBeastTail(profile)) {
             verifyPart("tail-body-atlas", bodyLayers,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
@@ -1364,16 +1380,20 @@ namespace
                 !profile.feet.empty() || !currentFaceLayers.empty();
             submitPart(ProfileBodySlot(profile), currentBodyLayers, UsesUbeBodySlot(profile) ?
                 bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
-            if (!profile.vagina.empty()) {
+            const auto submitGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
+                const bcn::skin_geometry::BodySelection selection) {
+                if (layers.empty()) return;
                 if (hasPrimaryParts) {
                     static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina, applyBatch,
-                        bcn::skin_geometry::BodySelection::vagina));
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, applyBatch, selection));
                 } else {
-                    submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
-                        bcn::skin_geometry::BodySelection::vagina);
+                    submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, selection);
                 }
-            }
+            };
+            submitGenitalAnal(profile.cbbeGenitalAnal,
+                bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
+            submitGenitalAnal(profile.unpGenitalAnal,
+                bcn::skin_geometry::BodySelection::unpGenitalAnal);
             if (!UsesUbeBodySlot(profile)) {
                 if (UsesBeastTail(profile) && !currentBodyLayers.empty()) {
                     // Tail availability is auxiliary: a tail-hiding outfit or
@@ -1522,16 +1542,20 @@ namespace
             !profile.feet.empty() || !faceLayers.empty();
         applyPart(ProfileBodySlot(profile), bodyLayers, UsesUbeBodySlot(profile) ?
             bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
-        if (!profile.vagina.empty()) {
+        const auto applyGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
+            const bcn::skin_geometry::BodySelection selection) {
+            if (layers.empty()) return;
             if (hasPrimaryParts) {
                 static_cast<void>(ApplyPart(*overrides, actor.get(), female,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
-                    bcn::skin_geometry::BodySelection::vagina));
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, selection));
             } else {
-                applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
-                    bcn::skin_geometry::BodySelection::vagina);
+                applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, selection);
             }
-        }
+        };
+        applyGenitalAnal(profile.cbbeGenitalAnal,
+            bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
+        applyGenitalAnal(profile.unpGenitalAnal,
+            bcn::skin_geometry::BodySelection::unpGenitalAnal);
         if (!UsesUbeBodySlot(profile)) {
             if (UsesBeastTail(profile) && !bodyLayers.empty()) {
                 static_cast<void>(ApplyPart(*overrides, actor.get(), female,

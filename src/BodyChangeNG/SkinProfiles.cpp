@@ -153,7 +153,10 @@ namespace
     }
 
     [[nodiscard]] bcn::body_family::Mask InferProfileFamilies(
-        const bcn::SkinSex sex, const std::initializer_list<const std::vector<bcn::SkinTextureLayer>*> parts)
+        const bcn::SkinSex sex,
+        const std::initializer_list<const std::vector<bcn::SkinTextureLayer>*> parts,
+        const std::vector<bcn::SkinTextureLayer>& cbbeGenitalAnal,
+        const std::vector<bcn::SkinTextureLayer>& unpGenitalAnal)
     {
         if (sex == bcn::SkinSex::male) return bcn::StandardSkinFamilies(sex);
         bool ube{};
@@ -177,9 +180,16 @@ namespace
         // A mixed explicit profile would paint UBE and conventional UVs in a
         // single operation. Reject it instead of guessing which half was the
         // author's intent.
-        if (ube && standard) return 0U;
-        return ube ? bcn::body_family::Bit(bcn::body_family::Family::ube) :
-            bcn::StandardSkinFamilies(sex);
+        if (ube && (standard || !cbbeGenitalAnal.empty() || !unpGenitalAnal.empty())) return 0U;
+        if (ube) return bcn::body_family::Bit(bcn::body_family::Family::ube);
+        bcn::body_family::Mask exactFamilies{};
+        if (!cbbeGenitalAnal.empty()) {
+            exactFamilies |= bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+        }
+        if (!unpGenitalAnal.empty()) {
+            exactFamilies |= bcn::body_family::Bit(bcn::body_family::Family::unp);
+        }
+        return exactFamilies != 0U ? exactFamilies : bcn::StandardSkinFamilies(sex);
     }
 
     [[nodiscard]] std::optional<bcn::SkinRace> InferProfileRace(
@@ -221,11 +231,19 @@ namespace
                 return std::nullopt;
             }
             auto body = ParsePart(dataRoot, path.parent_path(), json, "body");
-            auto vagina = ParsePart(dataRoot, path.parent_path(), json, "vagina");
-            if (*sex == bcn::SkinSex::male && !vagina.empty()) {
-                SKSE::log::warn("Body Change NG ignored female vagina layers in male skin profile {}",
+            auto cbbeGenitalAnal = ParsePart(dataRoot, path.parent_path(), json, "cbbeGenitalAnal");
+            // schema-1 profiles used `vagina` before the 3BA anus material was
+            // audited. Keep that input key as a CBBE genital/anal alias.
+            if (cbbeGenitalAnal.empty()) {
+                cbbeGenitalAnal = ParsePart(dataRoot, path.parent_path(), json, "vagina");
+            }
+            auto unpGenitalAnal = ParsePart(dataRoot, path.parent_path(), json, "unpGenitalAnal");
+            if (*sex == bcn::SkinSex::male &&
+                (!cbbeGenitalAnal.empty() || !unpGenitalAnal.empty())) {
+                SKSE::log::warn("Body Change NG ignored female genital/anal layers in male skin profile {}",
                     bcn::path_text::Utf8(path));
-                vagina.clear();
+                cbbeGenitalAnal.clear();
+                unpGenitalAnal.clear();
             }
             auto hands = ParsePart(dataRoot, path.parent_path(), json, "hands");
             auto feet = ParsePart(dataRoot, path.parent_path(), json, "feet");
@@ -233,10 +251,12 @@ namespace
             auto vampireFace = ParsePart(dataRoot, path.parent_path(), json, "vampireFace");
             auto faceDetails = ParsePart(dataRoot, path.parent_path(), json, "faceDetails");
             const auto bodyFamilies = InferProfileFamilies(*sex,
-                { &body, &vagina, &hands, &feet, &face, &vampireFace, &faceDetails });
+                { &body, &hands, &feet, &face, &vampireFace, &faceDetails },
+                cbbeGenitalAnal, unpGenitalAnal);
             if (bodyFamilies == 0U) return std::nullopt;
             const auto inferredRace = InferProfileRace(
-                { &body, &vagina, &hands, &feet, &face, &vampireFace, &faceDetails });
+                { &body, &cbbeGenitalAnal, &unpGenitalAnal, &hands, &feet, &face,
+                    &vampireFace, &faceDetails });
             if (!inferredRace) {
                 SKSE::log::warn("Body Change NG ignored skin profile {}: Argonian and Khajiit textures cannot be mixed",
                     bcn::path_text::Utf8(path));
@@ -262,8 +282,8 @@ namespace
             // only explicitly supplied DDS files become overrides.
             // A loose blank/detail map is not enough to infer the profile's
             // sex and would create a phantom opposite-sex row in a pack.
-            if (body.empty() && vagina.empty() && hands.empty() && feet.empty() && face.empty() &&
-                vampireFace.empty()) return std::nullopt;
+            if (body.empty() && cbbeGenitalAnal.empty() && unpGenitalAnal.empty() &&
+                hands.empty() && feet.empty() && face.empty() && vampireFace.empty()) return std::nullopt;
             return bcn::SkinProfile{
                 .id = std::move(id),
                 .name = std::move(name),
@@ -271,7 +291,8 @@ namespace
                 .race = race,
                 .bodyFamilies = bodyFamilies,
                 .body = std::move(body),
-                .vagina = std::move(vagina),
+                .cbbeGenitalAnal = std::move(cbbeGenitalAnal),
+                .unpGenitalAnal = std::move(unpGenitalAnal),
                 .hands = std::move(hands),
                 .feet = std::move(feet),
                 .face = std::move(face),
@@ -318,6 +339,7 @@ namespace
     {
         constexpr std::array standardStems{
             std::string_view{ "femalebody_1" }, std::string_view{ "femalebody_etc_v2_1" },
+            std::string_view{ "VaginalAnalCanal2" },
             std::string_view{ "femalehands_1" },
             std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
             std::string_view{ "femaleheadvampire" },
@@ -515,8 +537,17 @@ namespace
 
     void MergeAutoProfile(bcn::SkinProfile& destination, const bcn::SkinProfile& source)
     {
+        if (destination.sex == bcn::SkinSex::female) {
+            const auto permissive = bcn::StandardSkinFamilies(bcn::SkinSex::female);
+            if (destination.bodyFamilies == permissive) {
+                destination.bodyFamilies = source.bodyFamilies;
+            } else if (source.bodyFamilies != permissive) {
+                destination.bodyFamilies |= source.bodyFamilies;
+            }
+        }
         AppendUniqueLayers(destination.body, source.body, true);
-        AppendUniqueLayers(destination.vagina, source.vagina, true);
+        AppendUniqueLayers(destination.cbbeGenitalAnal, source.cbbeGenitalAnal, true);
+        AppendUniqueLayers(destination.unpGenitalAnal, source.unpGenitalAnal, true);
         AppendUniqueLayers(destination.hands, source.hands, true);
         AppendUniqueLayers(destination.feet, source.feet, true);
         AppendUniqueLayers(destination.face, source.face, true);
@@ -615,6 +646,56 @@ namespace
         return std::nullopt;
     }
 
+    [[nodiscard]] bool HasAsciiToken(const std::filesystem::path& path,
+        const std::initializer_list<std::string_view> tokens)
+    {
+        auto value = bcn::path_text::Utf8(path.filename());
+        for (auto& character : value) {
+            if (character >= 'A' && character <= 'Z') {
+                character = static_cast<char>(character + ('a' - 'A'));
+            } else if (!((character >= 'a' && character <= 'z') ||
+                           (character >= '0' && character <= '9'))) {
+                character = ' ';
+            }
+        }
+        std::size_t start{};
+        while (start < value.size()) {
+            while (start < value.size() && value[start] == ' ') ++start;
+            const auto end = value.find(' ', start);
+            const auto word = std::string_view{ value }.substr(start,
+                end == std::string::npos ? value.size() - start : end - start);
+            if (std::ranges::find(tokens, word) != tokens.end()) return true;
+            if (end == std::string::npos) break;
+            start = end + 1U;
+        }
+        return false;
+    }
+
+    [[nodiscard]] bcn::body_family::Mask InferAutoConventionalFamilies(
+        const bcn::SkinSex sex, const bcn::SkinRace race,
+        const std::filesystem::path& skinDirectory,
+        const std::vector<bcn::SkinTextureLayer>& cbbeGenitalAnal,
+        const std::vector<bcn::SkinTextureLayer>& unpGenitalAnal)
+    {
+        if (sex != bcn::SkinSex::female || race != bcn::SkinRace::humanoid) {
+            return bcn::StandardSkinFamilies(sex);
+        }
+        bcn::body_family::Mask families{};
+        if (!cbbeGenitalAnal.empty() ||
+            HasAsciiToken(skinDirectory, { "cbbe", "3ba", "3bbb" })) {
+            families |= bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+        }
+        if (!unpGenitalAnal.empty() ||
+            HasAsciiToken(skinDirectory, { "unp", "uunp", "bhunp" })) {
+            families |= bcn::body_family::Bit(bcn::body_family::Family::unp);
+        }
+        // Unlabelled conventional skin packs retain the permissive historical
+        // fallback. Exact texture-layout evidence and explicit pack tokens are
+        // narrow so CBBE and UNP UVs cannot cross when the author identifies
+        // the intended body family.
+        return families != 0U ? families : bcn::StandardSkinFamilies(sex);
+    }
+
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoFaceDetails(
         const std::filesystem::path& dataRoot, const std::filesystem::path& textureDirectory,
         const bool female)
@@ -690,7 +771,8 @@ namespace
             } };
         }
         std::vector<bcn::SkinTextureLayer> body;
-        std::vector<bcn::SkinTextureLayer> vagina;
+        std::vector<bcn::SkinTextureLayer> cbbeGenitalAnal;
+        std::vector<bcn::SkinTextureLayer> unpGenitalAnal;
         std::vector<bcn::SkinTextureLayer> hands;
         std::vector<bcn::SkinTextureLayer> feet;
         std::vector<bcn::SkinTextureLayer> face;
@@ -748,7 +830,16 @@ namespace
             break;
         case bcn::SkinRace::humanoid:
             body = AutoPart(dataRoot, textureDirectory, female ? "femalebody_1" : "malebody_1");
-            if (female) vagina = AutoPart(dataRoot, textureDirectory, "femalebody_etc_v2_1");
+            if (female) {
+                cbbeGenitalAnal = AutoPart(dataRoot, textureDirectory, "femalebody_etc_v2_1");
+                const auto unpDirectory = EqualsIgnoreCase(
+                    bcn::path_text::Utf8(textureDirectory.filename()), "BakaUNP") ?
+                    std::optional<std::filesystem::path>{ textureDirectory } :
+                    FindChildDirectory(textureDirectory, "BakaUNP");
+                if (unpDirectory) {
+                    unpGenitalAnal = AutoPart(dataRoot, *unpDirectory, "VaginalAnalCanal2");
+                }
+            }
             hands = AutoPart(dataRoot, textureDirectory, female ? "femalehands_1" : "malehands_1");
             feet = AutoPart(dataRoot, textureDirectory, female ? "femalefeet_1" : "malefeet_1");
             face = AutoPart(dataRoot, textureDirectory, female ? "femalehead" : "malehead");
@@ -758,8 +849,8 @@ namespace
         auto faceDetails = AutoFaceDetails(dataRoot, textureDirectory, female);
         // Detail maps augment a discovered face/body part but never create a
         // profile by themselves because blankdetailmap.dds is sex-ambiguous.
-        if (body.empty() && vagina.empty() && hands.empty() && feet.empty() && face.empty() &&
-            vampireFace.empty()) return {};
+        if (body.empty() && cbbeGenitalAnal.empty() && unpGenitalAnal.empty() &&
+            hands.empty() && feet.empty() && face.empty() && vampireFace.empty()) return {};
         const auto skinPath = RelativeWithin(skinDirectory, root);
         const auto setPath = RelativeWithin(textureDirectory, textureRoot);
         if (!skinPath || !setPath) return {};
@@ -780,9 +871,11 @@ namespace
             .name = baseName,
             .sex = sex,
             .race = raceLayout.race,
-            .bodyFamilies = bcn::StandardSkinFamilies(sex),
+            .bodyFamilies = InferAutoConventionalFamilies(sex, raceLayout.race,
+                skinDirectory, cbbeGenitalAnal, unpGenitalAnal),
             .body = std::move(body),
-            .vagina = std::move(vagina),
+            .cbbeGenitalAnal = std::move(cbbeGenitalAnal),
+            .unpGenitalAnal = std::move(unpGenitalAnal),
             .hands = std::move(hands),
             .feet = std::move(feet),
             .face = std::move(face),
@@ -828,7 +921,8 @@ namespace
 
         std::unordered_set<std::string> activePaths;
         AddMappedLayers(activePaths, profile.body);
-        AddMappedLayers(activePaths, profile.vagina);
+        AddMappedLayers(activePaths, profile.cbbeGenitalAnal);
+        AddMappedLayers(activePaths, profile.unpGenitalAnal);
         AddMappedLayers(activePaths, profile.hands);
         AddMappedLayers(activePaths, profile.feet);
         AddMappedLayers(activePaths, profile.face);
@@ -873,10 +967,11 @@ namespace
         std::size_t raceFaceCount{};
         for (const auto& raceFace : profile.raceFace) raceFaceCount += raceFace.size();
         SKSE::log::info(
-            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} vagina={} hands={} feet={} face={} vampire={} elder-body={} elder-hands={} elder-face={} race-face={} details={}",
+            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} cbbe-genital-anal={} unp-genital-anal={} hands={} feet={} face={} vampire={} elder-body={} elder-hands={} elder-face={} race-face={} details={}",
             profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
             bcn::SkinRaceLabel(profile.race), total, active, conditional, unmapped,
-            profile.body.size(), profile.vagina.size(), profile.hands.size(), profile.feet.size(),
+            profile.body.size(), profile.cbbeGenitalAnal.size(), profile.unpGenitalAnal.size(),
+            profile.hands.size(), profile.feet.size(),
             profile.face.size(), profile.vampireFace.size(), profile.elderBody.size(),
             profile.elderHands.size(), profile.elderFace.size(), raceFaceCount,
             profile.faceDetails.size());
@@ -965,6 +1060,10 @@ namespace bcn
     {
         if (sex == SkinSex::male) return "Male";
         if (families == body_family::Bit(body_family::Family::ube)) return "UBE";
+        const auto cbbe = body_family::Bit(body_family::Family::cbbe);
+        const auto unp = body_family::Bit(body_family::Family::unp);
+        if (families == cbbe) return "CBBE 3BA";
+        if (families == unp) return "BHUNP / UNP";
         const auto conventional = StandardSkinFamilies(SkinSex::female);
         if ((families & conventional) != 0U) return "CBBE 3BA / BHUNP / UNP";
         return "Unclassified";

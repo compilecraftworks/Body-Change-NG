@@ -68,10 +68,12 @@ namespace bcn
         // decision instead of relying on the user-facing name.
         body_family::Mask bodyFamilies{};
         std::vector<SkinTextureLayer> body;
-        // Optional CBBE 3BA female-genital atlas. It is applied only to the
-        // 3BA_Vagina/3BBB_Vagina geometry and never falls back to body, hands,
-        // feet, face, or the adjacent anus geometry.
-        std::vector<SkinTextureLayer> vagina;
+        // Optional family-specific genital/anal atlases. CBBE 3BA shares
+        // femalebody_etc_v2_1 across its vagina and anus geometries. BHUNP
+        // shares BakaUNP/VaginalAnalCanal2 across vagina, anus, and canal.
+        // Neither atlas may fall back to the regular body or another part.
+        std::vector<SkinTextureLayer> cbbeGenitalAnal;
+        std::vector<SkinTextureLayer> unpGenitalAnal;
         std::vector<SkinTextureLayer> hands;
         std::vector<SkinTextureLayer> feet;
         // FaceGen is addressed through the current actor's face-head node,

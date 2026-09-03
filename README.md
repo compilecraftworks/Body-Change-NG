@@ -91,7 +91,11 @@ button after adding files:
   same original `Textures\actors\character` tree. They stay in one pack row
   and are selected for the matching actor.
 - CBBE 3BA female packs may also provide `femalebody_etc_v2_1.dds` plus `_msn`,
-  `_sk`, and `_s`; these channels target only `3BA_Vagina`/`3BBB_Vagina`
+  `_sk`, and `_s`; these channels target the matching `3BA`/`3BBB` vagina and
+  anus geometries, which share this atlas.
+- BHUNP/UNP female packs may keep `BakaUNP\VaginalAnalCanal2.dds` plus `_msn`,
+  `_sk`, and `_s`; these channels target only the matching vagina, anus, and
+  canal geometries.
 - `BodySkin\<pack name>\Textures\actors\character\argonianfemale|argonianmale|khajiitfemale|khajiitmale` — beast-race skin packs
 - `BodySkin\<pack name>\Textures\!UBE\Body` and `...\Head` — UBE 2.0 skin packs
 - `TintMask\<pack name>\textures\...\tintmasks` — player tint DDS packs

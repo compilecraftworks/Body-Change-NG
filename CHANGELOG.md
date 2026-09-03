@@ -37,6 +37,10 @@ First stable public release.
   `BodySkin` pack root, and matches race plus sex for direct preview, committed
   reapply, and NPC distribution. Their body atlas also reaches the intended
   tail geometry, without borrowing missing hand or foot parts or channels.
+- Maps CBBE 3BA `femalebody_etc_v2_1` to its shared vagina/anal geometries and
+  BHUNP/UNP `BakaUNP\VaginalAnalCanal2` to its vagina/anal/canal geometries.
+  Diffuse, normal, subsurface, and specular channels stay isolated from the
+  regular body, hands, feet, and face.
 - Keeps `femaleold` and humanoid race-specific face normals as conditional
   layers in the same conventional female pack, applying only channels present
   for the actor's elder/race state. Astrid/Afflicted-specific assets and DDS

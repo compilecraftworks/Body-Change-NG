@@ -47,13 +47,20 @@ Astrid 전용 astridbody/astridhands/astridhead 파일과 Afflicted 전용 파�
 바디스킨 목록·미리보기·NPC 배포에 포함하지 않으며 TintMask 팩으로 따로
 설치해야 합니다.
 
-CBBE 3BA 여성 스킨팩에 아래 파일이 있으면 여성 성기 전용 채널로 함께
-등록합니다. 네 파일은 3BA_Vagina(구형 BodySlide의 3BBB_Vagina) 지오메트리에만
-적용되며 3BA_Anus, 일반 몸, 손, 발, 얼굴에는 적용하지 않습니다.
+CBBE 3BA 여성 스킨팩에 아래 파일이 있으면 여성 성기·항문 공용 채널로 함께
+등록합니다. 네 파일은 같은 아틀라스를 참조하는 3BA/3BBB의 Vagina와 Anus
+지오메트리에만 적용되며 일반 몸, 손, 발, 얼굴에는 적용하지 않습니다.
 femalebody_etc_v2_1.dds
 femalebody_etc_v2_1_msn.dds
 femalebody_etc_v2_1_sk.dds
 femalebody_etc_v2_1_s.dds
+
+BHUNP/UNP 여성 스킨팩은 원본 경로의 아래 네 파일을 함께 등록합니다.
+이 아틀라스는 BaseShapeVagina, BaseShapeAnus, BaseShapeCanal에만 적용됩니다.
+BakaUNP\VaginalAnalCanal2.dds
+BakaUNP\VaginalAnalCanal2_msn.dds
+BakaUNP\VaginalAnalCanal2_sk.dds
+BakaUNP\VaginalAnalCanal2_s.dds
 
 아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
 표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
@@ -88,5 +95,6 @@ back to the pack's base female channel, then to the actor's original texture.
 Astrid/Afflicted-specific files and DDS files under character assets\tintmasks
 are not registered as Body Skin assets.
 For CBBE 3BA female packs, femalebody_etc_v2_1 with its _msn, _sk, and _s
-companions is mapped only to 3BA_Vagina/3BBB_Vagina, never to 3BA_Anus or any
-other body part.
+companions is mapped to the matching 3BA/3BBB vagina and anus geometries that
+share this atlas, never to another body part. BHUNP/UNP packs keep the
+BakaUNP\VaginalAnalCanal2 atlas for their vagina, anus, and canal geometries.

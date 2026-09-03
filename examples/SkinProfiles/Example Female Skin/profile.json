@@ -9,7 +9,7 @@
     { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_1_sk.dds" },
     { "index": 7, "path": "Textures\\actors\\character\\female\\femalebody_1_s.dds" }
   ],
-  "vagina": [
+  "cbbeGenitalAnal": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1.dds" },
     { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_msn.dds" },
     { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_sk.dds" },

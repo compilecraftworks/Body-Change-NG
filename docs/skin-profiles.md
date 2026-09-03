@@ -71,6 +71,13 @@ Head d/n/sk atlases as one UBE-only female profile. The UBE body atlas targets
 the live slot-53 Skin Armor geometry, and the head atlas targets the actor's
 live face geometry; it does not require conventional hand/foot files.
 
+For CBBE 3BA, `femalebody_etc_v2_1` plus its `_msn`, `_sk`, and `_s`
+companions is a shared genital/anal atlas and is applied only to matching
+`3BA`/`3BBB` vagina and anus geometries. For BHUNP/UNP, preserve
+`female\BakaUNP\VaginalAnalCanal2` and the same four channels; that atlas is
+applied only to matching vagina, anus, and canal geometries. These atlases are
+never substituted for the regular body, hands, feet, or face.
+
 Optional UBE PBR, RFAOS, wetness, overlay, and material-specific companion maps
 are not assigned to guessed `BSTextureSet` indices. They remain controlled by
 the actor's active UBE material/Community Shaders setup, preventing a skin
@@ -95,6 +102,12 @@ rules.
     { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_1_sk.dds" },
     { "index": 7, "path": "Textures\\actors\\character\\female\\femalebody_1_s.dds" }
   ],
+  "cbbeGenitalAnal": [
+    { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1.dds" },
+    { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_msn.dds" },
+    { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_sk.dds" },
+    { "index": 7, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_s.dds" }
+  ],
   "hands": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalehands_1.dds" }
   ],
@@ -115,6 +128,9 @@ rules.
 texture folders. `Textures\\...` is relative to the
 skin folder. Explicit paths may also start with `BodySkin\\` or `textures\\`.
 Every path must end in `.dds` and must not include `..` or a drive letter.
+The optional `cbbeGenitalAnal` and `unpGenitalAnal` arrays provide the two
+family-specific atlases described above. The schema-1 `vagina` key remains a
+backward-compatible alias for `cbbeGenitalAnal`.
 
 Shader texture indices follow the RaceMenu/NiOverride convention used here:
 `0` diffuse, `1` normal (`_msn`), `2` skin/tint (`_sk`), `3` face detail, and

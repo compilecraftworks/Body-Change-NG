@@ -47,8 +47,10 @@
 - Added Argonian and Khajiit female/male skin scanning under the standard
   BodySkin root, with race/sex-safe preview, reapply, and NPC distribution.
 - Added CBBE 3BA `femalebody_etc_v2_1` diffuse, normal, subsurface, and
-  specular channels, routed only to `3BA_Vagina`/`3BBB_Vagina` and never to
-  the anus or another body part.
+  specular channels, routed to the matching `3BA`/`3BBB` vagina and anus
+  geometries that share the atlas.
+- Added BHUNP/UNP `BakaUNP\VaginalAnalCanal2` diffuse, normal, subsurface, and
+  specular channels for the matching vagina, anus, and canal geometries.
 - Finalized symmetric main-camera framing at FOV 70, distance 200, horizontal ±70, vertical -45, and player pitch 0.1.
 - Added a separate player-tint close-up that keeps the same FOV while scaling distance and horizontal offset together and positioning the face inside the frame.
 - When the game is paused, right-drag now orbits the camera instead of rotating the actor root, avoiding FSMP stretching without manipulating Skyrim's pause counter.
