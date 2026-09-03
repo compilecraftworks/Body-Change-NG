@@ -95,12 +95,6 @@ namespace
         tasks->AddTask(DrainOne);
     }
 
-    [[nodiscard]] bool IsNearPlayer(RE::Actor* actor)
-    {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || !player || actor == player) return true;
-        return actor->GetDistance(player) <= 3000.0F;
-    }
 }
 
 namespace bcn
@@ -116,7 +110,7 @@ namespace bcn
         if (!actor || actor->GetFormID() == 0U) return false;
         g_requests.fetch_add(1U, std::memory_order_relaxed);
         const auto performanceMode = Settings::Get().Snapshot().performanceMode;
-        const auto fastPath = !performanceMode || reason != ActorWorkReason::bulkLoad || IsNearPlayer(actor);
+        const auto fastPath = !UsesQueuedPerformancePath(performanceMode);
         if (fastPath && actor->Is3DLoaded()) {
             {
                 std::scoped_lock lock(g_lock);
@@ -140,13 +134,23 @@ namespace bcn
             auto [found, inserted] = g_pending.try_emplace(formID);
             auto& pending = found->second;
             if (!inserted) g_coalesced.fetch_add(1U, std::memory_order_relaxed);
+            const auto previousReason = pending.reason;
+            const auto wasQueued = pending.queued;
+            const auto visiblePriority = reason != ActorWorkReason::bulkLoad;
             pending.handle = actor->GetHandle();
-            pending.reason = reason;
+            if (inserted || visiblePriority) pending.reason = reason;
             pending.session = g_session.load(std::memory_order_relaxed);
             pending.waitingFor3D = !actor->Is3DLoaded();
             if (!pending.waitingFor3D && !pending.queued) {
                 pending.queued = true;
-                g_order.push_back(formID);
+                if (visiblePriority) g_order.push_front(formID);
+                else g_order.push_back(formID);
+            } else if (!inserted && visiblePriority && wasQueued &&
+                previousReason == ActorWorkReason::bulkLoad) {
+                // Leave the old bulk entry in place. Once this priority copy is
+                // processed the stale deque entry is skipped because its map
+                // entry has already been erased.
+                g_order.push_front(formID);
             }
             auto maximum = g_maxPending.load(std::memory_order_relaxed);
             while (g_pending.size() > maximum &&

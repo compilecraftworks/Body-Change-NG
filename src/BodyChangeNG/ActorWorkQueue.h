@@ -31,13 +31,20 @@ namespace bcn
         std::size_t maximumPending{};
     };
 
+    [[nodiscard]] constexpr bool UsesQueuedPerformancePath(const bool performanceMode) noexcept
+    {
+        return performanceMode;
+    }
+
     class ActorWorkQueue final
     {
     public:
         static ActorWorkQueue& Get();
 
-        // Newly visible actors use the fast path. Bulk save-load work is
-        // bounded to one actor per game-task turn when performance mode is on.
+        // Performance mode coalesces every automatic actor event and bounds
+        // work to one actor per game-task turn. Newly visible actors are
+        // prioritized ahead of save-load bulk work, so they still update in
+        // real time without making a dense cell process all morphs at once.
         [[nodiscard]] bool Request(RE::Actor* a_actor, ActorWorkReason a_reason);
         void NotifyDetached(std::uint32_t a_actorFormID);
         void ResetSession();

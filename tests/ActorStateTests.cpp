@@ -1,4 +1,5 @@
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/ActorWorkQueue.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -26,6 +27,10 @@ int main()
             "default and selected state collided");
         Require(body != StableStateSignature("body", "preset-a", false, 1U),
             "randomization options were not included");
+        Require(!bcn::UsesQueuedPerformancePath(false),
+            "normal mode unexpectedly selected the queued actor path");
+        Require(bcn::UsesQueuedPerformancePath(true),
+            "performance mode did not select the coalescing actor queue");
 
         bcn::ActorState state{
             .actorFormID = 0x1234U,

@@ -29,7 +29,11 @@ namespace
         auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(path.string(), true);
         auto logger = std::make_shared<spdlog::logger>("BodyChangeNG", std::move(sink));
         logger->set_level(spdlog::level::info);
-        logger->flush_on(spdlog::level::info);
+        // Per-actor distribution emits useful INFO diagnostics, but forcing a
+        // physical file flush for every line can turn a dense cell load into a
+        // visible frame spike. Warnings and errors still flush immediately;
+        // normal INFO output is flushed by the sink without blocking every NPC.
+        logger->flush_on(spdlog::level::warn);
         spdlog::set_default_logger(std::move(logger));
     }
 

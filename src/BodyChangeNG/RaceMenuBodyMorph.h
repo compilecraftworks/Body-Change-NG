@@ -18,6 +18,12 @@ namespace bcn::racemenu
         outfit
     };
 
+    enum class UpdatePolicy : std::uint8_t
+    {
+        synchronous,
+        deferred
+    };
+
     enum class ApplyResult : std::uint8_t
     {
         queued,
@@ -39,7 +45,8 @@ namespace bcn::racemenu
     [[nodiscard]] std::optional<std::string> CurrentPresetId(const RE::Actor* a_actor);
     void ForgetActorState(std::uint32_t a_actorFormID);
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,
-        std::uint64_t a_outfitSignature = 0U);
+        std::uint64_t a_outfitSignature = 0U,
+        UpdatePolicy a_updatePolicy = UpdatePolicy::synchronous);
     // RaceMenu recreates the player's 3D when character generation closes.
     // Reapply the already selected preset to that fresh geometry.
     void QueueReapplyCurrent(RE::Actor* a_actor);

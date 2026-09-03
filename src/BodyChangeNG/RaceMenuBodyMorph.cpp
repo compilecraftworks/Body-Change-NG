@@ -8,6 +8,7 @@
 #include <RE/B/BSVisit.h>
 #include <RE/N/NiStringExtraData.h>
 #include <SKSE/Logger.h>
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <atomic>
@@ -153,7 +154,7 @@ namespace
         std::scoped_lock lock(g_applyGenerationLock);
         const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
         g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode), generation);
-        SKSE::log::info("BodyAudit invalidated actor={:08X} mode={} generation={}",
+        SKSE::log::debug("BodyAudit invalidated actor={:08X} mode={} generation={}",
             actorFormID, static_cast<std::uint32_t>(mode), generation);
     }
 
@@ -243,7 +244,11 @@ namespace
 
     void LogBodyTriState(RE::Actor* actor, const std::string_view reason)
     {
-        if (!actor) return;
+        // Scene-graph traversal is intentionally a debug-only diagnostic.
+        // Running it twice for every automatically distributed NPC was more
+        // expensive than the rule lookup it was meant to observe.
+        const auto* logger = spdlog::default_logger_raw();
+        if (!actor || !logger || !logger->should_log(spdlog::level::debug)) return;
         for (const bool firstPerson : { false, true }) {
             if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
             auto* root = actor->Get3D(firstPerson);
@@ -259,22 +264,20 @@ namespace
                     return RE::BSVisit::BSVisitControl::kContinue;
                 });
             }
-            SKSE::log::info("BodyAudit BODYTRI actor={:08X} view={} reason='{}' count={}",
+            SKSE::log::debug("BodyAudit BODYTRI actor={:08X} view={} reason='{}' count={}",
                 actor->GetFormID(), firstPerson ? "first-person" : "third-person", reason, count);
         }
     }
 
-    void ApplyVisibleMorphs(skee::IBodyMorphInterface& bodyMorph, RE::Actor* actor)
+    void ApplyVisibleMorphs(skee::IBodyMorphInterface& bodyMorph, RE::Actor* actor,
+        const bool deferUpdate)
     {
         LogBodyTriState(actor, "before apply");
-        // RaceMenu's `true` path does not merely postpone bookkeeping: it
-        // enqueues NIOVTaskUpdateSkinPartition for every morphed geometry.
-        // Those internal jobs cannot be invalidated by Body Change NG's
-        // generation gate, so rapid list selections can finish out of order.
-        // ApplyNow already runs on SKSE's game task; `false` runs the same
-        // partition update synchronously and makes the visible mesh match the
-        // last accepted click before this task returns.
-        bodyMorph.ApplyBodyMorphs(actor, false);
+        // UI preview/commit operations use the synchronous path so rapid list
+        // selections cannot finish out of order. Automatic NPC distribution
+        // uses RaceMenu's deferred partition update, matching OBody NG's
+        // stutter-resistant path for dense cells.
+        bodyMorph.ApplyBodyMorphs(actor, deferUpdate);
         LogBodyTriState(actor, "after apply");
     }
 
@@ -285,7 +288,7 @@ namespace
         if (!bodyMorph || !actor || !actor->Is3DLoaded()) return;
         bodyMorph->ClearBodyMorphKeys(actor.get(), kPreviewKey);
         bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyPreviewKey);
-        ApplyVisibleMorphs(*bodyMorph, actor.get());
+        ApplyVisibleMorphs(*bodyMorph, actor.get(), false);
         SKSE::log::debug("Body Change NG cleared preview morphs for actor {:08X}", actor->GetFormID());
     }
 
@@ -331,7 +334,9 @@ namespace
 
     void ApplyNow(RE::ActorHandle actorHandle, bcn::BodyPreset preset, const bcn::racemenu::ApplyMode mode,
                   const std::uint64_t applyGeneration, const std::uint64_t previewGeneration = 0,
-                  const std::uint64_t outfitSignature = 0U)
+                  const std::uint64_t outfitSignature = 0U,
+                  const bcn::racemenu::UpdatePolicy updatePolicy =
+                      bcn::racemenu::UpdatePolicy::synchronous)
     {
         const auto startedAt = std::chrono::steady_clock::now();
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
@@ -358,7 +363,7 @@ namespace
             return;
         }
         if (!IsCurrentApply(actor->GetFormID(), mode, applyGeneration)) {
-            SKSE::log::info(
+            SKSE::log::debug(
                 "BodyAudit superseded preset='{}' actor={:08X} mode={} requested-generation={} current-generation={}",
                 preset.name, actor->GetFormID(), static_cast<std::uint32_t>(mode), applyGeneration,
                 CurrentApplyGeneration(actor->GetFormID(), mode));
@@ -404,7 +409,7 @@ namespace
         }
         const auto firstSliderValue = bodyMorph->GetMorph(
             actor.get(), preset.sliders.front().name.c_str(), key);
-        SKSE::log::info("BodyAudit stored preset='{}' key='{}' actor={:08X} generation={} sliders={} first='{}' value={}",
+        SKSE::log::debug("BodyAudit stored preset='{}' key='{}' actor={:08X} generation={} sliders={} first='{}' value={}",
             preset.name, key, actor->GetFormID(), applyGeneration, preset.sliders.size(),
             preset.sliders.front().name, firstSliderValue);
         if (mode == bcn::racemenu::ApplyMode::commit && actorBase && actorBase->GetSex() == RE::SEX::kFemale) {
@@ -460,24 +465,33 @@ namespace
                 bodyMorph->SetMorph(actor.get(), "AnalLoose_v2", key, -.1F);
             }
         }
-        // ApplyNow already runs on SKSE's game task. Keep RaceMenu's partition
-        // update synchronous so an older internal morph job cannot arrive
-        // after a later list selection.
-        ApplyVisibleMorphs(*bodyMorph, actor.get());
-        SKSE::log::info("BodyAudit applied preset='{}' actor={:08X} generation={} key-present={} first-value={}",
+        // UI requests keep RaceMenu's partition update synchronous so an older
+        // internal morph job cannot arrive after a later list selection.
+        // Automatic distribution and outfit correction explicitly select the
+        // deferred policy to avoid blocking a dense-cell frame.
+        ApplyVisibleMorphs(*bodyMorph, actor.get(),
+            updatePolicy == bcn::racemenu::UpdatePolicy::deferred);
+        SKSE::log::debug("BodyAudit applied preset='{}' actor={:08X} generation={} key-present={} first-value={}",
             preset.name, actor->GetFormID(), applyGeneration, bodyMorph->HasBodyMorphKey(actor.get(), key),
             bodyMorph->GetMorph(actor.get(), preset.sliders.front().name.c_str(), key));
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
             ClearPreviewNow(actorHandle);
             return;
         }
-        SKSE::log::info("Body Change NG {} {} sliders for preset '{}' to actor {:08X} ({})",
+        SKSE::log::debug("Body Change NG {} {} sliders for preset '{}' to actor {:08X} ({})",
             mode == bcn::racemenu::ApplyMode::preview ? "previewed" : "applied",
             preset.sliders.size(), preset.name, actor->GetFormID(), "OBody-compatible refresh");
-        SKSE::log::info("BodyAudit completed preset='{}' actor={:08X} generation={} elapsed-ms={}",
-            preset.name, actor->GetFormID(), applyGeneration,
-            std::chrono::duration_cast<std::chrono::milliseconds>(
-                std::chrono::steady_clock::now() - startedAt).count());
+        const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now() - startedAt).count();
+        SKSE::log::debug("BodyAudit completed preset='{}' actor={:08X} generation={} elapsed-ms={} update={}",
+            preset.name, actor->GetFormID(), applyGeneration, elapsed,
+            updatePolicy == bcn::racemenu::UpdatePolicy::deferred ? "deferred" : "synchronous");
+        if (elapsed >= 16) {
+            SKSE::log::warn(
+                "Body Change NG body morph setup exceeded one 60-FPS frame: preset='{}' actor={:08X} sliders={} elapsed-ms={} update={}",
+                preset.name, actor->GetFormID(), preset.sliders.size(), elapsed,
+                updatePolicy == bcn::racemenu::UpdatePolicy::deferred ? "deferred" : "synchronous");
+        }
         if (mode == bcn::racemenu::ApplyMode::commit) {
             {
                 std::scoped_lock lock(g_selectionLock);
@@ -534,7 +548,10 @@ namespace
             fixed("NippleDown", 0.0F, -0.1F);
             derive("NipplePerkManga", -0.25F);
         }
-        ApplyVisibleMorphs(*bodyMorph, actor.get());
+        // Outfit correction is an automatic runtime operation. RaceMenu's
+        // deferred partition update avoids blocking the frame that delivered
+        // the equip/actor event while preserving the final morph keys.
+        ApplyVisibleMorphs(*bodyMorph, actor.get(), true);
         bcn::ActorRegistry::Get().MarkOutfitApplied(actor.get(), outfitSignature);
     }
 }
@@ -629,7 +646,7 @@ namespace bcn::racemenu
     }
 
     ApplyResult QueueApply(RE::Actor* actor, std::string presetId, const ApplyMode mode,
-        const std::uint64_t outfitSignature)
+        const std::uint64_t outfitSignature, const UpdatePolicy updatePolicy)
     {
         if (!IsReady()) return ApplyResult::unavailable;
         if (!actor) return ApplyResult::invalidActor;
@@ -640,7 +657,7 @@ namespace bcn::racemenu
         if (found->sliders.empty()) return ApplyResult::emptyPreset;
         const auto actorHandle = actor->GetHandle();
         const auto applyGeneration = BeginApply(actor->GetFormID(), mode);
-        SKSE::log::info("BodyAudit requested preset='{}' id='{}' actor={:08X} mode={} generation={} sliders={}",
+        SKSE::log::debug("BodyAudit requested preset='{}' id='{}' actor={:08X} mode={} generation={} sliders={}",
             found->name, found->PersistentId(), actor->GetFormID(), static_cast<std::uint32_t>(mode),
             applyGeneration, found->sliders.size());
         if (const auto* tasks = SKSE::GetTaskInterface()) {
@@ -661,8 +678,10 @@ namespace bcn::racemenu
                         if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
                     });
                 }
-                tasks->AddTask([actorHandle, preset = std::move(preset), applyGeneration, generation] mutable {
-                    ApplyNow(actorHandle, std::move(preset), ApplyMode::preview, applyGeneration, generation);
+                tasks->AddTask([actorHandle, preset = std::move(preset), applyGeneration, generation,
+                    updatePolicy] mutable {
+                    ApplyNow(actorHandle, std::move(preset), ApplyMode::preview, applyGeneration,
+                        generation, 0U, updatePolicy);
                 });
             } else {
                 const auto previousActor = mode == ApplyMode::commit ? CancelPreviewTracking() : RE::ActorHandle{};
@@ -671,8 +690,10 @@ namespace bcn::racemenu
                         if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
                     });
                 }
-                tasks->AddTask([actorHandle, preset = std::move(preset), mode, applyGeneration, outfitSignature] mutable {
-                    ApplyNow(actorHandle, std::move(preset), mode, applyGeneration, 0U, outfitSignature);
+                tasks->AddTask([actorHandle, preset = std::move(preset), mode, applyGeneration,
+                    outfitSignature, updatePolicy] mutable {
+                    ApplyNow(actorHandle, std::move(preset), mode, applyGeneration, 0U,
+                        outfitSignature, updatePolicy);
                 });
             }
             return ApplyResult::queued;
@@ -684,7 +705,7 @@ namespace bcn::racemenu
     {
         const auto presetId = CurrentPresetId(actor);
         if (!presetId) return;
-        SKSE::log::info("BodyAudit rebuild-reapply requested id='{}' actor={:08X}",
+        SKSE::log::debug("BodyAudit rebuild-reapply requested id='{}' actor={:08X}",
             *presetId, actor ? actor->GetFormID() : 0U);
         [[maybe_unused]] const auto result = QueueApply(actor, *presetId, ApplyMode::commit);
     }
@@ -692,7 +713,8 @@ namespace bcn::racemenu
     ApplyResult QueueApplyOutfit(RE::Actor* actor, std::string refitPresetId,
         const std::uint64_t outfitSignature)
     {
-        return QueueApply(actor, std::move(refitPresetId), ApplyMode::outfit, outfitSignature);
+        return QueueApply(actor, std::move(refitPresetId), ApplyMode::outfit,
+            outfitSignature, UpdatePolicy::deferred);
     }
 
     void QueueCancelPreview()
@@ -736,9 +758,15 @@ namespace bcn::racemenu
                 auto* bodyMorph = Interface();
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved || !resolved->Is3DLoaded()) return;
+                const auto hadOutfitMorph =
+                    bodyMorph->HasBodyMorphKey(resolved.get(), kOutfitKey) ||
+                    bodyMorph->HasBodyMorphKey(resolved.get(), kLegacyOutfitKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kOutfitKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOutfitKey);
-                ApplyVisibleMorphs(*bodyMorph, resolved.get());
+                // Do not rebuild every body just to clear a key that never
+                // existed. This was a full synchronous morph pass even when
+                // outfit correction was disabled or the actor was naked.
+                if (hadOutfitMorph) ApplyVisibleMorphs(*bodyMorph, resolved.get(), true);
                 bcn::ActorRegistry::Get().MarkOutfitApplied(resolved.get(), outfitSignature);
             });
         }
@@ -774,7 +802,7 @@ namespace bcn::racemenu
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOutfitKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOBodyKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyOClotheKey);
-                if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, resolved.get());
+                if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, resolved.get(), false);
                 bcn::ActorRegistry::Get().MarkBodyApplied(resolved.get(), {}, true);
             });
         }
@@ -818,7 +846,7 @@ namespace bcn::racemenu
                 bodyMorph->ClearBodyMorphKeys(actor, kLegacyPreviewKey);
                 bodyMorph->ClearBodyMorphKeys(actor, kLegacyCommittedKey);
                 bodyMorph->ClearBodyMorphKeys(actor, kLegacyOutfitKey);
-                if (actor->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, actor);
+                if (actor->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, actor, false);
                 ++cleared;
             }
             SKSE::log::info("Body Change NG cleared owned body morph keys from {} saved actors", cleared);

@@ -17,6 +17,9 @@ First stable public release.
 - Supports mixed CBBE 3BA/UBE installations by resolving each actor from its
   live winning skin/head texture path and classifying UBE presets from XML
   `Preset/@set` and `Group` metadata in the shared SliderPresets folder.
+- Spreads automatic NPC morph work through the performance queue, uses
+  RaceMenu's deferred partition update for distribution and outfit correction,
+  and skips mesh rebuilds when there is no outfit morph to clear.
 - Keeps outfit-named presets such as Clothes, Outfit, Bikini, Armor, Cuirass,
   Dress, Panty, and Overalls visible. Only exact `-Refit` presets are reserved
   for outfit correction.

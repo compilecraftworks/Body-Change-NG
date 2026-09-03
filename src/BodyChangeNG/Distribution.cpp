@@ -680,7 +680,13 @@ namespace bcn
                 racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
         } else if ((!manual || !manual->hasBody) && selection.presetId &&
             ActorRegistry::Get().NeedsBodyApply(actor, *selection.presetId, false)) {
-            queued = racemenu::QueueApply(actor, *selection.presetId, racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
+            // Automatic distribution has at most one accepted body result per
+            // actor. Let RaceMenu defer its expensive partition rebuild just
+            // like OBody NG, while manual UI changes retain the synchronous
+            // ordering needed for rapid preview/commit input.
+            queued = racemenu::QueueApply(actor, *selection.presetId,
+                racemenu::ApplyMode::commit, 0U,
+                racemenu::UpdatePolicy::deferred) == racemenu::ApplyResult::queued;
         }
 
         if (manual && manual->hasSkin && manual->useDefaultSkin &&
