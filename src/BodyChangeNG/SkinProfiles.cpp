@@ -6,6 +6,7 @@
 #include <SKSE/Logger.h>
 
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <cctype>
 #include <ranges>
@@ -169,14 +170,13 @@ namespace
             const auto bodyFamilies = InferProfileFamilies(*sex,
                 { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
             if (bodyFamilies == 0U) return std::nullopt;
-            const auto ube = (bodyFamilies & bcn::body_family::Bit(
-                bcn::body_family::Family::ube)) != 0U;
-            // Do not allow a body-only skin profile: it would make a visible
-            // neck seam. Conventional skins additionally require hands; UBE
-            // has one body atlas on its slot-53 geometry and no separate
-            // vanilla hand/foot texture target.
-            if (body.empty() || face.empty() || (!ube && hands.empty())) return std::nullopt;
-            if (!ube && feet.empty()) feet = body;
+            // Partial packs are intentional. Every absent body part and every
+            // absent material channel keeps the actor's underlying texture;
+            // only explicitly supplied DDS files become overrides.
+            // A loose blank/detail map is not enough to infer the profile's
+            // sex and would create a phantom opposite-sex row in a pack.
+            if (body.empty() && hands.empty() && feet.empty() && face.empty() &&
+                vampireFace.empty()) return std::nullopt;
             return bcn::SkinProfile{
                 .id = std::move(id),
                 .name = std::move(name),
@@ -225,15 +225,38 @@ namespace
         return std::nullopt;
     }
 
-    [[nodiscard]] bool HasTextureSetCore(const std::filesystem::path& directory)
+    [[nodiscard]] bool IsAutoTextureAnchor(const std::string_view filename)
     {
-        // A set directory, rather than a loose Textures root, owns one full
-        // skin. This prevents `Textures\\BodyChange\\CustomSet1...7` from
-        // being collapsed into a single profile that arbitrarily picks only
-        // the first recursive file match.
-        return FindTextureFile(directory, "femalebody_1.dds").has_value() ||
-            FindTextureFile(directory, "malebody_1.dds").has_value() ||
-            FindTextureFile(directory, "femalebody_1_d.dds").has_value();
+        constexpr std::array standardStems{
+            std::string_view{ "femalebody_1" }, std::string_view{ "femalehands_1" },
+            std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
+            std::string_view{ "femaleheadvampire" },
+            std::string_view{ "malebody_1" }, std::string_view{ "malehands_1" },
+            std::string_view{ "malefeet_1" }, std::string_view{ "malehead" },
+            std::string_view{ "maleheadvampire" }
+        };
+        constexpr std::array standardSuffixes{
+            std::string_view{ ".dds" }, std::string_view{ "_msn.dds" },
+            std::string_view{ "_sk.dds" }, std::string_view{ "_s.dds" }
+        };
+        for (const auto stem : standardStems) {
+            for (const auto suffix : standardSuffixes) {
+                if (EqualsIgnoreCase(filename, std::string{ stem } + std::string{ suffix })) return true;
+            }
+        }
+        constexpr std::array ubeStems{
+            std::string_view{ "femalebody_1" }, std::string_view{ "femalehead" }
+        };
+        constexpr std::array ubeSuffixes{
+            std::string_view{ "_d.dds" }, std::string_view{ "_n.dds" },
+            std::string_view{ "_sk.dds" }
+        };
+        for (const auto stem : ubeStems) {
+            for (const auto suffix : ubeSuffixes) {
+                if (EqualsIgnoreCase(filename, std::string{ stem } + std::string{ suffix })) return true;
+            }
+        }
+        return false;
     }
 
     [[nodiscard]] std::vector<std::filesystem::path> FindTextureSetDirectories(const std::filesystem::path& skinDirectory)
@@ -256,9 +279,7 @@ namespace
             std::error_code statusError;
             if (!it->is_regular_file(statusError) || statusError) continue;
             const auto filename = bcn::path_text::Utf8(it->path().filename());
-            if (!EqualsIgnoreCase(filename, "femalebody_1.dds") &&
-                !EqualsIgnoreCase(filename, "malebody_1.dds") &&
-                !EqualsIgnoreCase(filename, "femalebody_1_d.dds")) continue;
+            if (!IsAutoTextureAnchor(filename)) continue;
             const auto directory = it->path().parent_path();
             if (std::ranges::find(directories, directory) == directories.end()) {
                 directories.push_back(directory);
@@ -386,11 +407,17 @@ namespace
             female ? bcn::body_family::Sex::female : bcn::body_family::Sex::male);
         if (layout == bcn::body_family::SkinTextureLayout::ube) {
             if (!female) return {};
-            auto body = AutoUbePart(dataRoot, textureDirectory, "femalebody_1");
-            const auto headDirectory = FindChildDirectory(textureDirectory.parent_path(), "Head");
+            // A partial UBE pack may contain only Body or only Head. Resolve
+            // both sibling atlases from whichever directory supplied the
+            // discovery anchor.
+            const auto atlasRoot = textureDirectory.parent_path();
+            const auto bodyDirectory = FindChildDirectory(atlasRoot, "Body");
+            const auto headDirectory = FindChildDirectory(atlasRoot, "Head");
+            auto body = bodyDirectory ? AutoUbePart(dataRoot, *bodyDirectory, "femalebody_1") :
+                std::vector<bcn::SkinTextureLayer>{};
             auto face = headDirectory ? AutoUbePart(dataRoot, *headDirectory, "femalehead") :
                 std::vector<bcn::SkinTextureLayer>{};
-            if (body.empty() || face.empty()) return {};
+            if (body.empty() && face.empty()) return {};
             const auto skinPath = RelativeWithin(skinDirectory, root);
             if (!skinPath) return {};
             const auto skinRelative = bcn::path_text::GenericUtf8(*skinPath);
@@ -411,8 +438,10 @@ namespace
         auto face = AutoPart(dataRoot, textureDirectory, female ? "femalehead" : "malehead");
         auto vampireFace = AutoPart(dataRoot, textureDirectory, female ? "femaleheadvampire" : "maleheadvampire");
         auto faceDetails = AutoFaceDetails(dataRoot, textureDirectory, female);
-        if (body.empty() || hands.empty() || face.empty()) return {};
-        if (feet.empty()) feet = body;
+        // Detail maps augment a discovered face/body part but never create a
+        // profile by themselves because blankdetailmap.dds is sex-ambiguous.
+        if (body.empty() && hands.empty() && feet.empty() && face.empty() &&
+            vampireFace.empty()) return {};
         const auto skinPath = RelativeWithin(skinDirectory, root);
         const auto setPath = RelativeWithin(textureDirectory, textureRoot);
         if (!skinPath || !setPath) return {};
@@ -630,5 +659,20 @@ namespace bcn
         std::scoped_lock lock(lock_);
         const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
         return found != profiles_.end() ? std::optional<SkinProfile>{ *found } : std::nullopt;
+    }
+
+    std::vector<std::string> SkinProfiles::CompatibleIds(
+        const std::vector<std::string>& ids, const SkinSex sex,
+        const body_family::Mask actorFamily) const
+    {
+        std::scoped_lock lock(lock_);
+        std::vector<std::string> compatible;
+        compatible.reserve(ids.size());
+        for (const auto& id : ids) {
+            const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
+            if (found != profiles_.end() && found->sex == sex &&
+                SkinMatchesActor(found->bodyFamilies, actorFamily)) compatible.push_back(id);
+        }
+        return compatible;
     }
 }

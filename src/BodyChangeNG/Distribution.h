@@ -62,6 +62,19 @@ namespace bcn
         bool importedFromOBody{};
     };
 
+    // Changing a rule's sex invalidates every catalog choice made under the
+    // previous sex. Keep this transition in one place so hidden preset/skin
+    // IDs can never leak through the editor into runtime distribution.
+    [[nodiscard]] inline bool SetDistributionRuleSex(DistributionRule& rule, const bool female)
+    {
+        if (rule.female == female) return false;
+        rule.female = female;
+        rule.bodyFamily.clear();
+        rule.presetIds.clear();
+        rule.skinProfileIds.clear();
+        return true;
+    }
+
     // Accepts either an NPC base form or an actor reference and normalizes it
     // to a persistent plugin + local NPC BaseID rule target.
     [[nodiscard]] bool SetDistributionRuleNPC(DistributionRule& a_rule, RE::TESForm* a_form);

@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
+#include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/PathMigration.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
@@ -220,19 +221,23 @@ namespace
     {
         if (pool.empty() || !actor) return {};
 
+        const auto* base = actor->GetActorBase();
+        if (!base) return {};
+        const auto actorFemale = base->GetSex() == RE::SEX::kFemale;
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
-        if (actorFamily == 0U) return pool;
+        return bcn::SkinProfiles::Get().CompatibleIds(pool,
+            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, actorFamily);
+    }
 
-        const auto profiles = bcn::SkinProfiles::Get().Snapshot();
-        std::vector<std::string> compatible;
-        compatible.reserve(pool.size());
-        for (const auto& id : pool) {
-            const auto found = std::ranges::find(profiles, id, &bcn::SkinProfile::id);
-            if (found != profiles.end() && bcn::SkinMatchesActor(found->bodyFamilies, actorFamily)) {
-                compatible.push_back(id);
-            }
-        }
-        return compatible;
+    [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
+        const std::vector<std::string>& pool, RE::Actor* actor)
+    {
+        if (pool.empty() || !actor) return {};
+        const auto* base = actor->GetActorBase();
+        if (!base) return {};
+        const auto actorMale = base->GetSex() != RE::SEX::kFemale;
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        return bcn::PresetCatalog::Get().CompatibleIds(pool, actorMale, actorFamily);
     }
 
     [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
@@ -240,12 +245,14 @@ namespace
     {
         for (const auto& rule : rules) {
             if (!MatchesTarget(rule, actor)) continue;
+            const auto compatiblePresets = rule.bodyExcluded ? std::vector<std::string>{} :
+                CompatiblePresetPool(rule.presetIds, actor);
             const auto compatibleSkins = rule.skinExcluded ? std::vector<std::string>{} :
                 CompatibleSkinPool(rule.skinProfileIds, actor);
             return RuleSelection{
                 .bodyExcluded = rule.bodyExcluded,
                 .skinExcluded = rule.skinExcluded,
-                .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, rule.presetIds,
+                .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, compatiblePresets,
                     actor, "body", previous && !previous->manualBody ?
                         std::string_view{ previous->selectedBodyId } : std::string_view{}),
                 .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, compatibleSkins,

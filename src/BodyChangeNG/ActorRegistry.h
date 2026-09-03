@@ -39,6 +39,7 @@ namespace bcn
         [[nodiscard]] std::optional<ActorState> Snapshot(const RE::Actor* a_actor) const;
         [[nodiscard]] std::vector<ActorState> SnapshotAll() const;
         [[nodiscard]] std::optional<ManualActorSelection> ManualSelection(const RE::Actor* a_actor) const;
+        [[nodiscard]] std::optional<std::string> SelectedSkinId(const RE::Actor* a_actor) const;
         [[nodiscard]] std::optional<std::string> AppliedBodyId(const RE::Actor* a_actor) const;
         [[nodiscard]] std::optional<std::string> AppliedSkinId(const RE::Actor* a_actor) const;
 

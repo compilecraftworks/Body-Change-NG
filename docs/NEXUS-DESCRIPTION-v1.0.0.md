@@ -93,6 +93,8 @@ body slots:
 - Apply independent skin packs to the player or a selected loaded NPC.
 - Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire
   face, diffuse, normal, subsurface, specular, and detail textures.
+- Partial packs are supported: only supplied parts and channels are changed;
+  missing values keep the actor's underlying textures without cross-part substitution.
 - UBE 2.0 Body/Head d-n-sk atlases are detected separately and applied to the
   live slot-53 body and face. Known-incompatible conventional and UBE skins are
   not shown or distributed to the wrong detected family.

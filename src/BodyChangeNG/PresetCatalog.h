@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/BodyFamily.h"
+
 #include <filesystem>
 #include <mutex>
 #include <string>
@@ -35,6 +37,11 @@ namespace bcn
         void Refresh();
         [[nodiscard]] std::vector<BodyPreset> Snapshot() const;
         [[nodiscard]] std::vector<BodyPreset> RefitSnapshot() const;
+        // Avoid copying every preset's slider vector while evaluating each
+        // NPC; only return compatible IDs from the requested rule pool.
+        [[nodiscard]] std::vector<std::string> CompatibleIds(
+            const std::vector<std::string>& a_ids, bool a_male,
+            body_family::Mask a_actorFamily) const;
         [[nodiscard]] static std::filesystem::path BodySlidePresetDirectory();
         [[nodiscard]] static std::vector<BodyPreset> ScanDirectory(const std::filesystem::path& a_directory);
 

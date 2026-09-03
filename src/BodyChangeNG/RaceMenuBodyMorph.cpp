@@ -520,6 +520,14 @@ namespace
         };
 
         bodyMorph->ClearBodyMorphKeys(actor.get(), kOutfitKey);
+        // The procedural fallback below is authored for female breast/nipple
+        // sliders. Male actors may still use an explicitly supplied male
+        // outfit preset, but must never receive this female fallback.
+        if (!base || base->GetSex() != RE::SEX::kFemale) {
+            ApplyVisibleMorphs(*bodyMorph, actor.get(), true);
+            bcn::ActorRegistry::Get().MarkOutfitApplied(actor.get(), outfitSignature);
+            return;
+        }
         // OBody NG's standard ORefit fallback.  Unsupported sliders are simply
         // ignored by RaceMenu, so this remains safe for other body families.
         derive("BreastSideShape", 0.0F);
@@ -655,6 +663,13 @@ namespace bcn::racemenu
         const auto found = std::ranges::find(presets, presetId, &BodyPreset::PersistentId);
         if (found == presets.end()) return ApplyResult::missingPreset;
         if (found->sliders.empty()) return ApplyResult::emptyPreset;
+        const auto* base = actor->GetActorBase();
+        if (!base) return ApplyResult::invalidActor;
+        const auto actorMale = base->GetSex() != RE::SEX::kFemale;
+        if (found->male != actorMale) return ApplyResult::incompatibleSex;
+        if (!bcn::body_family::Matches(
+            bcn::body_family::PresetMask(found->family, found->male),
+            bcn::body_family::ResolveActor(actor))) return ApplyResult::incompatibleBodyFamily;
         const auto actorHandle = actor->GetHandle();
         const auto applyGeneration = BeginApply(actor->GetFormID(), mode);
         SKSE::log::debug("BodyAudit requested preset='{}' id='{}' actor={:08X} mode={} generation={} sliders={}",

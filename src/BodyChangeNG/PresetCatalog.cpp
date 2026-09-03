@@ -204,4 +204,21 @@ namespace bcn
         std::scoped_lock lock(lock_);
         return refitPresets_;
     }
+
+    std::vector<std::string> PresetCatalog::CompatibleIds(
+        const std::vector<std::string>& ids, const bool male,
+        const body_family::Mask actorFamily) const
+    {
+        std::scoped_lock lock(lock_);
+        std::vector<std::string> compatible;
+        compatible.reserve(ids.size());
+        for (const auto& id : ids) {
+            const auto found = std::ranges::find(presets_, id, &BodyPreset::PersistentId);
+            if (found == presets_.end() || found->male != male) continue;
+            if (body_family::Matches(body_family::PresetMask(found->family, found->male), actorFamily)) {
+                compatible.push_back(id);
+            }
+        }
+        return compatible;
+    }
 }

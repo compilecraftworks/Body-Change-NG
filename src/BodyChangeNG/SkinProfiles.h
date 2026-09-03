@@ -81,17 +81,20 @@ namespace bcn
 
         // Loads BodySkin/<skin name>/profile.json and auto-detects the common
         // BodySkin/<skin name>/Textures/... layout when no profile JSON exists.
-        // A conventional usable skin contains matching body, hands, and
-        // FaceGen face textures for one sex. Missing feet fall back to the
-        // body layers, which is how legacy BodyChange texture sets are
-        // authored. UBE skins instead use their own !UBE/Body and !UBE/Head
-        // atlases; the body atlas covers the slot-53 UBE body geometry.
+        // Conventional and UBE packs may be partial. Each available body part
+        // and material channel becomes an override; absent parts/channels keep
+        // the actor's underlying texture instead of being synthesized from a
+        // different part. UBE uses its !UBE/Body and !UBE/Head atlases, with
+        // the body atlas targeting the slot-53 UBE body geometry.
         // Texture paths are game-relative and may point to any installed mod
         // folder, so player and NPC rule selection remain independent.
         void Refresh();
         [[nodiscard]] static std::vector<SkinProfile> ScanDirectory(const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<SkinProfile> Snapshot() const;
         [[nodiscard]] std::optional<SkinProfile> Find(std::string_view a_id) const;
+        [[nodiscard]] std::vector<std::string> CompatibleIds(
+            const std::vector<std::string>& a_ids, SkinSex a_sex,
+            body_family::Mask a_actorFamily) const;
 
         [[nodiscard]] static std::filesystem::path RootPath();
 

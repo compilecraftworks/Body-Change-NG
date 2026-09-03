@@ -9,5 +9,9 @@ femalebody/femalehands/femalefeet and malebody/malehands/malefeet texture
 names plus their femalehead/malehead face textures. Player selection and NPC
 distribution rules use the catalog separately.
 
+A pack may contain only some parts or channels. Only the supplied body, hands,
+feet, or face channels are overridden; missing ones retain the actor's current
+textures. A file from one part is never reused for a different part.
+
 Use profile.json only for an explicit custom selection. `Textures\...` paths in
 that file are relative to this skin folder.

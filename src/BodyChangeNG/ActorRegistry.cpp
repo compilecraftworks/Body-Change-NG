@@ -371,6 +371,14 @@ namespace bcn
             std::optional{ state->appliedBodyId } : std::nullopt;
     }
 
+    std::optional<std::string> ActorRegistry::SelectedSkinId(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && !state->useDefaultSkin && !state->selectedSkinId.empty() ?
+            std::optional{ state->selectedSkinId } : std::nullopt;
+    }
+
     std::optional<std::string> ActorRegistry::AppliedSkinId(const RE::Actor* actor) const
     {
         std::scoped_lock lock(lock_);

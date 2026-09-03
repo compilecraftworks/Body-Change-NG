@@ -185,6 +185,9 @@ Skin application uses the selected actor's live FaceGen subtree and RaceMenu's
 persistent texture overrides. Standard body, hands, feet, face, vampire-face,
 normal (`_msn`), subsurface (`_sk`), specular (`_s`), and compatible FaceGen
 detail DDS channels are handled without changing NIFs or Skin Armor records.
+Partial packs change only the supplied part/channel pairs; missing values retain
+the actor's underlying textures, and body, hands, feet, and face files are never
+substituted for one another.
 UBE 2.0 profiles are detected from `Textures\!UBE\Body` and `Head`, map their
 diffuse/normal/skin atlases to the actor's UBE slot-53 body and live face, and
 do not invent shader slots for optional PBR/RFAOS/wet maps owned by the active

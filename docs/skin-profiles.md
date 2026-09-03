@@ -7,8 +7,11 @@ body-preset pool and skin-profile pool, so different NPC groups may receive
 different fixed or stable-randomized results.
 
 A profile changes RaceMenu skin-texture overrides only. Body, hands, and feet
-use skin-slot overrides, while the live face geometry receives matching texture
-paths so the full set changes together. It does not replace a NIF, an
+use their corresponding skin geometry overrides, while supplied face textures
+target the live face geometry. A pack may be partial: only its supplied parts
+and channels change, while absent ones retain the actor's underlying textures.
+Body, hands, feet, and face files are never substituted across parts. It does
+not replace a NIF, an
 ActorBase's Skin Armor, inventory, equipment slots, baked FaceGen files, or NPC
 tint masks.
 
@@ -90,9 +93,9 @@ Every path must end in `.dds` and must not include `..` or a drive letter.
 
 Shader texture indices follow the RaceMenu/NiOverride convention used here:
 `0` diffuse, `1` normal (`_msn`), `2` skin/tint (`_sk`), `3` face detail, and
-`7` specular (`_s`). A usable profile must provide body, hands, and face maps;
-when feet are omitted, body maps are used for the feet slot as a legacy
-BodyChange-compatible fallback.
+`7` specular (`_s`). A usable profile may provide any recognized body, hands,
+feet, or face map. Missing parts and missing diffuse, normal, subsurface, detail,
+or specular channels remain controlled by the actor's original skin/material.
 
 The main Skin list compares every profile with the selected actor's detected
 body family. Conventional CBBE 3BA/BHUNP/UNP profiles and UBE profiles are not

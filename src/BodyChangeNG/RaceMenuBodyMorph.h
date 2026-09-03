@@ -32,6 +32,8 @@ namespace bcn::racemenu
         actor3DUnavailable,
         missingPreset,
         emptyPreset,
+        incompatibleSex,
+        incompatibleBodyFamily,
         noTaskInterface
     };
 

@@ -1,5 +1,6 @@
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
+#include "BodyChangeNG/Distribution.h"
 
 #include <iostream>
 #include <stdexcept>
@@ -47,6 +48,18 @@ int main()
         };
         Require(state.manualBody && state.manualSkin && state.selectedBodyId != state.selectedSkinId,
             "body and skin channels did not remain independent");
+        bcn::DistributionRule rule{
+            .female = true,
+            .bodyFamily = "CBBE 3BA",
+            .presetIds = { "female-body" },
+            .skinProfileIds = { "female-skin" }
+        };
+        Require(bcn::SetDistributionRuleSex(rule, false), "rule sex change was not detected");
+        Require(!rule.female && rule.bodyFamily.empty() && rule.presetIds.empty() && rule.skinProfileIds.empty(),
+            "rule sex change retained hidden selections from the previous sex");
+        rule.presetIds = { "male-body" };
+        Require(!bcn::SetDistributionRuleSex(rule, false) && rule.presetIds.size() == 1U,
+            "unchanged rule sex unnecessarily destroyed compatible selections");
         std::cout << "ActorStateTests passed\n";
         return 0;
     } catch (const std::exception& error) {

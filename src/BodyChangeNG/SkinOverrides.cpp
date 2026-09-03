@@ -805,6 +805,12 @@ namespace
         return layers;
     }
 
+    [[nodiscard]] bool ProfileUsesFace(const bcn::SkinProfile& profile, const bool vampire) noexcept
+    {
+        return !profile.face.empty() || (vampire && !profile.vampireFace.empty()) ||
+            !profile.faceDetails.empty();
+    }
+
     [[nodiscard]] std::string NormalizedTexturePath(std::string path)
     {
         std::ranges::replace(path, '/', '\\');
@@ -1227,15 +1233,16 @@ namespace
             (!female && profile.sex != bcn::SkinSex::male)) return;
         if (!ProfileMatchesActor(actor.get(), profile)) return;
         const auto faceNode = FaceNode(actor.get(), base);
-        if (!faceNode) {
+        const auto vampire = IsVampireRace(base);
+        if (ProfileUsesFace(profile, vampire) && !faceNode) {
             SKSE::log::warn(
-                "Body Change NG skipped skin '{}' on actor {:08X}: no live FaceGen geometry was found; partial application would create a neck seam",
+                "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
                 profile.name, actor->GetFormID());
             return;
         }
-        const auto faceLayers = EffectiveFaceLayers(profile, IsVampireRace(base), faceNode->detailFilename);
-        const auto clearDetail = std::ranges::find(faceLayers, kFaceDetailTextureIndex,
-            &bcn::SkinTextureLayer::shaderTextureIndex) != faceLayers.end();
+        const auto faceLayers = faceNode ?
+            EffectiveFaceLayers(profile, vampire, faceNode->detailFilename) :
+            std::vector<bcn::SkinTextureLayer>{};
 
         auto clearBatch = std::make_shared<LegacyOverrideBatch>();
         clearBatch->completion = [actorHandle, profile, generation](const std::uint32_t) {
@@ -1244,43 +1251,56 @@ namespace
             if (!currentActor || !currentActor->Is3DLoaded() || !currentVM ||
                 !IsCurrentSkinChange(currentActor->GetFormID(), generation)) return;
             auto* currentBase = currentActor->GetActorBase();
+            if (!currentBase || !ProfileMatchesActor(currentActor.get(), profile)) return;
             const auto currentFace = FaceNode(currentActor.get(), currentBase);
-            if (!currentBase || !currentFace || !ProfileMatchesActor(currentActor.get(), profile)) return;
+            const auto currentVampire = IsVampireRace(currentBase);
+            if (ProfileUsesFace(profile, currentVampire) && !currentFace) return;
             const auto currentFemale = currentBase->GetSex() == RE::SEX::kFemale;
-            const auto currentFaceLayers = EffectiveFaceLayers(
-                profile, IsVampireRace(currentBase), currentFace->detailFilename);
+            const auto currentFaceLayers = currentFace ? EffectiveFaceLayers(
+                profile, currentVampire, currentFace->detailFilename) :
+                std::vector<bcn::SkinTextureLayer>{};
 
             auto applyBatch = std::make_shared<LegacyOverrideBatch>();
-            applyBatch->completion = [actorHandle, profile, generation](const std::uint32_t accepted) {
+            auto partProgress = std::make_shared<std::pair<std::size_t, std::size_t>>();
+            applyBatch->completion = [actorHandle, profile, generation, partProgress](const std::uint32_t accepted) {
                 const auto settledActor = actorHandle.get();
                 if (!settledActor || !IsCurrentSkinChange(settledActor->GetFormID(), generation)) return;
-                if (accepted == 0U) {
-                    SKSE::log::warn("Body Change NG could not dispatch RaceMenu v1 skin profile '{}'", profile.name);
-                    return;
+                const auto [requestedParts, submittedParts] = *partProgress;
+                const auto complete = requestedParts != 0U && submittedParts == requestedParts && accepted != 0U;
+                if (complete) {
+                    bcn::ActorRegistry::Get().MarkSkinApplied(settledActor.get(), profile.id, false);
+                    SKSE::log::info(
+                        "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v1",
+                        profile.name, settledActor->GetFormID());
+                } else {
+                    SKSE::log::warn(
+                        "Body Change NG dispatched only {}/{} currently available parts from skin '{}' to actor {:08X} through RaceMenu Override v1; the desired selection remains pending",
+                        submittedParts, requestedParts, profile.name, settledActor->GetFormID());
                 }
-                {
-                    std::scoped_lock lock(g_selectionLock);
-                    g_currentProfileIds[settledActor->GetFormID()] = profile.id;
+                auto* settledVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                if (!settledVM || !QueueNiNodeUpdate(*settledVM, settledActor.get(), actorHandle, generation)) {
+                    QueueSettledSkinAudit(actorHandle, generation, 3U);
                 }
-                bcn::ActorRegistry::Get().MarkSkinApplied(settledActor.get(), profile.id, false);
-                SKSE::log::info(
-                    "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v1",
-                    profile.name, settledActor->GetFormID());
-                QueueSettledSkinAudit(actorHandle, generation, 3U);
             };
 
-            bool submitted{};
-            submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                ProfileBodySlot(profile), profile.body, applyBatch) || submitted;
+            const auto submitPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+                const std::vector<bcn::SkinTextureLayer>& layers) {
+                if (layers.empty()) return;
+                ++partProgress->first;
+                if (DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                    slot, layers, applyBatch)) ++partProgress->second;
+            };
+            submitPart(ProfileBodySlot(profile), profile.body);
             if (!UsesUbeBodySlot(profile)) {
-                submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands, applyBatch) || submitted;
-                submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet, applyBatch) || submitted;
+                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
+                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
             }
-            submitted = DispatchLegacyFaceApply(*currentVM, currentActor.get(), currentFemale,
-                *currentFace, currentFaceLayers, applyBatch) || submitted;
-            if (!submitted) {
+            if (!currentFaceLayers.empty()) {
+                ++partProgress->first;
+                if (currentFace && DispatchLegacyFaceApply(*currentVM, currentActor.get(), currentFemale,
+                    *currentFace, currentFaceLayers, applyBatch)) ++partProgress->second;
+            }
+            if (partProgress->second == 0U) {
                 SKSE::log::warn("Body Change NG found no RaceMenu v1 skin targets for '{}'", profile.name);
             }
             CompleteLegacyBatch(applyBatch);
@@ -1293,7 +1313,7 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, clearBatch);
-        DispatchLegacyFaceClear(*vm, actor.get(), female, faceNode->nodeName, clearDetail, clearBatch);
+        if (faceNode) DispatchLegacyFaceClear(*vm, actor.get(), female, faceNode->nodeName, true, clearBatch);
         CompleteLegacyBatch(clearBatch);
     }
 
@@ -1351,57 +1371,79 @@ namespace
         auto* overrides = OverrideInterfaceV2();
         if (!overrides) return;
 
-        // Never change only the body. A missing face node would leave a visible
-        // neck seam, especially on follower and custom FaceGen NPCs.
         const auto faceNode = FaceNode(actor.get(), base);
-        if (!faceNode) {
+        const auto vampire = IsVampireRace(base);
+        if (ProfileUsesFace(profile, vampire) && !faceNode) {
             SKSE::log::warn(
-                "Body Change NG skipped skin '{}' on actor {:08X}: no live FaceGen geometry was found; partial application would create a neck seam",
+                "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
                 profile.name, actor->GetFormID());
             return;
         }
-        const auto faceLayers = EffectiveFaceLayers(profile, IsVampireRace(base), faceNode->detailFilename);
+        const auto faceLayers = faceNode ?
+            EffectiveFaceLayers(profile, vampire, faceNode->detailFilename) :
+            std::vector<bcn::SkinTextureLayer>{};
         // Store exact Armor + ArmorAddon + geometry keys, then repaint only
         // that loaded addon clone. Broad AddSkinOverrideString/skin-slot
         // registration is intentionally never used for new entries.
-        [[maybe_unused]] const auto cleanedLegacy =
-            ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female);
+        bool removed = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female);
         if (ClaimLegacyCleanup(actor->GetFormID())) {
-            [[maybe_unused]] const auto clearedLegacySkinBody = ClearTexturePart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
-            [[maybe_unused]] const auto clearedLegacySkinUbeBody = ClearTexturePart(
-                *overrides, actor.get(), female, kUbeBodySlot);
-            [[maybe_unused]] const auto clearedLegacySkinHands = ClearTexturePart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
-            [[maybe_unused]] const auto clearedLegacySkinFeet = ClearTexturePart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
-            [[maybe_unused]] const auto clearedLegacyBody = ClearArmorAddonPart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
-            [[maybe_unused]] const auto clearedLegacyUbeBody = ClearArmorAddonPart(
-                *overrides, actor.get(), female, kUbeBodySlot);
-            [[maybe_unused]] const auto clearedLegacyHands = ClearArmorAddonPart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
-            [[maybe_unused]] const auto clearedLegacyFeet = ClearArmorAddonPart(
-                *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
+            removed = ClearTexturePart(*overrides, actor.get(), female,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
+            removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
+            removed = ClearTexturePart(*overrides, actor.get(), female,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
+            removed = ClearTexturePart(*overrides, actor.get(), female,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || removed;
         }
-        bool applied{};
-        applied = ApplyPart(*overrides, actor.get(), female, ProfileBodySlot(profile), profile.body) || applied;
+        // Reconcile every owned exact key before writing the new profile.
+        // This restores the actor's underlying texture for absent parts and
+        // absent diffuse/normal/subsurface/detail/specular channels.
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || removed;
+        if (faceNode) {
+            removed = ClearFaceTextures(*overrides, actor.get(), female, faceNode->nodeName, true) || removed;
+        }
+
+        std::size_t requestedParts{};
+        std::size_t appliedParts{};
+        const auto applyPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+            const std::vector<bcn::SkinTextureLayer>& layers) {
+            if (layers.empty()) return;
+            ++requestedParts;
+            if (ApplyPart(*overrides, actor.get(), female, slot, layers)) ++appliedParts;
+        };
+        applyPart(ProfileBodySlot(profile), profile.body);
         if (!UsesUbeBodySlot(profile)) {
-            applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands) || applied;
-            applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet) || applied;
+            applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
+            applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
         }
-        applied = ApplyFacePart(*overrides, actor.get(), female, *faceNode, faceLayers) || applied;
-        if (applied) {
-            {
-                std::scoped_lock lock(g_selectionLock);
-                g_currentProfileIds[actor->GetFormID()] = profile.id;
+        if (!faceLayers.empty()) {
+            ++requestedParts;
+            if (faceNode && ApplyFacePart(*overrides, actor.get(), female, *faceNode, faceLayers)) {
+                ++appliedParts;
             }
+        }
+        const auto complete = requestedParts != 0U && appliedParts == requestedParts;
+        if (complete) {
             bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
             SKSE::log::info("Body Change NG applied texture skin profile '{}' to actor {:08X} synchronously",
                 profile.name, actor->GetFormID());
-            QueueSettledSkinAudit(actorHandle, generation, 0U);
         } else {
-            SKSE::log::warn("Body Change NG could not apply the RaceMenu texture profile '{}'", profile.name);
+            SKSE::log::warn(
+                "Body Change NG applied only {}/{} currently available parts from skin '{}' to actor {:08X}; the desired selection remains pending for a later 3D/equipment refresh",
+                appliedParts, requestedParts, profile.name, actor->GetFormID());
+        }
+        if (removed) {
+            if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                vm && QueueNiNodeUpdate(*vm, actor.get(), actorHandle, generation)) return;
+            QueueSettledSkinAudit(actorHandle, generation, 2U);
+        } else {
+            QueueSettledSkinAudit(actorHandle, generation, 0U);
         }
     }
 
@@ -1479,14 +1521,22 @@ namespace bcn::skin_override
             return ApplyResult::incompatibleSex;
         }
         if (!ProfileMatchesActor(actor, *profile)) return ApplyResult::incompatibleBodyFamily;
-        // Body/hands/feet without the matching live face would create the neck
-        // seam the user is explicitly trying to avoid. Reject synchronously so
-        // the UI never reports a partial skin as successfully applied.
-        if (!FaceNode(actor, const_cast<RE::TESNPC*>(base))) return ApplyResult::faceGeometryUnavailable;
+        // Partial body/hands/feet packs do not need a face target. Require
+        // live FaceGen geometry only when this profile supplies face layers.
+        if (ProfileUsesFace(*profile, IsVampireRace(const_cast<RE::TESNPC*>(base))) &&
+            !FaceNode(actor, const_cast<RE::TESNPC*>(base))) {
+            return ApplyResult::faceGeometryUnavailable;
+        }
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return ApplyResult::noTaskInterface;
         const auto handle = actor->GetHandle();
         const auto generation = BeginSkinChange(actor->GetFormID());
+        {
+            // Preserve the desired selection even when a covered body part is
+            // not repaintable until a later equipment event.
+            std::scoped_lock lock(g_selectionLock);
+            g_currentProfileIds[actor->GetFormID()] = profile->id;
+        }
         tasks->AddTask([handle, profile = *profile, generation, overrideVersion] {
             if (overrideVersion == 1U) ApplyLegacyNow(handle, profile, generation);
             else ApplyNow(handle, profile, generation);
@@ -1525,6 +1575,10 @@ namespace bcn::skin_override
             const auto found = g_currentProfileIds.find(actor->GetFormID());
             if (found != g_currentProfileIds.end()) return found->second;
         }
+        // A partial profile can remain pending until its covered geometry is
+        // loaded. Keep returning the desired selection so equipment and 3D
+        // refresh events retry it instead of reviving an older complete skin.
+        if (const auto selected = bcn::ActorRegistry::Get().SelectedSkinId(actor)) return selected;
         return bcn::ActorRegistry::Get().AppliedSkinId(actor);
     }
 

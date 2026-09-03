@@ -166,6 +166,20 @@ int main(const int argc, char** argv)
         Touch(ubeHead / file);
     }
 
+    const auto malePartial = sandbox / "BodySkin" / "Male Partial" /
+        "Textures" / "actors" / "character" / "male";
+    Touch(malePartial / "malebody_1.dds");
+    Touch(malePartial / "malebody_1_s.dds");
+    Touch(malePartial / "malehead_msn.dds");
+
+    const auto handsOnly = sandbox / "BodySkin" / "Hands Only" /
+        "Textures" / "actors" / "character" / "male";
+    Touch(handsOnly / "malehands_1_msn.dds");
+
+    const auto ubeHeadOnly = sandbox / "BodySkin" / "UBE Head Only" /
+        "Textures" / "!UBE" / "Head";
+    Touch(ubeHeadOnly / "femalehead_d.dds");
+
     const auto skins = bcn::SkinProfiles::ScanDirectory(sandbox / "BodySkin");
     const auto discoveredSkinRoots = bcn::catalog_roots::Discover(sandbox / "BodySkin");
     std::error_code equivalentError;
@@ -173,11 +187,10 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 2U, "skin scanner did not create one conventional and one UBE pack row")) return 1;
+    if (!Require(skins.size() == 5U, "skin scanner did not preserve complete and partial skin pack rows")) return 1;
     for (const auto& skin : skins) {
-        if (!Require(skin.sex == bcn::SkinSex::female, "skin scanner leaked the pack into the wrong sex")) return 1;
-        if (!Require(!skin.body.empty() && !skin.face.empty(), "complete skin lost a required body or face part")) return 1;
         if (skin.name == "UBE 2.0 Momo Skin") {
+            if (!Require(skin.sex == bcn::SkinSex::female, "UBE skin leaked into the wrong sex")) return 1;
             if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
                     "UBE texture namespace was not classified as UBE")) return 1;
             if (!Require(skin.body.size() == 3U && skin.face.size() == 3U &&
@@ -186,7 +199,35 @@ int main(const int argc, char** argv)
             if (!Require(skin.id.ends_with(":female:ube"), "UBE profile id can collide with a conventional profile")) return 1;
             continue;
         }
-        if (!Require(!skin.hands.empty(), "conventional skin lost its required hands part")) return 1;
+        if (skin.name == "UBE Head Only") {
+            if (!Require(skin.sex == bcn::SkinSex::female && skin.body.empty() &&
+                    skin.hands.empty() && skin.feet.empty() && skin.face.size() == 1U,
+                    "partial UBE head pack borrowed or invented another body part")) return 1;
+            continue;
+        }
+        if (skin.name == "Male Partial") {
+            if (!Require(skin.sex == bcn::SkinSex::male && skin.body.size() == 2U &&
+                    skin.hands.empty() && skin.feet.empty() && skin.face.size() == 1U,
+                    "partial male pack lost a supplied channel or synthesized a missing part")) return 1;
+            if (!Require(std::ranges::all_of(skin.body, [](const auto& layer) {
+                    return Filename(Lower(layer.path)).starts_with("malebody_1");
+                }) && std::ranges::all_of(skin.face, [](const auto& layer) {
+                    return Filename(Lower(layer.path)).starts_with("malehead");
+                }), "male body and face files crossed part boundaries")) return 1;
+            continue;
+        }
+        if (skin.name == "Hands Only") {
+            if (!Require(skin.sex == bcn::SkinSex::male && skin.body.empty() &&
+                    skin.hands.size() == 1U && skin.feet.empty() && skin.face.empty(),
+                    "hands-only pack was rejected or copied into body, feet, or face")) return 1;
+            if (!Require(skin.hands.front().shaderTextureIndex == 1U,
+                    "hands normal map was not kept on the hands normal channel")) return 1;
+            continue;
+        }
+        if (!Require(skin.sex == bcn::SkinSex::female && !skin.body.empty() &&
+                !skin.hands.empty() && !skin.face.empty(),
+                "conventional female skin lost one of its supplied parts")) return 1;
+        if (!Require(skin.feet.empty(), "missing feet incorrectly borrowed the body texture")) return 1;
         if (!Require((skin.bodyFamilies & bcn::body_family::Bit(bcn::body_family::Family::ube)) == 0U,
                 "conventional skin leaked into the UBE family")) return 1;
         if (!Require(skin.name.contains(skinPackName), "skin pack name was not preserved as UTF-8")) return 1;
@@ -243,6 +284,7 @@ int main(const int argc, char** argv)
     }
     const auto ubeTint = std::ranges::find(tints, "UBE Makeup", &bcn::player_tint::Asset::pack);
     const auto cotrTint = std::ranges::find(tints, "COtR Makeup", &bcn::player_tint::Asset::pack);
+    const auto maleTint = std::ranges::find(tints, "Pack B", &bcn::player_tint::Asset::pack);
     if (!Require(ubeTint != tints.end() &&
             ubeTint->bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
             "UBE tint pack was not isolated to UBE")) return 1;
@@ -250,6 +292,9 @@ int main(const int argc, char** argv)
             bcn::player_tint::TintMatchesActor(cotrTint->bodyFamilies, standardFamily) &&
             bcn::player_tint::TintMatchesActor(cotrTint->bodyFamilies, ubeFamily),
             "COtR-compatible tint pack was not exposed to both female layouts")) return 1;
+    if (!Require(maleTint != tints.end() && maleTint->sex == bcn::player_tint::Sex::male &&
+            (maleTint->bodyFamilies & bcn::body_family::kMaleFamilies) != 0U,
+            "male tint was not retained as a male-family asset")) return 1;
 
     std::filesystem::remove_all(sandbox);
     return 0;

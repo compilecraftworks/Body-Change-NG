@@ -52,6 +52,6 @@
 - Cleaned queued work and temporary Body/Skin state when actors unload, and blocked stale tasks after save changes.
 - Fixed missing footer buttons in the NPC Distribution window and refreshed the tint color chip after restoring a tint value.
 - Reduced automatic-distribution stutter in both normal and performance modes by coalescing actor events, prioritizing newly visible NPCs, deferring RaceMenu partition rebuilds, and skipping empty outfit-morph clears. Performance mode adds a further scheduling interval between actors.
-- Completed the v1.0.0 DLL build with all nine regression test suites passing.
+- Completed the v1.0.0 DLL build with all ten regression test suites passing.
 
 v1.0.0 is the first stable public baseline for Body Change NG.

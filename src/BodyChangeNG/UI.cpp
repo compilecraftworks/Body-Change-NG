@@ -809,6 +809,10 @@ namespace
             return Text("액터의 3D가 로드되지 않아 즉시 적용할 수 없습니다.", "The actor's 3D is not loaded, so it cannot be applied immediately.", "角色的 3D 尚未加载，无法立即应用。");
         case bcn::racemenu::ApplyResult::emptyPreset:
             return Text("이 프리셋에는 적용할 슬라이더가 없습니다.", "This preset has no applicable sliders.", "该预设没有可应用的滑块。");
+        case bcn::racemenu::ApplyResult::incompatibleSex:
+            return Text("선택한 바디 프리셋은 이 액터의 성별과 맞지 않습니다.", "The selected body preset does not match this actor's sex.", "所选身体预设与该角色的性别不匹配。");
+        case bcn::racemenu::ApplyResult::incompatibleBodyFamily:
+            return Text("선택한 바디 프리셋은 이 액터의 바디 계열과 맞지 않습니다.", "The selected body preset does not match this actor's body family.", "所选身体预设与该角色的身体系列不匹配。");
         case bcn::racemenu::ApplyResult::noTaskInterface:
             return Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。");
         default:
@@ -830,7 +834,7 @@ namespace
         case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
         case bcn::skin_override::ApplyResult::faceGeometryUnavailable:
-            return Text("현재 얼굴 지오메트리를 찾지 못해 목선을 방지하려고 스킨 전체 적용을 중단했습니다.", "The live face geometry was not found, so the whole skin application was stopped to prevent a neck seam.", "未找到当前脸部几何体；为避免颈部接缝，已停止应用整套皮肤。");
+            return Text("이 스킨팩의 얼굴 텍스처를 적용할 현재 얼굴 지오메트리를 찾지 못했습니다.", "The live face geometry required by this skin pack's face textures was not found.", "未找到应用此皮肤包脸部纹理所需的当前脸部几何体。");
         case bcn::skin_override::ApplyResult::noTaskInterface:
             return Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。");
         case bcn::skin_override::ApplyResult::unavailable:
@@ -1714,8 +1718,7 @@ namespace
                     ImGui::SetNextItemWidth(Scaled(180.0F));
                     PrepareResizableDropdown(2U);
                     if (ImGui::Combo("##ruleSex", &sex, Text("여성\0남성\0", "Female\0Male\0", "女性\0男性\0"))) {
-                        rule.female = sex == 0;
-                        rule.bodyFamily.clear();
+                        static_cast<void>(bcn::SetDistributionRuleSex(rule, sex == 0));
                     }
                     ImGui::SameLine();
                     ImGui::TextUnformatted(Text("대상 범위", "Scope", "目标范围"));
