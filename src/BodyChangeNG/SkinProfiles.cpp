@@ -221,16 +221,22 @@ namespace
                 return std::nullopt;
             }
             auto body = ParsePart(dataRoot, path.parent_path(), json, "body");
+            auto vagina = ParsePart(dataRoot, path.parent_path(), json, "vagina");
+            if (*sex == bcn::SkinSex::male && !vagina.empty()) {
+                SKSE::log::warn("Body Change NG ignored female vagina layers in male skin profile {}",
+                    bcn::path_text::Utf8(path));
+                vagina.clear();
+            }
             auto hands = ParsePart(dataRoot, path.parent_path(), json, "hands");
             auto feet = ParsePart(dataRoot, path.parent_path(), json, "feet");
             auto face = ParsePart(dataRoot, path.parent_path(), json, "face");
             auto vampireFace = ParsePart(dataRoot, path.parent_path(), json, "vampireFace");
             auto faceDetails = ParsePart(dataRoot, path.parent_path(), json, "faceDetails");
             const auto bodyFamilies = InferProfileFamilies(*sex,
-                { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
+                { &body, &vagina, &hands, &feet, &face, &vampireFace, &faceDetails });
             if (bodyFamilies == 0U) return std::nullopt;
             const auto inferredRace = InferProfileRace(
-                { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
+                { &body, &vagina, &hands, &feet, &face, &vampireFace, &faceDetails });
             if (!inferredRace) {
                 SKSE::log::warn("Body Change NG ignored skin profile {}: Argonian and Khajiit textures cannot be mixed",
                     bcn::path_text::Utf8(path));
@@ -256,7 +262,7 @@ namespace
             // only explicitly supplied DDS files become overrides.
             // A loose blank/detail map is not enough to infer the profile's
             // sex and would create a phantom opposite-sex row in a pack.
-            if (body.empty() && hands.empty() && feet.empty() && face.empty() &&
+            if (body.empty() && vagina.empty() && hands.empty() && feet.empty() && face.empty() &&
                 vampireFace.empty()) return std::nullopt;
             return bcn::SkinProfile{
                 .id = std::move(id),
@@ -265,6 +271,7 @@ namespace
                 .race = race,
                 .bodyFamilies = bodyFamilies,
                 .body = std::move(body),
+                .vagina = std::move(vagina),
                 .hands = std::move(hands),
                 .feet = std::move(feet),
                 .face = std::move(face),
@@ -310,7 +317,8 @@ namespace
     [[nodiscard]] bool IsAutoTextureAnchor(const std::string_view filename)
     {
         constexpr std::array standardStems{
-            std::string_view{ "femalebody_1" }, std::string_view{ "femalehands_1" },
+            std::string_view{ "femalebody_1" }, std::string_view{ "femalebody_etc_v2_1" },
+            std::string_view{ "femalehands_1" },
             std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
             std::string_view{ "femaleheadvampire" },
             std::string_view{ "malebody_1" }, std::string_view{ "malehands_1" },
@@ -577,6 +585,7 @@ namespace
             } };
         }
         std::vector<bcn::SkinTextureLayer> body;
+        std::vector<bcn::SkinTextureLayer> vagina;
         std::vector<bcn::SkinTextureLayer> hands;
         std::vector<bcn::SkinTextureLayer> feet;
         std::vector<bcn::SkinTextureLayer> face;
@@ -634,6 +643,7 @@ namespace
             break;
         case bcn::SkinRace::humanoid:
             body = AutoPart(dataRoot, textureDirectory, female ? "femalebody_1" : "malebody_1");
+            if (female) vagina = AutoPart(dataRoot, textureDirectory, "femalebody_etc_v2_1");
             hands = AutoPart(dataRoot, textureDirectory, female ? "femalehands_1" : "malehands_1");
             feet = AutoPart(dataRoot, textureDirectory, female ? "femalefeet_1" : "malefeet_1");
             face = AutoPart(dataRoot, textureDirectory, female ? "femalehead" : "malehead");
@@ -643,7 +653,7 @@ namespace
         auto faceDetails = AutoFaceDetails(dataRoot, textureDirectory, female);
         // Detail maps augment a discovered face/body part but never create a
         // profile by themselves because blankdetailmap.dds is sex-ambiguous.
-        if (body.empty() && hands.empty() && feet.empty() && face.empty() &&
+        if (body.empty() && vagina.empty() && hands.empty() && feet.empty() && face.empty() &&
             vampireFace.empty()) return {};
         const auto skinPath = RelativeWithin(skinDirectory, root);
         const auto setPath = RelativeWithin(textureDirectory, textureRoot);
@@ -667,6 +677,7 @@ namespace
             .race = raceLayout.race,
             .bodyFamilies = bcn::StandardSkinFamilies(sex),
             .body = std::move(body),
+            .vagina = std::move(vagina),
             .hands = std::move(hands),
             .feet = std::move(feet),
             .face = std::move(face),
@@ -712,6 +723,7 @@ namespace
 
         std::unordered_set<std::string> activePaths;
         AddMappedLayers(activePaths, profile.body);
+        AddMappedLayers(activePaths, profile.vagina);
         AddMappedLayers(activePaths, profile.hands);
         AddMappedLayers(activePaths, profile.feet);
         AddMappedLayers(activePaths, profile.face);
@@ -750,10 +762,10 @@ namespace
                 bcn::path_text::Utf8(it->path()), classification);
         }
         SKSE::log::info(
-            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} hands={} feet={} face={} vampire={} details={}",
+            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} vagina={} hands={} feet={} face={} vampire={} details={}",
             profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
             bcn::SkinRaceLabel(profile.race), total, active, conditional, unmapped,
-            profile.body.size(), profile.hands.size(), profile.feet.size(),
+            profile.body.size(), profile.vagina.size(), profile.hands.size(), profile.feet.size(),
             profile.face.size(), profile.vampireFace.size(), profile.faceDetails.size());
     }
 }

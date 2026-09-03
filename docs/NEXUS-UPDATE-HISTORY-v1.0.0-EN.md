@@ -46,6 +46,9 @@
   application, with family-safe main lists and NPC skin distribution.
 - Added Argonian and Khajiit female/male skin scanning under the standard
   BodySkin root, with race/sex-safe preview, reapply, and NPC distribution.
+- Added CBBE 3BA `femalebody_etc_v2_1` diffuse, normal, subsurface, and
+  specular channels, routed only to `3BA_Vagina`/`3BBB_Vagina` and never to
+  the anus or another body part.
 - Finalized symmetric main-camera framing at FOV 70, distance 200, horizontal ±70, vertical -45, and player pitch 0.1.
 - Added a separate player-tint close-up that keeps the same FOV while scaling distance and horizontal offset together and positioning the face inside the frame.
 - When the game is paused, right-drag now orbits the camera instead of rotating the actor root, avoiding FSMP stretching without manipulating Skyrim's pause counter.

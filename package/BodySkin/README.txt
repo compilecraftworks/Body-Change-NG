@@ -25,6 +25,14 @@ BodySkin\<스킨팩 이름>\Textures\!UBE\Head\femalehead_sk.dds
 유지합니다. diffuse·normal·subsurface·specular 채널도 같은 원칙이며,
 몸 파일을 발이나 손에 대신 쓰지 않습니다.
 
+CBBE 3BA 여성 스킨팩에 아래 파일이 있으면 여성 성기 전용 채널로 함께
+등록합니다. 네 파일은 3BA_Vagina(구형 BodySlide의 3BBB_Vagina) 지오메트리에만
+적용되며 3BA_Anus, 일반 몸, 손, 발, 얼굴에는 적용하지 않습니다.
+femalebody_etc_v2_1.dds
+femalebody_etc_v2_1_msn.dds
+femalebody_etc_v2_1_sk.dds
+femalebody_etc_v2_1_s.dds
+
 아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
 표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
 성별의 몸 아틀라스를 사용하므로 몸 텍스처 채널을 꼬리 슬롯에도 적용합니다.
@@ -49,3 +57,6 @@ targets the live tail geometry.
 Skin packs may be partial: only supplied body parts and material channels are
 overridden, while missing ones retain the actor's underlying textures. Files
 are never substituted across body, hands, feet, or face slots.
+For CBBE 3BA female packs, femalebody_etc_v2_1 with its _msn, _sk, and _s
+companions is mapped only to 3BA_Vagina/3BBB_Vagina, never to 3BA_Anus or any
+other body part.

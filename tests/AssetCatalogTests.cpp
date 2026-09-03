@@ -1,5 +1,6 @@
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/Settings.h"
 
@@ -44,7 +45,8 @@ namespace
     bool IsStandardSkinTexture(const std::string_view filename)
     {
         constexpr std::array stems{
-            std::string_view{ "femalebody_1" }, std::string_view{ "femalehands_1" },
+            std::string_view{ "femalebody_1" }, std::string_view{ "femalebody_etc_v2_1" },
+            std::string_view{ "femalehands_1" },
             std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
             std::string_view{ "femaleheadvampire" }, std::string_view{ "malebody_1" },
             std::string_view{ "malehands_1" }, std::string_view{ "malefeet_1" },
@@ -100,6 +102,7 @@ int main(const int argc, char** argv)
                 }
             };
             collect(skin.body);
+            collect(skin.vagina);
             collect(skin.hands);
             collect(skin.feet);
             collect(skin.face);
@@ -158,6 +161,8 @@ int main(const int argc, char** argv)
         "Textures" / "actors" / "character" / "female";
     for (const auto* file : {
              "femalebody_1.dds", "femalebody_1_msn.dds", "femalebody_1_sk.dds", "femalebody_1_s.dds",
+             "femalebody_etc_v2_1.dds", "femalebody_etc_v2_1_msn.dds",
+             "femalebody_etc_v2_1_sk.dds", "femalebody_etc_v2_1_s.dds",
              "femalehands_1.dds", "femalehead.dds", "femalehead_msn.dds", "femalehead_s.dds",
              "blankdetailmap.dds", "femaleheaddetail_frekles.DDS" }) {
         Touch(female / file);
@@ -287,6 +292,22 @@ int main(const int argc, char** argv)
                 !skin.hands.empty() && !skin.face.empty(),
                 "conventional female skin lost one of its supplied parts")) return 1;
         if (!Require(skin.feet.empty(), "missing feet incorrectly borrowed the body texture")) return 1;
+        if (!Require(skin.body.size() == 4U && std::ranges::all_of(skin.body, [](const auto& layer) {
+                return Filename(Lower(layer.path)).starts_with("femalebody_1");
+            }), "female genital atlas crossed into the regular body channels")) return 1;
+        constexpr std::array expectedVaginaChannels{
+            std::pair{ 0U, std::string_view{ "femalebody_etc_v2_1.dds" } },
+            std::pair{ 1U, std::string_view{ "femalebody_etc_v2_1_msn.dds" } },
+            std::pair{ 2U, std::string_view{ "femalebody_etc_v2_1_sk.dds" } },
+            std::pair{ 7U, std::string_view{ "femalebody_etc_v2_1_s.dds" } }
+        };
+        if (!Require(skin.vagina.size() == expectedVaginaChannels.size(),
+                "female genital texture set did not retain all four material channels")) return 1;
+        for (const auto& [index, filename] : expectedVaginaChannels) {
+            if (!Require(std::ranges::any_of(skin.vagina, [=](const auto& layer) {
+                    return layer.shaderTextureIndex == index && Filename(Lower(layer.path)) == filename;
+                }), "female genital diffuse/normal/subsurface/specular channel mapping is incorrect")) return 1;
+        }
         if (!Require((skin.bodyFamilies & bcn::body_family::Bit(bcn::body_family::Family::ube)) == 0U,
                 "conventional skin leaked into the UBE family")) return 1;
         if (!Require(skin.name.contains(skinPackName), "skin pack name was not preserved as UTF-8")) return 1;
@@ -307,6 +328,14 @@ int main(const int argc, char** argv)
     }
     if (!Require(argonianRows == 2U && khajiitRows == 2U,
             "beast-race packs did not produce separate female and male rows")) return 1;
+    if (!Require(bcn::skin_geometry::IsVagina("3BA_Vagina") &&
+            bcn::skin_geometry::IsVagina("3bbb_vagina") &&
+            !bcn::skin_geometry::IsVagina("3BA_Anus") &&
+            bcn::skin_geometry::Matches("3BA", bcn::skin_geometry::BodySelection::regular) &&
+            !bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::regular) &&
+            bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::vagina) &&
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::vagina),
+            "female genital geometry routing crossed into body or anus")) return 1;
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
     const auto ubeSkin = std::ranges::find(skins, "UBE 2.0 Momo Skin", &bcn::SkinProfile::name);

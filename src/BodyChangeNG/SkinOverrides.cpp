@@ -3,6 +3,7 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
 #include "BodyChangeNG/SkinOverrideOwnership.h"
 
@@ -292,7 +293,8 @@ namespace
     }
 
     [[nodiscard]] std::vector<LoadedPartTarget> FindLoadedPartTargets(RE::Actor* actor,
-        const RE::BGSBipedObjectForm::BipedObjectSlot slot)
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
     {
         std::vector<LoadedPartTarget> results;
         if (!actor) return results;
@@ -329,6 +331,9 @@ namespace
                 }
                 const auto* rawName = geometry->name.c_str();
                 const std::string geometryName = rawName && rawName[0] != '\0' ? rawName : "";
+                if (!bcn::skin_geometry::Matches(geometryName, selection)) {
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                }
                 if (std::ranges::find(target->immediateNodes, geometryName) == target->immediateNodes.end()) {
                     target->immediateNodes.push_back(geometryName);
                     target->persistentNodes.push_back(geometryName);
@@ -386,10 +391,12 @@ namespace
 
     [[nodiscard]] bool ApplyPart(skee_override::IOverrideInterfaceV2& overrides, RE::Actor* actor,
                                  const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-                                 const std::vector<bcn::SkinTextureLayer>& layers)
+                                 const std::vector<bcn::SkinTextureLayer>& layers,
+                                 const bcn::skin_geometry::BodySelection selection =
+                                     bcn::skin_geometry::BodySelection::all)
     {
         if (!actor) return false;
-        const auto targets = FindLoadedPartTargets(actor, slot);
+        const auto targets = FindLoadedPartTargets(actor, slot, selection);
         if (targets.empty()) return false;
 
         std::vector<std::pair<std::uint8_t, std::string>> resolvedLayers;
@@ -840,10 +847,11 @@ namespace
             EffectiveFaceLayers(profile, IsVampireRace(base), faceNode->detailFilename) : profile.face;
         const auto verifyPart = [&](const std::string_view part,
             const std::vector<bcn::SkinTextureLayer>& layers,
-            const std::optional<RE::BGSBipedObjectForm::BipedObjectSlot> slot) {
+            const std::optional<RE::BGSBipedObjectForm::BipedObjectSlot> slot,
+            const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all) {
             std::vector<LoadedPartView> views;
             if (slot) {
-                for (const auto& target : FindLoadedPartTargets(actor, *slot)) {
+                for (const auto& target : FindLoadedPartTargets(actor, *slot, selection)) {
                     views.insert(views.end(), target.views.begin(), target.views.end());
                 }
             } else if (faceNode && faceNode->object) {
@@ -859,6 +867,11 @@ namespace
                     if (!view.object) continue;
                     RE::BSVisit::TraverseScenegraphGeometries(view.object, [&](RE::BSGeometry* geometry) {
                         if (!geometry) return RE::BSVisit::BSVisitControl::kContinue;
+                        const auto* rawName = geometry->name.c_str();
+                        const std::string_view geometryName = rawName && rawName[0] != '\0' ? rawName : "";
+                        if (!bcn::skin_geometry::Matches(geometryName, selection)) {
+                            return RE::BSVisit::BSVisitControl::kContinue;
+                        }
                         auto* shader = geometry->lightingShaderProp_cast();
                         auto* material = shader ? static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
                         const auto textureSet = material ? material->GetTextureSet() : nullptr;
@@ -868,7 +881,6 @@ namespace
                         if (!actual || NormalizedTexturePath(actual) != normalizedExpected) {
                             return RE::BSVisit::BSVisitControl::kContinue;
                         }
-                        const auto* rawName = geometry->name.c_str();
                         matchingNodes.push_back(std::string{ view.firstPerson ? "1p:" : "3p:" } +
                             (rawName && rawName[0] != '\0' ? rawName : "<unnamed>"));
                         return RE::BSVisit::BSVisitControl::kContinue;
@@ -888,7 +900,11 @@ namespace
             }
         };
         verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
-            profile.body, ProfileBodySlot(profile));
+            profile.body, ProfileBodySlot(profile), UsesUbeBodySlot(profile) ?
+                bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+        verifyPart("vagina", profile.vagina,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::vagina);
         if (UsesBeastTail(profile)) {
             verifyPart("tail-body-atlas", profile.body,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
@@ -1118,7 +1134,8 @@ namespace
     [[nodiscard]] bool DispatchLegacyPartApply(RE::BSScript::Internal::VirtualMachine& vm,
         RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const std::vector<bcn::SkinTextureLayer>& layers,
-        const std::shared_ptr<LegacyOverrideBatch>& batch)
+        const std::shared_ptr<LegacyOverrideBatch>& batch,
+        const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
     {
         std::vector<std::pair<std::uint32_t, std::string>> resolvedLayers;
         resolvedLayers.reserve(layers.size());
@@ -1129,7 +1146,7 @@ namespace
         if (resolvedLayers.empty()) return false;
 
         std::size_t submitted{};
-        for (const auto& target : FindLoadedPartTargets(actor, slot)) {
+        for (const auto& target : FindLoadedPartTargets(actor, slot, selection)) {
             for (const auto& node : target.persistentNodes) {
                 for (const auto& [textureIndex, path] : resolvedLayers) {
                     auto* armor = target.armor;
@@ -1299,13 +1316,28 @@ namespace
             };
 
             const auto submitPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-                const std::vector<bcn::SkinTextureLayer>& layers) {
+                const std::vector<bcn::SkinTextureLayer>& layers,
+                const bcn::skin_geometry::BodySelection selection =
+                    bcn::skin_geometry::BodySelection::all) {
                 if (layers.empty()) return;
                 ++partProgress->first;
                 if (DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                    slot, layers, applyBatch)) ++partProgress->second;
+                    slot, layers, applyBatch, selection)) ++partProgress->second;
             };
-            submitPart(ProfileBodySlot(profile), profile.body);
+            const auto hasPrimaryParts = !profile.body.empty() || !profile.hands.empty() ||
+                !profile.feet.empty() || !currentFaceLayers.empty();
+            submitPart(ProfileBodySlot(profile), profile.body, UsesUbeBodySlot(profile) ?
+                bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+            if (!profile.vagina.empty()) {
+                if (hasPrimaryParts) {
+                    static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina, applyBatch,
+                        bcn::skin_geometry::BodySelection::vagina));
+                } else {
+                    submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
+                        bcn::skin_geometry::BodySelection::vagina);
+                }
+            }
             if (!UsesUbeBodySlot(profile)) {
                 if (UsesBeastTail(profile) && !profile.body.empty()) {
                     // Tail availability is auxiliary: a tail-hiding outfit or
@@ -1442,12 +1474,27 @@ namespace
         std::size_t requestedParts{};
         std::size_t appliedParts{};
         const auto applyPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-            const std::vector<bcn::SkinTextureLayer>& layers) {
+            const std::vector<bcn::SkinTextureLayer>& layers,
+            const bcn::skin_geometry::BodySelection selection =
+                bcn::skin_geometry::BodySelection::all) {
             if (layers.empty()) return;
             ++requestedParts;
-            if (ApplyPart(*overrides, actor.get(), female, slot, layers)) ++appliedParts;
+            if (ApplyPart(*overrides, actor.get(), female, slot, layers, selection)) ++appliedParts;
         };
-        applyPart(ProfileBodySlot(profile), profile.body);
+        const auto hasPrimaryParts = !profile.body.empty() || !profile.hands.empty() ||
+            !profile.feet.empty() || !faceLayers.empty();
+        applyPart(ProfileBodySlot(profile), profile.body, UsesUbeBodySlot(profile) ?
+            bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+        if (!profile.vagina.empty()) {
+            if (hasPrimaryParts) {
+                static_cast<void>(ApplyPart(*overrides, actor.get(), female,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
+                    bcn::skin_geometry::BodySelection::vagina));
+            } else {
+                applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.vagina,
+                    bcn::skin_geometry::BodySelection::vagina);
+            }
+        }
         if (!UsesUbeBodySlot(profile)) {
             if (UsesBeastTail(profile) && !profile.body.empty()) {
                 static_cast<void>(ApplyPart(*overrides, actor.get(), female,

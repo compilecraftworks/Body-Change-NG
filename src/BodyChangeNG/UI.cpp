@@ -1267,6 +1267,7 @@ namespace
                     for (const auto& layer : layers) texturePaths.insert(layer.path);
                 };
                 collectPaths(skin.body);
+                collectPaths(skin.vagina);
                 collectPaths(skin.hands);
                 collectPaths(skin.feet);
                 collectPaths(skin.face);
