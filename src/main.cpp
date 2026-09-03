@@ -7,6 +7,7 @@
 #include "BodyChangeNG/OutfitRefit.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/RaceMenuPresetMigration.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/SkinOverrides.h"
@@ -49,6 +50,7 @@ namespace
         }
         if (message->type == SKSE::MessagingInterface::kDataLoaded) {
             bcn::racemenu::Initialize();
+            bcn::racemenu_preset_migration::MigrateVisiblePresets();
             bcn::PresetCatalog::Get().Refresh();
             bcn::SkinProfiles::Get().Refresh();
             [[maybe_unused]] const auto loadedBodyChangeRules = bcn::Distribution::Get().Load();

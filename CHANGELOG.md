@@ -96,6 +96,10 @@ First stable public release.
 
 ### Reliability
 
+- Repairs visible RaceMenu `.jslot` files that still reference the removed
+  legacy `BodyChange.esp` face HeadParts. It creates a recoverable adjacent
+  backup, prefers `00KLH_FemaleHeadNord`, falls back to vanilla
+  `FemaleHeadNord`, and preserves UBE custom-race/head presets.
 - Uses `BodyChangeNG` consistently for the DLL, log, settings directory,
   distribution JSON, morph keys, texture-cache namespace, source targets, and
   release archives. Valid legacy `BodyChangerNG` settings and distribution
@@ -109,10 +113,10 @@ First stable public release.
   state on a new save session.
 - Ships a valid schema-3 starter JSON and README files in every user asset
   folder.
-- Verified by the release build and nine regression test executables covering
+- Verified by the release build and ten regression test executables covering
   actor state, asset catalogs, body-family classification, hotkeys, outfit
-  rules, path migration, preset parsing, runtime layouts, and skin-override
-  ownership.
+  rules, path migration, RaceMenu preset migration, preset parsing, runtime
+  layouts, and skin-override ownership.
 
 ## Pre-release development history
 

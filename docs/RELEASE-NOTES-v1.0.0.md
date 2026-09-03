@@ -20,6 +20,9 @@ body, skin, and player tint manager.
 - Keep evaluated actor results in the SKSE co-save while rules remain in a
   portable global JSON.
 - Reapply committed body, skin, and tint state after RaceMenu closes.
+- Repair legacy non-UBE RaceMenu `.jslot` head references after
+  `BodyChange.esp` is removed, with an adjacent backup and High Poly
+  Head/vanilla fallback.
 - Register OBody NG distribution and complete outfit-correction compatibility
   only when requested.
 - Use Korean, English, or Simplified Chinese UI with mouse, keyboard, and

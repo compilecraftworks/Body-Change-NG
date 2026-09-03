@@ -148,6 +148,21 @@ live skin/head texture namespace resolves its family, and BodySlide
 `Preset/@set` plus XML `Group` metadata classifies the preset. UBE and CBBE
 3BA continue to share the standard SliderPresets XML folder.
 
+### Legacy BodyChange RaceMenu presets
+
+When the old `BodyChange.esp` is no longer loaded, Body Change NG inspects the
+currently visible `Data\SKSE\Plugins\CharGen\Presets\*.jslot` files once at
+startup. A stale `BodyChange.esp` face HeadPart is replaced with
+`00KLH_FemaleHeadNord` when `High Poly Head.esm` is available, or Skyrim's
+vanilla `FemaleHeadNord` otherwise. The original preset is saved beside it as
+`.body-change-ng.bak` (or the next numbered backup) before an atomic rewrite.
+Malformed and unrelated presets are never rewritten.
+
+This repair concerns RaceMenu `.jslot` HeadParts, not BodySlide XML body
+presets. UBE is a separate custom-race/head system, so any `.jslot` carrying an
+UBE plugin dependency is preserved instead of being redirected to a vanilla or
+High Poly Head face.
+
 Each top-level `BodySkin` or `TintMask` folder appears as one list row. Skin
 rows show sex and mapped texture count; tint rows show sex and DDS count. The
 first tint entry restores the original layers captured immediately before Body
