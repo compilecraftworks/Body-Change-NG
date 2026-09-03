@@ -1774,11 +1774,13 @@ namespace
                             DistributionTargetCombo("##ruleRace", rule.target, g_distributionRaceOptions);
                     }
 
-                    if (TabButton(Text("바디", "Body", "身体"), g_distributionPool == DistributionPool::body)) {
+                    if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
+                            g_distributionPool == DistributionPool::body)) {
                         g_distributionPool = DistributionPool::body;
                     }
                     ImGui::SameLine();
-                    if (TabButton(Text("스킨", "Skin", "皮肤"), g_distributionPool == DistributionPool::skin)) {
+                    if (TabButton(Text("바디스킨", "Body Skins", "身体皮肤"),
+                            g_distributionPool == DistributionPool::skin)) {
                         g_distributionPool = DistributionPool::skin;
                     }
                     ImGui::SameLine();
@@ -2337,14 +2339,15 @@ namespace bcn::ui
             selectedActor->GetFormID() == player->GetFormID();
         if (!playerSelected && g_activeTab == ActiveTab::tint) g_activeTab = ActiveTab::body;
         HandleTabNavigation(playerSelected);
-        if (TabButton(Text("바디", "Body", "身体"), g_activeTab == ActiveTab::body)) g_activeTab = ActiveTab::body;
+        if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
+                g_activeTab == ActiveTab::body)) g_activeTab = ActiveTab::body;
         ImGui::SameLine();
-        if (TabButton(Text("스킨", "Skin", "皮肤"), g_activeTab == ActiveTab::skin)) {
+        if (TabButton(Text("바디스킨", "Body Skins", "身体皮肤"), g_activeTab == ActiveTab::skin)) {
             g_activeTab = ActiveTab::skin;
         }
         if (playerSelected) {
             ImGui::SameLine();
-            if (TabButton(Text("틴트", "Tint", "色调"), g_activeTab == ActiveTab::tint)) {
+            if (TabButton(Text("틴트마스크", "Tint Masks", "色调蒙版"), g_activeTab == ActiveTab::tint)) {
                 g_activeTab = ActiveTab::tint;
             }
         }
