@@ -28,6 +28,28 @@ BodySkin\
     Textures\...
 ```
 
+Argonian and Khajiit packs use the same top-level `BodySkin` convention. Keep
+their original Bethesda race folders and file names. One pack may contain any
+or all four race/sex folders; each populated race/sex combination becomes its
+own compatible catalog row:
+
+```text
+BodySkin\
+  My Beast Skin\
+    Textures\actors\character\argonianfemale\argonianfemalebody.dds
+    Textures\actors\character\argonianmale\argonianmalebody.dds
+    Textures\actors\character\khajiitfemale\femalebody.dds
+    Textures\actors\character\khajiitmale\bodymale.dds
+```
+
+Body Change NG detects the selected actor's race and sex separately. Humanoid,
+Argonian, and Khajiit skins are not shown, previewed, reapplied, or distributed
+across race boundaries. Body, hands, feet, and face channels remain independent;
+if a beast-race pack has no dedicated feet files, its current feet textures are
+left unchanged rather than borrowing the body map. Argonian and Khajiit tail
+NIFs intentionally use their sex-specific body atlas, so that same body atlas
+is also applied to the live tail slot for those two races only.
+
 UBE 2.0 keeps its separate UV/topology texture namespace. Preserve both atlas
 folders instead of moving their files into the conventional female folder:
 
@@ -66,6 +88,7 @@ rules.
   "id": "my-skin-a",
   "name": "My Skin A",
   "sex": "female",
+  "race": "humanoid",
   "body": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_1.dds" },
     { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_1_msn.dds" },
@@ -87,7 +110,9 @@ rules.
 }
 ```
 
-`sex` accepts `female` or `male`. `Textures\\...` is relative to the
+`sex` accepts `female` or `male`. The optional `race` accepts `humanoid`,
+`argonian`, or `khajiit`; when omitted it is inferred from standard beast-race
+texture folders. `Textures\\...` is relative to the
 skin folder. Explicit paths may also start with `BodySkin\\` or `textures\\`.
 Every path must end in `.dds` and must not include `..` or a drive letter.
 
@@ -97,12 +122,13 @@ Shader texture indices follow the RaceMenu/NiOverride convention used here:
 feet, or face map. Missing parts and missing diffuse, normal, subsurface, detail,
 or specular channels remain controlled by the actor's original skin/material.
 
-The main Skin list compares every profile with the selected actor's detected
-body family. Conventional CBBE 3BA/BHUNP/UNP profiles and UBE profiles are not
-shown to the wrong known family. An NPC distribution rule can still contain a
-mixed skin pool; at runtime it stably samples only the compatible profiles for
-that NPC. Unknown actor evidence keeps the safe fallback and does not hide
-profiles.
+The main Skin list compares every profile with the selected actor's race, sex,
+and detected body family. Humanoid, Argonian, and Khajiit profiles never cross
+race boundaries; conventional CBBE 3BA/BHUNP/UNP profiles and UBE profiles are
+also not shown to the wrong known family. An NPC distribution rule can still
+contain a mixed skin pool; at runtime it stably samples only the compatible
+profiles for that NPC. Unknown body-family evidence keeps the safe fallback and
+does not hide profiles.
 
 RaceMenu skin overrides are shared by property slot rather than by mod owner.
 If another mod changes the same skin texture slot, the last applied override

@@ -86,6 +86,49 @@ namespace
         return std::nullopt;
     }
 
+    [[nodiscard]] std::string LowerAscii(std::string value)
+    {
+        std::ranges::transform(value, value.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        return value;
+    }
+
+    [[nodiscard]] bool HasPathComponent(const std::string_view path, const std::string_view component)
+    {
+        std::size_t begin{};
+        while (begin < path.size()) {
+            while (begin < path.size() && (path[begin] == '\\' || path[begin] == '/')) ++begin;
+            auto end = begin;
+            while (end < path.size() && path[end] != '\\' && path[end] != '/') ++end;
+            if (EqualsIgnoreCase(path.substr(begin, end - begin), component)) return true;
+            begin = end + 1U;
+        }
+        return false;
+    }
+
+    [[nodiscard]] std::optional<bcn::SkinRace> BeastRaceFromPath(const std::string_view path)
+    {
+        if (HasPathComponent(path, "argonianfemale") ||
+            HasPathComponent(path, "argonianmale")) return bcn::SkinRace::argonian;
+        if (HasPathComponent(path, "khajiitfemale") ||
+            HasPathComponent(path, "khajiitmale")) return bcn::SkinRace::khajiit;
+        return std::nullopt;
+    }
+
+    [[nodiscard]] std::optional<bcn::SkinRace> ParseRace(const nlohmann::json& root)
+    {
+        const auto found = root.find("race");
+        if (found == root.end() || !found->is_string()) return std::nullopt;
+        const auto value = found->get<std::string>();
+        if (EqualsIgnoreCase(value, "humanoid") || EqualsIgnoreCase(value, "human")) {
+            return bcn::SkinRace::humanoid;
+        }
+        if (EqualsIgnoreCase(value, "argonian")) return bcn::SkinRace::argonian;
+        if (EqualsIgnoreCase(value, "khajiit")) return bcn::SkinRace::khajiit;
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> ParsePart(const std::filesystem::path& dataRoot,
                                                                  const std::filesystem::path& profileDirectory,
                                                                  const nlohmann::json& root, const char* key)
@@ -139,6 +182,22 @@ namespace
             bcn::StandardSkinFamilies(sex);
     }
 
+    [[nodiscard]] std::optional<bcn::SkinRace> InferProfileRace(
+        const std::initializer_list<const std::vector<bcn::SkinTextureLayer>*> parts)
+    {
+        std::optional<bcn::SkinRace> detected;
+        for (const auto* part : parts) {
+            if (!part) continue;
+            for (const auto& layer : *part) {
+                const auto race = BeastRaceFromPath(layer.path);
+                if (!race) continue;
+                if (detected && *detected != *race) return std::nullopt;
+                detected = *race;
+            }
+        }
+        return detected.value_or(bcn::SkinRace::humanoid);
+    }
+
     [[nodiscard]] std::optional<bcn::SkinProfile> ParseProfile(const std::filesystem::path& dataRoot,
                                                                 const std::filesystem::path& root,
                                                                 const std::filesystem::path& path)
@@ -170,6 +229,28 @@ namespace
             const auto bodyFamilies = InferProfileFamilies(*sex,
                 { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
             if (bodyFamilies == 0U) return std::nullopt;
+            const auto inferredRace = InferProfileRace(
+                { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
+            if (!inferredRace) {
+                SKSE::log::warn("Body Change NG ignored skin profile {}: Argonian and Khajiit textures cannot be mixed",
+                    bcn::path_text::Utf8(path));
+                return std::nullopt;
+            }
+            auto race = *inferredRace;
+            if (json.contains("race")) {
+                const auto explicitRace = ParseRace(json);
+                if (!explicitRace) {
+                    SKSE::log::warn("Body Change NG ignored skin profile {}: race must be 'humanoid', 'argonian', or 'khajiit'",
+                        bcn::path_text::Utf8(path));
+                    return std::nullopt;
+                }
+                if (race != bcn::SkinRace::humanoid && race != *explicitRace) {
+                    SKSE::log::warn("Body Change NG ignored skin profile {}: race conflicts with its texture paths",
+                        bcn::path_text::Utf8(path));
+                    return std::nullopt;
+                }
+                race = *explicitRace;
+            }
             // Partial packs are intentional. Every absent body part and every
             // absent material channel keeps the actor's underlying texture;
             // only explicitly supplied DDS files become overrides.
@@ -181,6 +262,7 @@ namespace
                 .id = std::move(id),
                 .name = std::move(name),
                 .sex = *sex,
+                .race = race,
                 .bodyFamilies = bodyFamilies,
                 .body = std::move(body),
                 .hands = std::move(hands),
@@ -233,7 +315,25 @@ namespace
             std::string_view{ "femaleheadvampire" },
             std::string_view{ "malebody_1" }, std::string_view{ "malehands_1" },
             std::string_view{ "malefeet_1" }, std::string_view{ "malehead" },
-            std::string_view{ "maleheadvampire" }
+            std::string_view{ "maleheadvampire" },
+            // Vanilla beast-race texture names. Argonians use fully qualified
+            // stems, while Khajiit use female*/ *male inside race-specific
+            // directories. The directory is the authoritative race signal.
+            std::string_view{ "argonianfemalebody" }, std::string_view{ "argonianfemalehands" },
+            std::string_view{ "argonianfemalefeet" }, std::string_view{ "argonianfemalehead" },
+            std::string_view{ "argonianfemaleheadvampire" },
+            std::string_view{ "argonianmalebody" }, std::string_view{ "argonianmalehands" },
+            std::string_view{ "argonianmalefeet" }, std::string_view{ "argonianmalehead" },
+            std::string_view{ "argonianmaleheadvampire" },
+            std::string_view{ "femalebody" }, std::string_view{ "femalehands" },
+            std::string_view{ "femalefeet" },
+            std::string_view{ "bodymale" }, std::string_view{ "handsmale" },
+            std::string_view{ "feetmale" }, std::string_view{ "headmale" },
+            std::string_view{ "headmalevampire" },
+            std::string_view{ "khajiitfemalebody" }, std::string_view{ "khajiitfemalehands" },
+            std::string_view{ "khajiitfemalefeet" }, std::string_view{ "khajiitfemalehead" },
+            std::string_view{ "khajiitmalebody" }, std::string_view{ "khajiitmalehands" },
+            std::string_view{ "khajiitmalefeet" }, std::string_view{ "khajiitmalehead" }
         };
         constexpr std::array standardSuffixes{
             std::string_view{ ".dds" }, std::string_view{ "_msn.dds" },
@@ -314,6 +414,47 @@ namespace
             layers.push_back({ index, std::move(path) });
         }
         return layers;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoPartAliases(
+        const std::filesystem::path& dataRoot, const std::filesystem::path& textureDirectory,
+        const std::initializer_list<std::string_view> stems)
+    {
+        std::vector<bcn::SkinTextureLayer> layers;
+        for (const auto stem : stems) {
+            for (auto& candidate : AutoPart(dataRoot, textureDirectory, stem)) {
+                if (std::ranges::find(layers, candidate.shaderTextureIndex,
+                        &bcn::SkinTextureLayer::shaderTextureIndex) == layers.end()) {
+                    layers.push_back(std::move(candidate));
+                }
+            }
+        }
+        std::ranges::sort(layers, {}, &bcn::SkinTextureLayer::shaderTextureIndex);
+        return layers;
+    }
+
+    struct AutoRaceLayout final
+    {
+        bcn::SkinRace race{ bcn::SkinRace::humanoid };
+        std::optional<bcn::SkinSex> fixedSex;
+    };
+
+    [[nodiscard]] AutoRaceLayout DetectAutoRaceLayout(const std::filesystem::path& textureDirectory)
+    {
+        const auto path = bcn::path_text::GenericUtf8(textureDirectory);
+        if (HasPathComponent(path, "argonianfemale")) {
+            return { bcn::SkinRace::argonian, bcn::SkinSex::female };
+        }
+        if (HasPathComponent(path, "argonianmale")) {
+            return { bcn::SkinRace::argonian, bcn::SkinSex::male };
+        }
+        if (HasPathComponent(path, "khajiitfemale")) {
+            return { bcn::SkinRace::khajiit, bcn::SkinSex::female };
+        }
+        if (HasPathComponent(path, "khajiitmale")) {
+            return { bcn::SkinRace::khajiit, bcn::SkinSex::male };
+        }
+        return {};
     }
 
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoUbePart(
@@ -402,6 +543,8 @@ namespace
                                                               const bcn::SkinSex sex)
     {
         const auto female = sex == bcn::SkinSex::female;
+        const auto raceLayout = DetectAutoRaceLayout(textureDirectory);
+        if (raceLayout.fixedSex && *raceLayout.fixedSex != sex) return {};
         const auto layout = bcn::body_family::DetectSkinTextureLayout(
             bcn::path_text::GenericUtf8(textureDirectory),
             female ? bcn::body_family::Sex::female : bcn::body_family::Sex::male);
@@ -426,17 +569,77 @@ namespace
                 .id = "auto:" + skinRelative + ":female:ube",
                 .name = bcn::path_text::Utf8(skinDirectory.filename()),
                 .sex = bcn::SkinSex::female,
+                .race = bcn::SkinRace::humanoid,
                 .bodyFamilies = bcn::body_family::Bit(bcn::body_family::Family::ube),
                 .body = std::move(body),
                 .face = std::move(face),
                 .source = textureDirectory
             } };
         }
-        auto body = AutoPart(dataRoot, textureDirectory, female ? "femalebody_1" : "malebody_1");
-        auto hands = AutoPart(dataRoot, textureDirectory, female ? "femalehands_1" : "malehands_1");
-        auto feet = AutoPart(dataRoot, textureDirectory, female ? "femalefeet_1" : "malefeet_1");
-        auto face = AutoPart(dataRoot, textureDirectory, female ? "femalehead" : "malehead");
-        auto vampireFace = AutoPart(dataRoot, textureDirectory, female ? "femaleheadvampire" : "maleheadvampire");
+        std::vector<bcn::SkinTextureLayer> body;
+        std::vector<bcn::SkinTextureLayer> hands;
+        std::vector<bcn::SkinTextureLayer> feet;
+        std::vector<bcn::SkinTextureLayer> face;
+        std::vector<bcn::SkinTextureLayer> vampireFace;
+        switch (raceLayout.race) {
+        case bcn::SkinRace::argonian:
+            if (female) {
+                body = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianfemalebody", "femalebody", "femalebody_1" });
+                hands = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianfemalehands", "femalehands", "femalehands_1" });
+                feet = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianfemalefeet", "femalefeet", "femalefeet_1" });
+                face = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianfemalehead", "femalehead" });
+                vampireFace = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianfemaleheadvampire", "femaleheadvampire" });
+            } else {
+                body = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianmalebody", "bodymale", "malebody", "malebody_1" });
+                hands = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianmalehands", "handsmale", "malehands", "malehands_1" });
+                feet = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianmalefeet", "feetmale", "malefeet", "malefeet_1" });
+                face = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianmalehead", "headmale", "malehead" });
+                vampireFace = AutoPartAliases(dataRoot, textureDirectory,
+                    { "argonianmaleheadvampire", "headmalevampire", "maleheadvampire" });
+            }
+            break;
+        case bcn::SkinRace::khajiit:
+            if (female) {
+                body = AutoPartAliases(dataRoot, textureDirectory,
+                    { "femalebody", "femalebody_1", "khajiitfemalebody" });
+                hands = AutoPartAliases(dataRoot, textureDirectory,
+                    { "femalehands", "femalehands_1", "khajiitfemalehands" });
+                feet = AutoPartAliases(dataRoot, textureDirectory,
+                    { "femalefeet", "femalefeet_1", "khajiitfemalefeet" });
+                face = AutoPartAliases(dataRoot, textureDirectory,
+                    { "femalehead", "khajiitfemalehead" });
+                vampireFace = AutoPartAliases(dataRoot, textureDirectory,
+                    { "femaleheadvampire" });
+            } else {
+                body = AutoPartAliases(dataRoot, textureDirectory,
+                    { "bodymale", "malebody", "malebody_1", "khajiitmalebody" });
+                hands = AutoPartAliases(dataRoot, textureDirectory,
+                    { "handsmale", "malehands", "malehands_1", "khajiitmalehands" });
+                feet = AutoPartAliases(dataRoot, textureDirectory,
+                    { "feetmale", "malefeet", "malefeet_1", "khajiitmalefeet" });
+                face = AutoPartAliases(dataRoot, textureDirectory,
+                    { "headmale", "malehead", "khajiitmalehead" });
+                vampireFace = AutoPartAliases(dataRoot, textureDirectory,
+                    { "headmalevampire", "maleheadvampire" });
+            }
+            break;
+        case bcn::SkinRace::humanoid:
+            body = AutoPart(dataRoot, textureDirectory, female ? "femalebody_1" : "malebody_1");
+            hands = AutoPart(dataRoot, textureDirectory, female ? "femalehands_1" : "malehands_1");
+            feet = AutoPart(dataRoot, textureDirectory, female ? "femalefeet_1" : "malefeet_1");
+            face = AutoPart(dataRoot, textureDirectory, female ? "femalehead" : "malehead");
+            vampireFace = AutoPart(dataRoot, textureDirectory, female ? "femaleheadvampire" : "maleheadvampire");
+            break;
+        }
         auto faceDetails = AutoFaceDetails(dataRoot, textureDirectory, female);
         // Detail maps augment a discovered face/body part but never create a
         // profile by themselves because blankdetailmap.dds is sex-ambiguous.
@@ -453,12 +656,15 @@ namespace
         // directory, but those files must never explode into separate rows.
         // The stable id therefore belongs to the pack folder, not to an
         // individual DDS or nested texture directory.
-        const auto baseID = "auto:" + skinRelative + ":" + suffix;
+        auto baseID = "auto:" + skinRelative + ":" + suffix;
+        if (raceLayout.race == bcn::SkinRace::argonian) baseID += ":argonian";
+        else if (raceLayout.race == bcn::SkinRace::khajiit) baseID += ":khajiit";
         const auto baseName = bcn::path_text::Utf8(skinDirectory.filename());
         return { bcn::SkinProfile{
             .id = baseID,
             .name = baseName,
             .sex = sex,
+            .race = raceLayout.race,
             .bodyFamilies = bcn::StandardSkinFamilies(sex),
             .body = std::move(body),
             .hands = std::move(hands),
@@ -544,15 +750,52 @@ namespace
                 bcn::path_text::Utf8(it->path()), classification);
         }
         SKSE::log::info(
-            "SkinCatalogAudit pack='{}' sex={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} hands={} feet={} face={} vampire={} details={}",
-            profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male", total, active,
-            conditional, unmapped, profile.body.size(), profile.hands.size(), profile.feet.size(),
+            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} hands={} feet={} face={} vampire={} details={}",
+            profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
+            bcn::SkinRaceLabel(profile.race), total, active, conditional, unmapped,
+            profile.body.size(), profile.hands.size(), profile.feet.size(),
             profile.face.size(), profile.vampireFace.size(), profile.faceDetails.size());
     }
 }
 
 namespace bcn
 {
+    std::string SkinRaceLabel(const SkinRace race)
+    {
+        switch (race) {
+        case SkinRace::argonian: return "Argonian";
+        case SkinRace::khajiit: return "Khajiit";
+        default: return "Humanoid";
+        }
+    }
+
+    SkinRace SkinRaceFromEditorID(const std::string_view editorID)
+    {
+        const auto lower = LowerAscii(std::string{ editorID });
+        if (lower.find("argonian") != std::string::npos) return SkinRace::argonian;
+        if (lower.find("khajiit") != std::string::npos) return SkinRace::khajiit;
+        return SkinRace::humanoid;
+    }
+
+    SkinRace ResolveActorSkinRace(const RE::Actor* actor)
+    {
+        const auto* race = actor ? actor->GetRace() : nullptr;
+        if (!race) return SkinRace::humanoid;
+        const auto* editorID = race->GetFormEditorID();
+        if (editorID && editorID[0] != '\0') {
+            const auto detected = SkinRaceFromEditorID(editorID);
+            if (detected != SkinRace::humanoid) return detected;
+        }
+        // Skyrim.esm is always load index 00. Exact full IDs are a safe
+        // fallback if editor IDs are unavailable without misclassifying an
+        // unrelated full plugin that happens to reuse the same local ID.
+        switch (race->GetFormID()) {
+        case 0x00013740U: return SkinRace::argonian;
+        case 0x00013745U: return SkinRace::khajiit;
+        default: return SkinRace::humanoid;
+        }
+    }
+
     std::string SkinFamilyLabel(const body_family::Mask families, const SkinSex sex)
     {
         if (sex == SkinSex::male) return "Male";
@@ -663,7 +906,7 @@ namespace bcn
 
     std::vector<std::string> SkinProfiles::CompatibleIds(
         const std::vector<std::string>& ids, const SkinSex sex,
-        const body_family::Mask actorFamily) const
+        const body_family::Mask actorFamily, const SkinRace actorRace) const
     {
         std::scoped_lock lock(lock_);
         std::vector<std::string> compatible;
@@ -671,6 +914,7 @@ namespace bcn
         for (const auto& id : ids) {
             const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
             if (found != profiles_.end() && found->sex == sex &&
+                SkinRaceMatchesActor(found->race, actorRace) &&
                 SkinMatchesActor(found->bodyFamilies, actorFamily)) compatible.push_back(id);
         }
         return compatible;

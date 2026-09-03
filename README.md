@@ -86,6 +86,7 @@ button after adding files:
 
 - `CalienteTools\BodySlide\SliderPresets` — BodySlide preset XML files
 - `BodySkin\<pack name>\Textures\actors\character\...` — conventional skin packs
+- `BodySkin\<pack name>\Textures\actors\character\argonianfemale|argonianmale|khajiitfemale|khajiitmale` — beast-race skin packs
 - `BodySkin\<pack name>\Textures\!UBE\Body` and `...\Head` — UBE 2.0 skin packs
 - `TintMask\<pack name>\textures\...\tintmasks` — player tint DDS packs
 
@@ -130,6 +131,9 @@ button after adding files:
 
 - BodySlide presets: `CalienteTools\BodySlide\SliderPresets\*.xml`
 - Conventional skin packs: `BodySkin\<pack name>\Textures\actors\character\...`
+- Argonian/Khajiit skin packs: the same `BodySkin\<pack name>` root with the
+  original `argonianfemale`, `argonianmale`, `khajiitfemale`, or `khajiitmale`
+  folders below `Textures\actors\character`
 - UBE 2.0 skin packs: `BodySkin\<pack name>\Textures\!UBE\Body` and
   `BodySkin\<pack name>\Textures\!UBE\Head`
 - Player tint packs: `TintMask\<pack name>\textures\...\tintmasks\*.dds`
@@ -143,7 +147,9 @@ explicit import source.
 The **Refresh** button in each tab rescans that tab's catalog, including files
 added while the game is running. Skin and tint pack names may contain Unicode
 characters. CBBE and CBBE 3BA presets are presented as one `CBBE 3BA`
-family. Mixed CBBE 3BA/UBE installations are supported: the selected actor's
+family. Skin catalogs additionally match the selected actor's humanoid,
+Argonian, or Khajiit race and female/male sex before preview, reapply, or NPC
+distribution. Mixed CBBE 3BA/UBE installations are supported: the selected actor's
 live skin/head texture namespace resolves its family, and BodySlide
 `Preset/@set` plus XML `Group` metadata classifies the preset. UBE and CBBE
 3BA continue to share the standard SliderPresets XML folder.

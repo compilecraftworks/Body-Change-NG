@@ -17,8 +17,10 @@ shared morph pipeline:
   skins, player tint, and distribution rules in one scalable ImGui window.
 - **Actor-matched Body and Skin lists:** mixed CBBE 3BA and UBE installations
   are detected per actor from the live winning skin/head path. The main lists
-  show the matching family instead of mixing incompatible assets. If detection
-  is uncertain, the safe fallback keeps usable candidates visible.
+  show the matching family instead of mixing incompatible assets. Skin packs
+  additionally match humanoid, Argonian, or Khajiit race and female/male sex.
+  If body-family detection is uncertain, the safe fallback keeps usable
+  candidates visible.
 - **Gamepad navigation:** move through rows and tabs with the D-pad, then select
   or close with the primary and cancel face buttons.
 - **Isolated live preview:** committed body, preview, and outfit correction use
@@ -98,6 +100,8 @@ body slots:
 - UBE 2.0 Body/Head d-n-sk atlases are detected separately and applied to the
   live slot-53 body and face. Known-incompatible conventional and UBE skins are
   not shown or distributed to the wrong detected family.
+- Argonian and Khajiit female/male folders are detected independently and
+  matched to each actor's race and sex for preview, reapply, and distribution.
 - Cleanup is ownership-aware and does not delete another mod's texture keys.
 
 ### Player tint
@@ -158,7 +162,10 @@ body slots:
 1. **Body preset XML:** place standard BodySlide preset files at
    `CalienteTools\BodySlide\SliderPresets\*.xml` from the MO2 mod root.
 2. **Skin packs:** conventional CBBE 3BA/BHUNP/UNP skins use
-   `BodySkin\<pack name>\Textures\actors\character\...`. UBE 2.0 skins retain
+   `BodySkin\<pack name>\Textures\actors\character\...`. Argonian and Khajiit
+   packs keep their original `argonianfemale`, `argonianmale`, `khajiitfemale`,
+   and `khajiitmale` folders under that path; every populated race/sex
+   combination is detected separately. UBE 2.0 skins retain
    `BodySkin\<pack name>\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds` and
    `...\!UBE\Head\femalehead_[d/n/sk].dds`. Preserve the source mod's original
    tree; each `<pack name>` folder becomes one family-matched catalog entry.
@@ -174,9 +181,9 @@ the Body Change NG mod or in separate enabled MO2 mods that provide the same
 virtual paths.
 
 You may add or replace BodySlide preset XML files, skin-pack folders, and
-tint-pack folders while the game is running. Open the corresponding Body,
-Skin, or Tint tab and press **Refresh** to rescan the files and update the list
-without restarting the game.
+tint-pack folders while the game is running. Open the corresponding **Body
+Presets**, **Body Skins**, or **Tint Masks** tab and press **Refresh** to rescan
+the files and update the list without restarting the game.
 
 The archive includes README files in every user asset folder and a valid
 schema-3 distribution JSON with eight editable starter exclusions.

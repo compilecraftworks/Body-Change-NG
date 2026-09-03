@@ -48,7 +48,15 @@ namespace
             std::string_view{ "femalefeet_1" }, std::string_view{ "femalehead" },
             std::string_view{ "femaleheadvampire" }, std::string_view{ "malebody_1" },
             std::string_view{ "malehands_1" }, std::string_view{ "malefeet_1" },
-            std::string_view{ "malehead" }, std::string_view{ "maleheadvampire" }
+            std::string_view{ "malehead" }, std::string_view{ "maleheadvampire" },
+            std::string_view{ "argonianfemalebody" }, std::string_view{ "argonianfemalehands" },
+            std::string_view{ "argonianfemalefeet" }, std::string_view{ "argonianfemalehead" },
+            std::string_view{ "argonianmalebody" }, std::string_view{ "argonianmalehands" },
+            std::string_view{ "argonianmalefeet" }, std::string_view{ "argonianmalehead" },
+            std::string_view{ "femalebody" }, std::string_view{ "femalehands" },
+            std::string_view{ "femalefeet" }, std::string_view{ "bodymale" },
+            std::string_view{ "handsmale" }, std::string_view{ "feetmale" },
+            std::string_view{ "headmale" }
         };
         if (filename == "blankdetailmap.dds" || filename.starts_with("femaleheaddetail_") ||
             filename.starts_with("maleheaddetail_")) return filename.ends_with(".dds");
@@ -180,6 +188,29 @@ int main(const int argc, char** argv)
         "Textures" / "!UBE" / "Head";
     Touch(ubeHeadOnly / "femalehead_d.dds");
 
+    const auto argonianFemale = sandbox / "BodySkin" / "Argonian Complete" /
+        "Textures" / "actors" / "character" / "argonianfemale";
+    Touch(argonianFemale / "argonianfemalebody.dds");
+    Touch(argonianFemale / "argonianfemalebody_msn.dds");
+    Touch(argonianFemale / "argonianfemalehands_sk.dds");
+    Touch(argonianFemale / "argonianfemalehead_s.dds");
+    const auto argonianMale = sandbox / "BodySkin" / "Argonian Complete" /
+        "Textures" / "actors" / "character" / "argonianmale";
+    Touch(argonianMale / "argonianmalebody.dds");
+    Touch(argonianMale / "argonianmalehands_msn.dds");
+    Touch(argonianMale / "argonianmalehead.dds");
+
+    const auto khajiitFemale = sandbox / "BodySkin" / "Khajiit Complete" /
+        "Textures" / "actors" / "character" / "khajiitfemale";
+    Touch(khajiitFemale / "femalebody.dds");
+    Touch(khajiitFemale / "femalehands_s.dds");
+    Touch(khajiitFemale / "femalehead_msn.dds");
+    const auto khajiitMale = sandbox / "BodySkin" / "Khajiit Complete" /
+        "Textures" / "actors" / "character" / "khajiitmale";
+    Touch(khajiitMale / "bodymale.dds");
+    Touch(khajiitMale / "handsmale_msn.dds");
+    Touch(khajiitMale / "headmale_s.dds");
+
     const auto skins = bcn::SkinProfiles::ScanDirectory(sandbox / "BodySkin");
     const auto discoveredSkinRoots = bcn::catalog_roots::Discover(sandbox / "BodySkin");
     std::error_code equivalentError;
@@ -187,8 +218,36 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 5U, "skin scanner did not preserve complete and partial skin pack rows")) return 1;
+    if (!Require(skins.size() == 9U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
+    std::size_t argonianRows{};
+    std::size_t khajiitRows{};
     for (const auto& skin : skins) {
+        if (skin.name == "Argonian Complete") {
+            ++argonianRows;
+            if (!Require(skin.race == bcn::SkinRace::argonian &&
+                    skin.id.ends_with(skin.sex == bcn::SkinSex::female ? ":female:argonian" : ":male:argonian"),
+                    "Argonian skin row lost its race, sex, or stable id")) return 1;
+            if (!Require(!skin.body.empty() && !skin.hands.empty() && !skin.face.empty() && skin.feet.empty(),
+                    "Argonian partial parts were omitted or copied into feet")) return 1;
+            const auto expectedBody = skin.sex == bcn::SkinSex::female ? "argonianfemalebody" : "argonianmalebody";
+            if (!Require(std::ranges::all_of(skin.body, [expectedBody](const auto& layer) {
+                    return Filename(Lower(layer.path)).starts_with(expectedBody);
+                }), "Argonian body channels crossed into another part or sex")) return 1;
+            continue;
+        }
+        if (skin.name == "Khajiit Complete") {
+            ++khajiitRows;
+            if (!Require(skin.race == bcn::SkinRace::khajiit &&
+                    skin.id.ends_with(skin.sex == bcn::SkinSex::female ? ":female:khajiit" : ":male:khajiit"),
+                    "Khajiit skin row lost its race, sex, or stable id")) return 1;
+            if (!Require(!skin.body.empty() && !skin.hands.empty() && !skin.face.empty() && skin.feet.empty(),
+                    "Khajiit partial parts were omitted or copied into feet")) return 1;
+            const auto expectedBody = skin.sex == bcn::SkinSex::female ? "femalebody" : "bodymale";
+            if (!Require(std::ranges::all_of(skin.body, [expectedBody](const auto& layer) {
+                    return Filename(Lower(layer.path)).starts_with(expectedBody);
+                }), "Khajiit body channels crossed into another part or sex")) return 1;
+            continue;
+        }
         if (skin.name == "UBE 2.0 Momo Skin") {
             if (!Require(skin.sex == bcn::SkinSex::female, "UBE skin leaked into the wrong sex")) return 1;
             if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
@@ -246,6 +305,8 @@ int main(const int argc, char** argv)
         if (!Require(!skin.faceDetails.empty() && skin.faceDetails.front().shaderTextureIndex == 3U,
                 "FaceGen detail texture was not mapped to BSTextureSet detail slot 3")) return 1;
     }
+    if (!Require(argonianRows == 2U && khajiitRows == 2U,
+            "beast-race packs did not produce separate female and male rows")) return 1;
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
     const auto ubeSkin = std::ranges::find(skins, "UBE 2.0 Momo Skin", &bcn::SkinProfile::name);
@@ -257,6 +318,14 @@ int main(const int argc, char** argv)
     if (!Require(bcn::SkinMatchesActor(standardSkin->bodyFamilies, standardFamily) &&
             !bcn::SkinMatchesActor(standardSkin->bodyFamilies, ubeFamily),
             "conventional skin compatibility leaked into UBE")) return 1;
+    if (!Require(bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::argonian) &&
+            !bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::khajiit) &&
+            !bcn::SkinRaceMatchesActor(bcn::SkinRace::khajiit, bcn::SkinRace::humanoid),
+            "beast-race skin compatibility leaked across races")) return 1;
+    if (!Require(bcn::SkinRaceFromEditorID("ArgonianRaceVampire") == bcn::SkinRace::argonian &&
+            bcn::SkinRaceFromEditorID("KhajiitRace") == bcn::SkinRace::khajiit &&
+            bcn::SkinRaceFromEditorID("NordRace") == bcn::SkinRace::humanoid,
+            "actor race EditorID classification did not preserve beast and humanoid boundaries")) return 1;
 
     const std::string tintPackName{ "틴트包" };
     const auto tintA = sandbox / "TintMask" / std::filesystem::path{ L"틴트包" } / "textures" / "actors" / "character" /

@@ -10,6 +10,8 @@ body, skin, and player tint manager.
 - Detect CBBE 3BA and UBE per actor in mixed installations, show matching
   Body/Skin/Tint assets, and apply UBE Body/Head skin atlases to the correct
   live slot-53 body and face targets.
+- Detect Argonian and Khajiit female/male skin folders and match direct
+  preview, committed reapply, and NPC distribution to the actor's race and sex.
 - Apply player RaceMenu tint packs, edit color/opacity by layer, and restore the
   captured original values.
 - Build top-down body/skin NPC distribution rules with independent distribute

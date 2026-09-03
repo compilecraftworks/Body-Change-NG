@@ -33,6 +33,10 @@ First stable public release.
 - Detects UBE 2.0 `Textures\!UBE\Body` and `Head` d/n/sk atlases, applies them
   to the live slot-53 body and face, and separates conventional and UBE skin
   catalogs and runtime distribution candidates per detected actor family.
+- Detects Argonian and Khajiit female/male texture folders under the same
+  `BodySkin` pack root, and matches race plus sex for direct preview, committed
+  reapply, and NPC distribution. Their body atlas also reaches the intended
+  tail geometry, without borrowing missing hand or foot parts or channels.
 - Tracks ownership precisely so cleanup removes only Body Change NG's keys.
 
 ### Player tint

@@ -17,6 +17,17 @@ namespace bcn
         male
     };
 
+    // Beast-race textures use different UVs and file namespaces even when
+    // their body mesh belongs to the same broad CBBE/UNP or male family.
+    // Keep that compatibility axis independent from BodyFamily so a human,
+    // Argonian, and Khajiit skin can never be offered interchangeably.
+    enum class SkinRace : std::uint8_t
+    {
+        humanoid,
+        argonian,
+        khajiit
+    };
+
     // RaceMenu's public skin-override API addresses texture resources by
     // shader texture index. Keeping the index explicit avoids assuming a
     // particular skin mod's file names or directory layout.
@@ -31,6 +42,7 @@ namespace bcn
         std::string id;
         std::string name;
         SkinSex sex{ SkinSex::female };
+        SkinRace race{ SkinRace::humanoid };
         // UBE uses its own body/head topology, UVs, texture namespace, and
         // naked-body slot. Keep compatibility on the catalog item so the UI,
         // distribution backend, and RaceMenu reapply path all make the same
@@ -72,7 +84,16 @@ namespace bcn
             (skinFamilies & actorFamily) != 0U;
     }
 
+    [[nodiscard]] constexpr bool SkinRaceMatchesActor(
+        const SkinRace skinRace, const SkinRace actorRace) noexcept
+    {
+        return skinRace == actorRace;
+    }
+
     [[nodiscard]] std::string SkinFamilyLabel(body_family::Mask a_families, SkinSex a_sex);
+    [[nodiscard]] std::string SkinRaceLabel(SkinRace a_race);
+    [[nodiscard]] SkinRace SkinRaceFromEditorID(std::string_view a_editorID);
+    [[nodiscard]] SkinRace ResolveActorSkinRace(const RE::Actor* a_actor);
 
     class SkinProfiles final
     {
@@ -94,7 +115,7 @@ namespace bcn
         [[nodiscard]] std::optional<SkinProfile> Find(std::string_view a_id) const;
         [[nodiscard]] std::vector<std::string> CompatibleIds(
             const std::vector<std::string>& a_ids, SkinSex a_sex,
-            body_family::Mask a_actorFamily) const;
+            body_family::Mask a_actorFamily, SkinRace a_actorRace) const;
 
         [[nodiscard]] static std::filesystem::path RootPath();
 

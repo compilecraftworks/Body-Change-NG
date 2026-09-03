@@ -159,10 +159,20 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody;
     }
 
+    [[nodiscard]] bool UsesBeastTail(const bcn::SkinProfile& profile) noexcept
+    {
+        // Vanilla Argonian/Khajiit tail NIFs deliberately reference the same
+        // sex-specific body atlas. This is a real second geometry target for
+        // the body channels, not a missing-part fallback such as body->feet.
+        return profile.race == bcn::SkinRace::argonian ||
+            profile.race == bcn::SkinRace::khajiit;
+    }
+
     [[nodiscard]] bool ProfileMatchesActor(RE::Actor* actor, const bcn::SkinProfile& profile)
     {
-        return !actor || bcn::SkinMatchesActor(
-            profile.bodyFamilies, bcn::body_family::ResolveActor(actor));
+        return !actor || (bcn::SkinRaceMatchesActor(
+            profile.race, bcn::ResolveActorSkinRace(actor)) &&
+            bcn::SkinMatchesActor(profile.bodyFamilies, bcn::body_family::ResolveActor(actor)));
     }
 
     [[nodiscard]] skee_override::IPluginInterface* OverrideInterface() noexcept
@@ -246,6 +256,7 @@ namespace
         case RE::BGSBipedObjectForm::BipedObjectSlot::kBody: return "body";
         case RE::BGSBipedObjectForm::BipedObjectSlot::kHands: return "hands";
         case RE::BGSBipedObjectForm::BipedObjectSlot::kFeet: return "feet";
+        case RE::BGSBipedObjectForm::BipedObjectSlot::kTail: return "tail";
         case kUbeBodySlot: return "ube-body-slot-53";
         default: return "unknown";
         }
@@ -878,6 +889,10 @@ namespace
         };
         verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
             profile.body, ProfileBodySlot(profile));
+        if (UsesBeastTail(profile)) {
+            verifyPart("tail-body-atlas", profile.body,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
+        }
         verifyPart("hands", profile.hands, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
         verifyPart("feet", profile.feet, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
         verifyPart("face", faceLayers, std::nullopt);
@@ -1292,6 +1307,13 @@ namespace
             };
             submitPart(ProfileBodySlot(profile), profile.body);
             if (!UsesUbeBodySlot(profile)) {
+                if (UsesBeastTail(profile) && !profile.body.empty()) {
+                    // Tail availability is auxiliary: a tail-hiding outfit or
+                    // custom race setup must not keep an otherwise complete
+                    // skin selection perpetually pending.
+                    static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kTail, profile.body, applyBatch));
+                }
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
             }
@@ -1313,6 +1335,8 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kTail, clearBatch);
         if (faceNode) DispatchLegacyFaceClear(*vm, actor.get(), female, faceNode->nodeName, true, clearBatch);
         CompleteLegacyBatch(clearBatch);
     }
@@ -1353,6 +1377,8 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kTail, clearBatch);
         if (faceNode) DispatchLegacyFaceClear(*vm, actor.get(), female, faceNode->nodeName, true, clearBatch);
         CompleteLegacyBatch(clearBatch);
     }
@@ -1394,6 +1420,8 @@ namespace
                 RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
             removed = ClearTexturePart(*overrides, actor.get(), female,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || removed;
+            removed = ClearTexturePart(*overrides, actor.get(), female,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || removed;
         }
         // Reconcile every owned exact key before writing the new profile.
         // This restores the actor's underlying texture for absent parts and
@@ -1405,6 +1433,8 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || removed;
         if (faceNode) {
             removed = ClearFaceTextures(*overrides, actor.get(), female, faceNode->nodeName, true) || removed;
         }
@@ -1419,6 +1449,10 @@ namespace
         };
         applyPart(ProfileBodySlot(profile), profile.body);
         if (!UsesUbeBodySlot(profile)) {
+            if (UsesBeastTail(profile) && !profile.body.empty()) {
+                static_cast<void>(ApplyPart(*overrides, actor.get(), female,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kTail, profile.body));
+            }
             applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
             applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
         }
@@ -1464,10 +1498,12 @@ namespace
         cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
+        cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
+        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
         if (faceNode) cleared = ClearFaceTextures(*overrides, actor.get(), female, faceNode->nodeName, true) || cleared;
         if (!cleared) {
             SKSE::log::warn("Body Change NG could not clear its RaceMenu skin texture overrides for actor {:08X}", actor->GetFormID());
@@ -1520,7 +1556,12 @@ namespace bcn::skin_override
         if ((female && profile->sex != SkinSex::female) || (!female && profile->sex != SkinSex::male)) {
             return ApplyResult::incompatibleSex;
         }
-        if (!ProfileMatchesActor(actor, *profile)) return ApplyResult::incompatibleBodyFamily;
+        if (!SkinRaceMatchesActor(profile->race, ResolveActorSkinRace(actor))) {
+            return ApplyResult::incompatibleRace;
+        }
+        if (!SkinMatchesActor(profile->bodyFamilies, body_family::ResolveActor(actor))) {
+            return ApplyResult::incompatibleBodyFamily;
+        }
         // Partial body/hands/feet packs do not need a face target. Require
         // live FaceGen geometry only when this profile supplies face layers.
         if (ProfileUsesFace(*profile, IsVampireRace(const_cast<RE::TESNPC*>(base))) &&

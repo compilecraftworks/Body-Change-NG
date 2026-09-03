@@ -831,6 +831,8 @@ namespace
             return Text("액터의 3D가 로드되지 않아 스킨을 즉시 적용할 수 없습니다.", "The actor's 3D is not loaded, so the skin cannot be applied immediately.", "角色的 3D 尚未加载，无法立即应用皮肤。");
         case bcn::skin_override::ApplyResult::incompatibleSex:
             return Text("선택한 스킨팩은 이 액터의 성별과 맞지 않습니다.", "The selected skin pack does not match this actor's sex.", "所选皮肤包与该角色的性别不匹配。");
+        case bcn::skin_override::ApplyResult::incompatibleRace:
+            return Text("선택한 스킨팩은 이 액터의 종족과 맞지 않습니다.", "The selected skin pack does not match this actor's race.", "所选皮肤包与该角色的种族不匹配。");
         case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
         case bcn::skin_override::ApplyResult::faceGeometryUnavailable:
@@ -1129,6 +1131,7 @@ namespace
         const auto* base = actor->GetActorBase();
         const bool female = !base || base->GetSex() == RE::SEX::kFemale;
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        const auto actorRace = bcn::ResolveActorSkinRace(actor);
 
         const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##skinCatalogRefresh";
         if (ImGui::Button(refreshLabel.c_str())) {
@@ -1147,6 +1150,7 @@ namespace
         visibleSkins.reserve(skins.size());
         for (const auto& skin : skins) {
             if ((female && skin.sex != bcn::SkinSex::female) || (!female && skin.sex != bcn::SkinSex::male)) continue;
+            if (!bcn::SkinRaceMatchesActor(skin.race, actorRace)) continue;
             if (!bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily)) continue;
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(skin.id).find(Lower(g_search)) == std::string::npos) continue;
@@ -1223,18 +1227,19 @@ namespace
             ImGui::Dummy(ImVec2(0.0F, Scaled(5.0F)));
             ImGui::PopID();
             ++row;
-            const auto hasMatchingSkin = std::ranges::any_of(skins, [female, actorFamily](const auto& skin) {
+            const auto hasMatchingSkin = std::ranges::any_of(skins, [female, actorFamily, actorRace](const auto& skin) {
                 return ((female && skin.sex == bcn::SkinSex::female) ||
                     (!female && skin.sex == bcn::SkinSex::male)) &&
+                    bcn::SkinRaceMatchesActor(skin.race, actorRace) &&
                     bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily);
             });
             if (!hasMatchingSkin) {
-                ImGui::TextUnformatted(Text("이 액터의 성별·바디 계열에 맞는 스킨팩을 찾지 못했습니다.", "No skin packs were found for this actor's sex and body family.", "未找到适用于该角色性别和身体系列的皮肤包。"));
+                ImGui::TextUnformatted(Text("이 액터의 종족·성별·바디 계열에 맞는 스킨팩을 찾지 못했습니다.", "No skin packs were found for this actor's race, sex, and body family.", "未找到适用于该角色种族、性别和身体系列的皮肤包。"));
                 ImGui::Spacing();
                 ImGui::TextWrapped("%s", Text(
-                    "일반 스킨은 BodySkin\\<스킨 이름>\\Textures\\actors\\character 구조를, UBE 스킨은 BodySkin\\<스킨 이름>\\Textures\\!UBE\\Body 및 Head 구조를 그대로 유지하세요.",
-                    "Keep conventional skins under BodySkin\\<skin name>\\Textures\\actors\\character, and UBE skins under BodySkin\\<skin name>\\Textures\\!UBE\\Body and Head.",
-                    "普通皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\actors\\character 结构；UBE 皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\!UBE\\Body 和 Head 结构。"));
+                    "일반·아르고니안·카짓 스킨은 BodySkin\\<스킨 이름>\\Textures\\actors\\character 구조를, UBE 스킨은 BodySkin\\<스킨 이름>\\Textures\\!UBE\\Body 및 Head 구조를 그대로 유지하세요.",
+                    "Keep humanoid, Argonian, and Khajiit skins under BodySkin\\<skin name>\\Textures\\actors\\character, and UBE skins under BodySkin\\<skin name>\\Textures\\!UBE\\Body and Head.",
+                    "普通人形、亚龙人和虎人皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\actors\\character 结构；UBE 皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\!UBE\\Body 和 Head 结构。"));
             }
             for (const auto* skinPointer : visibleSkins) {
                 const auto& skin = *skinPointer;
@@ -1269,6 +1274,7 @@ namespace
                 collectPaths(skin.faceDetails);
                 const auto textureCount = texturePaths.size();
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
+                    " · " + bcn::SkinRaceLabel(skin.race) +
                     " · " + bcn::SkinFamilyLabel(skin.bodyFamilies, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
                     (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");

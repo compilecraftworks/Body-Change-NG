@@ -226,7 +226,8 @@ namespace
         const auto actorFemale = base->GetSex() == RE::SEX::kFemale;
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
         return bcn::SkinProfiles::Get().CompatibleIds(pool,
-            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, actorFamily);
+            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, actorFamily,
+            bcn::ResolveActorSkinRace(actor));
     }
 
     [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
