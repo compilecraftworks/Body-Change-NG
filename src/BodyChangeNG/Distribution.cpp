@@ -12,6 +12,8 @@
 
 #include <SKSE/Logger.h>
 #include <RE/P/ProcessLists.h>
+#include <RE/T/TESClass.h>
+#include <RE/T/TESCombatStyle.h>
 
 #include <algorithm>
 #include <charconv>
@@ -25,7 +27,7 @@
 
 namespace
 {
-    constexpr auto kSchemaVersion = 3;
+    constexpr auto kSchemaVersion = 4;
 
     [[nodiscard]] std::filesystem::path LegacyDistributionPath()
     {
@@ -86,7 +88,34 @@ namespace
     {
         using enum bcn::DistributionScope;
         return scope == allNPCs || scope == npcBaseForm || scope == npcName || scope == factionEditorID ||
-            scope == pluginFile || scope == raceEditorID || scope == modInstalledFollower || scope == elderNPC;
+            scope == pluginFile || scope == raceEditorID || scope == modInstalledFollower || scope == elderNPC ||
+            scope == keyword || scope == npcClass || scope == combatStyle;
+    }
+
+    [[nodiscard]] bool IsStableTargetFormScope(const bcn::DistributionScope scope)
+    {
+        using enum bcn::DistributionScope;
+        return scope == factionEditorID || scope == raceEditorID || scope == keyword ||
+            scope == npcClass || scope == combatStyle;
+    }
+
+    [[nodiscard]] bool IsExpectedTargetFormType(const bcn::DistributionScope scope, const RE::TESForm* form)
+    {
+        if (!form) return false;
+        switch (scope) {
+        case bcn::DistributionScope::factionEditorID:
+            return form->GetFormType() == RE::FormType::Faction;
+        case bcn::DistributionScope::raceEditorID:
+            return form->GetFormType() == RE::FormType::Race;
+        case bcn::DistributionScope::keyword:
+            return form->GetFormType() == RE::FormType::Keyword;
+        case bcn::DistributionScope::npcClass:
+            return form->GetFormType() == RE::FormType::Class;
+        case bcn::DistributionScope::combatStyle:
+            return form->GetFormType() == RE::FormType::CombatStyle;
+        default:
+            return false;
+        }
     }
 
     [[nodiscard]] std::uint32_t LocalFormID(const RE::TESForm* form, const RE::TESFile* file)
@@ -104,6 +133,22 @@ namespace
         return rule.npcLocalFormID != 0U;
     }
 
+    [[nodiscard]] bool SetStableTargetIdentity(bcn::DistributionRule& rule, RE::TESForm* form)
+    {
+        if (!IsStableTargetFormScope(rule.scope) || !IsExpectedTargetFormType(rule.scope, form)) return false;
+        const auto* file = form->GetFile(0);
+        if (!file || file->GetFilename().empty()) return false;
+        const auto localFormID = LocalFormID(form, file);
+        if (localFormID == 0U) return false;
+        rule.targetFormID = form->GetFormID();
+        rule.targetPlugin = std::string{ file->GetFilename() };
+        rule.targetLocalFormID = localFormID;
+        if (const auto* editorID = form->GetFormEditorID(); editorID && editorID[0] != '\0') {
+            rule.target = editorID;
+        }
+        return true;
+    }
+
     [[nodiscard]] bool ResolveStableNPCIdentity(bcn::DistributionRule& rule)
     {
         if (rule.scope != bcn::DistributionScope::npcBaseForm) return true;
@@ -115,6 +160,27 @@ namespace
         auto* base = data ? data->LookupForm<RE::TESNPC>(rule.npcLocalFormID, rule.npcPlugin) : nullptr;
         rule.npcBaseFormID = base ? base->GetFormID() : 0U;
         return base != nullptr;
+    }
+
+    [[nodiscard]] bool ResolveStableTargetIdentity(bcn::DistributionRule& rule)
+    {
+        if (!IsStableTargetFormScope(rule.scope)) return true;
+        auto* data = RE::TESDataHandler::GetSingleton();
+        RE::TESForm* form{};
+        if (data && !rule.targetPlugin.empty() && rule.targetLocalFormID != 0U) {
+            form = data->LookupForm(rule.targetLocalFormID, rule.targetPlugin);
+        }
+        // Schema-3 and imported OBody rules stored only an EditorID. Resolve
+        // that legacy representation once, then persist the stable identity.
+        if (!IsExpectedTargetFormType(rule.scope, form) && !rule.target.empty()) {
+            auto* legacy = RE::TESForm::LookupByEditorID(rule.target);
+            if (IsExpectedTargetFormType(rule.scope, legacy)) {
+                form = legacy;
+                [[maybe_unused]] const auto converted = SetStableTargetIdentity(rule, form);
+            }
+        }
+        rule.targetFormID = IsExpectedTargetFormType(rule.scope, form) ? form->GetFormID() : 0U;
+        return rule.targetFormID != 0U;
     }
 
     [[nodiscard]] bool MatchesTarget(const bcn::DistributionRule& rule, RE::Actor* actor)
@@ -130,13 +196,13 @@ namespace
         case bcn::DistributionScope::npcName:
             return EqualIgnoreCase(base->GetName(), rule.target);
         case bcn::DistributionScope::factionEditorID: {
-            const auto* form = rule.target.empty() ? nullptr : RE::TESForm::LookupByEditorID(rule.target);
-            const auto* faction = form && form->GetFormType() == RE::FormType::Faction ?
-                static_cast<const RE::TESFaction*>(form) : nullptr;
+            auto* form = RE::TESForm::LookupByID(rule.targetFormID);
+            auto* faction = form && form->GetFormType() == RE::FormType::Faction ?
+                static_cast<RE::TESFaction*>(form) : nullptr;
             // CommonLib exposes this query as a non-const member even though it
             // does not mutate the NPC.  The faction form comes from the loaded
             // data handler and is not modified here.
-            return faction && base->IsInFaction(const_cast<RE::TESFaction*>(faction));
+            return faction && base->IsInFaction(faction);
         }
         case bcn::DistributionScope::pluginFile: {
             const auto* file = base->GetFile(0);
@@ -144,12 +210,30 @@ namespace
         }
         case bcn::DistributionScope::raceEditorID: {
             const auto* race = base->GetRace();
-            return race && EqualIgnoreCase(race->GetFormEditorID(), rule.target);
+            return race && race->GetFormID() == rule.targetFormID;
         }
         case bcn::DistributionScope::modInstalledFollower:
             return IsCustomFollower(actor, base);
         case bcn::DistributionScope::elderNPC:
             return bcn::IsElderActor(base);
+        case bcn::DistributionScope::keyword: {
+            auto* form = RE::TESForm::LookupByID(rule.targetFormID);
+            const auto* target = form && form->GetFormType() == RE::FormType::Keyword ?
+                static_cast<RE::BGSKeyword*>(form) : nullptr;
+            return target && base->HasKeyword(target);
+        }
+        case bcn::DistributionScope::npcClass: {
+            auto* form = RE::TESForm::LookupByID(rule.targetFormID);
+            auto* target = form && form->GetFormType() == RE::FormType::Class ?
+                static_cast<RE::TESClass*>(form) : nullptr;
+            return target && base->IsInClass(target);
+        }
+        case bcn::DistributionScope::combatStyle: {
+            auto* form = RE::TESForm::LookupByID(rule.targetFormID);
+            const auto* target = form && form->GetFormType() == RE::FormType::CombatStyle ?
+                static_cast<RE::TESCombatStyle*>(form) : nullptr;
+            return target && base->GetCombatStyle() == target;
+        }
         }
         return false;
     }
@@ -282,6 +366,8 @@ namespace
                 .name = "아르고니안 여성 스킨 배포 제외",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
+                .targetPlugin = "Skyrim.esm",
+                .targetLocalFormID = 0x13740U,
                 .target = "ArgonianRace",
                 .skinExcluded = true },
             DistributionRule{
@@ -289,6 +375,8 @@ namespace
                 .name = "아르고니안 남성 스킨 배포 제외",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
+                .targetPlugin = "Skyrim.esm",
+                .targetLocalFormID = 0x13740U,
                 .target = "ArgonianRace",
                 .skinExcluded = true },
             DistributionRule{
@@ -296,6 +384,8 @@ namespace
                 .name = "카짓 여성 스킨 배포 제외",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
+                .targetPlugin = "Skyrim.esm",
+                .targetLocalFormID = 0x13745U,
                 .target = "KhajiitRace",
                 .skinExcluded = true },
             DistributionRule{
@@ -303,6 +393,8 @@ namespace
                 .name = "카짓 남성 스킨 배포 제외",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
+                .targetPlugin = "Skyrim.esm",
+                .targetLocalFormID = 0x13745U,
                 .target = "KhajiitRace",
                 .skinExcluded = true }
         };
@@ -340,6 +432,13 @@ namespace
                 rule.npcBaseFormID = 0U;
                 rule.npcPlugin.clear();
                 rule.npcLocalFormID = 0U;
+            }
+            if (IsStableTargetFormScope(rule.scope)) {
+                [[maybe_unused]] const auto resolved = ResolveStableTargetIdentity(rule);
+            } else {
+                rule.targetFormID = 0U;
+                rule.targetPlugin.clear();
+                rule.targetLocalFormID = 0U;
             }
             if (rule.excluded) {
                 rule.bodyExcluded = true;
@@ -396,6 +495,8 @@ namespace
                     { "scope", static_cast<std::uint8_t>(rule.scope) },
                     { "npcPlugin", rule.npcPlugin },
                     { "npcLocalFormID", rule.npcLocalFormID },
+                    { "targetPlugin", rule.targetPlugin },
+                    { "targetLocalFormID", rule.targetLocalFormID },
                     { "target", rule.target },
                     { "bodyFamily", rule.bodyFamily },
                     { "presetIds", rule.presetIds },
@@ -445,6 +546,11 @@ namespace bcn
         return SetStableNPCIdentity(rule, base);
     }
 
+    bool SetDistributionRuleTargetForm(DistributionRule& rule, RE::TESForm* form)
+    {
+        return SetStableTargetIdentity(rule, form);
+    }
+
     Distribution& Distribution::Get()
     {
         static Distribution distribution;
@@ -470,7 +576,7 @@ namespace bcn
             std::ifstream stream(sourcePath.path);
             const auto root = nlohmann::json::parse(stream);
             const auto schemaVersion = root.value("schemaVersion", 0);
-            if (schemaVersion != kSchemaVersion ||
+            if ((schemaVersion != 3 && schemaVersion != kSchemaVersion) ||
                 !root.contains("rules") || !root["rules"].is_array()) {
                 throw std::runtime_error("unsupported distribution schema");
             }
@@ -484,6 +590,8 @@ namespace bcn
                     .scope = static_cast<DistributionScope>(source.value("scope", 0)),
                     .npcPlugin = source.value("npcPlugin", std::string{}),
                     .npcLocalFormID = source.value("npcLocalFormID", 0U),
+                    .targetPlugin = source.value("targetPlugin", std::string{}),
+                    .targetLocalFormID = source.value("targetLocalFormID", 0U),
                     .target = source.value("target", std::string{}),
                     .bodyFamily = source.value("bodyFamily", std::string{}),
                     .presetIds = source.value("presetIds", std::vector<std::string>{}),

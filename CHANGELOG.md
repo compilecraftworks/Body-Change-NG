@@ -11,6 +11,10 @@ First stable public release.
 - Applies BodySlide presets through RaceMenu BodyMorph without replacing body
   meshes at runtime.
 - Interpolates low/high-weight preset values using the actor's current weight.
+- Normalizes the complete compatible-family slider set to the selected
+  preset's absolute target. Sliders omitted by the XML intentionally resolve
+  to zero, repeated preview/commit/distribution does not accumulate morphs,
+  and keys owned by unrelated mods are not deleted.
 - Detects the selected actor's body family conservatively and filters only the
   main Body tab. Uncertain or multi-family presets remain visible through safe
   fallbacks; NPC distribution pools are never auto-filtered.
@@ -47,6 +51,10 @@ First stable public release.
   under a skin pack's `character assets\tintmasks` are excluded from Body Skin
   preview and distribution.
 - Tracks ownership precisely so cleanup removes only Body Change NG's keys.
+- Supports partial male packs without borrowing body maps for hands or feet,
+  and routes optional SOS slot-52 genital textures to the live Smurf Average,
+  VectorPlexus Regular, or VectorPlexus Muscular addon material. Missing body
+  parts, race variants, and DDS channels retain the actor's existing texture.
 
 ### Player tint
 
@@ -62,7 +70,11 @@ First stable public release.
 ### NPC distribution and persistence
 
 - Adds top-down, first-match body/skin rules for all NPCs, custom followers,
-  elders, names, NPC base FormIDs, factions, plugins, and races.
+  elders, plugins, races, factions, keywords, classes, combat styles, names,
+  and NPC base FormIDs.
+- Stores faction, race, keyword, class, and combat-style targets as plugin plus
+  local FormID, while retaining schema-3 EditorID rules as a load-time
+  migration fallback. Unnamed forms are still available in the dropdowns.
 - Allows Body and Skin to be distributed or excluded independently in one rule.
 - Includes eight editable starter exclusions: custom followers and elders are
   body-only exclusions for both sexes; Argonians and Khajiit are skin-only
@@ -124,7 +136,10 @@ First stable public release.
   with performance mode adding an extra scheduling interval; stores ActorHandles instead of raw actor
   pointers, clears detached actor preview/apply state, and resets all transient
   state on a new save session.
-- Ships a valid schema-3 starter JSON and README files in every user asset
+- Defers only the first loaded-NPC enumeration by two game-task turns after
+  load, avoiding a burst inside serialization/RaceMenu/overlay load callbacks
+  without adding a recurring scan or timer.
+- Ships a valid schema-4 starter JSON and README files in every user asset
   folder.
 - Verified by the release build and ten regression test executables covering
   actor state, asset catalogs, body-family classification, hotkeys, outfit

@@ -84,7 +84,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [list]
 [*]Rules are evaluated from top to bottom; the first matching rule owns Body and Skin
 [*]Body and Skin can independently distribute selected entries, be excluded from distribution, or be left unchanged
-[*]Targets include all NPCs, custom followers, elders, exact NPC base FormIDs, names, factions, plugins, and races
+[*]Targets include all NPCs, custom followers, elders, plugins, races, factions, keywords, classes, combat styles, names, and exact NPC base FormIDs
 [*]One selected preset or skin pack is fixed; multiple choices produce stable per-NPC random results
 [*]Edit every condition and pool in game, then distribute to loaded NPCs immediately or save the edits for the next launch
 [*]Evaluated actor results are kept in the SKSE co-save to avoid redistributing unchanged NPCs
@@ -164,7 +164,7 @@ For a UBE-only tint-mask pack, include [b]UBE[/b] in the top-level pack name. Pa
 
 BodySlide preset XML files, skin-pack folders, and tint-pack folders may be added or replaced while the game is running. Open the corresponding [b]Body Presets[/b], [b]Body Skins[/b], or [b]Tint Masks[/b] tab and press [b]Refresh[/b] to rescan the files and update the list without restarting Skyrim.
 
-The archive includes a README in every user-asset folder and a valid schema-3 distribution JSON with eight editable starter exclusions.
+The archive includes a README in every user-asset folder and a valid schema-4 distribution JSON with eight editable starter exclusions. Existing schema-3 files remain readable and are upgraded when saved.
 
 [line]
 

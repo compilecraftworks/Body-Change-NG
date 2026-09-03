@@ -116,8 +116,8 @@ body slots:
 
 - Rules are evaluated from top to bottom; the first match owns Body and Skin.
 - Body and Skin can be distributed or excluded independently.
-- Targets include all NPCs, custom followers, elders, exact NPC base FormIDs,
-  names, factions, plugins, and races.
+- Targets include all NPCs, custom followers, elders, plugins, races, factions,
+  keywords, classes, combat styles, names, and exact NPC base FormIDs.
 - Choose one fixed preset/skin or multiple stable random choices per rule.
 - Rules are written by the in-game editor to
   `Data\SKSE\Plugins\BodyChangeNGdistribution.json`; manual JSON editing is
@@ -186,7 +186,8 @@ Presets**, **Body Skins**, or **Tint Masks** tab and press **Refresh** to rescan
 the files and update the list without restarting the game.
 
 The archive includes README files in every user asset folder and a valid
-schema-3 distribution JSON with eight editable starter exclusions.
+schema-4 distribution JSON with eight editable starter exclusions. Existing
+schema-3 files remain readable and are upgraded when saved.
 
 ## Optional OBody NG JSON Compatibility
 

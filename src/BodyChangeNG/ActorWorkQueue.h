@@ -41,6 +41,13 @@ namespace bcn
         return performanceMode ? 1U : 0U;
     }
 
+    [[nodiscard]] constexpr std::uint8_t InitialDistributionDelayHops() noexcept
+    {
+        // Allow serialization listeners and other RaceMenu users to finish
+        // their load callbacks before BCNG begins touching loaded actors.
+        return 2U;
+    }
+
     class ActorWorkQueue final
     {
     public:

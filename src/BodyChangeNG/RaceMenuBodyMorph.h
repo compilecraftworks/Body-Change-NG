@@ -11,6 +11,13 @@ namespace RE
 
 namespace bcn::racemenu
 {
+    [[nodiscard]] constexpr float AbsolutePresetCorrection(
+        const float desiredPresetValue, const float currentAggregate,
+        const float preservedOutfitValue = 0.0F) noexcept
+    {
+        return desiredPresetValue + preservedOutfitValue - currentAggregate;
+    }
+
     enum class ApplyMode : std::uint8_t
     {
         preview,

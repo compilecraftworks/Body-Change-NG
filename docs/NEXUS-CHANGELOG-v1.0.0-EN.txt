@@ -3,11 +3,15 @@
 [list]
 [*]Integrated BodySlide body morphs, per-actor skin textures, and player RaceMenu tint masks in one native in-game UI.
 [*]Added top-down, first-match NPC distribution rules with independent Body and Skin distribute/exclude decisions.
+[*]Added keyword, class, and combat-style targets, and made faction/race/form dropdown targets load-order-safe through plugin plus local FormID identities.
 [*]Stored global rules in BodyChangeNGdistribution.json and evaluated actor results in the SKSE co-save to reduce unnecessary redistribution after loading a save.
 [*]Included eight starter exclusions: Body exclusion for female/male custom followers and elders, plus Skin exclusion for female/male Argonians and Khajiit.
 [*]Added explicit-button import of supported OBody NG distribution and outfit-correction rules.
 [*]Added breast and nipple correction while clothed, plus stable nipple and genital shape randomization.
 [*]Safely reapplied confirmed Body, Skin, and Tint state after RaceMenu closes without deleting NiOverride keys owned by other mods.
+[*]Made body preset application absolute and repeat-safe: omitted compatible-family sliders resolve to zero, repeated NPC distribution cannot stack the same morph, and unrelated mod keys are not deleted.
+[*]Fixed partial male skin routing and added SOS slot-52 genital textures with matching addon, race, elder, and per-channel fallbacks.
+[*]Moved the first loaded-NPC distribution pass out of the save-load callback burst without adding recurring scans or per-frame work.
 [*]Added native IME input, Backspace, search, favorites, keyboard navigation, and gamepad support.
 [*]Added actor-matched BodyFamily filtering with a safe fallback for uncertain or multi-family presets.
 [*]Added runtime Refresh for BodySlide XML presets and Skin/Tint folders placed while Skyrim is running.

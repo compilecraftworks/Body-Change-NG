@@ -1,7 +1,9 @@
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/RaceMenuBodyMorph.h"
 
+#include <cmath>
 #include <iostream>
 #include <stdexcept>
 
@@ -16,6 +18,19 @@ namespace
 int main()
 {
     try {
+        // Schema 4 appends new scopes. Existing schema-3 numeric values must
+        // never move, or a saved rule could silently change meaning.
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::allNPCs) == 0U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::npcBaseForm) == 1U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::npcName) == 2U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::factionEditorID) == 3U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::pluginFile) == 4U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::raceEditorID) == 5U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::modInstalledFollower) == 6U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::elderNPC) == 7U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::keyword) == 8U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::npcClass) == 9U);
+        static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::combatStyle) == 10U);
         using bcn::StableStateSignature;
         const auto body = StableStateSignature("body", "preset-a", false, 0U);
         Require(body == StableStateSignature("body", "preset-a", false, 0U),
@@ -34,6 +49,20 @@ int main()
             "normal mode unexpectedly delayed the first queued actor");
         Require(bcn::AutomaticDrainDelayHops(true) == 1U,
             "performance mode did not add its conservative scheduling hop");
+        Require(bcn::InitialDistributionDelayHops() == 2U,
+            "initial distribution no longer yields to save-load listeners");
+        const auto omittedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.0F, 0.4F);
+        Require(std::abs(omittedCorrection + 0.4F) < 0.00001F &&
+                std::abs(0.4F + omittedCorrection) < 0.00001F,
+            "an XML-omitted body slider did not normalize to zero");
+        const auto firstCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 0.35F);
+        const auto repeatedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 0.35F);
+        Require(firstCorrection == repeatedCorrection &&
+                std::abs(0.35F + repeatedCorrection - 0.8F) < 0.00001F,
+            "repeated distribution accumulated body morph values");
+        const auto previewCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 1.05F, 0.1F);
+        Require(std::abs(1.05F + previewCorrection - 0.9F) < 0.00001F,
+            "preview normalization did not preserve the current outfit correction");
 
         bcn::ActorState state{
             .actorFormID = 0x1234U,

@@ -16,6 +16,8 @@
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
+#include <RE/T/TESClass.h>
+#include <RE/T/TESCombatStyle.h>
 
 #include <algorithm>
 #include <charconv>
@@ -76,6 +78,15 @@ namespace
         bool confirm{};
     };
 
+    struct DistributionTargetOption
+    {
+        std::string display;
+        std::string editorID;
+        std::string plugin;
+        std::uint32_t localFormID{};
+        std::uint32_t runtimeFormID{};
+    };
+
     ActiveTab g_activeTab{ ActiveTab::body };
     DistributionPool g_distributionPool{ DistributionPool::body };
     std::array<bool, 3> g_favoritesOnlyByTab{};
@@ -91,9 +102,12 @@ namespace
     std::uint32_t g_nextDraftRuleID{ 1U };
     std::string g_distributionBodySearch;
     std::string g_distributionSkinSearch;
-    std::vector<std::string> g_distributionFactionOptions;
+    std::vector<DistributionTargetOption> g_distributionFactionOptions;
     std::vector<std::string> g_distributionPluginOptions;
-    std::vector<std::string> g_distributionRaceOptions;
+    std::vector<DistributionTargetOption> g_distributionRaceOptions;
+    std::vector<DistributionTargetOption> g_distributionKeywordOptions;
+    std::vector<DistributionTargetOption> g_distributionClassOptions;
+    std::vector<DistributionTargetOption> g_distributionCombatStyleOptions;
     std::uint32_t g_selectedActorFormID{};
     std::string g_actorSearch;
     std::string g_search;
@@ -573,6 +587,9 @@ namespace
         g_distributionFactionOptions.clear();
         g_distributionPluginOptions.clear();
         g_distributionRaceOptions.clear();
+        g_distributionKeywordOptions.clear();
+        g_distributionClassOptions.clear();
+        g_distributionCombatStyleOptions.clear();
     }
 
     void AddUniqueTargetOption(std::vector<std::string>& options,
@@ -583,23 +600,73 @@ namespace
         if (known.insert(key).second) options.emplace_back(value);
     }
 
+    [[nodiscard]] std::uint32_t LocalFormID(const RE::TESForm* form, const RE::TESFile* file)
+    {
+        return form && file ? form->GetFormID() & (file->IsLight() ? 0xFFFU : 0xFFFFFFU) : 0U;
+    }
+
+    void AddFormTargetOption(std::vector<DistributionTargetOption>& options,
+        std::unordered_set<std::string>& known, RE::TESForm* form)
+    {
+        const auto* file = form ? form->GetFile(0) : nullptr;
+        if (!form || !file || file->GetFilename().empty()) return;
+        const auto localFormID = LocalFormID(form, file);
+        if (localFormID == 0U) return;
+        const auto plugin = std::string{ file->GetFilename() };
+        const auto identity = Lower(plugin) + ":" + std::format("{:06X}", localFormID);
+        if (!known.insert(identity).second) return;
+
+        const auto* rawName = form->GetName();
+        const auto* rawEditorID = form->GetFormEditorID();
+        const auto name = rawName && rawName[0] != '\0' ? std::string{ rawName } : std::string{};
+        const auto editorID = rawEditorID && rawEditorID[0] != '\0' ? std::string{ rawEditorID } : std::string{};
+        std::string display;
+        if (!name.empty()) display = name;
+        if (!editorID.empty() && Lower(name) != Lower(editorID)) {
+            if (!display.empty()) display += " · ";
+            display += editorID;
+        }
+        if (display.empty()) display = Text("이름 없음", "Unnamed", "未命名");
+        display += std::format(" · {}:{:06X}", plugin, localFormID);
+        options.push_back({
+            .display = std::move(display),
+            .editorID = editorID,
+            .plugin = plugin,
+            .localFormID = localFormID,
+            .runtimeFormID = form->GetFormID()
+        });
+    }
+
     void RefreshDistributionTargetOptions()
     {
         g_distributionFactionOptions.clear();
         g_distributionPluginOptions.clear();
         g_distributionRaceOptions.clear();
+        g_distributionKeywordOptions.clear();
+        g_distributionClassOptions.clear();
+        g_distributionCombatStyleOptions.clear();
         auto* dataHandler = RE::TESDataHandler::GetSingleton();
         if (!dataHandler) return;
 
         std::unordered_set<std::string> knownFactions;
-        for (const auto* faction : dataHandler->GetFormArray<RE::TESFaction>()) {
-            AddUniqueTargetOption(g_distributionFactionOptions, knownFactions,
-                faction ? std::string_view{ faction->GetFormEditorID() } : std::string_view{});
+        for (auto* faction : dataHandler->GetFormArray<RE::TESFaction>()) {
+            AddFormTargetOption(g_distributionFactionOptions, knownFactions, faction);
         }
         std::unordered_set<std::string> knownRaces;
-        for (const auto* race : dataHandler->GetFormArray<RE::TESRace>()) {
-            AddUniqueTargetOption(g_distributionRaceOptions, knownRaces,
-                race ? std::string_view{ race->GetFormEditorID() } : std::string_view{});
+        for (auto* race : dataHandler->GetFormArray<RE::TESRace>()) {
+            AddFormTargetOption(g_distributionRaceOptions, knownRaces, race);
+        }
+        std::unordered_set<std::string> knownKeywords;
+        for (auto* keyword : dataHandler->GetFormArray<RE::BGSKeyword>()) {
+            AddFormTargetOption(g_distributionKeywordOptions, knownKeywords, keyword);
+        }
+        std::unordered_set<std::string> knownClasses;
+        for (auto* npcClass : dataHandler->GetFormArray<RE::TESClass>()) {
+            AddFormTargetOption(g_distributionClassOptions, knownClasses, npcClass);
+        }
+        std::unordered_set<std::string> knownCombatStyles;
+        for (auto* combatStyle : dataHandler->GetFormArray<RE::TESCombatStyle>()) {
+            AddFormTargetOption(g_distributionCombatStyleOptions, knownCombatStyles, combatStyle);
         }
         std::unordered_set<std::string> knownPlugins;
         const auto appendPlugins = [&](const RE::TESFile* const* files, const std::size_t count) {
@@ -612,14 +679,19 @@ namespace
         appendPlugins(dataHandler->GetLoadedMods(), dataHandler->GetLoadedModCount());
         appendPlugins(dataHandler->GetLoadedLightMods(), dataHandler->GetLoadedLightModCount());
 
-        const auto sortOptions = [](auto& options) {
+        const auto sortFormOptions = [](auto& options) {
             std::ranges::sort(options, [](const auto& left, const auto& right) {
-                return Lower(left) < Lower(right);
+                return Lower(left.display) < Lower(right.display);
             });
         };
-        sortOptions(g_distributionFactionOptions);
-        sortOptions(g_distributionPluginOptions);
-        sortOptions(g_distributionRaceOptions);
+        sortFormOptions(g_distributionFactionOptions);
+        std::ranges::sort(g_distributionPluginOptions, [](const auto& left, const auto& right) {
+            return Lower(left) < Lower(right);
+        });
+        sortFormOptions(g_distributionRaceOptions);
+        sortFormOptions(g_distributionKeywordOptions);
+        sortFormOptions(g_distributionClassOptions);
+        sortFormOptions(g_distributionCombatStyleOptions);
     }
 
     void EnsureDistributionEditor()
@@ -661,8 +733,15 @@ namespace
             if (const auto* file = base->GetFile(0)) rule.target = file->GetFilename();
             break;
         case bcn::DistributionScope::raceEditorID:
-            if (const auto* race = base->GetRace()) rule.target = race->GetFormEditorID();
+            if (auto* race = base->GetRace()) {
+                [[maybe_unused]] const auto normalized = bcn::SetDistributionRuleTargetForm(rule, race);
+            }
             break;
+        case bcn::DistributionScope::combatStyle: {
+            [[maybe_unused]] const auto normalized =
+                bcn::SetDistributionRuleTargetForm(rule, base->GetCombatStyle());
+            break;
+        }
         default:
             break;
         }
@@ -674,11 +753,17 @@ namespace
         case bcn::DistributionScope::npcName:
             return Text("NPC 이름", "NPC name", "NPC 名称");
         case bcn::DistributionScope::factionEditorID:
-            return Text("팩션 EditorID", "Faction EditorID", "阵营 EditorID");
+            return Text("팩션", "Faction", "阵营");
         case bcn::DistributionScope::pluginFile:
             return Text("플러그인 파일명", "Plugin file name", "插件文件名");
         case bcn::DistributionScope::raceEditorID:
-            return Text("종족 EditorID", "Race EditorID", "种族 EditorID");
+            return Text("종족", "Race", "种族");
+        case bcn::DistributionScope::keyword:
+            return Text("키워드", "Keyword", "关键字");
+        case bcn::DistributionScope::npcClass:
+            return Text("클래스", "Class", "职业");
+        case bcn::DistributionScope::combatStyle:
+            return Text("전투 스타일", "Combat style", "战斗风格");
         default:
             return "";
         }
@@ -699,6 +784,12 @@ namespace
             return Text("종족", "Race", "种族");
         case bcn::DistributionScope::factionEditorID:
             return Text("팩션", "Faction", "阵营");
+        case bcn::DistributionScope::keyword:
+            return Text("키워드", "Keyword", "关键字");
+        case bcn::DistributionScope::npcClass:
+            return Text("클래스", "Class", "职业");
+        case bcn::DistributionScope::combatStyle:
+            return Text("전투 스타일", "Combat style", "战斗风格");
         case bcn::DistributionScope::npcName:
             return Text("이름이 같은 NPC", "NPCs with the same name", "同名 NPC");
         case bcn::DistributionScope::npcBaseForm:
@@ -716,6 +807,9 @@ namespace
             bcn::DistributionScope::pluginFile,
             bcn::DistributionScope::raceEditorID,
             bcn::DistributionScope::factionEditorID,
+            bcn::DistributionScope::keyword,
+            bcn::DistributionScope::npcClass,
+            bcn::DistributionScope::combatStyle,
             bcn::DistributionScope::npcName,
             bcn::DistributionScope::npcBaseForm
         };
@@ -760,6 +854,49 @@ namespace
                     changed = true;
                 }
                 if (selected) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    }
+
+    [[nodiscard]] bool DistributionFormTargetCombo(const char* id, bcn::DistributionRule& rule,
+        const std::vector<DistributionTargetOption>& options)
+    {
+        const auto selected = std::ranges::find_if(options, [&rule](const auto& option) {
+            if (!rule.targetPlugin.empty() && rule.targetLocalFormID != 0U) {
+                return Lower(option.plugin) == Lower(rule.targetPlugin) &&
+                    option.localFormID == rule.targetLocalFormID;
+            }
+            return !rule.target.empty() && !option.editorID.empty() &&
+                Lower(option.editorID) == Lower(rule.target);
+        });
+        const auto savedValue = selected == options.end() &&
+            (!rule.target.empty() || !rule.targetPlugin.empty());
+        std::string savedLabel;
+        if (savedValue) {
+            savedLabel = !rule.target.empty() ? rule.target :
+                std::format("{}:{:06X}", rule.targetPlugin, rule.targetLocalFormID);
+            savedLabel += Text(" (저장값)", " (saved value)", "（保存值）");
+        }
+        const auto* preview = selected != options.end() ? selected->display.c_str() :
+            savedValue ? savedLabel.c_str() : Text("선택", "Select", "选择");
+        auto changed = false;
+        PrepareResizableDropdown(options.size() + (savedValue ? 1U : 0U));
+        if (ImGui::BeginCombo(id, preview)) {
+            if (savedValue) {
+                ImGui::Selectable(savedLabel.c_str(), true);
+                ImGui::Separator();
+            }
+            for (const auto& option : options) {
+                const auto isSelected = selected != options.end() &&
+                    option.runtimeFormID == selected->runtimeFormID;
+                if (ImGui::Selectable(option.display.c_str(), isSelected)) {
+                    if (auto* form = RE::TESForm::LookupByID(option.runtimeFormID)) {
+                        changed = bcn::SetDistributionRuleTargetForm(rule, form);
+                    }
+                }
+                if (isSelected) ImGui::SetItemDefaultFocus();
             }
             ImGui::EndCombo();
         }
@@ -1740,6 +1877,9 @@ namespace
                         rule.npcBaseFormID = 0;
                         rule.npcPlugin.clear();
                         rule.npcLocalFormID = 0;
+                        rule.targetFormID = 0;
+                        rule.targetPlugin.clear();
+                        rule.targetLocalFormID = 0;
                         if (rule.scope == bcn::DistributionScope::modInstalledFollower ||
                             rule.scope == bcn::DistributionScope::elderNPC) {
                             rule.bodyExcluded = true;
@@ -1773,7 +1913,7 @@ namespace
                         ImGui::TextUnformatted(TargetLabel(rule.scope));
                         ImGui::SetNextItemWidth(-1.0F);
                         [[maybe_unused]] const auto changed =
-                            DistributionTargetCombo("##ruleFaction", rule.target, g_distributionFactionOptions);
+                            DistributionFormTargetCombo("##ruleFaction", rule, g_distributionFactionOptions);
                     } else if (rule.scope == bcn::DistributionScope::pluginFile) {
                         ImGui::TextUnformatted(TargetLabel(rule.scope));
                         ImGui::SetNextItemWidth(-1.0F);
@@ -1783,7 +1923,23 @@ namespace
                         ImGui::TextUnformatted(TargetLabel(rule.scope));
                         ImGui::SetNextItemWidth(-1.0F);
                         [[maybe_unused]] const auto changed =
-                            DistributionTargetCombo("##ruleRace", rule.target, g_distributionRaceOptions);
+                            DistributionFormTargetCombo("##ruleRace", rule, g_distributionRaceOptions);
+                    } else if (rule.scope == bcn::DistributionScope::keyword) {
+                        ImGui::TextUnformatted(TargetLabel(rule.scope));
+                        ImGui::SetNextItemWidth(-1.0F);
+                        [[maybe_unused]] const auto changed =
+                            DistributionFormTargetCombo("##ruleKeyword", rule, g_distributionKeywordOptions);
+                    } else if (rule.scope == bcn::DistributionScope::npcClass) {
+                        ImGui::TextUnformatted(TargetLabel(rule.scope));
+                        ImGui::SetNextItemWidth(-1.0F);
+                        [[maybe_unused]] const auto changed =
+                            DistributionFormTargetCombo("##ruleClass", rule, g_distributionClassOptions);
+                    } else if (rule.scope == bcn::DistributionScope::combatStyle) {
+                        ImGui::TextUnformatted(TargetLabel(rule.scope));
+                        ImGui::SetNextItemWidth(-1.0F);
+                        [[maybe_unused]] const auto changed =
+                            DistributionFormTargetCombo("##ruleCombatStyle", rule,
+                                g_distributionCombatStyleOptions);
                     }
 
                     if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),

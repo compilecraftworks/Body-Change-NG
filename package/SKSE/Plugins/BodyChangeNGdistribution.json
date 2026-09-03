@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 3,
+  "schemaVersion": 4,
   "rules": [
     {
       "id": "default-exclude-mod-follower-female",
@@ -77,6 +77,8 @@
       "scope": 5,
       "npcPlugin": "",
       "npcLocalFormID": 0,
+      "targetPlugin": "Skyrim.esm",
+      "targetLocalFormID": 79680,
       "target": "ArgonianRace",
       "bodyFamily": "",
       "presetIds": [],
@@ -94,6 +96,8 @@
       "scope": 5,
       "npcPlugin": "",
       "npcLocalFormID": 0,
+      "targetPlugin": "Skyrim.esm",
+      "targetLocalFormID": 79680,
       "target": "ArgonianRace",
       "bodyFamily": "",
       "presetIds": [],
@@ -111,6 +115,8 @@
       "scope": 5,
       "npcPlugin": "",
       "npcLocalFormID": 0,
+      "targetPlugin": "Skyrim.esm",
+      "targetLocalFormID": 79685,
       "target": "KhajiitRace",
       "bodyFamily": "",
       "presetIds": [],
@@ -128,6 +134,8 @@
       "scope": 5,
       "npcPlugin": "",
       "npcLocalFormID": 0,
+      "targetPlugin": "Skyrim.esm",
+      "targetLocalFormID": 79685,
       "target": "KhajiitRace",
       "bodyFamily": "",
       "presetIds": [],

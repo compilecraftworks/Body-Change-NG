@@ -24,7 +24,10 @@ namespace bcn
         pluginFile,
         raceEditorID,
         modInstalledFollower,
-        elderNPC
+        elderNPC,
+        keyword,
+        npcClass,
+        combatStyle
     };
 
     struct DistributionRule final
@@ -40,8 +43,15 @@ namespace bcn
         std::uint32_t npcBaseFormID{};
         std::string npcPlugin;
         std::uint32_t npcLocalFormID{};
+        // Faction, race, keyword, class and combat-style targets use the same
+        // load-order-independent identity. targetFormID is resolved once when
+        // rules are loaded/edited, so per-actor matching never scans forms.
+        std::uint32_t targetFormID{};
+        std::string targetPlugin;
+        std::uint32_t targetLocalFormID{};
         // Name, faction EditorID, plugin file name, or race EditorID depending
-        // on scope.  Form rules use the resolved runtime FormID above.
+        // on scope. For form-backed scopes this remains a display/legacy
+        // EditorID fallback while the stable fields above are authoritative.
         std::string target;
         // This is an editor-side preset-pool filter. The actual preset IDs remain
         // authoritative, because an NPC's installed mesh family cannot be proven
@@ -78,6 +88,10 @@ namespace bcn
     // Accepts either an NPC base form or an actor reference and normalizes it
     // to a persistent plugin + local NPC BaseID rule target.
     [[nodiscard]] bool SetDistributionRuleNPC(DistributionRule& a_rule, RE::TESForm* a_form);
+
+    // Normalizes a faction/race/keyword/class/combat-style form into the
+    // persistent plugin + local FormID representation used by distribution.
+    [[nodiscard]] bool SetDistributionRuleTargetForm(DistributionRule& a_rule, RE::TESForm* a_form);
 
     class Distribution final
     {

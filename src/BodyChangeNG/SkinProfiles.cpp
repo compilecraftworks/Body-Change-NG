@@ -463,6 +463,62 @@ namespace
         return layers;
     }
 
+    [[nodiscard]] std::vector<bcn::MaleGenitalTextureVariant> AutoSosMaleGenitals(
+        const std::filesystem::path& dataRoot, const std::filesystem::path& skinDirectory)
+    {
+        std::vector<bcn::MaleGenitalTextureVariant> variants;
+        std::unordered_set<std::string> knownDirectories;
+        std::error_code error;
+        for (std::filesystem::recursive_directory_iterator it(skinDirectory,
+                 std::filesystem::directory_options::skip_permission_denied, error), end;
+             it != end; it.increment(error)) {
+            if (error) {
+                error.clear();
+                continue;
+            }
+            std::error_code statusError;
+            if (!it->is_regular_file(statusError) || statusError) continue;
+            const auto filename = bcn::path_text::Utf8(it->path().filename());
+            const auto isRecognizedPart = [&filename](const std::string_view stem) {
+                return EqualsIgnoreCase(filename, std::string{ stem } + ".dds") ||
+                    EqualsIgnoreCase(filename, std::string{ stem } + "_msn.dds") ||
+                    EqualsIgnoreCase(filename, std::string{ stem } + "_sk.dds") ||
+                    EqualsIgnoreCase(filename, std::string{ stem } + "_s.dds");
+            };
+            // A deliberately partial skin may contain only a race/elder
+            // variant or one channel. Any recognized SOS atlas is sufficient
+            // to register its addon directory.
+            const auto isSosAnchor = isRecognizedPart("malegenitals_1") ||
+                isRecognizedPart("malegenitals_argonian_1") ||
+                isRecognizedPart("malegenitals_khajiit_1") ||
+                isRecognizedPart("malegenitals_old_1");
+            if (!isSosAnchor) continue;
+            const auto directory = it->path().parent_path();
+            const auto genericPath = bcn::path_text::GenericUtf8(directory);
+            if (!HasPathComponent(genericPath, "SOS")) continue;
+            const auto addonDirectory = bcn::path_text::Utf8(directory.filename());
+            auto key = LowerAscii(addonDirectory);
+            if (key.empty() || !knownDirectories.insert(key).second) continue;
+
+            auto humanoid = AutoPart(dataRoot, directory, "malegenitals_1");
+            auto argonian = AutoPart(dataRoot, directory, "malegenitals_argonian_1");
+            auto khajiit = AutoPart(dataRoot, directory, "malegenitals_khajiit_1");
+            auto elder = AutoPart(dataRoot, directory, "malegenitals_old_1");
+            if (humanoid.empty() && argonian.empty() && khajiit.empty() && elder.empty()) continue;
+            variants.push_back({
+                .addonDirectory = addonDirectory,
+                .humanoid = std::move(humanoid),
+                .argonian = std::move(argonian),
+                .khajiit = std::move(khajiit),
+                .elder = std::move(elder)
+            });
+        }
+        std::ranges::sort(variants, [](const auto& left, const auto& right) {
+            return LowerAscii(left.addonDirectory) < LowerAscii(right.addonDirectory);
+        });
+        return variants;
+    }
+
     void OverlayChannels(std::vector<bcn::SkinTextureLayer>& base,
         const std::vector<bcn::SkinTextureLayer>& overlay)
     {
@@ -933,6 +989,15 @@ namespace
         AddMappedLayers(conditionalPaths, profile.elderHands);
         AddMappedLayers(conditionalPaths, profile.elderFace);
         for (const auto& raceFace : profile.raceFace) AddMappedLayers(conditionalPaths, raceFace);
+        std::size_t maleGenitalCount{};
+        for (const auto& variant : profile.maleGenitals) {
+            AddMappedLayers(conditionalPaths, variant.humanoid);
+            AddMappedLayers(conditionalPaths, variant.argonian);
+            AddMappedLayers(conditionalPaths, variant.khajiit);
+            AddMappedLayers(conditionalPaths, variant.elder);
+            maleGenitalCount += variant.humanoid.size() + variant.argonian.size() +
+                variant.khajiit.size() + variant.elder.size();
+        }
         for (const auto& path : activePaths) conditionalPaths.erase(path);
 
         std::size_t total{};
@@ -967,10 +1032,10 @@ namespace
         std::size_t raceFaceCount{};
         for (const auto& raceFace : profile.raceFace) raceFaceCount += raceFace.size();
         SKSE::log::info(
-            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} cbbe-genital-anal={} unp-genital-anal={} hands={} feet={} face={} vampire={} elder-body={} elder-hands={} elder-face={} race-face={} details={}",
+            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} cbbe-genital-anal={} unp-genital-anal={} sos-male-genitals={} hands={} feet={} face={} vampire={} elder-body={} elder-hands={} elder-face={} race-face={} details={}",
             profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
             bcn::SkinRaceLabel(profile.race), total, active, conditional, unmapped,
-            profile.body.size(), profile.cbbeGenitalAnal.size(), profile.unpGenitalAnal.size(),
+            profile.body.size(), profile.cbbeGenitalAnal.size(), profile.unpGenitalAnal.size(), maleGenitalCount,
             profile.hands.size(), profile.feet.size(),
             profile.face.size(), profile.vampireFace.size(), profile.elderBody.size(),
             profile.elderHands.size(), profile.elderFace.size(), raceFaceCount,
@@ -1134,6 +1199,9 @@ namespace bcn
                 }
                 for (auto& profile : packProfiles) {
                     if (loaded.size() >= kMaxProfiles) break;
+                    if (profile.sex == SkinSex::male) {
+                        profile.maleGenitals = AutoSosMaleGenitals(dataRoot, skinDirectory);
+                    }
                     AttachConditionalHumanoidLayers(dataRoot, skinDirectory, profile);
                     if (std::ranges::find(loaded, profile.id, &SkinProfile::id) == loaded.end()) {
                         loaded.push_back(std::move(profile));

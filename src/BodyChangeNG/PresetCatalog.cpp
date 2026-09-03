@@ -11,6 +11,7 @@
 #include <optional>
 #include <ranges>
 #include <string_view>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace
@@ -191,6 +192,7 @@ namespace bcn
         std::scoped_lock lock(lock_);
         presets_ = std::move(normal);
         refitPresets_ = std::move(refit);
+        sliderUniverseCache_.clear();
     }
 
     std::vector<BodyPreset> PresetCatalog::Snapshot() const
@@ -220,5 +222,49 @@ namespace bcn
             }
         }
         return compatible;
+    }
+
+    std::shared_ptr<const std::vector<std::string>> PresetCatalog::CompatibleSliderUniverse(
+        const bool male, const body_family::Mask actorFamily) const
+    {
+        const auto cacheKey = (static_cast<std::uint64_t>(male) << 32U) | actorFamily;
+        std::scoped_lock lock(lock_);
+        if (const auto cached = sliderUniverseCache_.find(cacheKey);
+            cached != sliderUniverseCache_.end()) {
+            return cached->second;
+        }
+
+        auto sliderNames = std::make_shared<std::vector<std::string>>(
+            CollectCompatibleSliderNames(presets_, male, actorFamily));
+        std::shared_ptr<const std::vector<std::string>> result = std::move(sliderNames);
+        sliderUniverseCache_.insert_or_assign(cacheKey, result);
+        return result;
+    }
+
+    std::vector<std::string> PresetCatalog::CollectCompatibleSliderNames(
+        const std::vector<BodyPreset>& presets, const bool male,
+        const body_family::Mask actorFamily)
+    {
+        std::unordered_set<std::string> known;
+        std::vector<std::string> sliderNames;
+        const auto nonVanillaActorFamily = actorFamily & body_family::NonVanillaFamilies(
+            male ? body_family::Sex::male : body_family::Sex::female);
+        for (const auto& preset : presets) {
+            // Unclassified presets remain visible through the normal catalog
+            // fallback, and their explicitly authored sliders are still
+            // applied when selected.  Do not, however, let an unrelated
+            // unclassified preset expand a known 3BA/UBE/etc. actor's zeroing
+            // universe and accidentally counteract another mod's morph.
+            if (nonVanillaActorFamily != 0U && preset.family == "Unclassified") continue;
+            if (preset.male != male ||
+                !body_family::Matches(body_family::PresetMask(preset.family, preset.male), actorFamily)) {
+                continue;
+            }
+            for (const auto& slider : preset.sliders) {
+                if (known.insert(slider.name).second) sliderNames.push_back(slider.name);
+            }
+        }
+        std::ranges::sort(sliderNames);
+        return sliderNames;
     }
 }

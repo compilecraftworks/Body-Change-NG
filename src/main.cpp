@@ -22,6 +22,20 @@
 
 namespace
 {
+    void QueueInitialDistribution(const std::uint64_t session, const std::uint8_t remainingHops)
+    {
+        const auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) return;
+        tasks->AddTask([session, remainingHops] {
+            if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
+            if (remainingHops > 0U) {
+                QueueInitialDistribution(session, static_cast<std::uint8_t>(remainingHops - 1U));
+                return;
+            }
+            [[maybe_unused]] const auto applied = bcn::Distribution::Get().ApplyLoadedNPCs();
+        });
+    }
+
     void InitializeLogging()
     {
         auto directory = SKSE::log::log_directory();
@@ -70,10 +84,12 @@ namespace
             bcn::skin_override::ResetSessionState();
             bcn::body_family::ResetRuntimeCaches();
             // Existing-save actors may never emit TESInitScriptEvent again.
-            // Apply the saved rules to every currently loaded process actor as
-            // soon as a game becomes active; later cell attachments are handled
-            // by ActorEvents.
-            [[maybe_unused]] const auto applied = bcn::Distribution::Get().ApplyLoadedNPCs();
+            // Defer only this one initial enumeration so RaceMenu, serialization
+            // listeners and optional overlay plugins can finish their load
+            // callbacks first. Later cell attachments still use ActorEvents and
+            // the normal coalescing queue.
+            QueueInitialDistribution(bcn::ActorRegistry::Get().SessionGeneration(),
+                bcn::InitialDistributionDelayHops());
         }
     }
 }

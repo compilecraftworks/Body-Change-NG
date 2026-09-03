@@ -249,6 +249,20 @@ int main(const int argc, char** argv)
     Touch(malePartial / "malebody_1.dds");
     Touch(malePartial / "malebody_1_s.dds");
     Touch(malePartial / "malehead_msn.dds");
+    const auto sosRegular = malePartial.parent_path() / "SOS" / "VectorPlexus Regular";
+    for (const auto* file : { "malegenitals_1.dds", "malegenitals_1_msn.dds",
+             "malegenitals_1_sk.dds", "malegenitals_1_s.dds" }) {
+        Touch(sosRegular / file);
+    }
+    Touch(sosRegular / "malegenitals_argonian_1.dds");
+    Touch(sosRegular / "malegenitals_argonian_1_msn.dds");
+    Touch(sosRegular / "malegenitals_khajiit_1.dds");
+    Touch(sosRegular / "malegenitals_old_1_msn.dds");
+    const auto sosMuscular = malePartial.parent_path() / "SOS" / "VectorPlexus Muscular";
+    Touch(sosMuscular / "malegenitals_1_msn.dds");
+    Touch(sosMuscular / "malegenitals_argonian_1_msn.dds");
+    const auto sosSmurfRaceOnly = malePartial.parent_path() / "SOS" / "Smurf Average";
+    Touch(sosSmurfRaceOnly / "malegenitals_khajiit_1_s.dds");
 
     const auto handsOnly = sandbox / "BodySkin" / "Hands Only" /
         "Textures" / "actors" / "character" / "male";
@@ -359,6 +373,29 @@ int main(const int argc, char** argv)
                 }) && std::ranges::all_of(skin.face, [](const auto& layer) {
                     return Filename(Lower(layer.path)).starts_with("malehead");
                 }), "male body and face files crossed part boundaries")) return 1;
+            if (!Require(skin.maleGenitals.size() == 3U,
+                    "SOS addon texture directories were not kept as separate variants")) return 1;
+            const auto regular = std::ranges::find(
+                skin.maleGenitals, "VectorPlexus Regular",
+                &bcn::MaleGenitalTextureVariant::addonDirectory);
+            const auto muscular = std::ranges::find(
+                skin.maleGenitals, "VectorPlexus Muscular",
+                &bcn::MaleGenitalTextureVariant::addonDirectory);
+            const auto smurf = std::ranges::find(
+                skin.maleGenitals, "Smurf Average",
+                &bcn::MaleGenitalTextureVariant::addonDirectory);
+            if (!Require(regular != skin.maleGenitals.end() && regular->humanoid.size() == 4U &&
+                    regular->argonian.size() == 2U && regular->khajiit.size() == 1U &&
+                    regular->elder.size() == 1U,
+                    "SOS Regular humanoid/race/elder channels were not mapped exactly")) return 1;
+            if (!Require(muscular != skin.maleGenitals.end() && muscular->humanoid.size() == 1U &&
+                    muscular->humanoid.front().shaderTextureIndex == 1U &&
+                    muscular->argonian.size() == 1U,
+                    "SOS Muscular normal-only material was expanded into invented channels")) return 1;
+            if (!Require(smurf != skin.maleGenitals.end() && smurf->humanoid.empty() &&
+                    smurf->argonian.empty() && smurf->khajiit.size() == 1U && smurf->elder.empty() &&
+                    smurf->khajiit.front().shaderTextureIndex == 7U,
+                    "SOS race-only partial atlas was not registered independently")) return 1;
             continue;
         }
         if (skin.name == "Hands Only") {
@@ -482,7 +519,12 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
                 R"(textures\actors\character\female\BakaUNP\VaginalAnalCanal2.dds)") &&
             bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::unpGenitalAnal,
-                "textures/actors/character/female/BakaUNP/VaginalAnalCanal2.dds"),
+                "textures/actors/character/female/BakaUNP/VaginalAnalCanal2.dds") &&
+            bcn::skin_geometry::Matches("MaleGenitals", bcn::skin_geometry::BodySelection::maleGenitals) &&
+            bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::maleGenitals,
+                R"(textures\actors\character\SOS\VectorPlexus Regular\malegenitals_1.dds)") &&
+            !bcn::skin_geometry::Matches("MaleBody", bcn::skin_geometry::BodySelection::maleGenitals,
+                R"(textures\actors\character\male\malebody_1.dds)"),
             "CBBE 3BA and BHUNP/UNP genital/anal geometry routing crossed body or family boundaries")) return 1;
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto unpFamily = bcn::body_family::Bit(bcn::body_family::Family::unp);

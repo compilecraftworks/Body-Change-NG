@@ -78,6 +78,27 @@ companions is a shared genital/anal atlas and is applied only to matching
 applied only to matching vagina, anus, and canal geometries. These atlases are
 never substituted for the regular body, hands, feet, or face.
 
+SOS male addons use a separate slot-52 ArmorAddon. Keep the original addon
+folder and file names inside the skin pack:
+
+```text
+BodySkin\
+  My Male Skin\
+    Textures\actors\character\male\malebody_1.dds
+    Textures\actors\character\male\malehands_1_msn.dds
+    Textures\actors\character\SOS\VectorPlexus Regular\malegenitals_1.dds
+    Textures\actors\character\SOS\VectorPlexus Regular\malegenitals_1_msn.dds
+    Textures\actors\character\SOS\VectorPlexus Muscular\malegenitals_1_msn.dds
+```
+
+Body Change NG reads the live slot-52 ArmorAddon model path and selects the
+matching Smurf Average, VectorPlexus Regular, or VectorPlexus Muscular atlas.
+The optional `malegenitals_argonian_1*`, `malegenitals_khajiit_1*`, and
+`malegenitals_old_1*` files override only their matching actor variant. Each
+body part and each diffuse, normal, subsurface, or specular channel is
+independent: missing files retain the currently loaded material, and a body map
+is never copied to hands, feet, or genitals.
+
 Optional UBE PBR, RFAOS, wetness, overlay, and material-specific companion maps
 are not assigned to guessed `BSTextureSet` indices. They remain controlled by
 the actor's active UBE material/Community Shaders setup, preventing a skin

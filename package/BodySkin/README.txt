@@ -62,6 +62,15 @@ BakaUNP\VaginalAnalCanal2_msn.dds
 BakaUNP\VaginalAnalCanal2_sk.dds
 BakaUNP\VaginalAnalCanal2_s.dds
 
+SOS 남성 성기 스킨도 원본 애드온 폴더 구조를 그대로 유지합니다.
+BodySkin\<스킨팩 이름>\Textures\actors\character\SOS\<애드온 이름>\malegenitals_1.dds
+같은 폴더의 _msn, _sk, _s 및 malegenitals_argonian_1*,
+malegenitals_khajiit_1*, malegenitals_old_1*도 존재하는 파일만 등록됩니다.
+현재 액터가 슬롯 52에 착용한 Smurf Average, VectorPlexus Regular 또는
+VectorPlexus Muscular ArmorAddon 경로와 종족·노인 상태에 맞는 채널만
+성기 지오메트리에 적용합니다. 빠진 채널은 현재 텍스처를 유지하며 몸·손·
+발 텍스처를 대신 복제하지 않습니다.
+
 아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
 표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
 성별의 몸 아틀라스를 사용하므로 몸 텍스처 채널을 꼬리 슬롯에도 적용합니다.
@@ -98,3 +107,9 @@ For CBBE 3BA female packs, femalebody_etc_v2_1 with its _msn, _sk, and _s
 companions is mapped to the matching 3BA/3BBB vagina and anus geometries that
 share this atlas, never to another body part. BHUNP/UNP packs keep the
 BakaUNP\VaginalAnalCanal2 atlas for their vagina, anus, and canal geometries.
+SOS male-genital packs preserve
+Textures\actors\character\SOS\<addon name>\malegenitals_1* plus any supplied
+malegenitals_argonian_1*, malegenitals_khajiit_1*, or malegenitals_old_1*
+files. The live slot-52 ArmorAddon selects the matching Smurf Average or
+VectorPlexus Regular/Muscular material. Missing variants and channels retain
+the currently loaded texture and never borrow a body, hand, or foot map.

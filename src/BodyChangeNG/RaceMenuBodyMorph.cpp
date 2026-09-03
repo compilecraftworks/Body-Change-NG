@@ -14,9 +14,11 @@
 #include <atomic>
 #include <cctype>
 #include <chrono>
+#include <cmath>
 #include <mutex>
 #include <optional>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace
@@ -384,34 +386,44 @@ namespace
             bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyOClotheKey);
             SKSE::log::info("Body Change NG cleared legacy OBody NG ORefit morphs for actor {:08X}", actor->GetFormID());
         }
-        if (mode == bcn::racemenu::ApplyMode::commit) bodyMorph->ClearBodyMorphKeys(actor.get(), kPreviewKey);
-        bodyMorph->ClearBodyMorphKeys(actor.get(), key);
-        if (mode == bcn::racemenu::ApplyMode::preview) {
-            OwnedMorphCollector committed{ kCommittedKey };
-            bodyMorph->VisitMorphValues(actor.get(), committed);
-            for (const auto& [name, value] : committed.values) {
-                bodyMorph->SetMorph(actor.get(), name.c_str(), kPreviewKey, -value);
+        std::unordered_map<std::string, float> desiredMorphs;
+        if (mode == bcn::racemenu::ApplyMode::outfit) {
+            bodyMorph->ClearBodyMorphKeys(actor.get(), key);
+            for (const auto& slider : preset.sliders) {
+                // A named -Refit preset is still governed by the UI's
+                // dependent nipple-refit switch.
+                if (!settings.orefitNippleMorphing && IsNippleRefitSlider(slider.name)) continue;
+                const auto value = slider.lowWeight + (slider.highWeight - slider.lowWeight) * weight;
+                bodyMorph->SetMorph(actor.get(), slider.name.c_str(), key, value);
+            }
+        } else {
+            // Commit starts from a clean set of keys owned by this mod.  The
+            // outfit task queued after a body change rebuilds its correction
+            // against the new preset. Preview keeps the current outfit layer
+            // and only replaces its own transient key.
+            if (mode == bcn::racemenu::ApplyMode::commit) {
+                bodyMorph->ClearBodyMorphKeys(actor.get(), kPreviewKey);
+                bodyMorph->ClearBodyMorphKeys(actor.get(), kOutfitKey);
+            }
+            bodyMorph->ClearBodyMorphKeys(actor.get(), key);
+
+            const auto actorMale = !actorBase || actorBase->GetSex() != RE::SEX::kFemale;
+            const auto detectedActorFamily = bcn::body_family::ResolveActor(actor.get());
+            const auto universeFamily = detectedActorFamily != 0U ? detectedActorFamily :
+                bcn::body_family::PresetMask(preset.family, preset.male);
+            const auto universe = bcn::PresetCatalog::Get().CompatibleSliderUniverse(actorMale, universeFamily);
+            desiredMorphs.reserve((universe ? universe->size() : 0U) + 40U);
+            if (universe) {
+                // A BodySlide XML may deliberately omit a slider to mean zero.
+                // Seed the entire compatible-family universe with zero before
+                // overlaying values explicitly authored by this preset.
+                for (const auto& name : *universe) desiredMorphs.try_emplace(name, 0.0F);
+            }
+            for (const auto& slider : preset.sliders) {
+                desiredMorphs.insert_or_assign(
+                    slider.name, slider.lowWeight + (slider.highWeight - slider.lowWeight) * weight);
             }
         }
-        for (const auto& slider : preset.sliders) {
-            // A named -Refit preset is still governed by the UI's dependent
-            // nipple-refit switch. Without this filter, turning the switch off
-            // only affected the procedural fallback while a preset could keep
-            // writing nipple/areola values under the outfit key.
-            if (mode == bcn::racemenu::ApplyMode::outfit && !settings.orefitNippleMorphing &&
-                IsNippleRefitSlider(slider.name)) {
-                continue;
-            }
-            const auto value = slider.lowWeight + (slider.highWeight - slider.lowWeight) * weight;
-            const auto appliedValue = mode == bcn::racemenu::ApplyMode::preview ?
-                value - bodyMorph->GetMorph(actor.get(), slider.name.c_str(), kCommittedKey) : value;
-            bodyMorph->SetMorph(actor.get(), slider.name.c_str(), key, appliedValue);
-        }
-        const auto firstSliderValue = bodyMorph->GetMorph(
-            actor.get(), preset.sliders.front().name.c_str(), key);
-        SKSE::log::debug("BodyAudit stored preset='{}' key='{}' actor={:08X} generation={} sliders={} first='{}' value={}",
-            preset.name, key, actor->GetFormID(), applyGeneration, preset.sliders.size(),
-            preset.sliders.front().name, firstSliderValue);
         if (mode == bcn::racemenu::ApplyMode::commit && actorBase && actorBase->GetSex() == RE::SEX::kFemale) {
             const auto families = bcn::body_family::PresetMask(preset.family, false);
             const auto cBBEBased = (families & bcn::body_family::Bit(bcn::body_family::Family::cbbe)) != 0U;
@@ -420,7 +432,8 @@ namespace
             // labels such as "CBBE 3BA / UBE".
             const auto threeBA = cBBEBased;
             const auto setRandom = [&](const char* name, const std::uint32_t salt, const float low, const float high) {
-                bodyMorph->SetMorph(actor.get(), name, key, StableRange(actor->GetFormID(), preset.name, name, salt, low, high));
+                desiredMorphs.insert_or_assign(
+                    name, StableRange(actor->GetFormID(), preset.name, name, salt, low, high));
             };
             if (settings.nippleRandomization && cBBEBased) {
                 const auto smallAreola = StableChance(actor->GetFormID(), preset.name, "AreolaSize", 2, .15F);
@@ -462,9 +475,34 @@ namespace
                 setRandom("AnalPosition_v2", 41, 0.0F, 1.0F);
                 setRandom("AnalTexPos_v2", 42, 0.0F, 1.0F);
                 setRandom("AnalTexPosRe_v2", 43, 0.0F, 1.0F);
-                bodyMorph->SetMorph(actor.get(), "AnalLoose_v2", key, -.1F);
+                desiredMorphs.insert_or_assign("AnalLoose_v2", -.1F);
             }
         }
+        if (mode != bcn::racemenu::ApplyMode::outfit) {
+            std::size_t correctionCount{};
+            for (const auto& [name, desired] : desiredMorphs) {
+                // Never delete another mod's key. Instead, store the exact
+                // compensating delta under Body Change NG's own key so the
+                // evaluated result equals the selected preset. Preview keeps
+                // the existing outfit correction visible.
+                const auto outfitValue = mode == bcn::racemenu::ApplyMode::preview ?
+                    bodyMorph->GetMorph(actor.get(), name.c_str(), kOutfitKey) : 0.0F;
+                const auto correction = bcn::racemenu::AbsolutePresetCorrection(
+                    desired, bodyMorph->GetBodyMorphs(actor.get(), name.c_str()), outfitValue);
+                if (std::abs(correction) <= 0.00001F) continue;
+                bodyMorph->SetMorph(actor.get(), name.c_str(), key, correction);
+                ++correctionCount;
+            }
+            SKSE::log::debug(
+                "BodyAudit normalized preset='{}' actor={:08X} target-sliders={} stored-corrections={} family-mask={}",
+                preset.name, actor->GetFormID(), desiredMorphs.size(), correctionCount,
+                bcn::body_family::ResolveActor(actor.get()));
+        }
+        const auto firstSliderValue = bodyMorph->GetMorph(
+            actor.get(), preset.sliders.front().name.c_str(), key);
+        SKSE::log::debug("BodyAudit stored preset='{}' key='{}' actor={:08X} generation={} sliders={} first='{}' value={}",
+            preset.name, key, actor->GetFormID(), applyGeneration, preset.sliders.size(),
+            preset.sliders.front().name, firstSliderValue);
         // UI requests keep RaceMenu's partition update synchronous so an older
         // internal morph job cannot arrive after a later list selection.
         // Automatic distribution and outfit correction explicitly select the

@@ -51,6 +51,16 @@
   geometries that share the atlas.
 - Added BHUNP/UNP `BakaUNP\VaginalAnalCanal2` diffuse, normal, subsurface, and
   specular channels for the matching vagina, anus, and canal geometries.
+- Made BodySlide application absolute across the detected compatible family:
+  omitted XML sliders resolve to zero and repeated preview, confirmation, or
+  NPC distribution converges to the same shape without deleting unrelated
+  mod-owned keys.
+- Added keyword, class, and combat-style distribution conditions and stored
+  faction/race/form targets as plugin plus local FormID. Unnamed forms remain
+  selectable in the in-game dropdowns.
+- Fixed partial male skin routing and added live SOS slot-52 genital atlas
+  selection for Smurf Average, VectorPlexus Regular/Muscular, race variants,
+  elders, and independently missing DDS channels.
 - Finalized symmetric main-camera framing at FOV 70, distance 200, horizontal ±70, vertical -45, and player pitch 0.1.
 - Added a separate player-tint close-up that keeps the same FOV while scaling distance and horizontal offset together and positioning the face inside the frame.
 - When the game is paused, right-drag now orbits the camera instead of rotating the actor root, avoiding FSMP stretching without manipulating Skyrim's pause counter.
@@ -59,6 +69,8 @@
 - Cleaned queued work and temporary Body/Skin state when actors unload, and blocked stale tasks after save changes.
 - Fixed missing footer buttons in the NPC Distribution window and refreshed the tint color chip after restoring a tint value.
 - Reduced automatic-distribution stutter in both normal and performance modes by coalescing actor events, prioritizing newly visible NPCs, deferring RaceMenu partition rebuilds, and skipping empty outfit-morph clears. Performance mode adds a further scheduling interval between actors.
+- Deferred the first loaded-NPC pass beyond the save-load callback burst while
+  keeping all catalog/form discovery out of per-frame and per-actor hot paths.
 - Completed the v1.0.0 DLL build with all ten regression test suites passing.
 
 v1.0.0 is the first stable public baseline for Body Change NG.

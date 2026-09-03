@@ -151,10 +151,16 @@ button after adding files:
   folders below `Textures\actors\character`
 - UBE 2.0 skin packs: `BodySkin\<pack name>\Textures\!UBE\Body` and
   `BodySkin\<pack name>\Textures\!UBE\Head`
+- SOS male genital textures: preserve the source addon's directory below
+  `BodySkin\<pack name>\Textures\actors\character\SOS\<addon name>`, including
+  `malegenitals_1*` and any supplied `malegenitals_argonian_1*`,
+  `malegenitals_khajiit_1*`, or `malegenitals_old_1*` files. The live slot-52
+  ArmorAddon selects the matching addon/race variant; absent channels remain
+  unchanged.
 - Player tint packs: `TintMask\<pack name>\textures\...\tintmasks\*.dds`
 - Distribution rules: `SKSE\Plugins\BodyChangeNGdistribution.json`
 
-The release includes a `README.txt` in each asset folder and a valid schema-3
+The release includes a `README.txt` in each asset folder and a valid schema-4
 distribution file containing the eight initial body/skin exclusion rows. The
 in-game distribution editor updates this JSON; OBody's JSON remains a separate,
 explicit import source.
@@ -197,8 +203,10 @@ The direct body and skin lists work for both the player and a selected NPC.
 NPC skin packs can also be selected independently inside each NPC distribution
 rule. Body and skin pools are evaluated top-down; the first matching rule owns
 both pools, and an empty pool leaves that category unchanged. Body and skin
-state is isolated per actor. Distribution targets can use an NPC base FormID,
-name, faction EditorID, plugin file, or race EditorID. The body- and skin-pool
+state is isolated per actor. Distribution targets can use all NPCs, custom
+followers, elders, plugin files, races, factions, keywords, classes, combat
+styles, names, or an exact NPC base FormID. Form-backed targets are stored as
+plugin plus local FormID so load-order changes do not break them. The body- and skin-pool
 editors have independent name filters and vertical scrolling. Tint remains
 player-only, so only the Tint tab is hidden when an NPC is selected.
 
@@ -209,6 +217,12 @@ detail DDS channels are handled without changing NIFs or Skin Armor records.
 Partial packs change only the supplied part/channel pairs; missing values retain
 the actor's underlying textures, and body, hands, feet, and face files are never
 substituted for one another.
+For male actors, conventional body/hand/foot/face files use the same rules.
+Optional SOS `malegenitals_*` files are applied only to the equipped slot-52
+genital geometry whose addon model directory matches the pack. VectorPlexus
+Muscular may inherit the source addon's Regular diffuse/subsurface/specular
+channels while overriding only its supplied Muscular normal, exactly matching
+the shipped SOS material layout.
 UBE 2.0 profiles are detected from `Textures\!UBE\Body` and `Head`, map their
 diffuse/normal/skin atlases to the actor's UBE slot-53 body and live face, and
 do not invent shader slots for optional PBR/RFAOS/wet maps owned by the active
@@ -229,6 +243,10 @@ so unchanged NPCs are not fully redistributed every time a save loads. Rules
 remain global in `BodyChangeNGdistribution.json`; evaluated actor results are
 save-specific. New or changed actors are coalesced through a handle-based work
 queue, and detached actors do not leave stale preview or apply generations.
+The initial loaded-NPC pass is scheduled after the load callback burst, and the
+queue still processes at most one actor per task turn in normal mode;
+performance mode adds one extra scheduling hop. Catalog and form scans are not
+performed per actor or per frame.
 
 The outfit popup can explicitly register OBody NG's complete ORefit rule set
 from `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Outfit-name,

@@ -147,6 +147,8 @@ namespace
     // UBE's naked body is authored on Skyrim biped slot 53. CommonLib names
     // the corresponding bit kModLegRight (bit 23).
     constexpr auto kUbeBodySlot = RE::BGSBipedObjectForm::BipedObjectSlot::kModLegRight;
+    // Schlongs of Skyrim ArmorAddons use biped slot 52.
+    constexpr auto kSosMaleGenitalSlot = RE::BGSBipedObjectForm::BipedObjectSlot::kModPelvisSecondary;
 
     [[nodiscard]] bool UsesUbeBodySlot(const bcn::SkinProfile& profile) noexcept
     {
@@ -259,6 +261,7 @@ namespace
         case RE::BGSBipedObjectForm::BipedObjectSlot::kFeet: return "feet";
         case RE::BGSBipedObjectForm::BipedObjectSlot::kTail: return "tail";
         case kUbeBodySlot: return "ube-body-slot-53";
+        case kSosMaleGenitalSlot: return "sos-male-genitals-slot-52";
         default: return "unknown";
         }
     }
@@ -303,6 +306,24 @@ namespace
         return path ? std::string_view{ path } : std::string_view{};
     }
 
+    [[nodiscard]] bool MatchesFallbackPart(
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const std::string_view nodeName, const std::string_view texturePath)
+    {
+        const auto contains = [](const std::string_view value, const std::string_view token) {
+            return bcn::skin_geometry::ContainsIgnoreAsciiCase(value, token);
+        };
+        switch (slot) {
+        case RE::BGSBipedObjectForm::BipedObjectSlot::kHands:
+            return contains(nodeName, "hand") || contains(texturePath, "hands");
+        case RE::BGSBipedObjectForm::BipedObjectSlot::kFeet:
+            return contains(nodeName, "feet") || contains(nodeName, "foot") ||
+                contains(texturePath, "feet");
+        default:
+            return false;
+        }
+    }
+
     [[nodiscard]] std::vector<LoadedPartTarget> FindLoadedPartTargets(RE::Actor* actor,
         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
@@ -337,13 +358,12 @@ namespace
             target->views.push_back({ .firstPerson = firstPerson, .object = partClone });
             const auto actorSkinArmor = armor == skinArmor;
             RE::BSVisit::TraverseScenegraphGeometries(partClone, [&](RE::BSGeometry* geometry) {
-                if (!IsSkinGeometry(geometry, actorSkinArmor)) {
-                    return RE::BSVisit::BSVisitControl::kContinue;
-                }
                 const auto* rawName = geometry->name.c_str();
                 const std::string geometryName = rawName && rawName[0] != '\0' ? rawName : "";
-                if (!bcn::skin_geometry::Matches(
-                        geometryName, selection, GeometryDiffuseTexture(geometry))) {
+                const auto texturePath = GeometryDiffuseTexture(geometry);
+                if (!bcn::skin_geometry::Matches(geometryName, selection, texturePath) ||
+                    (!IsSkinGeometry(geometry, actorSkinArmor) &&
+                        selection != bcn::skin_geometry::BodySelection::maleGenitals)) {
                     return RE::BSVisit::BSVisitControl::kContinue;
                 }
                 if (std::ranges::find(target->immediateNodes, geometryName) == target->immediateNodes.end()) {
@@ -352,6 +372,68 @@ namespace
                 }
                 return RE::BSVisit::BSVisitControl::kContinue;
             });
+        }
+        // Some naked-skin armors are a multi-slot clone anchored at slot 32,
+        // leaving the exact hands/feet biped array entry empty. Keep the exact
+        // O(1) path above; only on that miss, inspect the fixed biped object
+        // array and accept geometry whose node/material identifies the requested
+        // part. This avoids both per-event scenegraph scans and body->hands/feet
+        // cross-routing.
+        if (results.empty() && (slot == RE::BGSBipedObjectForm::BipedObjectSlot::kHands ||
+            slot == RE::BGSBipedObjectForm::BipedObjectSlot::kFeet)) {
+            for (const bool firstPerson : { false, true }) {
+                if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
+                const auto& biped = actor->GetBiped(firstPerson);
+                if (!biped) continue;
+                for (std::size_t index{}; index < RE::BIPED_OBJECTS::kEditorTotal; ++index) {
+                    const auto& object = biped->objects[index];
+                    auto* armor = object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+                    auto* addon = object.addon;
+                    auto* partClone = object.partClone.get();
+                    if (!armor || armor != skinArmor || !addon || !partClone ||
+                        !addon->IsValidRace(actor->GetRace())) continue;
+                    const auto armorMask = armor->GetSlotMask().underlying();
+                    const auto addonMask = addon->GetSlotMask().underlying();
+                    if ((armorMask & requestedMask) == 0U || (addonMask & requestedMask) == 0U) continue;
+
+                    std::vector<std::string> matchingNodes;
+                    RE::BSVisit::TraverseScenegraphGeometries(partClone, [&](RE::BSGeometry* geometry) {
+                        if (!IsSkinGeometry(geometry, true)) return RE::BSVisit::BSVisitControl::kContinue;
+                        const auto* rawName = geometry->name.c_str();
+                        const std::string name = rawName && rawName[0] != '\0' ? rawName : "";
+                        const auto texturePath = GeometryDiffuseTexture(geometry);
+                        if (!MatchesFallbackPart(slot, name, texturePath) ||
+                            !bcn::skin_geometry::Matches(name, selection, texturePath)) {
+                            return RE::BSVisit::BSVisitControl::kContinue;
+                        }
+                        if (std::ranges::find(matchingNodes, name) == matchingNodes.end()) {
+                            matchingNodes.push_back(name);
+                        }
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    });
+                    if (matchingNodes.empty()) continue;
+
+                    auto target = std::ranges::find_if(results, [&](const LoadedPartTarget& candidate) {
+                        return candidate.armor == armor && candidate.addon == addon;
+                    });
+                    if (target == results.end()) {
+                        results.push_back({ .armor = armor, .addon = addon,
+                            .slotMask = armorMask & addonMask });
+                        target = std::prev(results.end());
+                    }
+                    if (std::ranges::none_of(target->views, [partClone, firstPerson](const auto& view) {
+                        return view.object == partClone && view.firstPerson == firstPerson;
+                    })) {
+                        target->views.push_back({ .firstPerson = firstPerson, .object = partClone });
+                    }
+                    for (const auto& name : matchingNodes) {
+                        if (std::ranges::find(target->immediateNodes, name) == target->immediateNodes.end()) {
+                            target->immediateNodes.push_back(name);
+                            target->persistentNodes.push_back(name);
+                        }
+                    }
+                }
+            }
         }
         for (const auto& target : results) {
             SKSE::log::info(
@@ -846,6 +928,82 @@ namespace
         return layers;
     }
 
+    [[nodiscard]] std::string ActiveAddonModelPath(RE::Actor* actor,
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot, const bool female)
+    {
+        if (!actor) return {};
+        const auto requestedMask = static_cast<std::uint32_t>(slot);
+        if (requestedMask == 0U || !std::has_single_bit(requestedMask)) return {};
+        const auto objectIndex = static_cast<std::size_t>(std::countr_zero(requestedMask));
+        if (objectIndex >= RE::BIPED_OBJECTS::kEditorTotal) return {};
+        const auto& biped = actor->GetBiped(false);
+        if (!biped) return {};
+        auto* addon = biped->objects[objectIndex].addon;
+        if (!addon) return {};
+        const auto* rawPath = addon->bipedModels[female ? 1U : 0U].GetModel();
+        auto path = rawPath ? std::string{ rawPath } : std::string{};
+        std::ranges::replace(path, '/', '\\');
+        std::ranges::transform(path, path.begin(), [](const unsigned char value) {
+            return static_cast<char>(std::tolower(value));
+        });
+        return path;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> MaleGenitalVariantLayers(
+        const bcn::MaleGenitalTextureVariant& variant, RE::TESNPC* base)
+    {
+        const auto* race = base ? base->GetRace() : nullptr;
+        const auto* editorID = race ? race->GetFormEditorID() : nullptr;
+        const auto actorRace = bcn::SkinRaceFromEditorID(
+            editorID ? std::string_view{ editorID } : std::string_view{});
+        std::vector<bcn::SkinTextureLayer> layers;
+        switch (actorRace) {
+        case bcn::SkinRace::argonian: layers = variant.argonian; break;
+        case bcn::SkinRace::khajiit: layers = variant.khajiit; break;
+        default: layers = variant.humanoid; break;
+        }
+        if (actorRace == bcn::SkinRace::humanoid && bcn::IsElderActor(base)) {
+            OverlayEffectiveLayers(layers, variant.elder);
+        }
+        return layers;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveMaleGenitalLayers(
+        const bcn::SkinProfile& profile, RE::Actor* actor, RE::TESNPC* base)
+    {
+        if (!actor || !base || profile.sex != bcn::SkinSex::male || profile.maleGenitals.empty()) return {};
+        const auto modelPath = ActiveAddonModelPath(actor, kSosMaleGenitalSlot, false);
+        if (modelPath.empty()) return {};
+        const auto matches = [&modelPath](const bcn::MaleGenitalTextureVariant& variant) {
+            auto directory = variant.addonDirectory;
+            std::ranges::transform(directory, directory.begin(), [](const unsigned char value) {
+                return static_cast<char>(std::tolower(value));
+            });
+            return !directory.empty() && modelPath.contains("\\sos\\" + directory + "\\");
+        };
+        const auto selected = std::ranges::find_if(profile.maleGenitals, matches);
+        if (selected == profile.maleGenitals.end()) return {};
+
+        auto layers = std::vector<bcn::SkinTextureLayer>{};
+        // The Muscular NIF deliberately uses Regular diffuse/subsurface/
+        // specular and replaces only its normal map. Mirror that material
+        // composition inside one skin pack before overlaying Muscular files.
+        if (modelPath.contains("\\sos\\vectorplexus muscular\\")) {
+            const auto regular = std::ranges::find_if(profile.maleGenitals, [](const auto& variant) {
+                auto name = variant.addonDirectory;
+                std::ranges::transform(name, name.begin(), [](const unsigned char value) {
+                    return static_cast<char>(std::tolower(value));
+                });
+                return name == "vectorplexus regular";
+            });
+            if (regular != profile.maleGenitals.end()) {
+                layers = MaleGenitalVariantLayers(*regular, base);
+            }
+        }
+        OverlayEffectiveLayers(layers, MaleGenitalVariantLayers(*selected, base));
+        return layers;
+    }
+
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveFaceLayers(const bcn::SkinProfile& profile,
         RE::TESNPC* base, const std::string_view currentDetailFilename)
     {
@@ -890,6 +1048,7 @@ namespace
         const auto faceNode = FaceNode(actor, base);
         const auto bodyLayers = EffectiveBodyLayers(profile, base);
         const auto handsLayers = EffectiveHandsLayers(profile, base);
+        const auto maleGenitalLayers = EffectiveMaleGenitalLayers(profile, actor, base);
         const auto faceLayers = faceNode ?
             EffectiveFaceLayers(profile, base, faceNode->detailFilename) :
             EffectiveFaceLayers(profile, base, {});
@@ -957,6 +1116,8 @@ namespace
         verifyPart("unp-genital-anal", profile.unpGenitalAnal,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             bcn::skin_geometry::BodySelection::unpGenitalAnal);
+        verifyPart("sos-male-genitals", maleGenitalLayers, kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals);
         if (UsesBeastTail(profile)) {
             verifyPart("tail-body-atlas", bodyLayers,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
@@ -1343,6 +1504,8 @@ namespace
                 std::vector<bcn::SkinTextureLayer>{};
             const auto currentBodyLayers = EffectiveBodyLayers(profile, currentBase);
             const auto currentHandsLayers = EffectiveHandsLayers(profile, currentBase);
+            const auto currentMaleGenitalLayers = EffectiveMaleGenitalLayers(
+                profile, currentActor.get(), currentBase);
 
             auto applyBatch = std::make_shared<LegacyOverrideBatch>();
             auto partProgress = std::make_shared<std::pair<std::size_t, std::size_t>>();
@@ -1394,6 +1557,8 @@ namespace
                 bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
             submitGenitalAnal(profile.unpGenitalAnal,
                 bcn::skin_geometry::BodySelection::unpGenitalAnal);
+            submitPart(kSosMaleGenitalSlot, currentMaleGenitalLayers,
+                bcn::skin_geometry::BodySelection::maleGenitals);
             if (!UsesUbeBodySlot(profile)) {
                 if (UsesBeastTail(profile) && !currentBodyLayers.empty()) {
                     // Tail availability is auxiliary: a tail-hiding outfit or
@@ -1419,6 +1584,7 @@ namespace
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -1461,6 +1627,7 @@ namespace
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -1497,6 +1664,7 @@ namespace
             std::vector<bcn::SkinTextureLayer>{};
         const auto bodyLayers = EffectiveBodyLayers(profile, base);
         const auto handsLayers = EffectiveHandsLayers(profile, base);
+        const auto maleGenitalLayers = EffectiveMaleGenitalLayers(profile, actor.get(), base);
         // Store exact Armor + ArmorAddon + geometry keys, then repaint only
         // that loaded addon clone. Broad AddSkinOverrideString/skin-slot
         // registration is intentionally never used for new entries.
@@ -1505,6 +1673,7 @@ namespace
             removed = ClearTexturePart(*overrides, actor.get(), female,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
             removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
+            removed = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
             removed = ClearTexturePart(*overrides, actor.get(), female,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
             removed = ClearTexturePart(*overrides, actor.get(), female,
@@ -1518,6 +1687,7 @@ namespace
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
@@ -1556,6 +1726,8 @@ namespace
             bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
         applyGenitalAnal(profile.unpGenitalAnal,
             bcn::skin_geometry::BodySelection::unpGenitalAnal);
+        applyPart(kSosMaleGenitalSlot, maleGenitalLayers,
+            bcn::skin_geometry::BodySelection::maleGenitals);
         if (!UsesUbeBodySlot(profile)) {
             if (UsesBeastTail(profile) && !bodyLayers.empty()) {
                 static_cast<void>(ApplyPart(*overrides, actor.get(), female,
@@ -1604,11 +1776,13 @@ namespace
         cleared = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
+        cleared = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
+        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;

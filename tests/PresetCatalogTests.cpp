@@ -57,6 +57,7 @@ int main(const int argc, char** argv)
                << "</Preset>"
                << "<Preset name='CBBE Classic' set='CBBE'>"
                << "<SetSlider name='Waist' value='20' size='small'/>"
+               << "<SetSlider name='CBBEOnlyTestSlider' value='10' size='small'/>"
                << "</Preset>"
                << "<Preset name='HIMBO Strong' set='HIMBO'/>"
                << "<Preset name='HIMBO Daddy (Clothes)' set='HIMBO'/>"
@@ -72,6 +73,7 @@ int main(const int argc, char** argv)
         std::ofstream preset(root / "Nested" / "classification.xml");
         preset << "<SliderPresets>"
                << "<Preset name='Common Only' set=''><SetSlider name='Breasts'/><SetSlider name='Waist'/><SetSlider name='Butt'/></Preset>"
+               << "<Preset name='Unknown Extension' set=''><SetSlider name='ForeignUnknownSlider'/></Preset>"
                << "<Preset name='3BBB Only' set='3BBB'><SetSlider name='3BBB'/></Preset>"
                << "<Preset name='UBE Anus 3BA' set='3BBB Body Amazing UBE Anus'/>>"
                << "<Preset name='Dual Female' set='CBBE BHUNP'/></SliderPresets>";
@@ -90,7 +92,7 @@ int main(const int argc, char** argv)
     }
 
     const auto presets = bcn::PresetCatalog::ScanDirectory(root);
-    if (!Require(presets.size() == 11U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
+    if (!Require(presets.size() == 12U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
     const auto find = [&](const std::string_view name) {
         return std::ranges::find(presets, name, &bcn::BodyPreset::name);
     };
@@ -118,6 +120,22 @@ int main(const int argc, char** argv)
     if (!Require(find("Dual Female")->family == "CBBE 3BA / BHUNP / UNP", "combined female set lost either family")) return 1;
     if (!Require(find("Generic UBE Preset")->family == "UBE", "UBE Group metadata was not used")) return 1;
     if (!Require(!threeBa->PersistentId().empty(), "persistent preset id is empty")) return 1;
+
+    const auto cbbeSliderUniverse = bcn::PresetCatalog::CollectCompatibleSliderNames(
+        presets, false, bcn::body_family::Bit(bcn::body_family::Family::cbbe));
+    if (!Require(std::ranges::find(cbbeSliderUniverse, "Breasts") != cbbeSliderUniverse.end() &&
+            std::ranges::find(cbbeSliderUniverse, "Waist") != cbbeSliderUniverse.end() &&
+            std::ranges::find(cbbeSliderUniverse, "CBBEOnlyTestSlider") != cbbeSliderUniverse.end(),
+            "CBBE slider universe lost compatible sliders from another preset")) return 1;
+    if (!Require(std::ranges::find(cbbeSliderUniverse, "ClaviclesAngle") == cbbeSliderUniverse.end(),
+            "CBBE slider universe leaked a UBE-only slider")) return 1;
+    if (!Require(std::ranges::find(cbbeSliderUniverse, "ForeignUnknownSlider") == cbbeSliderUniverse.end(),
+            "known-family slider universe leaked an unclassified extension slider")) return 1;
+    const auto ubeSliderUniverse = bcn::PresetCatalog::CollectCompatibleSliderNames(
+        presets, false, bcn::body_family::Bit(bcn::body_family::Family::ube));
+    if (!Require(std::ranges::find(ubeSliderUniverse, "ClaviclesAngle") != ubeSliderUniverse.end() &&
+            std::ranges::find(ubeSliderUniverse, "CBBEOnlyTestSlider") == ubeSliderUniverse.end(),
+            "UBE slider universe mixed CBBE-family preset sliders")) return 1;
 
     std::filesystem::remove_all(root);
     return 0;

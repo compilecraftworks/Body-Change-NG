@@ -9,7 +9,8 @@ namespace bcn::skin_geometry
         all,
         regular,
         cbbeGenitalAnal,
-        unpGenitalAnal
+        unpGenitalAnal,
+        maleGenitals
     };
 
     [[nodiscard]] constexpr char LowerAscii(const char value) noexcept
@@ -91,6 +92,16 @@ namespace bcn::skin_geometry
             IsUNPGenitalAnal(nodeName, texturePath);
     }
 
+    [[nodiscard]] constexpr bool IsMaleGenital(
+        const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
+    {
+        // SOS addon NIFs consistently expose malegenitals_* material paths.
+        // Keep a narrow node fallback for an already overridden/cache path.
+        return ContainsIgnoreAsciiCase(texturePath, "malegenitals_") ||
+            ContainsIgnoreAsciiCase(nodeName, "malegenital") ||
+            EqualsIgnoreAsciiCase(nodeName, "schlong");
+    }
+
     [[nodiscard]] constexpr bool Matches(
         const std::string_view nodeName, const BodySelection selection,
         const std::string_view texturePath = {}) noexcept
@@ -99,6 +110,7 @@ namespace bcn::skin_geometry
         case BodySelection::regular: return !IsGenitalAnal(nodeName, texturePath);
         case BodySelection::cbbeGenitalAnal: return IsCBBEGenitalAnal(nodeName, texturePath);
         case BodySelection::unpGenitalAnal: return IsUNPGenitalAnal(nodeName, texturePath);
+        case BodySelection::maleGenitals: return IsMaleGenital(nodeName, texturePath);
         default: return true;
         }
     }

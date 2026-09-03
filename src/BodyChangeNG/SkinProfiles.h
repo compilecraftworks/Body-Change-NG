@@ -56,6 +56,18 @@ namespace bcn
         std::string path;
     };
 
+    struct MaleGenitalTextureVariant final
+    {
+        // Matches the SOS ArmorAddon model directory (for example
+        // "VectorPlexus Regular") so several installed addon atlases can
+        // coexist in one BodySkin pack without one overwriting another.
+        std::string addonDirectory;
+        std::vector<SkinTextureLayer> humanoid;
+        std::vector<SkinTextureLayer> argonian;
+        std::vector<SkinTextureLayer> khajiit;
+        std::vector<SkinTextureLayer> elder;
+    };
+
     struct SkinProfile final
     {
         std::string id;
@@ -74,6 +86,10 @@ namespace bcn
         // Neither atlas may fall back to the regular body or another part.
         std::vector<SkinTextureLayer> cbbeGenitalAnal;
         std::vector<SkinTextureLayer> unpGenitalAnal;
+        // SOS uses a separate slot-52 ArmorAddon. Variants are selected from
+        // that addon's immutable model path; missing race/channel files leave
+        // the underlying genital material untouched.
+        std::vector<MaleGenitalTextureVariant> maleGenitals;
         std::vector<SkinTextureLayer> hands;
         std::vector<SkinTextureLayer> feet;
         // FaceGen is addressed through the current actor's face-head node,
