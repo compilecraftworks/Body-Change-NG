@@ -81,6 +81,8 @@ target("BodyChangeNGAssetCatalogTests")
     add_packages("nlohmann_json")
     add_files(
         "tests/AssetCatalogTests.cpp",
+        "src/BodyChangeNG/BodyFamily.cpp",
+        "src/BodyChangeNG/BodyFamilyRules.cpp",
         "src/BodyChangeNG/CatalogRoots.cpp",
         "src/BodyChangeNG/Hotkey.cpp",
         "src/BodyChangeNG/PlayerTint.cpp",

@@ -108,6 +108,36 @@ namespace
         return layers;
     }
 
+    [[nodiscard]] bcn::body_family::Mask InferProfileFamilies(
+        const bcn::SkinSex sex, const std::initializer_list<const std::vector<bcn::SkinTextureLayer>*> parts)
+    {
+        if (sex == bcn::SkinSex::male) return bcn::StandardSkinFamilies(sex);
+        bool ube{};
+        bool standard{};
+        for (const auto* part : parts) {
+            if (!part) continue;
+            for (const auto& layer : *part) {
+                switch (bcn::body_family::DetectSkinTextureLayout(
+                    layer.path, bcn::body_family::Sex::female)) {
+                case bcn::body_family::SkinTextureLayout::ube:
+                    ube = true;
+                    break;
+                case bcn::body_family::SkinTextureLayout::standard:
+                    standard = true;
+                    break;
+                default:
+                    break;
+                }
+            }
+        }
+        // A mixed explicit profile would paint UBE and conventional UVs in a
+        // single operation. Reject it instead of guessing which half was the
+        // author's intent.
+        if (ube && standard) return 0U;
+        return ube ? bcn::body_family::Bit(bcn::body_family::Family::ube) :
+            bcn::StandardSkinFamilies(sex);
+    }
+
     [[nodiscard]] std::optional<bcn::SkinProfile> ParseProfile(const std::filesystem::path& dataRoot,
                                                                 const std::filesystem::path& root,
                                                                 const std::filesystem::path& path)
@@ -136,14 +166,22 @@ namespace
             auto face = ParsePart(dataRoot, path.parent_path(), json, "face");
             auto vampireFace = ParsePart(dataRoot, path.parent_path(), json, "vampireFace");
             auto faceDetails = ParsePart(dataRoot, path.parent_path(), json, "faceDetails");
+            const auto bodyFamilies = InferProfileFamilies(*sex,
+                { &body, &hands, &feet, &face, &vampireFace, &faceDetails });
+            if (bodyFamilies == 0U) return std::nullopt;
+            const auto ube = (bodyFamilies & bcn::body_family::Bit(
+                bcn::body_family::Family::ube)) != 0U;
             // Do not allow a body-only skin profile: it would make a visible
-            // neck seam for any normal humanoid actor.
-            if (body.empty() || hands.empty() || face.empty()) return std::nullopt;
-            if (feet.empty()) feet = body;
+            // neck seam. Conventional skins additionally require hands; UBE
+            // has one body atlas on its slot-53 geometry and no separate
+            // vanilla hand/foot texture target.
+            if (body.empty() || face.empty() || (!ube && hands.empty())) return std::nullopt;
+            if (!ube && feet.empty()) feet = body;
             return bcn::SkinProfile{
                 .id = std::move(id),
                 .name = std::move(name),
                 .sex = *sex,
+                .bodyFamilies = bodyFamilies,
                 .body = std::move(body),
                 .hands = std::move(hands),
                 .feet = std::move(feet),
@@ -194,7 +232,8 @@ namespace
         // being collapsed into a single profile that arbitrarily picks only
         // the first recursive file match.
         return FindTextureFile(directory, "femalebody_1.dds").has_value() ||
-            FindTextureFile(directory, "malebody_1.dds").has_value();
+            FindTextureFile(directory, "malebody_1.dds").has_value() ||
+            FindTextureFile(directory, "femalebody_1_d.dds").has_value();
     }
 
     [[nodiscard]] std::vector<std::filesystem::path> FindTextureSetDirectories(const std::filesystem::path& skinDirectory)
@@ -217,7 +256,9 @@ namespace
             std::error_code statusError;
             if (!it->is_regular_file(statusError) || statusError) continue;
             const auto filename = bcn::path_text::Utf8(it->path().filename());
-            if (!EqualsIgnoreCase(filename, "femalebody_1.dds") && !EqualsIgnoreCase(filename, "malebody_1.dds")) continue;
+            if (!EqualsIgnoreCase(filename, "femalebody_1.dds") &&
+                !EqualsIgnoreCase(filename, "malebody_1.dds") &&
+                !EqualsIgnoreCase(filename, "femalebody_1_d.dds")) continue;
             const auto directory = it->path().parent_path();
             if (std::ranges::find(directories, directory) == directories.end()) {
                 directories.push_back(directory);
@@ -252,6 +293,51 @@ namespace
             layers.push_back({ index, std::move(path) });
         }
         return layers;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoUbePart(
+        const std::filesystem::path& dataRoot, const std::filesystem::path& textureDirectory,
+        const std::string_view stem)
+    {
+        // UBE's PBR-aware body/head materials use explicit diffuse, normal,
+        // and skin/subsurface names. RFAOS/wet companions are deliberately
+        // not forced into a guessed BSTextureSet slot; those remain owned by
+        // the active material/PBR setup.
+        const std::array<std::pair<std::string, std::uint8_t>, 3> candidates{
+            std::pair{ std::string{ stem } + "_d.dds", kDiffuseTextureIndex },
+            std::pair{ std::string{ stem } + "_n.dds", kNormalTextureIndex },
+            std::pair{ std::string{ stem } + "_sk.dds", kSkinTintTextureIndex }
+        };
+        std::vector<bcn::SkinTextureLayer> layers;
+        for (const auto& [filename, index] : candidates) {
+            const auto file = FindTextureFile(textureDirectory, filename);
+            if (!file) continue;
+            const auto relative = RelativeWithin(*file, dataRoot);
+            if (!relative) continue;
+            auto path = bcn::path_text::GenericUtf8(*relative);
+            if (!IsGameRelativeTexturePath(dataRoot, textureDirectory, path)) continue;
+            bcn::runtime_assets::RegisterGameRelativeSource(path, *file);
+            layers.push_back({ index, std::move(path) });
+        }
+        return layers;
+    }
+
+    [[nodiscard]] std::optional<std::filesystem::path> FindChildDirectory(
+        const std::filesystem::path& parent, const std::string_view name)
+    {
+        std::error_code error;
+        for (std::filesystem::directory_iterator it(parent,
+                 std::filesystem::directory_options::skip_permission_denied, error), end;
+             it != end; it.increment(error)) {
+            if (error) {
+                error.clear();
+                continue;
+            }
+            std::error_code statusError;
+            if (it->is_directory(statusError) && !statusError &&
+                EqualsIgnoreCase(bcn::path_text::Utf8(it->path().filename()), name)) return it->path();
+        }
+        return std::nullopt;
     }
 
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoFaceDetails(
@@ -295,6 +381,30 @@ namespace
                                                               const bcn::SkinSex sex)
     {
         const auto female = sex == bcn::SkinSex::female;
+        const auto layout = bcn::body_family::DetectSkinTextureLayout(
+            bcn::path_text::GenericUtf8(textureDirectory),
+            female ? bcn::body_family::Sex::female : bcn::body_family::Sex::male);
+        if (layout == bcn::body_family::SkinTextureLayout::ube) {
+            if (!female) return {};
+            auto body = AutoUbePart(dataRoot, textureDirectory, "femalebody_1");
+            const auto headDirectory = FindChildDirectory(textureDirectory.parent_path(), "Head");
+            auto face = headDirectory ? AutoUbePart(dataRoot, *headDirectory, "femalehead") :
+                std::vector<bcn::SkinTextureLayer>{};
+            if (body.empty() || face.empty()) return {};
+            const auto skinPath = RelativeWithin(skinDirectory, root);
+            if (!skinPath) return {};
+            const auto skinRelative = bcn::path_text::GenericUtf8(*skinPath);
+            if (skinRelative.empty()) return {};
+            return { bcn::SkinProfile{
+                .id = "auto:" + skinRelative + ":female:ube",
+                .name = bcn::path_text::Utf8(skinDirectory.filename()),
+                .sex = bcn::SkinSex::female,
+                .bodyFamilies = bcn::body_family::Bit(bcn::body_family::Family::ube),
+                .body = std::move(body),
+                .face = std::move(face),
+                .source = textureDirectory
+            } };
+        }
         auto body = AutoPart(dataRoot, textureDirectory, female ? "femalebody_1" : "malebody_1");
         auto hands = AutoPart(dataRoot, textureDirectory, female ? "femalehands_1" : "malehands_1");
         auto feet = AutoPart(dataRoot, textureDirectory, female ? "femalefeet_1" : "malefeet_1");
@@ -320,6 +430,7 @@ namespace
             .id = baseID,
             .name = baseName,
             .sex = sex,
+            .bodyFamilies = bcn::StandardSkinFamilies(sex),
             .body = std::move(body),
             .hands = std::move(hands),
             .feet = std::move(feet),
@@ -413,6 +524,15 @@ namespace
 
 namespace bcn
 {
+    std::string SkinFamilyLabel(const body_family::Mask families, const SkinSex sex)
+    {
+        if (sex == SkinSex::male) return "Male";
+        if (families == body_family::Bit(body_family::Family::ube)) return "UBE";
+        const auto conventional = StandardSkinFamilies(SkinSex::female);
+        if ((families & conventional) != 0U) return "CBBE 3BA / BHUNP / UNP";
+        return "Unclassified";
+    }
+
     SkinProfiles& SkinProfiles::Get()
     {
         static SkinProfiles profiles;

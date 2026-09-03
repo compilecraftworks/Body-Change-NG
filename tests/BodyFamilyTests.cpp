@@ -34,6 +34,8 @@ int main()
         Require(ClassifyPreset("HIMBO", "irrelevant", "preset.xml").families == Bit(Family::himbo), "HIMBO set");
         Require(ClassifyPreset("SAM Light", "irrelevant", "preset.xml").families == Bit(Family::sam), "SAM set");
         Require(ClassifyPreset("3BBB", "irrelevant", "preset.xml").families == 0U, "3BBB-only set");
+        Require(ClassifyPreset("", "generic", "preset.xml", "UBE 2.0").families == Bit(Family::ube),
+            "UBE BodySlide group classification");
         Require(ClassifyPreset("CBBE BHUNP", "irrelevant", "preset.xml").families ==
                 (Bit(Family::cbbe) | Bit(Family::unp)), "combined female set must retain both families");
         const auto triple = ClassifyPreset("CBBE BHUNP UBE", "irrelevant", "preset.xml");
@@ -47,6 +49,24 @@ int main()
         Require(Matches(Bit(Family::femaleVanilla), Bit(Family::cbbe)), "unclassified female preset remains visible");
         Require(!Matches(Bit(Family::unp), Bit(Family::cbbe)), "UNP must not match CBBE");
         Require(Matches(Bit(Family::unp), 0U), "unknown actor must not filter");
+        Require(DetectSkinTextureLayout("Textures\\!UBE\\Head\\femalehead_d.dds", Sex::female) ==
+                SkinTextureLayout::ube, "UBE texture namespace");
+        Require(DetectSkinTextureLayout("textures\\actors\\character\\female\\femalehead.dds", Sex::female) ==
+                SkinTextureLayout::standard, "standard female texture namespace");
+        Require(ResolveLoadedSkinTextureLayout(true, true, true, false) == SkinTextureLayout::standard,
+            "standard live head must beat UBE outfit body geometry");
+        Require(ResolveLoadedSkinTextureLayout(true, true, false, true) == SkinTextureLayout::ube,
+            "UBE live head must beat standard outfit body geometry");
+        Require(ResolveLoadedSkinTextureLayout(true, true, false, false) == SkinTextureLayout::unknown,
+            "mixed outfit-only evidence must not classify the actor");
+        const auto installedMixed = Bit(Family::cbbe) | Bit(Family::ube);
+        Require(ResolveSkinTextureFamily(0U, installedMixed, SkinTextureLayout::ube, Sex::female) ==
+                Bit(Family::ube), "mixed install UBE actor");
+        Require(ResolveSkinTextureFamily(0U, installedMixed, SkinTextureLayout::standard, Sex::female) ==
+                Bit(Family::cbbe), "mixed install standard CBBE actor");
+        Require(ResolveSkinTextureFamily(0U, installedMixed | Bit(Family::unp),
+                SkinTextureLayout::standard, Sex::female) == 0U,
+            "ambiguous standard female frameworks must preserve fallback");
         std::cout << "BodyFamilyTests passed\n";
         return 0;
     } catch (const std::exception& error) {

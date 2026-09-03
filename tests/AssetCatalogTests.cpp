@@ -58,6 +58,8 @@ namespace
                 filename == std::string{ stem } + "_sk.dds" ||
                 filename == std::string{ stem } + "_s.dds") return true;
         }
+        if (filename == "femalebody_1_d.dds" || filename == "femalebody_1_n.dds" ||
+            filename == "femalehead_d.dds" || filename == "femalehead_n.dds") return true;
         return false;
     }
 }
@@ -153,6 +155,17 @@ int main(const int argc, char** argv)
         Touch(female / file);
     }
 
+    const auto ubeBody = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
+        "Textures" / "!UBE" / "Body";
+    const auto ubeHead = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
+        "Textures" / "!UBE" / "Head";
+    for (const auto* file : { "femalebody_1_d.dds", "femalebody_1_n.dds", "femalebody_1_sk.dds" }) {
+        Touch(ubeBody / file);
+    }
+    for (const auto* file : { "femalehead_d.dds", "femalehead_n.dds", "femalehead_sk.dds" }) {
+        Touch(ubeHead / file);
+    }
+
     const auto skins = bcn::SkinProfiles::ScanDirectory(sandbox / "BodySkin");
     const auto discoveredSkinRoots = bcn::catalog_roots::Discover(sandbox / "BodySkin");
     std::error_code equivalentError;
@@ -160,10 +173,22 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 1U, "skin scanner did not collapse one top-level folder into one pack row")) return 1;
+    if (!Require(skins.size() == 2U, "skin scanner did not create one conventional and one UBE pack row")) return 1;
     for (const auto& skin : skins) {
         if (!Require(skin.sex == bcn::SkinSex::female, "skin scanner leaked the pack into the wrong sex")) return 1;
-        if (!Require(!skin.body.empty() && !skin.hands.empty() && !skin.face.empty(), "complete skin lost a required part")) return 1;
+        if (!Require(!skin.body.empty() && !skin.face.empty(), "complete skin lost a required body or face part")) return 1;
+        if (skin.name == "UBE 2.0 Momo Skin") {
+            if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
+                    "UBE texture namespace was not classified as UBE")) return 1;
+            if (!Require(skin.body.size() == 3U && skin.face.size() == 3U &&
+                    skin.hands.empty() && skin.feet.empty(),
+                    "UBE Body/Head d, n, and sk channels were not mapped exactly")) return 1;
+            if (!Require(skin.id.ends_with(":female:ube"), "UBE profile id can collide with a conventional profile")) return 1;
+            continue;
+        }
+        if (!Require(!skin.hands.empty(), "conventional skin lost its required hands part")) return 1;
+        if (!Require((skin.bodyFamilies & bcn::body_family::Bit(bcn::body_family::Family::ube)) == 0U,
+                "conventional skin leaked into the UBE family")) return 1;
         if (!Require(skin.name.contains(skinPackName), "skin pack name was not preserved as UTF-8")) return 1;
         if (!Require(skin.body.front().path.starts_with("BodySkin\\" + skinPackName + "\\Textures\\"),
                 "skin path escaped the virtual Data root or lost UTF-8")) return 1;
@@ -180,6 +205,17 @@ int main(const int argc, char** argv)
         if (!Require(!skin.faceDetails.empty() && skin.faceDetails.front().shaderTextureIndex == 3U,
                 "FaceGen detail texture was not mapped to BSTextureSet detail slot 3")) return 1;
     }
+    const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+    const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
+    const auto ubeSkin = std::ranges::find(skins, "UBE 2.0 Momo Skin", &bcn::SkinProfile::name);
+    const auto standardSkin = std::ranges::find(skins, skinPackName, &bcn::SkinProfile::name);
+    if (!Require(ubeSkin != skins.end() && standardSkin != skins.end(), "expected skin rows are missing")) return 1;
+    if (!Require(bcn::SkinMatchesActor(ubeSkin->bodyFamilies, ubeFamily) &&
+            !bcn::SkinMatchesActor(ubeSkin->bodyFamilies, standardFamily),
+            "UBE skin compatibility leaked into CBBE")) return 1;
+    if (!Require(bcn::SkinMatchesActor(standardSkin->bodyFamilies, standardFamily) &&
+            !bcn::SkinMatchesActor(standardSkin->bodyFamilies, ubeFamily),
+            "conventional skin compatibility leaked into UBE")) return 1;
 
     const std::string tintPackName{ "틴트包" };
     const auto tintA = sandbox / "TintMask" / std::filesystem::path{ L"틴트包" } / "textures" / "actors" / "character" /
@@ -190,15 +226,30 @@ int main(const int argc, char** argv)
     const auto tintB = sandbox / "TintMask" / "Pack B" / "textures" / "actors" / "character" /
         "character assets" / "tintmasks";
     Touch(tintB / "maleheadnord_lips.dds");
+    const auto tintUbe = sandbox / "TintMask" / "UBE Makeup" / "textures" / "actors" / "character" /
+        "character assets" / "tintmasks";
+    Touch(tintUbe / "femalehead_lips.dds");
+    const auto tintCotr = sandbox / "TintMask" / "COtR Makeup" / "textures" / "actors" / "character" /
+        "character assets" / "tintmasks";
+    Touch(tintCotr / "femalehead_eyeliner.dds");
 
     const auto tints = bcn::player_tint::Catalog::ScanDirectory(sandbox / "TintMask");
-    if (!Require(tints.size() == 3U, "tint scanner did not classify the expected DDS files")) return 1;
+    if (!Require(tints.size() == 5U, "tint scanner did not classify the expected DDS files")) return 1;
     if (!Require(std::ranges::any_of(tints, [&](const auto& tint) { return tint.pack == tintPackName; }),
             "tint pack name was not preserved as UTF-8")) return 1;
     for (const auto& tint : tints) {
         if (!Require(tint.path.starts_with("TintMask\\"), "tint path escaped the virtual Data root")) return 1;
         if (!Require(!tint.id.starts_with(".."), "tint id contains a parent-directory escape")) return 1;
     }
+    const auto ubeTint = std::ranges::find(tints, "UBE Makeup", &bcn::player_tint::Asset::pack);
+    const auto cotrTint = std::ranges::find(tints, "COtR Makeup", &bcn::player_tint::Asset::pack);
+    if (!Require(ubeTint != tints.end() &&
+            ubeTint->bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
+            "UBE tint pack was not isolated to UBE")) return 1;
+    if (!Require(cotrTint != tints.end() &&
+            bcn::player_tint::TintMatchesActor(cotrTint->bodyFamilies, standardFamily) &&
+            bcn::player_tint::TintMatchesActor(cotrTint->bodyFamilies, ubeFamily),
+            "COtR-compatible tint pack was not exposed to both female layouts")) return 1;
 
     std::filesystem::remove_all(sandbox);
     return 0;

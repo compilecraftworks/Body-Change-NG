@@ -143,6 +143,27 @@ namespace
     std::unordered_set<RE::FormID> g_legacyCleanupComplete;
     std::atomic<skee_override::IPluginInterface*> g_overrideInterface{};
     std::atomic_uint32_t g_overrideVersion{};
+    // UBE's naked body is authored on Skyrim biped slot 53. CommonLib names
+    // the corresponding bit kModLegRight (bit 23).
+    constexpr auto kUbeBodySlot = RE::BGSBipedObjectForm::BipedObjectSlot::kModLegRight;
+
+    [[nodiscard]] bool UsesUbeBodySlot(const bcn::SkinProfile& profile) noexcept
+    {
+        return (profile.bodyFamilies & bcn::body_family::Bit(
+            bcn::body_family::Family::ube)) != 0U;
+    }
+
+    [[nodiscard]] auto ProfileBodySlot(const bcn::SkinProfile& profile) noexcept
+    {
+        return UsesUbeBodySlot(profile) ? kUbeBodySlot :
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody;
+    }
+
+    [[nodiscard]] bool ProfileMatchesActor(RE::Actor* actor, const bcn::SkinProfile& profile)
+    {
+        return !actor || bcn::SkinMatchesActor(
+            profile.bodyFamilies, bcn::body_family::ResolveActor(actor));
+    }
 
     [[nodiscard]] skee_override::IPluginInterface* OverrideInterface() noexcept
     {
@@ -225,6 +246,7 @@ namespace
         case RE::BGSBipedObjectForm::BipedObjectSlot::kBody: return "body";
         case RE::BGSBipedObjectForm::BipedObjectSlot::kHands: return "hands";
         case RE::BGSBipedObjectForm::BipedObjectSlot::kFeet: return "feet";
+        case kUbeBodySlot: return "ube-body-slot-53";
         default: return "unknown";
         }
     }
@@ -848,7 +870,8 @@ namespace
                     matchingNodes.size(), nodeList);
             }
         };
-        verifyPart("body", profile.body, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
+        verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
+            profile.body, ProfileBodySlot(profile));
         verifyPart("hands", profile.hands, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
         verifyPart("feet", profile.feet, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
         verifyPart("face", faceLayers, std::nullopt);
@@ -1202,6 +1225,7 @@ namespace
         const auto female = base->GetSex() == RE::SEX::kFemale;
         if ((female && profile.sex != bcn::SkinSex::female) ||
             (!female && profile.sex != bcn::SkinSex::male)) return;
+        if (!ProfileMatchesActor(actor.get(), profile)) return;
         const auto faceNode = FaceNode(actor.get(), base);
         if (!faceNode) {
             SKSE::log::warn(
@@ -1221,7 +1245,7 @@ namespace
                 !IsCurrentSkinChange(currentActor->GetFormID(), generation)) return;
             auto* currentBase = currentActor->GetActorBase();
             const auto currentFace = FaceNode(currentActor.get(), currentBase);
-            if (!currentBase || !currentFace) return;
+            if (!currentBase || !currentFace || !ProfileMatchesActor(currentActor.get(), profile)) return;
             const auto currentFemale = currentBase->GetSex() == RE::SEX::kFemale;
             const auto currentFaceLayers = EffectiveFaceLayers(
                 profile, IsVampireRace(currentBase), currentFace->detailFilename);
@@ -1247,11 +1271,13 @@ namespace
 
             bool submitted{};
             submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.body, applyBatch) || submitted;
-            submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands, applyBatch) || submitted;
-            submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet, applyBatch) || submitted;
+                ProfileBodySlot(profile), profile.body, applyBatch) || submitted;
+            if (!UsesUbeBodySlot(profile)) {
+                submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands, applyBatch) || submitted;
+                submitted = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet, applyBatch) || submitted;
+            }
             submitted = DispatchLegacyFaceApply(*currentVM, currentActor.get(), currentFemale,
                 *currentFace, currentFaceLayers, applyBatch) || submitted;
             if (!submitted) {
@@ -1262,6 +1288,7 @@ namespace
 
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -1301,6 +1328,7 @@ namespace
         };
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -1319,6 +1347,7 @@ namespace
         if (!base) return;
         const auto female = base->GetSex() == RE::SEX::kFemale;
         if ((female && profile.sex != bcn::SkinSex::female) || (!female && profile.sex != bcn::SkinSex::male)) return;
+        if (!ProfileMatchesActor(actor.get(), profile)) return;
         auto* overrides = OverrideInterfaceV2();
         if (!overrides) return;
 
@@ -1340,21 +1369,27 @@ namespace
         if (ClaimLegacyCleanup(actor->GetFormID())) {
             [[maybe_unused]] const auto clearedLegacySkinBody = ClearTexturePart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
+            [[maybe_unused]] const auto clearedLegacySkinUbeBody = ClearTexturePart(
+                *overrides, actor.get(), female, kUbeBodySlot);
             [[maybe_unused]] const auto clearedLegacySkinHands = ClearTexturePart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
             [[maybe_unused]] const auto clearedLegacySkinFeet = ClearTexturePart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
             [[maybe_unused]] const auto clearedLegacyBody = ClearArmorAddonPart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody);
+            [[maybe_unused]] const auto clearedLegacyUbeBody = ClearArmorAddonPart(
+                *overrides, actor.get(), female, kUbeBodySlot);
             [[maybe_unused]] const auto clearedLegacyHands = ClearArmorAddonPart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
             [[maybe_unused]] const auto clearedLegacyFeet = ClearArmorAddonPart(
                 *overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
         }
         bool applied{};
-        applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody, profile.body) || applied;
-        applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands) || applied;
-        applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet) || applied;
+        applied = ApplyPart(*overrides, actor.get(), female, ProfileBodySlot(profile), profile.body) || applied;
+        if (!UsesUbeBodySlot(profile)) {
+            applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands) || applied;
+            applied = ApplyPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet) || applied;
+        }
         applied = ApplyFacePart(*overrides, actor.get(), female, *faceNode, faceLayers) || applied;
         if (applied) {
             {
@@ -1384,9 +1419,11 @@ namespace
         bool cleared{};
         cleared = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
+        cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
+        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         if (faceNode) cleared = ClearFaceTextures(*overrides, actor.get(), female, faceNode->nodeName, true) || cleared;
@@ -1441,6 +1478,7 @@ namespace bcn::skin_override
         if ((female && profile->sex != SkinSex::female) || (!female && profile->sex != SkinSex::male)) {
             return ApplyResult::incompatibleSex;
         }
+        if (!ProfileMatchesActor(actor, *profile)) return ApplyResult::incompatibleBodyFamily;
         // Body/hands/feet without the matching live face would create the neck
         // seam the user is explicitly trying to avoid. Reject synchronously so
         // the UI never reports a partial skin as successfully applied.

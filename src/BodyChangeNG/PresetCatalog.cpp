@@ -70,7 +70,14 @@ namespace
         // because any of those strings contain clothing-related words.
         if (name.empty()) return std::nullopt;
 
-        const auto classification = bcn::body_family::ClassifyPreset(bodySet, name, source);
+        std::string groupNames;
+        for (const auto group : node.children("Group")) {
+            const auto groupName = std::string_view(group.attribute("name").as_string());
+            if (groupName.empty()) continue;
+            if (!groupNames.empty()) groupNames.push_back(' ');
+            groupNames.append(groupName);
+        }
+        const auto classification = bcn::body_family::ClassifyPreset(bodySet, name, source, groupNames);
 
         bcn::BodyPreset preset{
             .name = name,

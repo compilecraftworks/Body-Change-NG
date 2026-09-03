@@ -37,7 +37,7 @@ namespace
 
     std::mutex g_cacheLock;
     std::unordered_map<RE::FormID, ActorCacheEntry> g_actorCache;
-    std::array<std::optional<Mask>, 2> g_installedDefaultCache;
+    std::array<std::optional<Mask>, 2> g_installedFamiliesCache;
 
     [[nodiscard]] constexpr std::size_t SexIndex(const Sex sex) noexcept
     {
@@ -119,30 +119,81 @@ namespace
         }
     }
 
-    [[nodiscard]] Mask DetectLoadedSkin(RE::Actor* actor, RE::TESObjectARMO* skin, const Sex sex)
-    {
-        if (!actor || !skin || !actor->Is3DLoaded()) return 0U;
-        std::vector<std::string> formTokens{ std::format("{:08X}", skin->GetFormID()) };
-        for (const auto* addon : skin->armorAddons) {
-            if (addon) formTokens.push_back(std::format("{:08X}", addon->GetFormID()));
-        }
-        std::unordered_set<RE::NiAVObject*> visited;
-        std::vector<LoadedShape> shapes;
-        CollectShapes(actor->Get3D(false), visited, shapes, "3rd-person");
-        Mask detected{};
-        for (const auto& shape : shapes) {
-            if (!std::ranges::any_of(formTokens, [&](const auto& token) { return shape.scenePath.contains(token); })) continue;
-            detected |= bcn::body_family::DetectText(shape.name + ' ' + shape.diffuse + ' ' + shape.scenePath, sex);
-        }
-        return SelectSingleExplicitFamily(detected, sex);
-    }
-
     [[nodiscard]] std::string LowerAscii(std::string value)
     {
         std::ranges::transform(value, value.begin(), [](const unsigned char character) {
             return static_cast<char>(std::tolower(character));
         });
         return value;
+    }
+
+    struct LoadedSkinEvidence final
+    {
+        Mask explicitFamilies{};
+        bool hasStandardTexture{};
+        bool hasUbeTexture{};
+        bool hasStandardHeadTexture{};
+        bool hasUbeHeadTexture{};
+
+        [[nodiscard]] bcn::body_family::SkinTextureLayout Layout() const noexcept
+        {
+            return bcn::body_family::ResolveLoadedSkinTextureLayout(
+                hasStandardTexture, hasUbeTexture,
+                hasStandardHeadTexture, hasUbeHeadTexture);
+        }
+    };
+
+    [[nodiscard]] LoadedSkinEvidence DetectLoadedSkin(
+        RE::Actor* actor, RE::TESObjectARMO* skin, const Sex sex)
+    {
+        LoadedSkinEvidence evidence;
+        if (!actor || !actor->Is3DLoaded()) return evidence;
+        std::vector<std::string> formTokens;
+        if (skin) {
+            formTokens.push_back(std::format("{:08X}", skin->GetFormID()));
+            for (const auto* addon : skin->armorAddons) {
+                if (addon) formTokens.push_back(std::format("{:08X}", addon->GetFormID()));
+            }
+        }
+        std::unordered_set<RE::NiAVObject*> visited;
+        std::vector<LoadedShape> shapes;
+        CollectShapes(actor->Get3D(false), visited, shapes, "3rd-person");
+        for (const auto& shape : shapes) {
+            const auto belongsToSkin = !formTokens.empty() &&
+                std::ranges::any_of(formTokens, [&](const auto& token) { return shape.scenePath.contains(token); });
+            auto normalizedTexture = LowerAscii(shape.diffuse);
+            std::ranges::replace(normalizedTexture, '\\', '/');
+            const auto headStem = sex == Sex::female ? std::string_view{ "femalehead" } :
+                std::string_view{ "malehead" };
+            const auto actorHead = normalizedTexture.contains(headStem) &&
+                (normalizedTexture.ends_with(".dds") ||
+                    normalizedTexture.contains(std::string(headStem) + '_'));
+            switch (bcn::body_family::DetectSkinTextureLayout(shape.diffuse, sex)) {
+            case bcn::body_family::SkinTextureLayout::standard:
+                if (belongsToSkin || actorHead) evidence.hasStandardTexture = true;
+                if (actorHead) evidence.hasStandardHeadTexture = true;
+                break;
+            case bcn::body_family::SkinTextureLayout::ube:
+                // Do not classify a CBBE NPC as UBE merely because an equipped
+                // outfit is stored under meshes/textures/!UBE. UBE's live head
+                // atlas (or the actual Skin Armor geometry) is authoritative.
+                if (belongsToSkin || actorHead) evidence.hasUbeTexture = true;
+                if (actorHead) evidence.hasUbeHeadTexture = true;
+                break;
+            default:
+                break;
+            }
+            // Family-looking names on unrelated hair, jewelry, and weapons
+            // must not classify the actor. Restrict explicit mesh-name signals
+            // to the naked Skin Armor/Addons when their FormIDs are present in
+            // the scene path; texture namespaces above remain safe to inspect
+            // globally, including UBE's always-loaded head.
+            if (belongsToSkin) {
+                evidence.explicitFamilies |= bcn::body_family::DetectText(
+                    shape.name + ' ' + shape.diffuse + ' ' + shape.scenePath, sex);
+            }
+        }
+        return evidence;
     }
 
     [[nodiscard]] Mask FrameworkPluginFamily(const std::string_view filename, const Sex sex)
@@ -164,12 +215,12 @@ namespace
         return 0U;
     }
 
-    [[nodiscard]] Mask DetectInstalledDefault(const Sex sex)
+    [[nodiscard]] Mask DetectInstalledFamilies(const Sex sex)
     {
         const auto index = SexIndex(sex);
         {
             std::scoped_lock lock(g_cacheLock);
-            if (g_installedDefaultCache[index]) return *g_installedDefaultCache[index];
+            if (g_installedFamiliesCache[index]) return *g_installedFamiliesCache[index];
         }
         Mask detected{};
         if (const auto* handler = RE::TESDataHandler::GetSingleton()) {
@@ -184,10 +235,9 @@ namespace
             collect(handler->GetLoadedMods(), handler->GetLoadedModCount());
             collect(handler->GetLoadedLightMods(), handler->GetLoadedLightModCount());
         }
-        detected = SelectSingleExplicitFamily(detected, sex);
         {
             std::scoped_lock lock(g_cacheLock);
-            g_installedDefaultCache[index] = detected;
+            g_installedFamiliesCache[index] = detected;
         }
         return detected;
     }
@@ -212,16 +262,27 @@ namespace bcn::body_family
                 found != g_actorCache.end() && found->second.signature == signature) return found->second.family;
         }
 
+        const auto installedFamilies = DetectInstalledFamilies(sex);
         auto family = DetectSkinMetadata(skin, sex);
-        if (family == 0U) family = DetectLoadedSkin(actor, skin, sex);
-        if (family == 0U) family = DetectInstalledDefault(sex);
+        const auto loaded = DetectLoadedSkin(actor, skin, sex);
+        if (family == 0U) {
+            family = ResolveSkinTextureFamily(
+                loaded.explicitFamilies, installedFamilies, loaded.Layout(), sex);
+        }
+        if (family == 0U) {
+            family = ResolveSkinTextureFamily(0U, installedFamilies, SkinTextureLayout::unknown, sex);
+        }
         // Still unknown or conflicting means no filter.  Never guess Vanilla
         // and accidentally hide the selected actor's usable presets.
         {
             std::scoped_lock lock(g_cacheLock);
             g_actorCache.insert_or_assign(actor->GetFormID(), ActorCacheEntry{ signature, family });
         }
-        SKSE::log::info("Body family actor={:08X} skin={:08X} mask={}", actor->GetFormID(), signature.skinFormID, family);
+        SKSE::log::info(
+            "Body family actor={:08X} skin={:08X} mask={} installed={} loaded-explicit={} texture-layout={}",
+            actor->GetFormID(), signature.skinFormID, family, installedFamilies, loaded.explicitFamilies,
+            loaded.Layout() == SkinTextureLayout::ube ? "UBE" :
+                loaded.Layout() == SkinTextureLayout::standard ? "standard" : "unknown");
         return family;
     }
 
@@ -229,6 +290,6 @@ namespace bcn::body_family
     {
         std::scoped_lock lock(g_cacheLock);
         g_actorCache.clear();
-        g_installedDefaultCache = {};
+        g_installedFamiliesCache = {};
     }
 }

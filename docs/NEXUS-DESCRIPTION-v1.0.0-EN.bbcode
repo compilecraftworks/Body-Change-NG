@@ -23,7 +23,7 @@ Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data
 
 [list]
 [*][b]Native GUI instead of an MCM[/b] — press F7 to manage loaded actors, bodies, skins, player tint, and distribution rules in one scalable window
-[*][b]Actor-matched Body list[/b] — the main Body tab detects the selected actor's BodyFamily and prioritizes presets for that family instead of indiscriminately mixing unrelated body types. If detection is uncertain, a safe fallback keeps usable candidates visible
+[*][b]Actor-matched Body and Skin lists[/b] — mixed CBBE 3BA and UBE installations are detected per actor from the live winning skin/head path. The main lists show the matching family instead of indiscriminately mixing incompatible assets; uncertain evidence keeps the safe fallback visible
 [*][b]Explicit rule pools[/b] — choose exactly which body presets and skin packs each rule may distribute instead of treating every installed preset as a candidate
 [*][b]Independent Body and Skin decisions[/b] — distribute or exclude either category while the other category continues to use its selected pool
 [*][b]Visible top-down priority[/b] — the first matching rule owns both decisions, making broad-to-specific ordering easy to inspect and edit
@@ -57,6 +57,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Select the player or a loaded NPC and apply compatible BodySlide presets immediately
 [*]Low/high-weight values are interpolated using the actor's current weight
 [*]Conservative BodyFamily detection keeps the main list relevant without blocking uncertain presets or filtering NPC distribution pools
+[*]CBBE 3BA and UBE use the same SliderPresets folder; Preset set and Group metadata inside each XML identify its family
 [*]Body application uses RaceMenu BodyMorph; no body mesh is generated or replaced while the game is running
 [/list]
 
@@ -64,6 +65,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [list]
 [*]Apply independent skin packs to the player or a selected loaded NPC
 [*]Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire face, diffuse, normal, subsurface, specular, and compatible detail textures
+[*]UBE 2.0 Body/Head d-n-sk atlases are detected separately and applied to the live slot-53 body and face; known-incompatible conventional and UBE skins are never shown or distributed to the wrong detected family
 [*]Ownership-aware cleanup does not delete another mod's texture keys
 [/list]
 
@@ -140,14 +142,17 @@ All paths below are relative to an MO2 mod root. You may place these assets insi
 Place standard BodySlide preset XML files in this folder.
 
 [size=4][color=#9AD7F5][b]Skin Packs[/b][/color][/size]
-[b]BodySkin\YourSkinPack\Textures\actors\character\...[/b]
+[b]Conventional:[/b] BodySkin\YourSkinPack\Textures\actors\character\...
+[b]UBE 2.0:[/b] BodySkin\YourSkinPack\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds
+BodySkin\YourSkinPack\Textures\!UBE\Head\femalehead_[d/n/sk].dds
 
-Create one folder per skin pack and preserve the skin mod's original Textures tree and DDS files. Each folder directly under [b]BodySkin[/b] becomes one entry in the in-game catalog.
+Create one folder per skin pack and preserve the skin mod's original Textures tree and DDS files. Do not move UBE atlases into the conventional female folder. Each folder directly under [b]BodySkin[/b] becomes one entry in the in-game catalog and is matched to the selected actor's detected family.
 
 [size=4][color=#9AD7F5][b]Tint Packs[/b][/color][/size]
 [b]TintMask\YourTintPack\textures\actors\character\character assets\tintmasks\*.dds[/b]
 
 Create one folder per tint pack and preserve its RaceMenu tint-mask filenames and folder structure. Each folder directly under [b]TintMask[/b] becomes one entry in the in-game catalog.
+For a UBE-only tint-mask pack, include [b]UBE[/b] in the top-level pack name. Packs marked [b]COtR[/b] are treated as compatible with both UBE and conventional female heads.
 
 [b]Adding files while Skyrim is running[/b]
 

@@ -32,7 +32,7 @@
     <p>두 모드 모두 최종 바디 변형에는 RaceMenu BodyMorph와 빌드된 TRI를 사용합니다. 따라서 Body Change NG도 별도 바디 메쉬를 갈아 끼우는 방식이 아닙니다. 차이는 그 위의 선택·배포·상태 관리 구조입니다.</p>
     <ul>
       <li><strong>MCM이 아닌 네이티브 GUI</strong> — F7로 여는 ImGui 창에서 플레이어와 로드된 NPC, 바디, 스킨, 틴트, 배포 규칙을 한 번에 관리</li>
-      <li><strong>액터에게 맞는 바디 목록</strong> — 선택한 액터의 BodyFamily를 감지해 메인 바디탭에는 해당 바디 계열의 프리셋을 우선 표시하므로 서로 다른 바디가 한 목록에 무분별하게 섞이지 않음. 감지나 분류가 불확실하면 프리셋을 숨겨 기능을 막지 않고 안전하게 함께 표시</li>
+      <li><strong>액터에게 맞는 바디·스킨 목록</strong> — CBBE 3BA와 UBE가 함께 설치되어도 MO2의 최종 승자 경로로 선택한 액터의 BodyFamily를 감지하고 맞는 바디·스킨만 표시. 감지나 분류가 불확실하면 기능을 막지 않고 안전한 폴백 목록을 표시</li>
       <li><strong>게임패드 탐색</strong> — D-pad로 목록과 탭을 이동하고 기본·취소 버튼으로 선택과 닫기 지원</li>
       <li><strong>즉시 미리보기와 확정 적용 분리</strong> — BodyChangeNG, Preview, Outfit 전용 morph key를 분리하고 빠른 연속 선택에서 오래된 적용 작업이 뒤늦게 덮어쓰지 않도록 차단</li>
       <li><strong>명시적인 배포 풀</strong> — 폴더의 모든 프리셋을 자동 후보로 삼는 대신 각 규칙에서 사용할 바디와 스킨을 직접 선택</li>
@@ -65,6 +65,7 @@
       <li>액터 체중에 맞춰 Low/High Weight 값을 보간</li>
       <li>메뉴 선택 중 실시간 미리보기, 확정 적용, 의상 보정을 서로 다른 소유 morph key로 격리</li>
       <li>액터 바디 계열을 보수적으로 감지해 메인 바디 목록만 필터링</li>
+      <li>CBBE 3BA와 UBE는 같은 SliderPresets 폴더를 사용하며 XML 내부 Preset set과 Group 정보로 계열을 구분</li>
       <li>불확실하거나 여러 계열에 해당하는 프리셋은 안전하게 함께 표시</li>
       <li>NPC 배포 풀에는 자동 바디 계열 필터를 적용하지 않음</li>
     </ul>
@@ -74,6 +75,7 @@
       <li>플레이어와 NPC별로 서로 다른 스킨팩 적용</li>
       <li>바디·손·발·얼굴·뱀파이어 얼굴 지원</li>
       <li>Diffuse, Normal, Subsurface, Specular, FaceGen Detail 텍스처 지원</li>
+      <li>UBE 2.0의 Body·Head d/n/sk 아틀라스를 별도로 감지해 슬롯 53 바디와 실제 얼굴에 적용하고, 일반 스킨과 UBE 스킨이 잘못된 액터에 표시·배포되지 않도록 분리</li>
       <li>RaceMenu/NiOverride 영구 키를 사용하며 다른 모드의 키는 삭제하지 않음</li>
     </ul>
 
@@ -130,8 +132,8 @@
     <h2>바디 프리셋·스킨팩·틴트팩 추가</h2>
     <ol>
       <li><strong>바디 프리셋 XML</strong> — MO2 모드 루트의 <code>CalienteTools\BodySlide\SliderPresets\*.xml</code>에 표준 BodySlide 프리셋 XML 파일을 넣습니다.</li>
-      <li><strong>스킨팩</strong> — 스킨팩마다 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\actors\character\...</code> 폴더를 만들고, 스킨 모드의 Textures 폴더 구조와 DDS 파일을 그대로 넣습니다. 각 &lt;스킨팩 이름&gt; 폴더가 게임 목록의 한 항목이 됩니다.</li>
-      <li><strong>틴트팩</strong> — 틴트팩마다 <code>TintMask\&lt;틴트팩 이름&gt;\textures\actors\character\character assets\tintmasks\*.dds</code> 구조로 RaceMenu 틴트마스크 DDS를 넣습니다. 각 &lt;틴트팩 이름&gt; 폴더가 게임 목록의 한 항목이 됩니다.</li>
+      <li><strong>스킨팩</strong> — 일반 CBBE 3BA/BHUNP/UNP 스킨은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\actors\character\...</code> 구조를 사용합니다. UBE 2.0 스킨은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds</code>와 <code>...\!UBE\Head\femalehead_[d/n/sk].dds</code> 구조를 그대로 유지합니다. 각 &lt;스킨팩 이름&gt; 폴더가 게임 목록의 한 항목이 됩니다.</li>
+      <li><strong>틴트팩</strong> — 틴트팩마다 <code>TintMask\&lt;틴트팩 이름&gt;\textures\actors\character\character assets\tintmasks\*.dds</code> 구조로 RaceMenu 틴트마스크 DDS를 넣습니다. UBE 전용 팩은 최상위 틴트팩 이름에 UBE를 포함하고, COtR 표기 팩은 일반 여성·UBE 양쪽 호환으로 처리합니다.</li>
     </ol>
     <p>위 경로는 모두 MO2 모드 루트 기준입니다. Body Change NG 메인 모드 안에 넣어도 되고, 같은 경로를 가진 별도 MO2 모드로 만들어 활성화해도 됩니다.</p>
     <p>게임 실행 중에도 BodySlide 프리셋 XML 파일, 스킨팩 폴더, 틴트팩 폴더를 추가하거나 교체할 수 있습니다. 해당 바디·스킨·틴트 탭을 열고 <strong>새로고침</strong>을 누르면 게임을 재시작하지 않고 파일을 다시 검색해 목록에 반영합니다.</p>

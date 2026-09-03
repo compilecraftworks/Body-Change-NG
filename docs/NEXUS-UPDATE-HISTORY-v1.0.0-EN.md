@@ -40,6 +40,10 @@
 
 ### v1.0.0 — First Stable Public Release
 
+- Added per-actor CBBE 3BA/UBE detection for mixed installations, using the
+  live MO2-winning skin/head texture path and XML set/group metadata.
+- Added UBE 2.0 skin-pack scanning and slot-53 Body plus live-Head d/n/sk
+  application, with family-safe main lists and NPC skin distribution.
 - Finalized symmetric main-camera framing at FOV 70, distance 200, horizontal ±70, vertical -45, and player pitch 0.1.
 - Added a separate player-tint close-up that keeps the same FOV while scaling distance and horizontal offset together and positioning the face inside the frame.
 - When the game is paused, right-drag now orbits the camera instead of rotating the actor root, avoiding FSMP stretching without manipulating Skyrim's pause counter.

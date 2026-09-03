@@ -421,6 +421,7 @@ namespace
         switch (result) {
         case Result::queued: return Text("플레이어 틴트를 즉시 반영했습니다.", "Applied the player tint immediately.", "已立即应用玩家色调。");
         case Result::invalidAsset: return Text("선택한 틴트 파일을 찾지 못했습니다.", "The selected tint file was not found.", "找不到所选色调文件。");
+        case Result::incompatibleBodyFamily: return Text("선택한 틴트팩은 플레이어의 바디·헤드 계열과 맞지 않습니다.", "The selected tint pack does not match the player's body/head family.", "所选色调包与玩家的身体/头部系列不匹配。");
         case Result::unsupportedLayer: return Text("현재 플레이어에게 이 틴트 레이어가 없습니다.", "This tint layer is unavailable on the current player.", "当前玩家没有此色调图层。");
         case Result::noOriginalBackup: return Text("복원할 원본 틴트 백업이 없습니다.", "There is no original tint backup to restore.", "没有可还原的原始色调备份。");
         default: return Text("RaceMenu 또는 작업 인터페이스를 사용할 수 없습니다.", "RaceMenu or the task interface is unavailable.", "RaceMenu 或任务接口不可用。");
@@ -826,6 +827,8 @@ namespace
             return Text("액터의 3D가 로드되지 않아 스킨을 즉시 적용할 수 없습니다.", "The actor's 3D is not loaded, so the skin cannot be applied immediately.", "角色的 3D 尚未加载，无法立即应用皮肤。");
         case bcn::skin_override::ApplyResult::incompatibleSex:
             return Text("선택한 스킨팩은 이 액터의 성별과 맞지 않습니다.", "The selected skin pack does not match this actor's sex.", "所选皮肤包与该角色的性别不匹配。");
+        case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
+            return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
         case bcn::skin_override::ApplyResult::faceGeometryUnavailable:
             return Text("현재 얼굴 지오메트리를 찾지 못해 목선을 방지하려고 스킨 전체 적용을 중단했습니다.", "The live face geometry was not found, so the whole skin application was stopped to prevent a neck seam.", "未找到当前脸部几何体；为避免颈部接缝，已停止应用整套皮肤。");
         case bcn::skin_override::ApplyResult::noTaskInterface:
@@ -1121,6 +1124,7 @@ namespace
         }
         const auto* base = actor->GetActorBase();
         const bool female = !base || base->GetSex() == RE::SEX::kFemale;
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
 
         const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##skinCatalogRefresh";
         if (ImGui::Button(refreshLabel.c_str())) {
@@ -1139,6 +1143,7 @@ namespace
         visibleSkins.reserve(skins.size());
         for (const auto& skin : skins) {
             if ((female && skin.sex != bcn::SkinSex::female) || (!female && skin.sex != bcn::SkinSex::male)) continue;
+            if (!bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily)) continue;
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(skin.id).find(Lower(g_search)) == std::string::npos) continue;
             const auto favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
@@ -1214,16 +1219,18 @@ namespace
             ImGui::Dummy(ImVec2(0.0F, Scaled(5.0F)));
             ImGui::PopID();
             ++row;
-            const auto hasMatchingSkin = std::ranges::any_of(skins, [female](const auto& skin) {
-                return (female && skin.sex == bcn::SkinSex::female) || (!female && skin.sex == bcn::SkinSex::male);
+            const auto hasMatchingSkin = std::ranges::any_of(skins, [female, actorFamily](const auto& skin) {
+                return ((female && skin.sex == bcn::SkinSex::female) ||
+                    (!female && skin.sex == bcn::SkinSex::male)) &&
+                    bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily);
             });
             if (!hasMatchingSkin) {
-                ImGui::TextUnformatted(Text("이 성별에 맞는 스킨팩을 찾지 못했습니다.", "No skin packs were found for this sex.", "未找到适用于该性别的皮肤包。"));
+                ImGui::TextUnformatted(Text("이 액터의 성별·바디 계열에 맞는 스킨팩을 찾지 못했습니다.", "No skin packs were found for this actor's sex and body family.", "未找到适用于该角色性别和身体系列的皮肤包。"));
                 ImGui::Spacing();
                 ImGui::TextWrapped("%s", Text(
-                    "MO2 모드 루트의 BodySkin\\<스킨 이름>\\Textures에 스킨 모드의 textures 폴더 내용을 그대로 넣으세요. 얼굴까지 맞추려면 femalebody·femalehands·femalehead(또는 남성 대응 파일)가 모두 필요합니다.",
-                    "Copy a skin mod's textures folder unchanged into BodySkin\\<skin name>\\Textures at the MO2 mod root. A complete skin needs femalebody, femalehands, and femalehead (or the male equivalents).",
-                    "请将皮肤模组的 textures 文件夹原样放入 MO2 模组根目录的 BodySkin\\<皮肤名称>\\Textures。完整皮肤需要 femalebody、femalehands 和 femalehead（或男性对应文件）。"));
+                    "일반 스킨은 BodySkin\\<스킨 이름>\\Textures\\actors\\character 구조를, UBE 스킨은 BodySkin\\<스킨 이름>\\Textures\\!UBE\\Body 및 Head 구조를 그대로 유지하세요.",
+                    "Keep conventional skins under BodySkin\\<skin name>\\Textures\\actors\\character, and UBE skins under BodySkin\\<skin name>\\Textures\\!UBE\\Body and Head.",
+                    "普通皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\actors\\character 结构；UBE 皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\!UBE\\Body 和 Head 结构。"));
             }
             for (const auto* skinPointer : visibleSkins) {
                 const auto& skin = *skinPointer;
@@ -1258,6 +1265,7 @@ namespace
                 collectPaths(skin.faceDetails);
                 const auto textureCount = texturePaths.size();
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
+                    " · " + bcn::SkinFamilyLabel(skin.bodyFamilies, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
                     (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
@@ -1300,18 +1308,28 @@ namespace
 
         const auto* base = selectedActor->GetActorBase();
         const bool female = base && base->GetSex() == RE::SEX::kFemale;
+        const auto actorFamily = bcn::body_family::ResolveActor(selectedActor);
         const auto assets = bcn::player_tint::Catalog::Get().Snapshot();
         const auto settings = bcn::Settings::Get().Snapshot();
-        struct TintPackRow final { std::string name; std::size_t count{}; };
+        struct TintPackRow final
+        {
+            std::string name;
+            std::size_t count{};
+            bcn::body_family::Mask bodyFamilies{};
+        };
         std::vector<TintPackRow> packs;
         for (const auto& asset : assets) {
             if ((asset.sex == bcn::player_tint::Sex::female && !female) ||
                 (asset.sex == bcn::player_tint::Sex::male && female)) {
                 continue;
             }
+            if (!bcn::player_tint::TintMatchesActor(asset.bodyFamilies, actorFamily)) continue;
             const auto found = std::ranges::find(packs, asset.pack, &TintPackRow::name);
-            if (found == packs.end()) packs.push_back({ asset.pack, 1U });
-            else ++found->count;
+            if (found == packs.end()) packs.push_back({ asset.pack, 1U, asset.bodyFamilies });
+            else {
+                ++found->count;
+                found->bodyFamilies |= asset.bodyFamilies;
+            }
         }
         if (std::ranges::find(packs, g_selectedTintPack, &TintPackRow::name) == packs.end()) {
             g_selectedTintPack = packs.empty() ? std::string{} : packs.front().name;
@@ -1401,7 +1419,7 @@ namespace
             ++row;
 
             if (packs.empty()) {
-                ImGui::TextUnformatted(Text("이 성별에 맞는 틴트팩을 찾지 못했습니다.", "No tint packs were found for this sex.", "未找到适用于该性别的色调包。"));
+                ImGui::TextUnformatted(Text("플레이어의 성별·바디 계열에 맞는 틴트팩을 찾지 못했습니다.", "No tint packs were found for the player's sex and body family.", "未找到适用于玩家性别和身体系列的色调包。"));
                 ImGui::TextWrapped("%s", Text(
                     "MO2 모드 루트의 TintMask\\<틴트팩>\\textures\\actors\\character\\character assets\\tintmasks에 DDS 파일을 넣고 새로고침하세요.",
                     "Place DDS files in TintMask\\<tint pack>\\textures\\actors\\character\\character assets\\tintmasks at the MO2 mod root, then refresh.",
@@ -1428,6 +1446,7 @@ namespace
                     IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255), pack.name.c_str());
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
+                    " · " + bcn::player_tint::TintFamilyLabel(pack.bodyFamilies) +
                     " · DDS " + std::to_string(pack.count) + Text("개", "", " 个");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), IM_COL32(160, 181, 193, 255), sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));

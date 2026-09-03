@@ -7,6 +7,7 @@
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinProfiles.h"
 
 #include <SKSE/Logger.h>
 #include <RE/P/ProcessLists.h>
@@ -214,18 +215,40 @@ namespace
         return pool[index];
     }
 
+    [[nodiscard]] std::vector<std::string> CompatibleSkinPool(
+        const std::vector<std::string>& pool, RE::Actor* actor)
+    {
+        if (pool.empty() || !actor) return {};
+
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        if (actorFamily == 0U) return pool;
+
+        const auto profiles = bcn::SkinProfiles::Get().Snapshot();
+        std::vector<std::string> compatible;
+        compatible.reserve(pool.size());
+        for (const auto& id : pool) {
+            const auto found = std::ranges::find(profiles, id, &bcn::SkinProfile::id);
+            if (found != profiles.end() && bcn::SkinMatchesActor(found->bodyFamilies, actorFamily)) {
+                compatible.push_back(id);
+            }
+        }
+        return compatible;
+    }
+
     [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
         RE::Actor* actor, const std::optional<bcn::ActorState>& previous)
     {
         for (const auto& rule : rules) {
             if (!MatchesTarget(rule, actor)) continue;
+            const auto compatibleSkins = rule.skinExcluded ? std::vector<std::string>{} :
+                CompatibleSkinPool(rule.skinProfileIds, actor);
             return RuleSelection{
                 .bodyExcluded = rule.bodyExcluded,
                 .skinExcluded = rule.skinExcluded,
                 .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, rule.presetIds,
                     actor, "body", previous && !previous->manualBody ?
                         std::string_view{ previous->selectedBodyId } : std::string_view{}),
-                .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, rule.skinProfileIds,
+                .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, compatibleSkins,
                     actor, "skin", previous && !previous->manualSkin ?
                         std::string_view{ previous->selectedSkinId } : std::string_view{})
             };

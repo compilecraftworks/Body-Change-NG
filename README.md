@@ -85,7 +85,8 @@ assets in the included folders and press the corresponding in-game **Refresh**
 button after adding files:
 
 - `CalienteTools\BodySlide\SliderPresets` — BodySlide preset XML files
-- `BodySkin\<pack name>\Textures` — skin texture packs
+- `BodySkin\<pack name>\Textures\actors\character\...` — conventional skin packs
+- `BodySkin\<pack name>\Textures\!UBE\Body` and `...\Head` — UBE 2.0 skin packs
 - `TintMask\<pack name>\textures\...\tintmasks` — player tint DDS packs
 
 ## Runtime UI
@@ -128,7 +129,9 @@ button after adding files:
 ## Runtime asset folders
 
 - BodySlide presets: `CalienteTools\BodySlide\SliderPresets\*.xml`
-- Skin packs: `BodySkin\<pack name>\Textures\...`
+- Conventional skin packs: `BodySkin\<pack name>\Textures\actors\character\...`
+- UBE 2.0 skin packs: `BodySkin\<pack name>\Textures\!UBE\Body` and
+  `BodySkin\<pack name>\Textures\!UBE\Head`
 - Player tint packs: `TintMask\<pack name>\textures\...\tintmasks\*.dds`
 - Distribution rules: `SKSE\Plugins\BodyChangeNGdistribution.json`
 
@@ -139,8 +142,11 @@ explicit import source.
 
 The **Refresh** button in each tab rescans that tab's catalog, including files
 added while the game is running. Skin and tint pack names may contain Unicode
-characters. CBBE and CBBE 3BA presets are presented
-as one `CBBE 3BA` family.
+characters. CBBE and CBBE 3BA presets are presented as one `CBBE 3BA`
+family. Mixed CBBE 3BA/UBE installations are supported: the selected actor's
+live skin/head texture namespace resolves its family, and BodySlide
+`Preset/@set` plus XML `Group` metadata classifies the preset. UBE and CBBE
+3BA continue to share the standard SliderPresets XML folder.
 
 Each top-level `BodySkin` or `TintMask` folder appears as one list row. Skin
 rows show sex and mapped texture count; tint rows show sex and DDS count. The
@@ -163,8 +169,14 @@ player-only, so only the Tint tab is hidden when an NPC is selected.
 Skin application uses the selected actor's live FaceGen subtree and RaceMenu's
 persistent texture overrides. Standard body, hands, feet, face, vampire-face,
 normal (`_msn`), subsurface (`_sk`), specular (`_s`), and compatible FaceGen
-detail DDS channels are handled without changing NIFs, Skin Armor records, or
-equipment slots.
+detail DDS channels are handled without changing NIFs or Skin Armor records.
+UBE 2.0 profiles are detected from `Textures\!UBE\Body` and `Head`, map their
+diffuse/normal/skin atlases to the actor's UBE slot-53 body and live face, and
+do not invent shader slots for optional PBR/RFAOS/wet maps owned by the active
+material setup. The Skin and player Tint catalogs hide known-incompatible
+families while preserving the existing show-all fallback when actor evidence
+is uncertain. NPC distribution rules may keep mixed skin pools; runtime
+selection samples only candidates compatible with each matched actor.
 
 When the player leaves RaceMenu, Body Change NG waits for RaceMenu's final
 geometry and tint-array rebuild, then restores the currently confirmed body,

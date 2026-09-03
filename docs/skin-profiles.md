@@ -25,9 +25,31 @@ BodySkin\
     Textures\...
 ```
 
+UBE 2.0 keeps its separate UV/topology texture namespace. Preserve both atlas
+folders instead of moving their files into the conventional female folder:
+
+```text
+BodySkin\
+  My UBE Skin\
+    Textures\!UBE\Body\femalebody_1_d.dds
+    Textures\!UBE\Body\femalebody_1_n.dds
+    Textures\!UBE\Body\femalebody_1_sk.dds
+    Textures\!UBE\Head\femalehead_d.dds
+    Textures\!UBE\Head\femalehead_n.dds
+    Textures\!UBE\Head\femalehead_sk.dds
+```
+
 The folder name is your skin's display name. With no JSON at all, Body Change
 NG scans the standard body/hands/feet names under `Textures` and creates a
-female and/or male profile automatically. This is the normal setup.
+female and/or male profile automatically. It also recognizes the UBE Body and
+Head d/n/sk atlases as one UBE-only female profile. The UBE body atlas targets
+the live slot-53 Skin Armor geometry, and the head atlas targets the actor's
+live face geometry; it does not require conventional hand/foot files.
+
+Optional UBE PBR, RFAOS, wetness, overlay, and material-specific companion maps
+are not assigned to guessed `BSTextureSet` indices. They remain controlled by
+the actor's active UBE material/Community Shaders setup, preventing a skin
+selection from overwriting an unrelated shader channel.
 
 `profile.json` is optional and is only needed for custom texture selection.
 When it exists, it is placed directly beside `Textures` and overrides automatic
@@ -71,6 +93,13 @@ Shader texture indices follow the RaceMenu/NiOverride convention used here:
 `7` specular (`_s`). A usable profile must provide body, hands, and face maps;
 when feet are omitted, body maps are used for the feet slot as a legacy
 BodyChange-compatible fallback.
+
+The main Skin list compares every profile with the selected actor's detected
+body family. Conventional CBBE 3BA/BHUNP/UNP profiles and UBE profiles are not
+shown to the wrong known family. An NPC distribution rule can still contain a
+mixed skin pool; at runtime it stably samples only the compatible profiles for
+that NPC. Unknown actor evidence keeps the safe fallback and does not hide
+profiles.
 
 RaceMenu skin overrides are shared by property slot rather than by mod owner.
 If another mod changes the same skin texture slot, the last applied override

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/BodyFamily.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -29,6 +31,11 @@ namespace bcn
         std::string id;
         std::string name;
         SkinSex sex{ SkinSex::female };
+        // UBE uses its own body/head topology, UVs, texture namespace, and
+        // naked-body slot. Keep compatibility on the catalog item so the UI,
+        // distribution backend, and RaceMenu reapply path all make the same
+        // decision instead of relying on the user-facing name.
+        body_family::Mask bodyFamilies{};
         std::vector<SkinTextureLayer> body;
         std::vector<SkinTextureLayer> hands;
         std::vector<SkinTextureLayer> feet;
@@ -46,6 +53,27 @@ namespace bcn
         std::filesystem::path source;
     };
 
+    [[nodiscard]] constexpr body_family::Mask StandardSkinFamilies(const SkinSex sex) noexcept
+    {
+        return sex == SkinSex::female ?
+            body_family::Bit(body_family::Family::femaleVanilla) |
+                body_family::Bit(body_family::Family::cbbe) |
+                body_family::Bit(body_family::Family::unp) :
+            body_family::kMaleFamilies;
+    }
+
+    [[nodiscard]] constexpr bool SkinMatchesActor(
+        const body_family::Mask skinFamilies, const body_family::Mask actorFamily) noexcept
+    {
+        // Unlike an unclassified BodySlide preset, a conventional skin cannot
+        // safely be treated as a generic female fallback for UBE's different
+        // UV topology. Unknown evidence still preserves the show-all fallback.
+        return skinFamilies == 0U || actorFamily == 0U ||
+            (skinFamilies & actorFamily) != 0U;
+    }
+
+    [[nodiscard]] std::string SkinFamilyLabel(body_family::Mask a_families, SkinSex a_sex);
+
     class SkinProfiles final
     {
     public:
@@ -53,9 +81,11 @@ namespace bcn
 
         // Loads BodySkin/<skin name>/profile.json and auto-detects the common
         // BodySkin/<skin name>/Textures/... layout when no profile JSON exists.
-        // A usable skin always contains matching body, hands, and FaceGen face
-        // textures for one sex. Missing feet fall back to the body layers,
-        // which is how legacy BodyChange texture sets are authored.
+        // A conventional usable skin contains matching body, hands, and
+        // FaceGen face textures for one sex. Missing feet fall back to the
+        // body layers, which is how legacy BodyChange texture sets are
+        // authored. UBE skins instead use their own !UBE/Body and !UBE/Head
+        // atlases; the body atlas covers the slot-53 UBE body geometry.
         // Texture paths are game-relative and may point to any installed mod
         // folder, so player and NPC rule selection remain independent.
         void Refresh();

@@ -78,12 +78,19 @@ int main(const int argc, char** argv)
     }
 
     {
+        std::ofstream preset(root / "Nested" / "ube-group.xml");
+        preset << "<SliderPresets><Preset name='Generic UBE Preset' set=''>"
+               << "<Group name='UBE 2.0'/><SetSlider name='ClaviclesAngle' value='25' size='small'/>"
+               << "</Preset></SliderPresets>";
+    }
+
+    {
         std::ofstream preset(root / "Nested" / "Clothes Outfit Bikini Armor Cuirass Dress Panty Overalls.xml");
         preset << "<SliderPresets><Preset name='Reusable Preset From Outfit Mod' set='CBBE'/></SliderPresets>";
     }
 
     const auto presets = bcn::PresetCatalog::ScanDirectory(root);
-    if (!Require(presets.size() == 10U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
+    if (!Require(presets.size() == 11U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
     const auto find = [&](const std::string_view name) {
         return std::ranges::find(presets, name, &bcn::BodyPreset::name);
     };
@@ -109,6 +116,7 @@ int main(const int argc, char** argv)
     if (!Require(find("3BBB Only")->family == "Unclassified", "3BBB-only preset incorrectly classified a body family")) return 1;
     if (!Require(find("UBE Anus 3BA")->family == "CBBE 3BA", "UBE Anus incorrectly replaced the 3BA family")) return 1;
     if (!Require(find("Dual Female")->family == "CBBE 3BA / BHUNP / UNP", "combined female set lost either family")) return 1;
+    if (!Require(find("Generic UBE Preset")->family == "UBE", "UBE Group metadata was not used")) return 1;
     if (!Require(!threeBa->PersistentId().empty(), "persistent preset id is empty")) return 1;
 
     std::filesystem::remove_all(root);

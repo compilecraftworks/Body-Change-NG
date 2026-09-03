@@ -14,6 +14,9 @@ First stable public release.
 - Detects the selected actor's body family conservatively and filters only the
   main Body tab. Uncertain or multi-family presets remain visible through safe
   fallbacks; NPC distribution pools are never auto-filtered.
+- Supports mixed CBBE 3BA/UBE installations by resolving each actor from its
+  live winning skin/head texture path and classifying UBE presets from XML
+  `Preset/@set` and `Group` metadata in the shared SliderPresets folder.
 - Keeps outfit-named presets such as Clothes, Outfit, Bikini, Armor, Cuirass,
   Dress, Panty, and Overalls visible. Only exact `-Refit` presets are reserved
   for outfit correction.
@@ -24,11 +27,16 @@ First stable public release.
   actor without editing NIF, Skin Armor, or equipment records.
 - Supports body, hands, feet, face, vampire face, diffuse, normal, subsurface,
   specular, and compatible FaceGen detail textures.
+- Detects UBE 2.0 `Textures\!UBE\Body` and `Head` d/n/sk atlases, applies them
+  to the live slot-53 body and face, and separates conventional and UBE skin
+  catalogs and runtime distribution candidates per detected actor family.
 - Tracks ownership precisely so cleanup removes only Body Change NG's keys.
 
 ### Player tint
 
 - Adds player-only tint packs with automatic race-appropriate DDS selection.
+- Separates known UBE-only, conventional, and COtR-compatible tint packs while
+  preserving the show-all fallback when actor-family evidence is uncertain.
 - Supports independent color/opacity adjustment and restoration for every
   active supported tint layer.
 - Restores the color swatch and detail picker together with the world tint.

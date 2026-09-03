@@ -7,6 +7,9 @@ body, skin, and player tint manager.
 
 - Change BodySlide morphs and persistent skin textures for the player or a
   selected loaded NPC from one in-game UI.
+- Detect CBBE 3BA and UBE per actor in mixed installations, show matching
+  Body/Skin/Tint assets, and apply UBE Body/Head skin atlases to the correct
+  live slot-53 body and face targets.
 - Apply player RaceMenu tint packs, edit color/opacity by layer, and restore the
   captured original values.
 - Build top-down body/skin NPC distribution rules with independent distribute

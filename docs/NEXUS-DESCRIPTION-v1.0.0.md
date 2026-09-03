@@ -15,11 +15,10 @@ shared morph pipeline:
 
 - **Native GUI instead of an MCM:** press F7 to manage loaded actors, bodies,
   skins, player tint, and distribution rules in one scalable ImGui window.
-- **Actor-matched Body list:** the main Body tab detects the selected actor's
-  BodyFamily and prioritizes presets for that body family, so unrelated body
-  types are not indiscriminately mixed into one list. If detection or preset
-  classification is uncertain, the safe fallback keeps usable candidates
-  visible instead of blocking the feature.
+- **Actor-matched Body and Skin lists:** mixed CBBE 3BA and UBE installations
+  are detected per actor from the live winning skin/head path. The main lists
+  show the matching family instead of mixing incompatible assets. If detection
+  is uncertain, the safe fallback keeps usable candidates visible.
 - **Gamepad navigation:** move through rows and tabs with the D-pad, then select
   or close with the primary and cancel face buttons.
 - **Isolated live preview:** committed body, preview, and outfit correction use
@@ -84,6 +83,8 @@ body slots:
   separate Body Change NG-owned morph keys.
 - Conservative BodyFamily detection keeps the main list relevant without
   blocking uncertain presets or filtering distribution pools.
+- CBBE 3BA and UBE use the same SliderPresets folder; `Preset/@set` and XML
+  `Group` metadata identify the family.
 - Body application uses RaceMenu BodyMorph; no body mesh is generated or
   replaced while the game is running.
 
@@ -92,6 +93,9 @@ body slots:
 - Apply independent skin packs to the player or a selected loaded NPC.
 - Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire
   face, diffuse, normal, subsurface, specular, and detail textures.
+- UBE 2.0 Body/Head d-n-sk atlases are detected separately and applied to the
+  live slot-53 body and face. Known-incompatible conventional and UBE skins are
+  not shown or distributed to the wrong detected family.
 - Cleanup is ownership-aware and does not delete another mod's texture keys.
 
 ### Player tint
@@ -151,14 +155,17 @@ body slots:
 
 1. **Body preset XML:** place standard BodySlide preset files at
    `CalienteTools\BodySlide\SliderPresets\*.xml` from the MO2 mod root.
-2. **Skin packs:** create one folder per pack at
-   `BodySkin\<pack name>\Textures\actors\character\...`, preserving the skin
-   mod's original `Textures` tree and DDS files. Each `<pack name>` folder is
-   one entry in the in-game catalog.
+2. **Skin packs:** conventional CBBE 3BA/BHUNP/UNP skins use
+   `BodySkin\<pack name>\Textures\actors\character\...`. UBE 2.0 skins retain
+   `BodySkin\<pack name>\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds` and
+   `...\!UBE\Head\femalehead_[d/n/sk].dds`. Preserve the source mod's original
+   tree; each `<pack name>` folder becomes one family-matched catalog entry.
 3. **Tint packs:** create one folder per pack at
    `TintMask\<pack name>\textures\actors\character\character assets\tintmasks\*.dds`
    and keep the RaceMenu tint-mask filenames and folders intact. Each
-   `<pack name>` folder is one entry in the in-game catalog.
+   `<pack name>` folder is one entry in the in-game catalog. Include `UBE` in
+   the top-level name of UBE-only tint-mask packs; `COtR` packs are treated as
+   compatible with both UBE and conventional female heads.
 
 These paths are relative to the MO2 mod root. Assets may be placed inside
 the Body Change NG mod or in separate enabled MO2 mods that provide the same

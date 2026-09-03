@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/BodyFamily.h"
+
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -43,6 +45,7 @@ namespace bcn::player_tint
         std::string path;
         Layer layer{};
         Sex sex{ Sex::unisex };
+        body_family::Mask bodyFamilies{};
         std::filesystem::path source;
     };
 
@@ -73,6 +76,7 @@ namespace bcn::player_tint
         queued,
         unavailable,
         invalidAsset,
+        incompatibleBodyFamily,
         unsupportedLayer,
         noTaskInterface,
         noOriginalBackup
@@ -97,6 +101,13 @@ namespace bcn::player_tint
     };
 
     [[nodiscard]] std::string_view LayerName(Layer a_layer);
+    [[nodiscard]] constexpr bool TintMatchesActor(
+        const body_family::Mask tintFamilies, const body_family::Mask actorFamily) noexcept
+    {
+        return tintFamilies == 0U || actorFamily == 0U ||
+            (tintFamilies & actorFamily) != 0U;
+    }
+    [[nodiscard]] std::string TintFamilyLabel(body_family::Mask a_families);
     // Returns the one usable asset for the player's current sex, active tint
     // layer, and race. Race-specific files for other races are never used as
     // fallbacks; a race-neutral file is used only when the pack provides one.

@@ -15,6 +15,7 @@ namespace bcn::skin_override
         actor3DUnavailable,
         missingProfile,
         incompatibleSex,
+        incompatibleBodyFamily,
         faceGeometryUnavailable,
         noTaskInterface
     };

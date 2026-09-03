@@ -127,6 +127,27 @@ namespace
         return bcn::player_tint::Sex::unisex;
     }
 
+    [[nodiscard]] bcn::body_family::Mask InferTintFamilies(
+        const std::string_view pack, const std::string_view path,
+        const bcn::player_tint::Sex sex)
+    {
+        using namespace bcn::body_family;
+        const auto text = Lower(std::string(pack) + ' ' + std::string(path));
+        const auto standardFemale = Bit(Family::femaleVanilla) |
+            Bit(Family::cbbe) | Bit(Family::unp);
+        // UBE documents COtR makeup/warpaints as compatible; keep those packs
+        // visible to both UBE and conventional female heads.
+        if (text.find("cotr") != std::string::npos || text.find("cot r") != std::string::npos) {
+            return kFemaleFamilies;
+        }
+        const auto explicitFemale = DetectText(text, bcn::body_family::Sex::female) &
+            NonVanillaFamilies(bcn::body_family::Sex::female);
+        if (explicitFemale != 0U) return explicitFemale;
+        if (sex == bcn::player_tint::Sex::male) return kMaleFamilies;
+        if (sex == bcn::player_tint::Sex::unisex) return standardFemale | kMaleFamilies;
+        return standardFemale;
+    }
+
     [[nodiscard]] RE::TintMask::Type ToGameLayer(const bcn::player_tint::Layer layer)
     {
         using Layer = bcn::player_tint::Layer;
@@ -312,6 +333,8 @@ namespace
         const auto playerSex = actor->GetActorBase() && actor->GetActorBase()->GetSex() == RE::SEX::kFemale ?
             bcn::player_tint::Sex::female : bcn::player_tint::Sex::male;
         if (asset.sex != bcn::player_tint::Sex::unisex && asset.sex != playerSex) return;
+        if (!bcn::player_tint::TintMatchesActor(
+                asset.bodyFamilies, bcn::body_family::ResolveActor(actor.get()))) return;
         const auto path = TintMaskTexturePath(asset.source);
         if (path.empty()) {
             SKSE::log::error("Body Change NG could not cache tint asset '{}'", asset.name);
@@ -458,6 +481,7 @@ namespace
         const auto playerSex = base && base->GetSex() == RE::SEX::kFemale ?
             bcn::player_tint::Sex::female : bcn::player_tint::Sex::male;
         const auto raceToken = RaceFilenameToken(player);
+        const auto playerFamily = bcn::body_family::ResolveActor(player);
         const auto* current = FindPlayerMask(player, layer);
         const auto currentName = current && current->texture ?
             Lower(Filename(current->texture->textureName.c_str())) : std::string{};
@@ -468,6 +492,7 @@ namespace
                 (asset.sex != bcn::player_tint::Sex::unisex && asset.sex != playerSex)) {
                 continue;
             }
+            if (!bcn::player_tint::TintMatchesActor(asset.bodyFamilies, playerFamily)) continue;
             const auto filename = Lower(Filename(asset.path));
             const auto exactCurrent = !currentName.empty() && filename == currentName;
             const auto assetRace = AssetRaceToken(asset.name);
@@ -574,9 +599,10 @@ namespace bcn::player_tint
                 std::ranges::replace(id, '/', '\\');
                 ++packAudit.recognized;
                 SKSE::log::info(
-                    "TintCatalogAudit pack='{}' file='{}' mapping=player-tint-layer layer={} sex={}",
+                    "TintCatalogAudit pack='{}' file='{}' mapping=player-tint-layer layer={} sex={} families={}",
                     pack, bcn::path_text::Utf8(it->path()), static_cast<std::uint32_t>(*layer),
-                    InferSex(filename) == Sex::female ? "female" : InferSex(filename) == Sex::male ? "male" : "unisex");
+                    InferSex(filename) == Sex::female ? "female" : InferSex(filename) == Sex::male ? "male" : "unisex",
+                    InferTintFamilies(pack, path, InferSex(filename)));
                 loaded.push_back({
                     .id = std::move(id),
                     .pack = pack,
@@ -584,6 +610,7 @@ namespace bcn::player_tint
                     .path = path,
                     .layer = *layer,
                     .sex = InferSex(filename),
+                    .bodyFamilies = InferTintFamilies(pack, path, InferSex(filename)),
                     .source = it->path()
                 });
             }
@@ -655,6 +682,18 @@ namespace bcn::player_tint
         return "Tint";
     }
 
+    std::string TintFamilyLabel(const body_family::Mask families)
+    {
+        const auto ube = (families & body_family::Bit(body_family::Family::ube)) != 0U;
+        const auto conventional = (families & (body_family::Bit(body_family::Family::femaleVanilla) |
+            body_family::Bit(body_family::Family::cbbe) |
+            body_family::Bit(body_family::Family::unp))) != 0U;
+        if (ube && conventional) return "UBE / CBBE 3BA / BHUNP / UNP";
+        if (ube) return "UBE";
+        if (conventional) return "CBBE 3BA / BHUNP / UNP";
+        return "Male";
+    }
+
     std::optional<Asset> BestAssetForPlayer(const std::string_view pack, const Layer layer)
     {
         return ::BestAssetForPlayer(RE::PlayerCharacter::GetSingleton(), Catalog::Get().Snapshot(), pack, layer);
@@ -693,6 +732,9 @@ namespace bcn::player_tint
         if (!asset) return ApplyResult::invalidAsset;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
+        if (!TintMatchesActor(asset->bodyFamilies, body_family::ResolveActor(player))) {
+            return ApplyResult::incompatibleBodyFamily;
+        }
         if (!FindPlayerMask(player, asset->layer)) return ApplyResult::unsupportedLayer;
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return ApplyResult::noTaskInterface;
@@ -732,7 +774,11 @@ namespace bcn::player_tint
                     pack, static_cast<std::uint32_t>(layer), current != nullptr, candidates, currentName);
             }
         }
-        if (selected.empty()) return ApplyResult::invalidAsset;
+        if (selected.empty()) {
+            const auto packExists = std::ranges::any_of(catalog,
+                [pack](const Asset& asset) { return asset.pack == pack; });
+            return packExists ? ApplyResult::incompatibleBodyFamily : ApplyResult::invalidAsset;
+        }
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();

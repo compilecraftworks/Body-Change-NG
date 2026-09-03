@@ -1,6 +1,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 
 #include <algorithm>
+#include <bit>
 #include <cctype>
 #include <ranges>
 #include <string>
@@ -128,12 +129,58 @@ namespace bcn::body_family
         return detected;
     }
 
+    SkinTextureLayout DetectSkinTextureLayout(const std::string_view path, const Sex sex)
+    {
+        auto normalized = std::string(path);
+        std::ranges::transform(normalized, normalized.begin(), [](const unsigned char character) {
+            return static_cast<char>(std::tolower(character));
+        });
+        std::ranges::replace(normalized, '\\', '/');
+        if (sex == Sex::female &&
+            (normalized.starts_with("!ube/") || normalized.starts_with("textures/!ube/") ||
+             normalized.contains("/!ube/"))) {
+            return SkinTextureLayout::ube;
+        }
+        const std::string_view standard = sex == Sex::female ? "/actors/character/female/" :
+            "/actors/character/male/";
+        if (normalized.contains(standard) || normalized.starts_with(standard.substr(1U))) {
+            return SkinTextureLayout::standard;
+        }
+        return SkinTextureLayout::unknown;
+    }
+
+    Mask ResolveSkinTextureFamily(const Mask explicitFamilies, const Mask installedFamilies,
+        const SkinTextureLayout layout, const Sex sex)
+    {
+        auto explicitCandidates = explicitFamilies & NonVanillaFamilies(sex);
+        if (sex == Sex::female && layout == SkinTextureLayout::ube) {
+            return Bit(Family::ube);
+        }
+        if (sex == Sex::female && layout == SkinTextureLayout::standard) {
+            explicitCandidates &= ~Bit(Family::ube);
+        }
+        if (std::popcount(explicitCandidates) == 1) return explicitCandidates;
+
+        auto installedCandidates = installedFamilies & NonVanillaFamilies(sex);
+        if (sex == Sex::female && layout == SkinTextureLayout::standard) {
+            installedCandidates &= ~Bit(Family::ube);
+        }
+        return std::popcount(installedCandidates) == 1 ? installedCandidates : 0U;
+    }
+
     PresetClassification ClassifyPreset(const std::string_view bodySet, const std::string_view presetName,
-        const std::string_view sourcePath)
+        const std::string_view sourcePath, const std::string_view groupNames)
     {
         // "UBE Anus" in 3BA set names denotes only the borrowed anus part;
         // it is not an UBE body-family declaration.
         auto result = ClassifyText(WithoutUbeAnusMarker(bodySet));
+        if (result.families != 0U || result.conflict) return result;
+
+        // BodySlide Group names are authored inside the XML and often carry
+        // the only explicit family declaration (notably "UBE 2.0"). They are
+        // stronger evidence than a preset or file name, but never override a
+        // conflicting explicit Preset/@set value.
+        result = ClassifyText(WithoutUbeAnusMarker(groupNames));
         if (result.families != 0U || result.conflict) return result;
 
         const auto metadata = std::string(presetName) + ' ' + std::string(sourcePath);
