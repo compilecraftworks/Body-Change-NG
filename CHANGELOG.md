@@ -103,7 +103,8 @@ First stable public release.
   ownership remains recognized so existing saves do not stack or leak state.
 - Reapplies committed Body, Skin, and Tint state after RaceMenu closes, with
   generation checks that prevent superseded asynchronous work from winning.
-- Coalesces equipment and actor work, stores ActorHandles instead of raw actor
+- Coalesces equipment and actor work in both normal and performance modes,
+  with performance mode adding an extra scheduling interval; stores ActorHandles instead of raw actor
   pointers, clears detached actor preview/apply state, and resets all transient
   state on a new save session.
 - Ships a valid schema-3 starter JSON and README files in every user asset

@@ -2074,9 +2074,9 @@ namespace
             }
             settingsChanged |= ImGui::Checkbox(Text("성능 모드", "Performance mode", "性能模式"), &settings.performanceMode);
             TextDisabledWrapped(Text(
-                "켜면 자동 NPC 감지 작업을 합쳐 한 액터씩 처리하며, 새로 나타난 NPC를 세이브 로드 대량 작업보다 우선합니다. 직접 선택과 의상 보정은 즉시 처리합니다. 끄면 변경 대상 NPC를 발견 즉시 확인합니다. 최종 결과는 같습니다.",
-                "When enabled, automatic NPC events are coalesced and processed one actor at a time, with newly visible NPCs prioritized ahead of bulk save-load work. Direct selections and outfit corrections stay immediate. When disabled, changed NPCs are checked as soon as they are found. Final results are identical.",
-                "启用后会合并自动 NPC 事件并逐个处理角色，新出现的 NPC 优先于读档时的大批任务。直接选择和服装修正仍会立即处理。禁用后会在发现时立即检查需要更改的 NPC。最终结果相同。"));
+                "자동 NPC 작업은 설정과 관계없이 중복을 합쳐 한 액터씩 안전하게 처리합니다. 켜면 액터 사이에 처리 간격을 한 번 더 두며, 새로 나타난 NPC는 세이브 로드 대량 작업보다 항상 우선합니다. 직접 선택은 즉시 처리되고 최종 결과는 같습니다.",
+                "Automatic NPC work is always coalesced and safely processed one actor at a time. Enabling this adds one more scheduling interval between actors; newly visible NPCs always take priority over bulk save-load work. Direct selections stay immediate and final results are identical.",
+                "无论此设置如何，自动 NPC 任务都会合并重复事件并逐个安全处理。启用后会在角色之间额外增加一次调度间隔；新出现的 NPC 始终优先于读档批量任务。直接选择仍会立即处理，最终结果相同。"));
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
             }

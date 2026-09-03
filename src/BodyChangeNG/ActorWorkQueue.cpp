@@ -38,7 +38,26 @@ namespace
     std::atomic_uint64_t g_processingMicros{};
     std::atomic_size_t g_maxPending{};
 
+    void DrainOne();
+    void QueueDrainAfterHops(std::uint8_t a_remainingHops);
     void ScheduleDrain();
+
+    void QueueDrainAfterHops(const std::uint8_t remainingHops)
+    {
+        const auto* tasks = SKSE::GetTaskInterface();
+        if (!tasks) {
+            std::scoped_lock lock(g_lock);
+            g_drainScheduled = false;
+            return;
+        }
+        if (remainingHops == 0U) {
+            tasks->AddTask(DrainOne);
+            return;
+        }
+        tasks->AddTask([remainingHops] {
+            QueueDrainAfterHops(static_cast<std::uint8_t>(remainingHops - 1U));
+        });
+    }
 
     void DrainOne()
     {
@@ -85,14 +104,13 @@ namespace
 
     void ScheduleDrain()
     {
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return;
         {
             std::scoped_lock lock(g_lock);
             if (g_drainScheduled || g_order.empty()) return;
             g_drainScheduled = true;
         }
-        tasks->AddTask(DrainOne);
+        QueueDrainAfterHops(bcn::AutomaticDrainDelayHops(
+            bcn::Settings::Get().Snapshot().performanceMode));
     }
 
 }
@@ -109,25 +127,6 @@ namespace bcn
     {
         if (!actor || actor->GetFormID() == 0U) return false;
         g_requests.fetch_add(1U, std::memory_order_relaxed);
-        const auto performanceMode = Settings::Get().Snapshot().performanceMode;
-        const auto fastPath = !UsesQueuedPerformancePath(performanceMode);
-        if (fastPath && actor->Is3DLoaded()) {
-            {
-                std::scoped_lock lock(g_lock);
-                g_pending.erase(actor->GetFormID());
-            }
-            const auto started = std::chrono::steady_clock::now();
-            const auto changed = Distribution::Get().ApplyActor(actor);
-            OutfitRefit::Get().ProcessActor(actor);
-            const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-                std::chrono::steady_clock::now() - started).count();
-            g_processingMicros.fetch_add(elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0U,
-                std::memory_order_relaxed);
-            g_processed.fetch_add(1U, std::memory_order_relaxed);
-            (changed ? g_changed : g_unchanged).fetch_add(1U, std::memory_order_relaxed);
-            return changed;
-        }
-
         const auto formID = actor->GetFormID();
         {
             std::scoped_lock lock(g_lock);

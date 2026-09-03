@@ -27,10 +27,12 @@ int main()
             "default and selected state collided");
         Require(body != StableStateSignature("body", "preset-a", false, 1U),
             "randomization options were not included");
-        Require(!bcn::UsesQueuedPerformancePath(false),
-            "normal mode unexpectedly selected the queued actor path");
-        Require(bcn::UsesQueuedPerformancePath(true),
-            "performance mode did not select the coalescing actor queue");
+        Require(bcn::UsesQueuedAutomaticPath(false) && bcn::UsesQueuedAutomaticPath(true),
+            "an automatic actor mode bypassed the coalescing queue");
+        Require(bcn::AutomaticDrainDelayHops(false) == 0U,
+            "normal mode unexpectedly delayed the first queued actor");
+        Require(bcn::AutomaticDrainDelayHops(true) == 1U,
+            "performance mode did not add its conservative scheduling hop");
 
         bcn::ActorState state{
             .actorFormID = 0x1234U,

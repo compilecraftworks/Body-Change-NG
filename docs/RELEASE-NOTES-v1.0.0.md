@@ -14,8 +14,9 @@ body, skin, and player tint manager.
   captured original values.
 - Build top-down body/skin NPC distribution rules with independent distribute
   and exclude modes.
-- Coalesce automatic NPC events and defer RaceMenu partition rebuilds so dense
-  cell loads do not synchronously morph every NPC in one frame.
+- Coalesce automatic NPC events in both normal and performance modes and defer
+  RaceMenu partition rebuilds so dense cell loads do not synchronously morph
+  every NPC in one frame. Performance mode adds another scheduling interval.
 - Keep evaluated actor results in the SKSE co-save while rules remain in a
   portable global JSON.
 - Reapply committed body, skin, and tint state after RaceMenu closes.
