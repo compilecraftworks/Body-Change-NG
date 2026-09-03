@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/BodyFamily.h"
 
+#include <array>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -26,6 +27,24 @@ namespace bcn
         humanoid,
         argonian,
         khajiit
+    };
+
+    // Humanoid face normals can have race-specific variants inside one skin
+    // pack. This is deliberately separate from SkinRace: the latter protects
+    // incompatible human/Argonian/Khajiit UV layouts, while this enum selects
+    // an optional face layer without splitting one pack into many UI rows.
+    enum class HumanoidSkinRace : std::uint8_t
+    {
+        generic,
+        nord,
+        breton,
+        darkElf,
+        highElf,
+        imperial,
+        orc,
+        redguard,
+        woodElf,
+        count
     };
 
     // RaceMenu's public skin-override API addresses texture resources by
@@ -61,6 +80,15 @@ namespace bcn
         // races and otherwise fall back to `face`.
         std::vector<SkinTextureLayer> face;
         std::vector<SkinTextureLayer> vampireFace;
+        // Optional original-path variants from the same conventional female
+        // pack. At runtime only matching elder/race layers replace the same
+        // material channel; missing files fall back to the base pack layer or
+        // ultimately leave the actor's original texture untouched.
+        std::vector<SkinTextureLayer> elderBody;
+        std::vector<SkinTextureLayer> elderHands;
+        std::vector<SkinTextureLayer> elderFace;
+        std::array<std::vector<SkinTextureLayer>,
+            static_cast<std::size_t>(HumanoidSkinRace::count)> raceFace;
         // Face detail DDS files all target texture slot 3. A pack may contain
         // several alternatives (freckles, rough, blank); runtime application
         // chooses the one matching the actor's current FaceGen detail name
@@ -98,6 +126,10 @@ namespace bcn
     [[nodiscard]] std::string SkinRaceLabel(SkinRace a_race);
     [[nodiscard]] SkinRace SkinRaceFromEditorID(std::string_view a_editorID);
     [[nodiscard]] SkinRace ResolveActorSkinRace(const RE::Actor* a_actor);
+    [[nodiscard]] HumanoidSkinRace HumanoidSkinRaceFromEditorID(std::string_view a_editorID);
+    [[nodiscard]] bool IsElderSkinVariant(
+        std::string_view a_raceEditorID, std::string_view a_voiceEditorID);
+    [[nodiscard]] bool IsElderActor(RE::TESNPC* a_base);
 
     class SkinProfiles final
     {

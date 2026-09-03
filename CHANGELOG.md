@@ -37,6 +37,11 @@ First stable public release.
   `BodySkin` pack root, and matches race plus sex for direct preview, committed
   reapply, and NPC distribution. Their body atlas also reaches the intended
   tail geometry, without borrowing missing hand or foot parts or channels.
+- Keeps `femaleold` and humanoid race-specific face normals as conditional
+  layers in the same conventional female pack, applying only channels present
+  for the actor's elder/race state. Astrid/Afflicted-specific assets and DDS
+  under a skin pack's `character assets\tintmasks` are excluded from Body Skin
+  preview and distribution.
 - Tracks ownership precisely so cleanup removes only Body Change NG's keys.
 
 ### Player tint

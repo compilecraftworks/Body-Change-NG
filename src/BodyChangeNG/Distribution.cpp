@@ -50,16 +50,6 @@ namespace
         return true;
     }
 
-    [[nodiscard]] bool ContainsIgnoreCase(const std::string_view text, const std::string_view fragment)
-    {
-        if (fragment.empty()) return true;
-        if (fragment.size() > text.size()) return false;
-        for (std::size_t offset{}; offset + fragment.size() <= text.size(); ++offset) {
-            if (EqualIgnoreCase(text.substr(offset, fragment.size()), fragment)) return true;
-        }
-        return false;
-    }
-
     [[nodiscard]] bool IsOfficialBaseGameFile(const std::string_view filename)
     {
         constexpr std::array officialFiles{
@@ -90,17 +80,6 @@ namespace
         return actor->IsPlayerTeammate() ||
             (potentialFollower && actor->IsInFaction(potentialFollower)) ||
             (currentFollower && actor->IsInFaction(currentFollower));
-    }
-
-    [[nodiscard]] bool IsElderNPC(RE::TESNPC* base)
-    {
-        if (!base) return false;
-        if (const auto* race = base->GetRace(); race && ContainsIgnoreCase(race->GetFormEditorID(), "elder")) {
-            return true;
-        }
-        const auto* voice = base->GetVoiceType();
-        const auto voiceEditorID = voice ? std::string_view{ voice->GetFormEditorID() } : std::string_view{};
-        return ContainsIgnoreCase(voiceEditorID, "old") || ContainsIgnoreCase(voiceEditorID, "elder");
     }
 
     [[nodiscard]] bool IsValidScope(const bcn::DistributionScope scope)
@@ -170,7 +149,7 @@ namespace
         case bcn::DistributionScope::modInstalledFollower:
             return IsCustomFollower(actor, base);
         case bcn::DistributionScope::elderNPC:
-            return IsElderNPC(base);
+            return bcn::IsElderActor(base);
         }
         return false;
     }

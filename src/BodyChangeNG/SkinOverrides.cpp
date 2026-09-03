@@ -798,24 +798,54 @@ namespace
         return profile.faceDetails.size() == 1U ? std::optional{ profile.faceDetails.front() } : std::nullopt;
     }
 
-    [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveFaceLayers(const bcn::SkinProfile& profile,
-        const bool vampire, const std::string_view currentDetailFilename)
+    void OverlayEffectiveLayers(std::vector<bcn::SkinTextureLayer>& base,
+        const std::vector<bcn::SkinTextureLayer>& overlay)
     {
-        // Vampire maps in BodyChange can be deliberately partial. Start with
-        // the normal face's maps (including the selected detail map) and let a
-        // supplied vampire map replace only its matching texture slot.
-        auto layers = profile.face;
-        if (vampire) {
-            for (const auto& vampireLayer : profile.vampireFace) {
-                const auto existing = std::ranges::find(layers, vampireLayer.shaderTextureIndex,
-                                                         &bcn::SkinTextureLayer::shaderTextureIndex);
-                if (existing != layers.end()) {
-                    *existing = vampireLayer;
-                } else {
-                    layers.push_back(vampireLayer);
-                }
-            }
+        for (const auto& layer : overlay) {
+            const auto existing = std::ranges::find(base, layer.shaderTextureIndex,
+                &bcn::SkinTextureLayer::shaderTextureIndex);
+            if (existing != base.end()) *existing = layer;
+            else base.push_back(layer);
         }
+        std::ranges::sort(base, {}, &bcn::SkinTextureLayer::shaderTextureIndex);
+    }
+
+    [[nodiscard]] bcn::HumanoidSkinRace ActorHumanoidSkinRace(RE::TESNPC* base)
+    {
+        const auto* race = base ? base->GetRace() : nullptr;
+        const auto* editorID = race ? race->GetFormEditorID() : nullptr;
+        return bcn::HumanoidSkinRaceFromEditorID(
+            editorID ? std::string_view{ editorID } : std::string_view{});
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveBodyLayers(
+        const bcn::SkinProfile& profile, RE::TESNPC* base)
+    {
+        auto layers = profile.body;
+        if (bcn::IsElderActor(base)) OverlayEffectiveLayers(layers, profile.elderBody);
+        return layers;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveHandsLayers(
+        const bcn::SkinProfile& profile, RE::TESNPC* base)
+    {
+        auto layers = profile.hands;
+        if (bcn::IsElderActor(base)) OverlayEffectiveLayers(layers, profile.elderHands);
+        return layers;
+    }
+
+    [[nodiscard]] std::vector<bcn::SkinTextureLayer> EffectiveFaceLayers(const bcn::SkinProfile& profile,
+        RE::TESNPC* base, const std::string_view currentDetailFilename)
+    {
+        // Every actor-specific set can be partial. Start with the base face,
+        // then replace only supplied channels in specificity order. A missing
+        // race/elder channel therefore keeps the pack's base channel; if the
+        // base channel is also absent, RaceMenu leaves the actor untouched.
+        auto layers = profile.face;
+        const auto raceIndex = static_cast<std::size_t>(ActorHumanoidSkinRace(base));
+        if (raceIndex < profile.raceFace.size()) OverlayEffectiveLayers(layers, profile.raceFace[raceIndex]);
+        if (IsVampireRace(base)) OverlayEffectiveLayers(layers, profile.vampireFace);
+        if (bcn::IsElderActor(base)) OverlayEffectiveLayers(layers, profile.elderFace);
         if (std::ranges::find(layers, kFaceDetailTextureIndex,
                 &bcn::SkinTextureLayer::shaderTextureIndex) == layers.end()) {
             if (const auto detail = MatchingFaceDetail(profile, currentDetailFilename)) layers.push_back(*detail);
@@ -823,10 +853,13 @@ namespace
         return layers;
     }
 
-    [[nodiscard]] bool ProfileUsesFace(const bcn::SkinProfile& profile, const bool vampire) noexcept
+    [[nodiscard]] bool ProfileUsesFace(const bcn::SkinProfile& profile, RE::TESNPC* base) noexcept
     {
-        return !profile.face.empty() || (vampire && !profile.vampireFace.empty()) ||
-            !profile.faceDetails.empty();
+        if (!profile.face.empty() || !profile.faceDetails.empty() ||
+            (IsVampireRace(base) && !profile.vampireFace.empty()) ||
+            (bcn::IsElderActor(base) && !profile.elderFace.empty())) return true;
+        const auto raceIndex = static_cast<std::size_t>(ActorHumanoidSkinRace(base));
+        return raceIndex < profile.raceFace.size() && !profile.raceFace[raceIndex].empty();
     }
 
     [[nodiscard]] std::string NormalizedTexturePath(std::string path)
@@ -843,8 +876,11 @@ namespace
         if (!actor) return;
         auto* base = actor->GetActorBase();
         const auto faceNode = FaceNode(actor, base);
+        const auto bodyLayers = EffectiveBodyLayers(profile, base);
+        const auto handsLayers = EffectiveHandsLayers(profile, base);
         const auto faceLayers = faceNode ?
-            EffectiveFaceLayers(profile, IsVampireRace(base), faceNode->detailFilename) : profile.face;
+            EffectiveFaceLayers(profile, base, faceNode->detailFilename) :
+            EffectiveFaceLayers(profile, base, {});
         const auto verifyPart = [&](const std::string_view part,
             const std::vector<bcn::SkinTextureLayer>& layers,
             const std::optional<RE::BGSBipedObjectForm::BipedObjectSlot> slot,
@@ -900,16 +936,16 @@ namespace
             }
         };
         verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
-            profile.body, ProfileBodySlot(profile), UsesUbeBodySlot(profile) ?
+            bodyLayers, ProfileBodySlot(profile), UsesUbeBodySlot(profile) ?
                 bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
         verifyPart("vagina", profile.vagina,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             bcn::skin_geometry::BodySelection::vagina);
         if (UsesBeastTail(profile)) {
-            verifyPart("tail-body-atlas", profile.body,
+            verifyPart("tail-body-atlas", bodyLayers,
                 RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
         }
-        verifyPart("hands", profile.hands, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
+        verifyPart("hands", handsLayers, RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
         verifyPart("feet", profile.feet, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
         verifyPart("face", faceLayers, std::nullopt);
     }
@@ -1265,15 +1301,14 @@ namespace
             (!female && profile.sex != bcn::SkinSex::male)) return;
         if (!ProfileMatchesActor(actor.get(), profile)) return;
         const auto faceNode = FaceNode(actor.get(), base);
-        const auto vampire = IsVampireRace(base);
-        if (ProfileUsesFace(profile, vampire) && !faceNode) {
+        if (ProfileUsesFace(profile, base) && !faceNode) {
             SKSE::log::warn(
                 "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
                 profile.name, actor->GetFormID());
             return;
         }
         const auto faceLayers = faceNode ?
-            EffectiveFaceLayers(profile, vampire, faceNode->detailFilename) :
+            EffectiveFaceLayers(profile, base, faceNode->detailFilename) :
             std::vector<bcn::SkinTextureLayer>{};
 
         auto clearBatch = std::make_shared<LegacyOverrideBatch>();
@@ -1285,12 +1320,13 @@ namespace
             auto* currentBase = currentActor->GetActorBase();
             if (!currentBase || !ProfileMatchesActor(currentActor.get(), profile)) return;
             const auto currentFace = FaceNode(currentActor.get(), currentBase);
-            const auto currentVampire = IsVampireRace(currentBase);
-            if (ProfileUsesFace(profile, currentVampire) && !currentFace) return;
+            if (ProfileUsesFace(profile, currentBase) && !currentFace) return;
             const auto currentFemale = currentBase->GetSex() == RE::SEX::kFemale;
             const auto currentFaceLayers = currentFace ? EffectiveFaceLayers(
-                profile, currentVampire, currentFace->detailFilename) :
+                profile, currentBase, currentFace->detailFilename) :
                 std::vector<bcn::SkinTextureLayer>{};
+            const auto currentBodyLayers = EffectiveBodyLayers(profile, currentBase);
+            const auto currentHandsLayers = EffectiveHandsLayers(profile, currentBase);
 
             auto applyBatch = std::make_shared<LegacyOverrideBatch>();
             auto partProgress = std::make_shared<std::pair<std::size_t, std::size_t>>();
@@ -1324,9 +1360,9 @@ namespace
                 if (DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                     slot, layers, applyBatch, selection)) ++partProgress->second;
             };
-            const auto hasPrimaryParts = !profile.body.empty() || !profile.hands.empty() ||
+            const auto hasPrimaryParts = !currentBodyLayers.empty() || !currentHandsLayers.empty() ||
                 !profile.feet.empty() || !currentFaceLayers.empty();
-            submitPart(ProfileBodySlot(profile), profile.body, UsesUbeBodySlot(profile) ?
+            submitPart(ProfileBodySlot(profile), currentBodyLayers, UsesUbeBodySlot(profile) ?
                 bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
             if (!profile.vagina.empty()) {
                 if (hasPrimaryParts) {
@@ -1339,14 +1375,14 @@ namespace
                 }
             }
             if (!UsesUbeBodySlot(profile)) {
-                if (UsesBeastTail(profile) && !profile.body.empty()) {
+                if (UsesBeastTail(profile) && !currentBodyLayers.empty()) {
                     // Tail availability is auxiliary: a tail-hiding outfit or
                     // custom race setup must not keep an otherwise complete
                     // skin selection perpetually pending.
                     static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                        RE::BGSBipedObjectForm::BipedObjectSlot::kTail, profile.body, applyBatch));
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kTail, currentBodyLayers, applyBatch));
                 }
-                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
+                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers);
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
             }
             if (!currentFaceLayers.empty()) {
@@ -1430,16 +1466,17 @@ namespace
         if (!overrides) return;
 
         const auto faceNode = FaceNode(actor.get(), base);
-        const auto vampire = IsVampireRace(base);
-        if (ProfileUsesFace(profile, vampire) && !faceNode) {
+        if (ProfileUsesFace(profile, base) && !faceNode) {
             SKSE::log::warn(
                 "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
                 profile.name, actor->GetFormID());
             return;
         }
         const auto faceLayers = faceNode ?
-            EffectiveFaceLayers(profile, vampire, faceNode->detailFilename) :
+            EffectiveFaceLayers(profile, base, faceNode->detailFilename) :
             std::vector<bcn::SkinTextureLayer>{};
+        const auto bodyLayers = EffectiveBodyLayers(profile, base);
+        const auto handsLayers = EffectiveHandsLayers(profile, base);
         // Store exact Armor + ArmorAddon + geometry keys, then repaint only
         // that loaded addon clone. Broad AddSkinOverrideString/skin-slot
         // registration is intentionally never used for new entries.
@@ -1481,9 +1518,9 @@ namespace
             ++requestedParts;
             if (ApplyPart(*overrides, actor.get(), female, slot, layers, selection)) ++appliedParts;
         };
-        const auto hasPrimaryParts = !profile.body.empty() || !profile.hands.empty() ||
+        const auto hasPrimaryParts = !bodyLayers.empty() || !handsLayers.empty() ||
             !profile.feet.empty() || !faceLayers.empty();
-        applyPart(ProfileBodySlot(profile), profile.body, UsesUbeBodySlot(profile) ?
+        applyPart(ProfileBodySlot(profile), bodyLayers, UsesUbeBodySlot(profile) ?
             bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
         if (!profile.vagina.empty()) {
             if (hasPrimaryParts) {
@@ -1496,11 +1533,11 @@ namespace
             }
         }
         if (!UsesUbeBodySlot(profile)) {
-            if (UsesBeastTail(profile) && !profile.body.empty()) {
+            if (UsesBeastTail(profile) && !bodyLayers.empty()) {
                 static_cast<void>(ApplyPart(*overrides, actor.get(), female,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kTail, profile.body));
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kTail, bodyLayers));
             }
-            applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, profile.hands);
+            applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, handsLayers);
             applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, profile.feet);
         }
         if (!faceLayers.empty()) {
@@ -1597,7 +1634,7 @@ namespace bcn::skin_override
         }
         const auto profile = SkinProfiles::Get().Find(profileId);
         if (!profile) return ApplyResult::missingProfile;
-        const auto* base = actor->GetActorBase();
+        auto* base = actor->GetActorBase();
         if (!base) return ApplyResult::invalidActor;
         const auto female = base->GetSex() == RE::SEX::kFemale;
         if ((female && profile->sex != SkinSex::female) || (!female && profile->sex != SkinSex::male)) {
@@ -1611,8 +1648,7 @@ namespace bcn::skin_override
         }
         // Partial body/hands/feet packs do not need a face target. Require
         // live FaceGen geometry only when this profile supplies face layers.
-        if (ProfileUsesFace(*profile, IsVampireRace(const_cast<RE::TESNPC*>(base))) &&
-            !FaceNode(actor, const_cast<RE::TESNPC*>(base))) {
+        if (ProfileUsesFace(*profile, base) && !FaceNode(actor, base)) {
             return ApplyResult::faceGeometryUnavailable;
         }
         const auto* tasks = SKSE::GetTaskInterface();

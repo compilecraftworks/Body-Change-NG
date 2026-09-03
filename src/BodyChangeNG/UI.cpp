@@ -1272,6 +1272,10 @@ namespace
                 collectPaths(skin.feet);
                 collectPaths(skin.face);
                 collectPaths(skin.vampireFace);
+                collectPaths(skin.elderBody);
+                collectPaths(skin.elderHands);
+                collectPaths(skin.elderFace);
+                for (const auto& raceFace : skin.raceFace) collectPaths(raceFace);
                 collectPaths(skin.faceDetails);
                 const auto textureCount = texturePaths.size();
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +

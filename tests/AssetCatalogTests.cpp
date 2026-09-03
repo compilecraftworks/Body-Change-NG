@@ -107,6 +107,10 @@ int main(const int argc, char** argv)
             collect(skin.feet);
             collect(skin.face);
             collect(skin.vampireFace);
+            collect(skin.elderBody);
+            collect(skin.elderHands);
+            collect(skin.elderFace);
+            for (const auto& raceFace : skin.raceFace) collect(raceFace);
             collect(skin.faceDetails);
 
             std::error_code error;
@@ -167,6 +171,30 @@ int main(const int argc, char** argv)
              "blankdetailmap.dds", "femaleheaddetail_frekles.DDS" }) {
         Touch(female / file);
     }
+    for (const auto* file : {
+             "astridbody.dds", "astridhands_msn.dds", "astridhead_s.dds",
+             "femalebodyafflicted.dds", "femalehandsafflicted.dds", "femaleheadafflicted.dds" }) {
+        Touch(female / file);
+    }
+    const auto femaleOld = female.parent_path() / "femaleold";
+    Touch(femaleOld / "FemaleBody_1_msn.dds");
+    Touch(femaleOld / "FemaleHands_1_msn.dds");
+    Touch(femaleOld / "FemaleHead_msn.dds");
+    const std::array raceFaceDirectories{
+        std::pair{ "nordfemale", "femalehead_msn.dds" },
+        std::pair{ "bretonfemale", "femalehead_msn.dds" },
+        std::pair{ "darkelffemale", "femalehead_msn.dds" },
+        std::pair{ "highelffemale", "femalehead_msn.dds" },
+        std::pair{ "imperialfemale", "femalehead_msn.dds" },
+        std::pair{ "femaleorc", "femaleheadorc_msn.dds" },
+        std::pair{ "redguardfemale", "femalehead_msn.dds" },
+        std::pair{ "woodelffemale", "femalehead_msn.dds" }
+    };
+    for (const auto& [directory, filename] : raceFaceDirectories) {
+        Touch(female.parent_path() / directory / filename);
+    }
+    const auto embeddedTint = female.parent_path() / "character assets" / "tintmasks";
+    Touch(embeddedTint / "femalehead_lips.dds");
 
     const auto ubeBody = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
         "Textures" / "!UBE" / "Body";
@@ -325,6 +353,46 @@ int main(const int argc, char** argv)
                 "_s texture was not mapped to BSTextureSet specular slot 7")) return 1;
         if (!Require(!skin.faceDetails.empty() && skin.faceDetails.front().shaderTextureIndex == 3U,
                 "FaceGen detail texture was not mapped to BSTextureSet detail slot 3")) return 1;
+        if (!Require(skin.elderBody.size() == 1U && skin.elderHands.size() == 1U &&
+                skin.elderFace.size() == 1U &&
+                skin.elderBody.front().shaderTextureIndex == 1U &&
+                skin.elderHands.front().shaderTextureIndex == 1U &&
+                skin.elderFace.front().shaderTextureIndex == 1U,
+                "partial femaleold normals were not kept on their exact elder body/hand/face slots")) return 1;
+        for (const auto race : {
+                 bcn::HumanoidSkinRace::nord, bcn::HumanoidSkinRace::breton,
+                 bcn::HumanoidSkinRace::darkElf, bcn::HumanoidSkinRace::highElf,
+                 bcn::HumanoidSkinRace::imperial, bcn::HumanoidSkinRace::orc,
+                 bcn::HumanoidSkinRace::redguard, bcn::HumanoidSkinRace::woodElf }) {
+            const auto& layers = skin.raceFace[static_cast<std::size_t>(race)];
+            if (!Require(layers.size() == 1U && layers.front().shaderTextureIndex == 1U,
+                    "race-specific female face normal was not retained as a conditional face slot")) return 1;
+        }
+        if (!Require(skin.raceFace[static_cast<std::size_t>(bcn::HumanoidSkinRace::generic)].empty(),
+                "a conditional race face was misclassified as the generic face")) return 1;
+        const auto isExcludedBodySkinFile = [](const auto& layer) {
+            const auto path = Lower(layer.path);
+            return path.find("astrid") != std::string::npos ||
+                path.find("afflicted") != std::string::npos ||
+                path.find("tintmasks") != std::string::npos;
+        };
+        bool foundExcluded{};
+        const auto inspectExcluded = [&](const auto& layers) {
+            foundExcluded = foundExcluded || std::ranges::any_of(layers, isExcludedBodySkinFile);
+        };
+        inspectExcluded(skin.body);
+        inspectExcluded(skin.vagina);
+        inspectExcluded(skin.hands);
+        inspectExcluded(skin.feet);
+        inspectExcluded(skin.face);
+        inspectExcluded(skin.vampireFace);
+        inspectExcluded(skin.elderBody);
+        inspectExcluded(skin.elderHands);
+        inspectExcluded(skin.elderFace);
+        for (const auto& raceFace : skin.raceFace) inspectExcluded(raceFace);
+        inspectExcluded(skin.faceDetails);
+        if (!Require(!foundExcluded,
+                "Astrid, Afflicted, or embedded tintmask files leaked into Body Skin mapping")) return 1;
     }
     if (!Require(argonianRows == 2U && khajiitRows == 2U,
             "beast-race packs did not produce separate female and male rows")) return 1;
@@ -355,6 +423,20 @@ int main(const int argc, char** argv)
             bcn::SkinRaceFromEditorID("KhajiitRace") == bcn::SkinRace::khajiit &&
             bcn::SkinRaceFromEditorID("NordRace") == bcn::SkinRace::humanoid,
             "actor race EditorID classification did not preserve beast and humanoid boundaries")) return 1;
+    if (!Require(
+            bcn::HumanoidSkinRaceFromEditorID("NordRace") == bcn::HumanoidSkinRace::nord &&
+            bcn::HumanoidSkinRaceFromEditorID("BretonRace") == bcn::HumanoidSkinRace::breton &&
+            bcn::HumanoidSkinRaceFromEditorID("DarkElfRaceVampire") == bcn::HumanoidSkinRace::darkElf &&
+            bcn::HumanoidSkinRaceFromEditorID("HighElfRace") == bcn::HumanoidSkinRace::highElf &&
+            bcn::HumanoidSkinRaceFromEditorID("ImperialRace") == bcn::HumanoidSkinRace::imperial &&
+            bcn::HumanoidSkinRaceFromEditorID("OrcRace") == bcn::HumanoidSkinRace::orc &&
+            bcn::HumanoidSkinRaceFromEditorID("RedguardRace") == bcn::HumanoidSkinRace::redguard &&
+            bcn::HumanoidSkinRaceFromEditorID("WoodElfRace") == bcn::HumanoidSkinRace::woodElf,
+            "humanoid race EditorID classification did not select the matching face variant")) return 1;
+    if (!Require(bcn::IsElderSkinVariant("ElderRace", "FemaleEvenToned") &&
+            bcn::IsElderSkinVariant("NordRace", "FemaleOldGrumpy") &&
+            !bcn::IsElderSkinVariant("NordRace", "FemaleEvenToned"),
+            "elder race/voice classification did not preserve the distribution condition semantics")) return 1;
 
     const std::string tintPackName{ "틴트包" };
     const auto tintA = sandbox / "TintMask" / std::filesystem::path{ L"틴트包" } / "textures" / "actors" / "character" /

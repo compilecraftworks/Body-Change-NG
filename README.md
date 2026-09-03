@@ -86,6 +86,10 @@ button after adding files:
 
 - `CalienteTools\BodySlide\SliderPresets` — BodySlide preset XML files
 - `BodySkin\<pack name>\Textures\actors\character\...` — conventional skin packs
+- Conventional female packs may keep optional `femaleold` body/hand/face
+  channels and race-specific `*female\femalehead*_msn.dds` folders under the
+  same original `Textures\actors\character` tree. They stay in one pack row
+  and are selected for the matching actor.
 - CBBE 3BA female packs may also provide `femalebody_etc_v2_1.dds` plus `_msn`,
   `_sk`, and `_s`; these channels target only `3BA_Vagina`/`3BBB_Vagina`
 - `BodySkin\<pack name>\Textures\actors\character\argonianfemale|argonianmale|khajiitfemale|khajiitmale` — beast-race skin packs
@@ -133,6 +137,11 @@ button after adding files:
 
 - BodySlide presets: `CalienteTools\BodySlide\SliderPresets\*.xml`
 - Conventional skin packs: `BodySkin\<pack name>\Textures\actors\character\...`
+- Optional conventional female variants: original `femaleold`, `nordfemale`,
+  `bretonfemale`, `darkelffemale`, `highelffemale`, `imperialfemale`,
+  `femaleorc`, `redguardfemale`, and `woodelffemale` directories in that same
+  tree. Missing variant channels fall back to the pack's base female channel,
+  then to the actor's original texture.
 - Argonian/Khajiit skin packs: the same `BodySkin\<pack name>` root with the
   original `argonianfemale`, `argonianmale`, `khajiitfemale`, or `khajiitmale`
   folders below `Textures\actors\character`

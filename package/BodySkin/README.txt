@@ -5,6 +5,19 @@ Body Change NG - 스킨팩 설치 안내
 일반 CBBE 3BA/BHUNP/UNP 구조:
 BodySkin\<스킨팩 이름>\Textures\actors\character\...
 
+일반 여성 스킨팩의 선택적 노인·종족 얼굴 구조(원본 경로 그대로):
+BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleBody_1_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleHands_1_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleHead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\nordfemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\bretonfemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\darkelffemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\highelffemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\imperialfemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\femaleorc\femaleheadorc_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\redguardfemale\femalehead_msn.dds
+BodySkin\<스킨팩 이름>\Textures\actors\character\woodelffemale\femalehead_msn.dds
+
 아르고니안·카짓 구조(한 팩에 필요한 폴더를 함께 넣어도 됩니다):
 BodySkin\<스킨팩 이름>\Textures\actors\character\argonianfemale\...
 BodySkin\<스킨팩 이름>\Textures\actors\character\argonianmale\...
@@ -25,6 +38,15 @@ BodySkin\<스킨팩 이름>\Textures\!UBE\Head\femalehead_sk.dds
 유지합니다. diffuse·normal·subsurface·specular 채널도 같은 원칙이며,
 몸 파일을 발이나 손에 대신 쓰지 않습니다.
 
+노인·종족 폴더의 파일은 별도 스킨 항목이 아니라 같은 스킨팩의 조건부
+레이어입니다. 선택한 NPC의 종족·성별·노인 여부에 맞을 때만 실제 존재하는
+채널을 적용합니다. 해당 폴더나 파일이 없으면 같은 팩의 기본 female 채널을
+사용하고, 기본 채널도 없으면 액터가 원래 쓰던 텍스처를 유지합니다.
+Astrid 전용 astridbody/astridhands/astridhead 파일과 Afflicted 전용 파일은
+일반 NPC 스킨으로 등록하지 않습니다. character assets\tintmasks 아래 DDS도
+바디스킨 목록·미리보기·NPC 배포에 포함하지 않으며 TintMask 팩으로 따로
+설치해야 합니다.
+
 CBBE 3BA 여성 스킨팩에 아래 파일이 있으면 여성 성기 전용 채널로 함께
 등록합니다. 네 파일은 3BA_Vagina(구형 BodySlide의 3BBB_Vagina) 지오메트리에만
 적용되며 3BA_Anus, 일반 몸, 손, 발, 얼굴에는 적용하지 않습니다.
@@ -42,7 +64,8 @@ femalebody_etc_v2_1_s.dds
 바디 계열에 맞는 것만 목록에 표시됩니다.
 
 게임 실행 중 폴더를 추가했다면 Body Change NG의 바디스킨 탭에서
-새로고침을 누르세요. 한 팩 안의 각 종족·성별 조합은 별도로 감지됩니다.
+새로고침을 누르세요. 아르고니안·카짓의 각 종족·성별 조합은 별도로
+감지하며, 인간형 여성의 노인·종족 얼굴은 같은 팩 안에서 자동 선택합니다.
 
 English:
 Create one folder per skin pack and keep the original texture tree under
@@ -57,6 +80,13 @@ targets the live tail geometry.
 Skin packs may be partial: only supplied body parts and material channels are
 overridden, while missing ones retain the actor's underlying textures. Files
 are never substituted across body, hands, feet, or face slots.
+Optional femaleold body/hand/face channels and the original nordfemale,
+bretonfemale, darkelffemale, highelffemale, imperialfemale, femaleorc,
+redguardfemale, and woodelffemale face-normal paths remain part of the same
+skin-pack row. They are selected per actor; a missing conditional channel falls
+back to the pack's base female channel, then to the actor's original texture.
+Astrid/Afflicted-specific files and DDS files under character assets\tintmasks
+are not registered as Body Skin assets.
 For CBBE 3BA female packs, femalebody_etc_v2_1 with its _msn, _sk, and _s
 companions is mapped only to 3BA_Vagina/3BBB_Vagina, never to 3BA_Anus or any
 other body part.
