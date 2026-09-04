@@ -2,12 +2,13 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include "BodyChangeNG/FrameTaskQueue.h"
 
 namespace bcn::frame_tasks
 {
-    using Lease = std::shared_ptr<void>;
+    using Lease = async_work::FrameTaskQueue::Lease;
     bool Queue(std::uint32_t actor, std::function<void()> work,
-        std::uint32_t delay = 1, std::uint32_t channel = 0, bool urgent = false);
+        std::uint32_t delay = 1, std::uint32_t channel = 0, bool urgent = false, bool interactive = false);
     // Continuations retain the ORIGINAL actor lease and must not acquire it
     // again. Used only by already-dispatched asynchronous skin callbacks.
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay = 1);
@@ -21,4 +22,5 @@ namespace bcn::frame_tasks
     bool IsCurrent(std::uint64_t epoch);
     void CancelActor(std::uint32_t actor);
     bool HasActorWork(std::uint32_t actor);
+    async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor);
 }

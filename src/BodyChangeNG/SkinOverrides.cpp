@@ -452,28 +452,33 @@ namespace
 
     class NodeUpdateCallback final : public RE::BSScript::IStackCallbackFunctor
     {
+        struct Payload
+        {
+            RE::ActorHandle actor;
+            std::uint64_t generation{}, epoch{};
+            bcn::frame_tasks::Lease lease;
+        };
     public:
         NodeUpdateCallback(RE::ActorHandle actorHandle, const std::uint64_t generation) :
-            actorHandle_(std::move(actorHandle)), generation_(generation),
-            epoch_(bcn::frame_tasks::Epoch()), lease_(bcn::frame_tasks::CurrentLease()) {}
+            payload_(Payload{std::move(actorHandle), generation, bcn::frame_tasks::Epoch(),
+                bcn::frame_tasks::CurrentLease()}) {}
 
         void operator()(RE::BSScript::Variable) override
         {
             // Actor.QueueNiNodeUpdate is asynchronous with respect to the
             // scene graph used by RaceMenu BodyMorph.  Start the post-rebuild
             // barrier only after Papyrus reports that the call completed.
-            if (!bcn::frame_tasks::IsCurrent(epoch_) || !bcn::frame_tasks::ValidLease(lease_)) return;
-            bcn::frame_tasks::Continue(lease_, [handle = actorHandle_, generation = generation_] {
+            auto payload = payload_.Take();
+            if (!payload || !bcn::frame_tasks::IsCurrent(payload->epoch) ||
+                !bcn::frame_tasks::ValidLease(payload->lease)) return;
+            bcn::frame_tasks::Continue(std::move(payload->lease), [handle = payload->actor, generation = payload->generation] {
                 QueueSettledSkinAudit(handle, generation, 2U);
             });
         }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
-        RE::ActorHandle actorHandle_;
-        std::uint64_t generation_{};
-        std::uint64_t epoch_{};
-        bcn::frame_tasks::Lease lease_;
+        bcn::async_work::CompletionPayload<Payload> payload_;
     };
 
     [[nodiscard]] bool QueueNiNodeUpdate(RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
@@ -1214,6 +1219,7 @@ namespace
         bcn::frame_tasks::Lease lease;
         std::uint64_t epoch{};
         RE::ActorHandle actor;
+        RE::FormID actorFormID{};
         const RE::Actor* identity{};
         const RE::BSScript::Internal::VirtualMachine* vmIdentity{};
         std::uint64_t generation{};
@@ -1230,6 +1236,7 @@ namespace
         batch->lease = bcn::frame_tasks::CurrentLease();
         batch->epoch = bcn::frame_tasks::Epoch();
         batch->actor = actor->GetHandle();
+        batch->actorFormID = actor->GetFormID();
         batch->identity = actor;
         batch->vmIdentity = RE::BSScript::Internal::VirtualMachine::GetSingleton();
         batch->generation = generation;
@@ -1256,7 +1263,8 @@ namespace
     void CompleteLegacyBatch(const std::shared_ptr<LegacyOverrideBatch>& batch)
     {
         if (!batch || batch->pending.fetch_sub(1U, std::memory_order_acq_rel) != 1U) return;
-        if (!bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease)) return;
+        if (!bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease) ||
+            !IsCurrentSkinChange(batch->actorFormID, batch->generation)) return;
         const auto accepted = batch->accepted.load(std::memory_order_acquire);
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto completion = batch->completion;
@@ -1270,15 +1278,17 @@ namespace
     class LegacyOverrideCallback final : public RE::BSScript::IStackCallbackFunctor
     {
     public:
-        explicit LegacyOverrideCallback(std::shared_ptr<LegacyOverrideBatch> batch) : batch_(std::move(batch)) {}
+        explicit LegacyOverrideCallback(std::shared_ptr<LegacyOverrideBatch> batch) : payload_(std::move(batch)) {}
         ~LegacyOverrideCallback() override { Finish(); }
         void operator()(RE::BSScript::Variable) override { Finish(); }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
-        void Finish() { if (finished_.TryFinish()) CompleteLegacyBatch(batch_); }
-        bcn::async_work::CompleteOnce finished_;
-        std::shared_ptr<LegacyOverrideBatch> batch_;
+        void Finish()
+        {
+            if (auto batch = payload_.Take()) CompleteLegacyBatch(*batch);
+        }
+        bcn::async_work::CompletionPayload<std::shared_ptr<LegacyOverrideBatch>> payload_;
     };
 
     [[nodiscard]] bool DispatchLegacy(RE::BSScript::Internal::VirtualMachine& vm, const char* function,
@@ -1294,21 +1304,31 @@ namespace
 
     class LegacyOwnershipQueryCallback final : public RE::BSScript::IStackCallbackFunctor
     {
+        struct Payload
+        {
+            std::shared_ptr<LegacyOverrideBatch> batch;
+            std::function<void(std::string)> completion;
+        };
     public:
         LegacyOwnershipQueryCallback(std::shared_ptr<LegacyOverrideBatch> batch,
             std::function<void(std::string)> completion) :
-            batch_(std::move(batch)), completion_(std::move(completion)) {}
+            payload_(Payload{std::move(batch), std::move(completion)}) {}
 
         ~LegacyOwnershipQueryCallback() override
         {
-            if (finished_.TryFinish()) CompleteLegacyBatch(batch_);
+            if (auto payload = payload_.Take()) CompleteLegacyBatch(payload->batch);
         }
 
         void operator()(RE::BSScript::Variable result) override
         {
-            if (!finished_.TryFinish()) return;
-            if (!bcn::frame_tasks::IsCurrent(batch_->epoch) || !bcn::frame_tasks::ValidLease(batch_->lease)) {
-                CompleteLegacyBatch(batch_);
+            auto payload = payload_.Take();
+            if (!payload) return;
+            auto batch = std::move(payload->batch);
+            // Only inspect locked generation/session data on the VM thread.
+            // Stale query results cannot submit another ownership mutation.
+            if (!bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease) ||
+                !IsCurrentSkinChange(batch->actorFormID, batch->generation)) {
+                CompleteLegacyBatch(batch);
                 return;
             }
             std::string current;
@@ -1317,21 +1337,19 @@ namespace
             // follow-up back to the game thread and revalidate there, not only
             // after the entire clear/apply batch has already changed textures.
             if (const auto* tasks = SKSE::GetTaskInterface()) {
-                const auto queued = bcn::frame_tasks::Continue(batch_->lease,
-                    [batch = batch_, completion = completion_, current = std::move(current)]() mutable {
+                const auto queued = bcn::frame_tasks::Continue(batch->lease,
+                    [batch, completion = std::move(payload->completion), current = std::move(current)]() mutable {
                     const auto actor = ResolveLegacyBatch(batch);
                     if (actor && completion) completion(std::move(current));
                     CompleteLegacyBatch(batch);
                 });
-                if (!queued) CompleteLegacyBatch(batch_);
-            } else CompleteLegacyBatch(batch_);
+                if (!queued) CompleteLegacyBatch(batch);
+            } else CompleteLegacyBatch(batch);
         }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
-        bcn::async_work::CompleteOnce finished_;
-        std::shared_ptr<LegacyOverrideBatch> batch_;
-        std::function<void(std::string)> completion_;
+        bcn::async_work::CompletionPayload<Payload> payload_;
     };
 
     void DispatchLegacyOwnershipQuery(RE::BSScript::Internal::VirtualMachine& vm, const char* function,

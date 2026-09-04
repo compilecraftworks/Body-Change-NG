@@ -13,7 +13,7 @@ namespace
     bool g_scheduled{};
     bool g_available{};
     thread_local bcn::frame_tasks::Lease g_lease;
-    thread_local bool g_inPump{}, g_urgent{};
+    thread_local bool g_inPump{}, g_urgent{}, g_interactive{};
 
     void Pump(std::uint64_t epoch)
     {
@@ -28,7 +28,7 @@ namespace
             {
                 std::scoped_lock lock(g_lock);
                 if (epoch != g_queue.Epoch()) return;
-                job = g_queue.Take();
+                job = g_queue.Take(count == 0);
             }
             if (!job) break;
             if (job->actor) ++actorJobs;
@@ -42,12 +42,14 @@ namespace
             auto previous = std::exchange(g_lease, job->lease);
             const auto previousPump = std::exchange(g_inPump, true);
             const auto previousUrgent = std::exchange(g_urgent, job->urgent);
+            const auto previousInteractive = std::exchange(g_interactive, job->interactive);
             try { job->run(); }
             catch (const std::exception& error) { SKSE::log::error("BCNG queued work failed: {}", error.what()); }
             catch (...) { SKSE::log::error("BCNG queued work failed with an unknown C++ exception"); }
             g_lease = std::move(previous);
             g_inPump = previousPump;
             g_urgent = previousUrgent;
+            g_interactive = previousInteractive;
             if (std::chrono::steady_clock::now() - started >= budget) break;
         }
         std::scoped_lock lock(g_lock);
@@ -60,21 +62,24 @@ namespace
 namespace bcn::frame_tasks
 {
     bool Queue(std::uint32_t actor, std::function<void()> work, std::uint32_t delay,
-        std::uint32_t channel, bool urgent)
+        std::uint32_t channel, bool urgent, bool interactive)
     {
         std::scoped_lock lock(g_lock);
         if (!g_available) return false;
         return g_queue.Submit(actor, channel, std::move(work), delay,
-            urgent || g_urgent || (!g_inPump && channel >= 200));
+            urgent || g_urgent || (!g_inPump && channel >= 200),
+            interactive || g_interactive || (!g_inPump && channel >= 200));
     }
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay)
     {
-        return Queue(0, [lease = std::move(lease), work = std::move(work)] {
-            auto previous = std::exchange(g_lease, lease);
-            try { work(); }
-            catch (...) { g_lease = std::move(previous); throw; }
-            g_lease = std::move(previous);
-        }, delay, 0, true);
+        std::scoped_lock lock(g_lock);
+        if (!g_available || !async_work::FrameTaskQueue::ValidLease(lease)) return false;
+        const auto interactive = async_work::FrameTaskQueue::InteractiveLease(lease);
+        // A continuation owns the ORIGINAL lease, never reacquires its actor.
+        // Keeping it on the job also lets a later user request promote already
+        // queued callbacks of an automatic skin update. Pump restores TLS even
+        // when the continuation throws.
+        return g_queue.Submit(0, 0, std::move(work), delay, true, interactive, std::move(lease));
     }
     Lease CurrentLease() { return g_lease; }
     bool ValidLease(const Lease& lease) { return async_work::FrameTaskQueue::ValidLease(lease); }
@@ -109,4 +114,9 @@ namespace bcn::frame_tasks
     }
     void CancelActor(std::uint32_t actor) { std::scoped_lock lock(g_lock); g_queue.CancelActor(actor); }
     bool HasActorWork(std::uint32_t actor) { std::scoped_lock lock(g_lock); return g_queue.HasActorWork(actor); }
+    async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor)
+    {
+        std::scoped_lock lock(g_lock);
+        return g_queue.Status(actor);
+    }
 }

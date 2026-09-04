@@ -2549,7 +2549,22 @@ namespace bcn::ui
         ImGui::InputTextWithHint("##search", Text("이름 검색", "Search", "搜索名称"), &g_search);
         ImGui::SameLine();
         ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
-        if (g_activeTab == ActiveTab::body) {
+        const auto workStatus = selectedActor ? frame_tasks::Status(selectedActor->GetFormID()) :
+            async_work::FrameTaskQueue::WorkStatus{};
+        if (workStatus.queued || workStatus.busy) {
+            // Reuse the help line: no extra row or list-height jump. Queue
+            // status is not proof of engine completion or successful apply.
+            const auto* statusText = workStatus.Delayed() ?
+                Text("선택 액터 갱신 지연 · 작업 완료 대기 중", "Selected actor update delayed · Waiting for work to finish", "所选角色更新延迟 · 等待任务完成") :
+                workStatus.busy ? Text("선택 액터 적용 중…", "Applying to selected actor…", "正在应用于所选角色…") :
+                Text("선택 액터 적용 대기 중…", "Selected actor update queued…", "所选角色更新排队中…");
+            ImGui::TextColored(workStatus.Delayed() ? ImVec4(1.0F, .76F, .42F, 1.0F) :
+                ImVec4(.48F, .82F, .96F, 1.0F), "%s", statusText);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Text(
+                "목록의 선택 표시는 요청한 값입니다. 이전 갱신이 끝나면 최신 선택을 처리합니다. 지연 중에는 같은 액터에 갱신을 겹쳐 실행하지 않습니다.",
+                "The list shows your requested selection. The latest request is processed after prior updates finish. Delayed work is not forced to overlap on the same actor.",
+                "列表显示请求的选择。先前更新完成后处理最新请求。延迟时不会强制同时更新同一角色。"));
+        } else if (g_activeTab == ActiveTab::body) {
             ImGui::TextDisabled("%s", racemenu::IsReady() ?
                 Text("선택 액터에게 RaceMenu BodyMorph로 즉시 적용", "Applies immediately to the selected actor through RaceMenu BodyMorph", "通过 RaceMenu BodyMorph 立即应用于所选角色") :
                 Text("RaceMenu BodyMorph 인터페이스를 기다리는 중", "Waiting for RaceMenu's BodyMorph interface", "正在等待 RaceMenu 的 BodyMorph 接口"));

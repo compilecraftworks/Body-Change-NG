@@ -1,6 +1,8 @@
 #include "BodyChangeNG/FrameTaskQueue.h"
+#include "BodyChangeNG/AsyncWorkGuards.h"
 #include <iostream>
 #include <stdexcept>
+#include <vector>
 using bcn::async_work::FrameTaskQueue;
 static void Check(bool ok, const char* message) { if (!ok) throw std::runtime_error(message); }
 int main()
@@ -60,6 +62,122 @@ int main()
         queue.Submit(2, 201, [] {}, 1, true);
         queue.Advance();
         Check(queue.Take()->actor == 2, "visible native application delayed behind unrelated planning");
+        queue.Reset(true);
+        queue.Submit(10, 100, [] {});
+        for (unsigned n=0; n<60; ++n) queue.Advance();
+        // Simulate an expensive native call using an entire pump. Direct input
+        // wins three reserved opportunities; aged bulk still gets a turn.
+        for (unsigned n=0; n<3; ++n) {
+            queue.Submit(20+n, 200, [] {}, 1, true, true);
+            queue.Advance();
+            auto input = queue.Take(true);
+            Check(input && input->actor == 20+n && FrameTaskQueue::InteractiveLease(input->lease),
+                "aged bulk stole reserved input opportunity");
+        }
+        queue.Submit(23, 200, [] {}, 1, true, true); queue.Advance();
+        Check(queue.Take(true)->actor == 10, "continuous input starved aged bulk");
+        Check(queue.Take()->actor == 23, "input lost after fairness opportunity");
+
+        queue.Reset(true);
+        queue.Submit(30, 201, [] {});
+        queue.Submit(31, 100, [] {});
+        queue.Submit(30, 200, [] {}, 1, true, true);
+        queue.Advance(); job = queue.Take(true);
+        Check(job && job->actor == 30 && job->channel == 201 && job->interactive,
+            "reserved input overtook its own commit or failed to promote prerequisite");
+        Check(queue.Take(true)->actor == 31 && !queue.Take(true), "input bypassed live actor lease");
+        job.reset(); queue.Advance(); queue.Advance();
+        Check(queue.Take(true)->channel == 200, "latest preview lost after earlier commit");
+
+        queue.Reset(true);
+        queue.Submit(40, 100, [] {}, 6);
+        queue.Submit(40, 204, [] {}, 1, true, true);
+        queue.Submit(41, 204, [] {}, 1, true, true);
+        queue.Advance();
+        Check(queue.Take(true)->actor == 41 && !queue.Take(true), "direct input bypassed same-actor due boundary");
+
+        queue.Reset(true);
+        queue.Submit(42, 204, [] {}); queue.Advance(); job = queue.Take();
+        auto automaticLease = job->lease;
+        Check(!FrameTaskQueue::InteractiveLease(automaticLease), "automatic skin incorrectly started interactive");
+        Check(!queue.Submit(42, 204, [] {}, 1, true, false, automaticLease),
+            "continuation allowed to reacquire its own busy actor");
+        queue.Submit(0, 0, [] {}, 1, true, false, automaticLease);
+        job.reset(); queue.Submit(43, 100, [] {});
+        for (unsigned n=0; n<60; ++n) queue.Advance();
+        queue.Submit(42, 201, [] {}, 1, true, true); queue.Advance();
+        Check(FrameTaskQueue::InteractiveLease(automaticLease), "direct selection failed to promote running skin");
+        job = queue.Take(true);
+        Check(job && job->actor == 0 && job->lease == automaticLease && job->interactive,
+            "queued skin continuation did not inherit later input priority");
+        Check(queue.Take()->actor == 43 && !queue.Take(), "new selection overlapped promoted continuation");
+        job.reset(); automaticLease.reset(); queue.Advance(); queue.Advance();
+        Check(queue.Take(true)->channel == 201, "new selection lost after promoted skin finished");
+
+        queue.Reset(true);
+        queue.Submit(50, 204, [] {});
+        for (int i=0; i<100; ++i) queue.Submit(50, 204, [&] { result = 77; }, 1, true, true);
+        Check(queue.Pending() == 1 && queue.Status(50).queued && !queue.Status(50).busy,
+            "latest-choice coalescing or queued status");
+        Check(queue.Status(50, FrameTaskQueue::Clock::now() + std::chrono::seconds(2)).Delayed(),
+            "long pending wait not exposed");
+        queue.Advance(); job = queue.Take(true); job->run();
+        Check(result == 77 && job->interactive && !queue.Status(50).queued && queue.Status(50).busy,
+            "coalesced result or active status");
+        // The VM retains its callback object, but a completed callback must
+        // not keep the actor busy. Its real continuation DOES keep it busy.
+        bcn::async_work::CompletionPayload<FrameTaskQueue::Lease> retainedCallback(job->lease);
+        auto continuation = retainedCallback.Take(); job.reset();
+        queue.Submit(50, 201, [] {}, 1, true, true); queue.Advance();
+        Check(!queue.Take(true), "callback payload transfer released unfinished continuation");
+        Check(!retainedCallback.Take(), "retained callback invoked twice");
+        continuation.reset(); queue.Advance();
+        Check(!queue.Take(true), "completion transfer removed quiet boundary");
+        queue.Advance();
+        Check(queue.Take(true).has_value(), "completed-but-retained callback blocked next choice");
+        queue.Advance(); queue.Advance();
+        Check(!queue.Status(50).busy && !queue.Status(50).queued, "completed work left stale UI status");
+
+        // Multiple outstanding native callbacks: a newer selection may
+        // supersede follow-ups, but cannot overlap any unfinished native call.
+        queue.Reset(true);
+        queue.Submit(55, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        using NativeCallback = bcn::async_work::CompletionPayload<FrameTaskQueue::Lease>;
+        std::vector<std::unique_ptr<NativeCallback>> nativeCallbacks;
+        for (unsigned n=0; n<3; ++n) nativeCallbacks.push_back(std::make_unique<NativeCallback>(job->lease));
+        job.reset();
+        for (int n=0; n<100; ++n) queue.Submit(55, 204, [&, n] { result = n; }, 1, true, true);
+        for (unsigned n=0; n<2; ++n) {
+            auto finishedNative = nativeCallbacks[n]->Take(); finishedNative.reset();
+            queue.Advance(); queue.Advance();
+            Check(!queue.Take(true), "new skin overlapped remaining native callbacks");
+        }
+        auto lastNative = nativeCallbacks.back()->Take(); lastNative.reset();
+        queue.Advance(); queue.Advance(); job = queue.Take(true);
+        Check(job.has_value(), "retained completed native callbacks blocked latest skin"); job->run();
+        Check(result == 99 && queue.Pending() == 0, "intermediate skin replayed or final skin lost");
+
+        queue.Reset(true);
+        queue.Submit(56, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        NativeCallback cancelled(job->lease); job.reset();
+        queue.CancelActor(56);
+        auto cancelledResult = cancelled.Take();
+        Check(cancelledResult && !FrameTaskQueue::ValidLease(*cancelledResult), "cancelled callback lost invalidation at transfer");
+        cancelledResult.reset(); queue.Advance(); queue.Advance();
+        Check(!queue.HasActorWork(56), "cancelled completed callback retained actor");
+
+        queue.Reset(true);
+        queue.Submit(60, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        auto detachedLease = job->lease; job.reset(); queue.CancelActor(60);
+        Check(!FrameTaskQueue::ValidLease(detachedLease) && queue.Status(60).busy,
+            "detach incorrectly reported unfinished callback complete");
+        queue.Reset(false);
+        Check(!queue.Status(60).busy && !queue.Status(60).queued && !FrameTaskQueue::ValidLease(detachedLease),
+            "session reset leaked status or revived callback");
+        FrameTaskQueue::WorkStatus threshold{true, false, 1499};
+        Check(!threshold.Delayed(), "delay indicator threshold too early");
+        threshold.elapsedMs = 1500;
+        Check(threshold.Delayed(), "delay indicator threshold missing");
         std::cout << "FrameTaskQueueTests passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

@@ -3,6 +3,7 @@
 #include <atomic>
 #include <cmath>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <thread>
 #include <vector>
@@ -29,6 +30,29 @@ int main()
         CompleteOnce discarded;
         Require(discarded.TryFinish(), "discarded callback did not finish");
         Require(!discarded.TryFinish(), "discarded callback finished twice");
+        auto resource = std::make_shared<int>(42);
+        std::weak_ptr<int> weakResource = resource;
+        CompletionPayload<std::shared_ptr<int>> retained(std::move(resource));
+        {
+            auto value = retained.Take();
+            Require(value && **value == 42 && !weakResource.expired(), "callback payload was not transferred");
+            Require(!retained.Take(), "callback payload transferred twice");
+        }
+        Require(weakResource.expired(), "retained finished callback kept its payload alive");
+        auto unfinished = std::make_shared<int>(1);
+        std::weak_ptr<int> weakUnfinished = unfinished;
+        {
+            CompletionPayload<std::shared_ptr<int>> dropped(std::move(unfinished));
+            Require(!weakUnfinished.expired(), "uninvoked callback released work early");
+        }
+        Require(weakUnfinished.expired(), "discarded callback leaked its payload");
+        CompletionPayload<unsigned> concurrent(123);
+        winners = 0; calls.clear();
+        for (unsigned n{}; n < 16; ++n) calls.emplace_back([&] {
+            if (const auto value = concurrent.Take(); value && *value == 123) ++winners;
+        });
+        for (auto& call : calls) call.join();
+        Require(winners == 1 && !concurrent.Take(), "concurrent callback completion was not exactly once");
         for (float external : {-0.4F, 0.0F, 0.35F, 1.2F}) {
             for (float target : {0.0F, -0.3F, 1.0F}) {
                 const auto committed = bcn::racemenu::AbsolutePresetCorrection(0.8F, external);
