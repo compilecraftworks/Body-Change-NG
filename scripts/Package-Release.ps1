@@ -70,13 +70,26 @@ try {
         Copy-ReleaseFile (Join-Path 'package' $relative) $binary $relative
     }
     Copy-ReleaseFile "build\v$version\windows\x64\release\BodyChangeNG.dll" $binary 'SKSE\Plugins\BodyChangeNG.dll'
-    foreach ($file in @('README.md', 'CHANGELOG.md', 'CHANGELOG-KO.md', 'LICENSE', 'THIRD_PARTY_NOTICES.md')) {
+    # MO2 needs runtime files and folder-placement guidance, not release/source docs.
+    # Required license terms are consolidated into these two files.
+    foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-ReleaseFile $file $binary
     }
-    Copy-ReleaseFile 'third_party\CommonLibSSE-NG\COPYING' $binary 'licenses\CommonLibSSE-NG-COPYING.txt'
-    Copy-ReleaseFile 'third_party\imgui\LICENSE.txt' $binary 'licenses\Dear-ImGui-LICENSE.txt'
-    Copy-ReleaseFile 'third_party\pugixml\LICENSE.md' $binary 'licenses\pugixml-LICENSE.md'
-    Copy-ReleaseFile 'third_party\CommonLibSSE-NG\extern\openvr\LICENSE' $binary 'licenses\OpenVR-LICENSE.txt'
+    $expectedBinaryFiles = @(
+        'BodySkin/README.txt',
+        'CalienteTools/BodySlide/SliderPresets/README.txt',
+        'LICENSE',
+        'SKSE/Plugins/BodyChangeNG.dll',
+        'SKSE/Plugins/BodyChangeNGdistribution.json',
+        'THIRD_PARTY_NOTICES.md',
+        'TintMask/README.txt'
+    )
+    $actualBinaryFiles = @(Get-ChildItem -LiteralPath $binary -File -Recurse -Force | ForEach-Object {
+        [IO.Path]::GetRelativePath($binary, $_.FullName).Replace('\', '/')
+    })
+    if (Compare-Object ($expectedBinaryFiles | Sort-Object) ($actualBinaryFiles | Sort-Object)) {
+        throw 'MO2 archive must contain only runtime files, asset-folder guidance, and two license documents.'
+    }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
     if ($starter.schemaVersion -ne 4 -or $starter.rules.Count -ne 8) { throw 'Unexpected starter rule schema/count.' }
 

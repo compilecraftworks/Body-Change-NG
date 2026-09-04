@@ -25,6 +25,11 @@ performance modes.
 
 ## Requirements
 
+The MO2 installation ZIP contains the DLL, starter distribution JSON, three
+asset-folder placement guides, `LICENSE`, and `THIRD_PARTY_NOTICES.md` only.
+Release notes, changelogs, Nexus descriptions, and developer documentation stay
+on GitHub and in the source archive, not in the installed mod folder.
+
 - SKSE64 matching the installed Skyrim runtime
 - Address Library for SKSE Plugins matching the installed runtime
 - RaceMenu with BodyMorph and NiOverride support
