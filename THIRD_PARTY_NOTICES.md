@@ -6,8 +6,9 @@ build scripts, dependency pins, and matching version tags are published at:
 https://github.com/compilecraftworks/Body-Change-NG
 
 The source release preserves the original license files for vendored
-dependencies. The MO2-ready binary distribution includes this notice and the
-Body Change NG GPLv3 license.
+dependencies. The MO2-ready binary distribution includes this notice, the
+Body Change NG GPLv3 license, and original CommonLibSSE-NG, Dear ImGui,
+pugixml, and OpenVR license files under `licenses/`.
 
 ## CommonLibSSE-NG
 

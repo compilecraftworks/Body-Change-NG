@@ -2,6 +2,43 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.1.0 — 2026-09-04
+
+### Body presets and mixed-body installations
+
+- Body presets now target an absolute shape across the compatible family's slider set. Omitted XML sliders target zero; repeated preview, confirmation, and NPC distribution no longer add the same shape on top of an existing one.
+- Uses BCNG-owned compensation instead of globally clearing morphs. Other mods' morph keys are not deleted, and the preview and committed/NPC paths keep separate ownership.
+- Detects CBBE 3BA and UBE per actor from the loaded skin/head evidence. Preset set and Group metadata drive XML classification; ambiguous and multi-family presets retain safe display fallbacks.
+- Keeps user-selected rule pools intact; runtime body/skin selection checks the matched actor's sex and known family. Outfit-related names are not blanket-excluded from the body catalog.
+
+### Skin coverage and material routing
+
+- Corrects male skin-path handling and hand/foot targeting, including multi-slot skin armor whose geometry is not found through the first biped slot.
+- Partial skin packs work in preview, confirmation, and NPC distribution. Only supplied body/hand/foot/face parts and diffuse, normal, subsurface, or specular channels are replaced; missing values keep the underlying texture without cross-part or cross-channel substitution.
+- Adds per-actor UBE 2.0 Body/Head atlas routing and female/male Argonian and Khajiit skin matching, including matching tail geometry.
+- Applies femaleold and humanoid race-specific face-normal files only to matching actors and only where files exist. Astrid/Afflicted-specific textures and tint-mask DDS inside BodySkin are excluded from body-skin application.
+- Routes CBBE 3BA femalebody_etc_v2_1 to its shared vagina/anal atlas and BHUNP/UNP BakaUNP/VaginalAnalCanal2 to matching vagina/anal/canal geometry, separately from regular body textures.
+- Supports optional SOS Smurf Average, VectorPlexus Regular, and VectorPlexus Muscular slot-52 textures from the skin pack's original SOS directory. Addon/race/elder variants follow the live material; Muscular uses the shipped Regular-channel inheritance where appropriate.
+- Separates known UBE/conventional player tint packs while retaining safe fallbacks for uncertain family detection. Tint remains a player-only feature.
+
+### NPC distribution and performance
+
+- Adds keyword, class, and combat-style rule targets alongside existing conditions. Faction dropdowns include unnamed forms using EditorID/plugin/local-ID labels.
+- Stores faction, race, keyword, class, and combat-style targets as plugin plus local FormID in schema 4. Existing schema-3 rules remain readable and are migrated on save.
+- Preserves the eight starter exclusions: custom followers and elders of both sexes remain body-only exclusions; Argonians and Khajiit of both sexes remain skin-only exclusions.
+- Coalesces automatic actor/equipment work in both normal and performance modes, defers RaceMenu partition updates, and skips unnecessary outfit-morph rebuilds. Performance mode adds an extra scheduling interval.
+- Moves the first loaded-NPC pass out of the serialization/RaceMenu/overlay load-callback burst by two game-task turns. No recurring file scan or timer is added; catalog-derived slider sets are cached.
+
+### Migration, UI, and release
+
+- Repairs visible non-UBE RaceMenu .jslot files with obsolete BodyChange.esp face HeadParts after the legacy plugin is removed. Creates an adjacent backup and prefers the available High Poly Head target, otherwise the vanilla target; UBE custom-head presets are preserved.
+- Renames the main catalog tabs to Body Presets, Body Skins, and Tint Masks; refreshes Korean and English release documentation.
+- Retains existing settings, co-save identities, ownership namespaces, and the BodyChangeNGdistribution.json filename. Version 1.1.0 does not rename or reset them.
+
+### Validation
+
+Validation: Release build and ten regression test executables. File/NIF evidence and automated tests cover routing and state logic; in-game atlas appearance, collision behavior, OverlayFix crash compatibility, and stutter-free gameplay are not certified by these tests.
+
 ## 1.0.0 — 2026-09-02
 
 First stable public release.
@@ -11,19 +48,9 @@ First stable public release.
 - Applies BodySlide presets through RaceMenu BodyMorph without replacing body
   meshes at runtime.
 - Interpolates low/high-weight preset values using the actor's current weight.
-- Normalizes the complete compatible-family slider set to the selected
-  preset's absolute target. Sliders omitted by the XML intentionally resolve
-  to zero, repeated preview/commit/distribution does not accumulate morphs,
-  and keys owned by unrelated mods are not deleted.
 - Detects the selected actor's body family conservatively and filters only the
   main Body tab. Uncertain or multi-family presets remain visible through safe
   fallbacks; NPC distribution pools are never auto-filtered.
-- Supports mixed CBBE 3BA/UBE installations by resolving each actor from its
-  live winning skin/head texture path and classifying UBE presets from XML
-  `Preset/@set` and `Group` metadata in the shared SliderPresets folder.
-- Spreads automatic NPC morph work through the performance queue, uses
-  RaceMenu's deferred partition update for distribution and outfit correction,
-  and skips mesh rebuilds when there is no outfit morph to clear.
 - Keeps outfit-named presets such as Clothes, Outfit, Bikini, Armor, Cuirass,
   Dress, Panty, and Overalls visible. Only exact `-Refit` presets are reserved
   for outfit correction.
@@ -34,33 +61,11 @@ First stable public release.
   actor without editing NIF, Skin Armor, or equipment records.
 - Supports body, hands, feet, face, vampire face, diffuse, normal, subsurface,
   specular, and compatible FaceGen detail textures.
-- Detects UBE 2.0 `Textures\!UBE\Body` and `Head` d/n/sk atlases, applies them
-  to the live slot-53 body and face, and separates conventional and UBE skin
-  catalogs and runtime distribution candidates per detected actor family.
-- Detects Argonian and Khajiit female/male texture folders under the same
-  `BodySkin` pack root, and matches race plus sex for direct preview, committed
-  reapply, and NPC distribution. Their body atlas also reaches the intended
-  tail geometry, without borrowing missing hand or foot parts or channels.
-- Maps CBBE 3BA `femalebody_etc_v2_1` to its shared vagina/anal geometries and
-  BHUNP/UNP `BakaUNP\VaginalAnalCanal2` to its vagina/anal/canal geometries.
-  Diffuse, normal, subsurface, and specular channels stay isolated from the
-  regular body, hands, feet, and face.
-- Keeps `femaleold` and humanoid race-specific face normals as conditional
-  layers in the same conventional female pack, applying only channels present
-  for the actor's elder/race state. Astrid/Afflicted-specific assets and DDS
-  under a skin pack's `character assets\tintmasks` are excluded from Body Skin
-  preview and distribution.
 - Tracks ownership precisely so cleanup removes only Body Change NG's keys.
-- Supports partial male packs without borrowing body maps for hands or feet,
-  and routes optional SOS slot-52 genital textures to the live Smurf Average,
-  VectorPlexus Regular, or VectorPlexus Muscular addon material. Missing body
-  parts, race variants, and DDS channels retain the actor's existing texture.
 
 ### Player tint
 
 - Adds player-only tint packs with automatic race-appropriate DDS selection.
-- Separates known UBE-only, conventional, and COtR-compatible tint packs while
-  preserving the show-all fallback when actor-family evidence is uncertain.
 - Supports independent color/opacity adjustment and restoration for every
   active supported tint layer.
 - Restores the color swatch and detail picker together with the world tint.
@@ -70,11 +75,7 @@ First stable public release.
 ### NPC distribution and persistence
 
 - Adds top-down, first-match body/skin rules for all NPCs, custom followers,
-  elders, plugins, races, factions, keywords, classes, combat styles, names,
-  and NPC base FormIDs.
-- Stores faction, race, keyword, class, and combat-style targets as plugin plus
-  local FormID, while retaining schema-3 EditorID rules as a load-time
-  migration fallback. Unnamed forms are still available in the dropdowns.
+  elders, names, NPC base FormIDs, factions, plugins, and races.
 - Allows Body and Skin to be distributed or excluded independently in one rule.
 - Includes eight editable starter exclusions: custom followers and elders are
   body-only exclusions for both sexes; Argonians and Khajiit are skin-only
@@ -121,10 +122,6 @@ First stable public release.
 
 ### Reliability
 
-- Repairs visible RaceMenu `.jslot` files that still reference the removed
-  legacy `BodyChange.esp` face HeadParts. It creates a recoverable adjacent
-  backup, prefers `00KLH_FemaleHeadNord`, falls back to vanilla
-  `FemaleHeadNord`, and preserves UBE custom-race/head presets.
 - Uses `BodyChangeNG` consistently for the DLL, log, settings directory,
   distribution JSON, morph keys, texture-cache namespace, source targets, and
   release archives. Valid legacy `BodyChangerNG` settings and distribution
@@ -132,19 +129,15 @@ First stable public release.
   ownership remains recognized so existing saves do not stack or leak state.
 - Reapplies committed Body, Skin, and Tint state after RaceMenu closes, with
   generation checks that prevent superseded asynchronous work from winning.
-- Coalesces equipment and actor work in both normal and performance modes,
-  with performance mode adding an extra scheduling interval; stores ActorHandles instead of raw actor
+- Coalesces equipment and actor work, stores ActorHandles instead of raw actor
   pointers, clears detached actor preview/apply state, and resets all transient
   state on a new save session.
-- Defers only the first loaded-NPC enumeration by two game-task turns after
-  load, avoiding a burst inside serialization/RaceMenu/overlay load callbacks
-  without adding a recurring scan or timer.
-- Ships a valid schema-4 starter JSON and README files in every user asset
+- Ships a valid schema-3 starter JSON and README files in every user asset
   folder.
-- Verified by the release build and ten regression test executables covering
+- Verified by the release build and nine regression test executables covering
   actor state, asset catalogs, body-family classification, hotkeys, outfit
-  rules, path migration, RaceMenu preset migration, preset parsing, runtime
-  layouts, and skin-override ownership.
+  rules, path migration, preset parsing, runtime layouts, and skin-override
+  ownership.
 
 ## Pre-release development history
 

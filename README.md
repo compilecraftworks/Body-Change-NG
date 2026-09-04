@@ -6,10 +6,22 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.0.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.1.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The unified binary contains VR-compatible
 CommonLib code, but its native renderer/input hooks deliberately fail closed on
 VR until VR-specific layouts are verified.
+
+## Current release: 1.1.0
+
+This update addresses repeated body-morph stacking, male and partial skin
+routing, mixed UBE/CBBE installations, beast/elder/race variants, and SOS
+addon textures. It adds keyword, class, and combat-style distribution targets
+and load-order-safe form rules, with bounded automatic actor work in both
+performance modes.
+
+- [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
+- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.0.md)
+- [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
 
@@ -53,7 +65,7 @@ NG's body application.
 
 ## Compared with the legacy BodyChange
 
-The installed **BodyChange - A Multi-Bodyshape System** architecture defines
+The installed **BodyChange** architecture defines
 fixed `CustomSet` slots. BodySlide writes a separate body NIF into each slot,
 and its Papyrus effect calls `SetSkin`, `ChangeHeadPart`, and
 `SetFaceTextureSet` to switch the corresponding ESP records together. A skin
@@ -228,8 +240,10 @@ diffuse/normal/skin atlases to the actor's UBE slot-53 body and live face, and
 do not invent shader slots for optional PBR/RFAOS/wet maps owned by the active
 material setup. The Skin and player Tint catalogs hide known-incompatible
 families while preserving the existing show-all fallback when actor evidence
-is uncertain. NPC distribution rules may keep mixed skin pools; runtime
-selection samples only candidates compatible with each matched actor.
+is uncertain. NPC distribution rules may keep mixed body and skin pools; runtime
+selection checks each matched actor's sex and known body family while the
+editor preserves the user's selected pool. Uncertain body-family evidence
+retains the conservative fallback.
 
 When the player leaves RaceMenu, Body Change NG waits for RaceMenu's final
 geometry and tint-array rebuild, then restores the currently confirmed body,
@@ -264,7 +278,11 @@ assets are not redistributed by Body Change NG.
 Body Change NG is released under GPL-3.0. The Git repository uses pinned
 submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
-the release build. Exact versions are listed in `DEPENDENCIES.md`. Referenced
+the release build. Exact versions are listed in `DEPENDENCIES.md`.
+Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
+BodyChangeNG`); output is `build/v1.1.0/windows/x64/release/BodyChangeNG.dll`.
+The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
+archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and
 licenses and are not bundled with Body Change NG.
 

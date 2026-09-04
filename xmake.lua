@@ -1,7 +1,8 @@
 set_xmakever("3.1.0")
 
+local version = "1.1.0"
 set_project("BodyChangeNG")
-set_version("1.0.0")
+set_version(version)
 set_license("GPL-3.0")
 set_languages("c++23")
 set_warnings("allextra")
@@ -17,8 +18,6 @@ add_rules("plugin.vsxmake.autoupdate")
 -- CommonLibSSE-NG is an exact, independently vendored upstream stable tag.
 includes("third_party/CommonLibSSE-NG")
 add_requires("nlohmann_json v3.12.0")
-
-local version = "1.0.0"
 
 target("BodyChangeNG")
     set_kind("shared")

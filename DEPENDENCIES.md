@@ -1,6 +1,6 @@
 # Pinned build dependencies
 
-Body Change NG v1.0.0 is built with xmake 3.1.0 and the exact dependency
+Body Change NG v1.1.0 is built with xmake 3.1.0 and the exact dependency
 closure below. `xmake-requires.lock` remains authoritative for xmake packages
 and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
@@ -33,4 +33,7 @@ CMake 4.3.4, and Ninja v1.13.2. These versions are not independently upgraded.
 The source archive contains the CommonLib headers, sources, resource templates,
 the OpenVR headers used by the unified SE/AE/VR build, and all applicable
 licenses. Repository history, sample applications, prebuilt binaries, and
-generated build files are deliberately excluded.
+generated build files are deliberately excluded. The source ZIP is assembled
+by `scripts/Package-Release.ps1`: Git-tracked project files plus a minimal
+build-required dependency tree, not Git's empty submodule placeholders.
+Downloaded xmake packages are resolved through the unchanged lock file.
