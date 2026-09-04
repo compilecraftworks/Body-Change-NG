@@ -2,6 +2,8 @@
 
 Current release: **Body Change NG 1.1.0**.
 
+Engineering handover (2026-09-04): [한국어 전체 인수인계](HANDOVER-v1.1.0-KO.md) · [전체 Git 이력·파일·검증 증거](HANDOVER-EVIDENCE-v1.1.0-KO.md). These are source/development documents only; do not add them to the minimal MO2 installer.
+
 | Purpose | English | 한국어 |
 | --- | --- | --- |
 | Nexus description | [BBCode](NEXUS-DESCRIPTION-v1.1.0-EN.bbcode) · [Markdown](NEXUS-DESCRIPTION-v1.1.0.md) | [HTML](NEXUS-DESCRIPTION-v1.1.0-KO.html) |
