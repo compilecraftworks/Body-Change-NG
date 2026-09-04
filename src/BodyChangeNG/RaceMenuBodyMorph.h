@@ -18,6 +18,12 @@ namespace bcn::racemenu
         return desiredPresetValue + preservedOutfitValue - currentAggregate;
     }
 
+    [[nodiscard]] constexpr float OutfitTargetCorrection(
+        const float target, const float aggregateWithoutOutfit) noexcept
+    {
+        return target - aggregateWithoutOutfit;
+    }
+
     enum class ApplyMode : std::uint8_t
     {
         preview,

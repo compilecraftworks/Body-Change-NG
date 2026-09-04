@@ -1,6 +1,8 @@
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/AsyncWorkGuards.h"
+#include "BodyChangeNG/OutfitRefit.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/Settings.h"
@@ -151,13 +153,14 @@ namespace
         }
     }
 
-    void InvalidateApply(const RE::FormID actorFormID, const bcn::racemenu::ApplyMode mode)
+    std::uint64_t InvalidateApply(const RE::FormID actorFormID, const bcn::racemenu::ApplyMode mode)
     {
         std::scoped_lock lock(g_applyGenerationLock);
         const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
         g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode), generation);
         SKSE::log::debug("BodyAudit invalidated actor={:08X} mode={} generation={}",
             actorFormID, static_cast<std::uint32_t>(mode), generation);
+        return generation;
     }
 
     // A preview is layered above the last committed Body Change NG preset.
@@ -235,9 +238,12 @@ namespace
         return { previous, ++g_previewGeneration };
     }
 
-    [[nodiscard]] RE::ActorHandle CancelPreviewTracking()
+    [[nodiscard]] RE::ActorHandle CancelPreviewTracking(const RE::ActorHandle owner = {})
     {
         std::scoped_lock lock(g_previewLock);
+        // Automatic work on a different NPC must not cancel the UI actor's
+        // preview. Explicit UI close still cancels globally (empty owner).
+        if (!bcn::async_work::MayCancelPreview(static_cast<bool>(owner), owner == g_previewActor)) return {};
         auto previous = g_previewActor;
         g_previewActor.reset();
         ++g_previewGeneration;
@@ -551,7 +557,8 @@ namespace
         const auto weight = std::clamp(base ? base->GetWeight() / 100.0F : 0.0F, 0.0F, 1.0F);
         MigrateLegacyBodyChangeKeys(*bodyMorph, actor.get());
         const auto derive = [&](const char* name, const float target) {
-            bodyMorph->SetMorph(actor.get(), name, kOutfitKey, target - bodyMorph->GetMorph(actor.get(), name, kCommittedKey));
+            bodyMorph->SetMorph(actor.get(), name, kOutfitKey,
+                bcn::racemenu::OutfitTargetCorrection(target, bodyMorph->GetBodyMorphs(actor.get(), name)));
         };
         const auto fixed = [&](const char* name, const float low, const float high) {
             bodyMorph->SetMorph(actor.get(), name, kOutfitKey, low + (high - low) * weight);
@@ -715,6 +722,9 @@ namespace bcn::racemenu
             applyGeneration, found->sliders.size());
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             if (mode == ApplyMode::commit) {
+                // Commit clears the outfit key even if the preset ID did not
+                // change. Its completion signature must not suppress repaint.
+                bcn::ActorRegistry::Get().InvalidateOutfit(actor);
                 // Reflect the newest accepted user choice in the list
                 // immediately. Do this only after the game task interface was
                 // acquired so a failed submission cannot show a false current
@@ -737,7 +747,7 @@ namespace bcn::racemenu
                         generation, 0U, updatePolicy);
                 });
             } else {
-                const auto previousActor = mode == ApplyMode::commit ? CancelPreviewTracking() : RE::ActorHandle{};
+                const auto previousActor = mode == ApplyMode::commit ? CancelPreviewTracking(actorHandle) : RE::ActorHandle{};
                 if (previousActor && previousActor != actorHandle) {
                     tasks->AddTask([previousActor, session] {
                         if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);
@@ -760,7 +770,9 @@ namespace bcn::racemenu
         if (!presetId) return;
         SKSE::log::debug("BodyAudit rebuild-reapply requested id='{}' actor={:08X}",
             *presetId, actor ? actor->GetFormID() : 0U);
-        [[maybe_unused]] const auto result = QueueApply(actor, *presetId, ApplyMode::commit);
+        if (QueueApply(actor, *presetId, ApplyMode::commit) == ApplyResult::queued) {
+            bcn::OutfitRefit::Get().ProcessActor(actor);
+        }
     }
 
     ApplyResult QueueApplyOutfit(RE::Actor* actor, std::string refitPresetId,
@@ -786,10 +798,13 @@ namespace bcn::racemenu
     {
         if (!IsReady() || !actor) return;
         const auto actorHandle = actor->GetHandle();
+        const auto generation = BeginApply(actor->GetFormID(), ApplyMode::outfit);
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto session = bcn::ActorRegistry::Get().SessionGeneration();
-            tasks->AddTask([actorHandle, outfitSignature, session] {
-                if (bcn::ActorRegistry::Get().SessionGeneration() == session) {
+            tasks->AddTask([actorHandle, outfitSignature, session, generation] {
+                const auto actor = actorHandle.get();
+                if (actor && bcn::ActorRegistry::Get().SessionGeneration() == session &&
+                    IsCurrentApply(actor->GetFormID(), ApplyMode::outfit, generation)) {
                     ApplyProceduralOutfitNow(actorHandle, outfitSignature);
                 }
             });
@@ -802,15 +817,16 @@ namespace bcn::racemenu
         // Clearing a refit must never cancel a body preset that was just
         // queued by the same UI click.  Body, preview and outfit use separate
         // RaceMenu keys and therefore require separate generations as well.
-        InvalidateApply(actor->GetFormID(), ApplyMode::outfit);
+        const auto generation = InvalidateApply(actor->GetFormID(), ApplyMode::outfit);
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto session = bcn::ActorRegistry::Get().SessionGeneration();
-            tasks->AddTask([actorHandle, outfitSignature, session] {
+            tasks->AddTask([actorHandle, outfitSignature, session, generation] {
                 if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
                 auto* bodyMorph = Interface();
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved || !resolved->Is3DLoaded()) return;
+                if (!IsCurrentApply(resolved->GetFormID(), ApplyMode::outfit, generation)) return;
                 const auto hadOutfitMorph =
                     bodyMorph->HasBodyMorphKey(resolved.get(), kOutfitKey) ||
                     bodyMorph->HasBodyMorphKey(resolved.get(), kLegacyOutfitKey);
@@ -836,7 +852,7 @@ namespace bcn::racemenu
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto session = bcn::ActorRegistry::Get().SessionGeneration();
-            const auto previousActor = CancelPreviewTracking();
+            const auto previousActor = CancelPreviewTracking(actorHandle);
             if (previousActor && previousActor != actorHandle) {
                 tasks->AddTask([previousActor, session] {
                     if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(previousActor);

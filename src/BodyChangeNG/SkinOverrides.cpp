@@ -1,6 +1,7 @@
 #include "BodyChangeNG/SkinOverrides.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/AsyncWorkGuards.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinGeometryRouting.h"
@@ -1203,10 +1204,42 @@ namespace
     // unspecified order.
     struct LegacyOverrideBatch final
     {
+        RE::ActorHandle actor;
+        const RE::Actor* identity{};
+        const RE::BSScript::Internal::VirtualMachine* vmIdentity{};
+        std::uint64_t generation{};
+        std::uint64_t session{};
+        bool female{};
         std::atomic_uint32_t pending{ 1U };  // submission sentinel
         std::atomic_uint32_t accepted{};
         std::function<void(std::uint32_t)> completion;
     };
+
+    [[nodiscard]] auto MakeLegacyBatch(RE::Actor* actor, const std::uint64_t generation)
+    {
+        auto batch = std::make_shared<LegacyOverrideBatch>();
+        batch->actor = actor->GetHandle();
+        batch->identity = actor;
+        batch->vmIdentity = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        batch->generation = generation;
+        batch->session = bcn::ActorRegistry::Get().SessionGeneration();
+        batch->female = actor->GetActorBase() && actor->GetActorBase()->GetSex() == RE::SEX::kFemale;
+        return batch;
+    }
+
+    // Keep an owning actor reference alive throughout an intermediate query
+    // callback. Stale callbacks must not reach their captured native arguments.
+    [[nodiscard]] RE::NiPointer<RE::Actor> ResolveLegacyBatch(const std::shared_ptr<LegacyOverrideBatch>& batch)
+    {
+        if (!batch || batch->session != bcn::ActorRegistry::Get().SessionGeneration() ||
+            batch->vmIdentity != RE::BSScript::Internal::VirtualMachine::GetSingleton()) return {};
+        const auto actor = batch->actor.get();
+        if (!actor || actor.get() != batch->identity || !actor->Is3DLoaded() ||
+            !IsCurrentSkinChange(actor->GetFormID(), batch->generation)) return {};
+        const auto* base = actor->GetActorBase();
+        if (!base || (base->GetSex() == RE::SEX::kFemale) != batch->female) return {};
+        return actor;
+    }
 
     void CompleteLegacyBatch(const std::shared_ptr<LegacyOverrideBatch>& batch)
     {
@@ -1214,8 +1247,9 @@ namespace
         const auto accepted = batch->accepted.load(std::memory_order_acquire);
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto completion = batch->completion;
-            tasks->AddTask([completion, accepted] {
-                if (completion) completion(accepted);
+            tasks->AddTask([batch, completion, accepted] {
+                const auto actor = ResolveLegacyBatch(batch);
+                if (actor && completion) completion(accepted);
             });
         }
     }
@@ -1224,10 +1258,13 @@ namespace
     {
     public:
         explicit LegacyOverrideCallback(std::shared_ptr<LegacyOverrideBatch> batch) : batch_(std::move(batch)) {}
-        void operator()(RE::BSScript::Variable) override { CompleteLegacyBatch(batch_); }
+        ~LegacyOverrideCallback() override { Finish(); }
+        void operator()(RE::BSScript::Variable) override { Finish(); }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
+        void Finish() { if (finished_.TryFinish()) CompleteLegacyBatch(batch_); }
+        bcn::async_work::CompleteOnce finished_;
         std::shared_ptr<LegacyOverrideBatch> batch_;
     };
 
@@ -1238,7 +1275,7 @@ namespace
         RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(new LegacyOverrideCallback(batch));
         const auto dispatched = vm.DispatchStaticCall("NiOverride", function, arguments, callback);
         if (dispatched) batch->accepted.fetch_add(1U, std::memory_order_release);
-        else CompleteLegacyBatch(batch);
+        // On failed dispatch the local callback destructor balances pending.
         return dispatched;
     }
 
@@ -1249,16 +1286,31 @@ namespace
             std::function<void(std::string)> completion) :
             batch_(std::move(batch)), completion_(std::move(completion)) {}
 
+        ~LegacyOwnershipQueryCallback() override
+        {
+            if (finished_.TryFinish()) CompleteLegacyBatch(batch_);
+        }
+
         void operator()(RE::BSScript::Variable result) override
         {
+            if (!finished_.TryFinish()) return;
             std::string current;
             if (result.IsString()) current = result.GetString();
-            if (completion_) completion_(std::move(current));
-            CompleteLegacyBatch(batch_);
+            // VM callbacks are not an engine mutation boundary. Hand the
+            // follow-up back to the game thread and revalidate there, not only
+            // after the entire clear/apply batch has already changed textures.
+            if (const auto* tasks = SKSE::GetTaskInterface()) {
+                tasks->AddTask([batch = batch_, completion = completion_, current = std::move(current)]() mutable {
+                    const auto actor = ResolveLegacyBatch(batch);
+                    if (actor && completion) completion(std::move(current));
+                    CompleteLegacyBatch(batch);
+                });
+            } else CompleteLegacyBatch(batch_);
         }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
+        bcn::async_work::CompleteOnce finished_;
         std::shared_ptr<LegacyOverrideBatch> batch_;
         std::function<void(std::string)> completion_;
     };
@@ -1272,7 +1324,7 @@ namespace
             new LegacyOwnershipQueryCallback(batch, std::move(completion)));
         if (!vm.DispatchStaticCall("NiOverride", function, arguments, callback)) {
             SKSE::log::warn("SkinOverride ownership-query dispatch failed function={}", function);
-            CompleteLegacyBatch(batch);
+            // Destructor completes a callback that was never dispatched.
         }
     }
 
@@ -1488,7 +1540,7 @@ namespace
             EffectiveFaceLayers(profile, base, faceNode->detailFilename) :
             std::vector<bcn::SkinTextureLayer>{};
 
-        auto clearBatch = std::make_shared<LegacyOverrideBatch>();
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation);
         clearBatch->completion = [actorHandle, profile, generation](const std::uint32_t) {
             const auto currentActor = actorHandle.get();
             auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
@@ -1507,7 +1559,7 @@ namespace
             const auto currentMaleGenitalLayers = EffectiveMaleGenitalLayers(
                 profile, currentActor.get(), currentBase);
 
-            auto applyBatch = std::make_shared<LegacyOverrideBatch>();
+            auto applyBatch = MakeLegacyBatch(currentActor.get(), generation);
             auto partProgress = std::make_shared<std::pair<std::size_t, std::size_t>>();
             applyBatch->completion = [actorHandle, profile, generation, partProgress](const std::uint32_t accepted) {
                 const auto settledActor = actorHandle.get();
@@ -1606,7 +1658,7 @@ namespace
         const auto female = base->GetSex() == RE::SEX::kFemale;
         const auto faceNode = FaceNode(actor.get(), base);
 
-        auto clearBatch = std::make_shared<LegacyOverrideBatch>();
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation);
         clearBatch->completion = [actorHandle, generation](const std::uint32_t accepted) {
             const auto currentActor = actorHandle.get();
             auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();

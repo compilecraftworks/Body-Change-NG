@@ -63,6 +63,12 @@ int main()
         const auto previewCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 1.05F, 0.1F);
         Require(std::abs(1.05F + previewCorrection - 0.9F) < 0.00001F,
             "preview normalization did not preserve the current outfit correction");
+        const auto externalMorph = 0.35F;
+        const auto committedMorph = bcn::racemenu::AbsolutePresetCorrection(0.8F, externalMorph);
+        const auto outfitCorrection = bcn::racemenu::OutfitTargetCorrection(
+            0.0F, externalMorph + committedMorph);
+        Require(std::abs(externalMorph + committedMorph + outfitCorrection) < 0.00001F,
+            "procedural outfit correction retained an external RaceMenu morph contribution");
 
         bcn::ActorState state{
             .actorFormID = 0x1234U,
