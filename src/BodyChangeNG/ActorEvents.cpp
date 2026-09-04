@@ -1,6 +1,7 @@
 #include "BodyChangeNG/ActorEvents.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/OutfitRefit.h"
@@ -20,11 +21,12 @@ namespace bcn
         std::atomic_uint64_t g_raceMenuRestoreGeneration{};
         std::mutex g_equipmentLock;
         std::unordered_map<RE::FormID, std::uint64_t> g_equipmentGeneration;
+        std::uint64_t g_nextEquipmentGeneration{};
 
         [[nodiscard]] std::uint64_t BeginEquipmentChange(const RE::FormID actorFormID)
         {
             std::scoped_lock lock(g_equipmentLock);
-            return ++g_equipmentGeneration[actorFormID];
+            return g_equipmentGeneration[actorFormID] = ++g_nextEquipmentGeneration;
         }
 
         [[nodiscard]] bool IsCurrentEquipmentChange(const RE::FormID actorFormID,
@@ -48,29 +50,29 @@ namespace bcn
 
         void ReconcileEquipmentChange(const RE::ActorHandle& handle, const RE::FormID actorFormID,
             const std::uint32_t remainingHops,
-            const std::uint64_t generation, const std::uint64_t session)
+            const std::uint64_t generation, const std::uint64_t session, const unsigned retries = 60)
         {
             const auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) {
                 FinishEquipmentChange(actorFormID, generation);
                 return;
             }
-            tasks->AddTask([handle, actorFormID, remainingHops, generation, session] {
+            frame_tasks::Queue(actorFormID, [handle, actorFormID, generation, session, retries] {
                 if (!IsCurrentEquipmentChange(actorFormID, generation, session)) return;
                 const auto actor = handle.get();
                 if (!actor || actor->GetFormID() != actorFormID) {
                     FinishEquipmentChange(actorFormID, generation);
                     return;
                 }
-                if (remainingHops != 0U) {
-                    ReconcileEquipmentChange(handle, actorFormID, remainingHops - 1U, generation, session);
-                    return;
-                }
                 if (!actor->Is3DLoaded()) {
+                    if (retries) {
+                        ReconcileEquipmentChange(handle, actorFormID, 2, generation, session, retries - 1);
+                        return;
+                    }
                     FinishEquipmentChange(actorFormID, generation);
                     return;
                 }
-                // The Biped clone is now settled. Rebuild only the outfit key
+                // The Biped clone has had time to rebuild. Rebuild only the outfit key
                 // and repaint the already selected skin onto new embedded body
                 // geometry; body distribution is deliberately not rerun.
                 ActorRegistry::Get().InvalidateOutfit(actor.get());
@@ -79,7 +81,7 @@ namespace bcn
                     [[maybe_unused]] const auto result = skin_override::QueueApply(actor.get(), *skin);
                 }
                 FinishEquipmentChange(actorFormID, generation);
-            });
+            }, std::max(1U, remainingHops), 102, true);
         }
 
         void ReapplyPlayerSelectionsAfterRaceMenu(const RE::ActorHandle& handle,
@@ -88,21 +90,16 @@ namespace bcn
         {
             const auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) return;
-            tasks->AddTask([handle, remainingHops, remainingLoadRetries, remainingVerificationPasses, generation] {
+            frame_tasks::Queue(0, [handle, remainingLoadRetries, remainingVerificationPasses, generation] {
                 if (g_raceMenuRestoreGeneration.load(std::memory_order_acquire) != generation) return;
                 const auto actor = handle.get();
                 auto* player = RE::PlayerCharacter::GetSingleton();
                 if (!actor || !player || actor->GetFormID() != player->GetFormID()) return;
-                if (remainingHops != 0U) {
-                    ReapplyPlayerSelectionsAfterRaceMenu(handle, remainingHops - 1U, remainingLoadRetries,
-                        remainingVerificationPasses, generation);
-                    return;
-                }
                 auto* ui = RE::UI::GetSingleton();
                 const auto raceMenuOpen = ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
-                if (!actor->Is3DLoaded() || raceMenuOpen) {
+                if (!actor->Is3DLoaded() || raceMenuOpen || frame_tasks::HasActorWork(actor->GetFormID())) {
                     if (remainingLoadRetries != 0U) {
-                        ReapplyPlayerSelectionsAfterRaceMenu(handle, 1U, remainingLoadRetries - 1U,
+                        ReapplyPlayerSelectionsAfterRaceMenu(handle, 2U, remainingLoadRetries - 1U,
                             remainingVerificationPasses, generation);
                     } else {
                         SKSE::log::warn("Body Change NG could not restore player selections after RaceMenu "
@@ -117,12 +114,6 @@ namespace bcn
                 // Body Change NG, after those replacements have settled.
                 if (racemenu::CurrentPresetId(actor.get())) {
                     racemenu::QueueReapplyCurrent(actor.get());
-                    // An equipped outfit uses a separate Body Change NG
-                    // morph key. RaceMenu may rebuild that visible geometry
-                    // along with the naked body, so regenerate it after the
-                    // committed body task and before repainting textures.
-                    ActorRegistry::Get().InvalidateOutfit(actor.get());
-                    OutfitRefit::Get().ProcessActor(actor.get());
                 }
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
                     [[maybe_unused]] const auto skinResult = skin_override::QueueApply(actor.get(), *skin);
@@ -136,10 +127,10 @@ namespace bcn
                     // deferred rebuild after the close event. A generation-
                     // guarded second pass verifies the final objects without
                     // allowing an older menu session to overwrite new input.
-                    ReapplyPlayerSelectionsAfterRaceMenu(handle, 3U, 4U,
+                    ReapplyPlayerSelectionsAfterRaceMenu(handle, 3U, 120U,
                         remainingVerificationPasses - 1U, generation);
                 }
-            });
+            }, std::max(1U, remainingHops), 103, true);
         }
     }
 
@@ -219,6 +210,7 @@ namespace bcn
             return RE::BSEventNotifyControl::kContinue;
         }
         if (auto* actor = event->actor->As<RE::Actor>()) {
+            if (!frame_tasks::Active()) return RE::BSEventNotifyControl::kContinue;
             // TESEquipEvent is emitted before the replacement BipedAnim clone
             // is always available. Consecutive equipment events are coalesced;
             // only the newest settled outfit is corrected and repainted.
@@ -240,14 +232,13 @@ namespace bcn
             // Invalidate a deferred close restoration from an older RaceMenu
             // session before the new editor begins rebuilding the player.
             g_raceMenuRestoreGeneration.fetch_add(1U, std::memory_order_acq_rel);
+            if (auto* player = RE::PlayerCharacter::GetSingleton()) frame_tasks::CancelActor(player->GetFormID());
             return RE::BSEventNotifyControl::kContinue;
         }
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
-            // Character generation can keep replacing these objects for more
-            // than the close-event frame. Two task turns avoid racing the last
-            // RaceMenu rebuild without introducing a timer or frame loop.
+            // Each retry waits for external input updates, not SKSE FIFO hops.
             const auto generation = g_raceMenuRestoreGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-            ReapplyPlayerSelectionsAfterRaceMenu(player->GetHandle(), 3U, 8U, 2U, generation);
+            ReapplyPlayerSelectionsAfterRaceMenu(player->GetHandle(), 3U, 120U, 2U, generation);
         }
         return RE::BSEventNotifyControl::kContinue;
     }

@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinCatalog.h"
+#include "BodyChangeNG/FrameTasks.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 
@@ -147,10 +148,10 @@ namespace bcn
         }
         if (!RE::TESForm::LookupByID<RE::TESObjectARMO>(entry.skinFormID)) return SkinApplyResult::missingForm;
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return SkinApplyResult::noTaskInterface;
+        if (!tasks || !frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         const auto playerHandle = player->GetHandle();
         const auto session = ActorRegistry::Get().SessionGeneration();
-        tasks->AddTask([playerHandle, entry = std::move(entry), session] mutable {
+        frame_tasks::Queue(player->GetFormID(), [playerHandle, entry = std::move(entry), session] mutable {
             if (ActorRegistry::Get().SessionGeneration() == session) {
                 ApplyToPlayerNow(playerHandle, std::move(entry));
             }

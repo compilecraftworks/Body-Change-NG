@@ -1,4 +1,5 @@
 #include "BodyChangeNG/PlayerTint.h"
+#include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
@@ -19,6 +20,10 @@
 
 namespace
 {
+    void QueueTintTask(std::uint32_t actor, std::function<void()> work)
+    {
+        bcn::frame_tasks::Queue(actor, std::move(work), 1, 205, true);
+    }
     constexpr std::size_t kMaxAssets = 512;
     std::atomic_uint64_t g_tintGeneration{};
     struct LayerOverride final
@@ -737,12 +742,12 @@ namespace bcn::player_tint
         }
         if (!FindPlayerMask(player, asset->layer)) return ApplyResult::unsupportedLayer;
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
+        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
         auto baseAssets = CurrentPack() == asset->pack ? std::vector<Asset>{} :
             BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), asset->pack);
-        tasks->AddTask([handle, asset = *asset, color, baseAssets = std::move(baseAssets), generation] {
+        QueueTintTask(player->GetFormID(), [handle, asset = *asset, color, baseAssets = std::move(baseAssets), generation] {
             if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
             ApplyNow(handle, asset, color, generation);
         });
@@ -780,10 +785,10 @@ namespace bcn::player_tint
             return packExists ? ApplyResult::incompatibleBodyFamily : ApplyResult::invalidAsset;
         }
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
+        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        tasks->AddTask([handle, assets = std::move(selected), generation] {
+        QueueTintTask(player->GetFormID(), [handle, assets = std::move(selected), generation] {
             ApplyPackNow(handle, assets, generation);
         });
         return ApplyResult::queued;
@@ -820,13 +825,13 @@ namespace bcn::player_tint
         }
         if (baseAssets.empty() && overrides.empty() && restores.empty()) return ApplyResult::invalidAsset;
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
+        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
         SKSE::log::info(
             "Body Change NG is reapplying tint state after RaceMenu: pack='{}' detail-overrides={} restored-layers={}",
             state.pack.value_or(std::string{}), overrides.size(), restores.size());
-        tasks->AddTask([handle, baseAssets = std::move(baseAssets), overrides = std::move(overrides),
+        QueueTintTask(player->GetFormID(), [handle, baseAssets = std::move(baseAssets), overrides = std::move(overrides),
                            restores = std::move(restores), generation] {
             if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
             for (const auto& [asset, color] : overrides) ApplyNow(handle, asset, color, generation);
@@ -844,12 +849,12 @@ namespace bcn::player_tint
         if (!player) return ApplyResult::unavailable;
         if (!FindPlayerMask(player, layer)) return ApplyResult::unsupportedLayer;
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
+        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
         auto baseAssets = basePack.empty() || CurrentPack() == basePack ? std::vector<Asset>{} :
             BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), basePack);
-        tasks->AddTask([handle, layer, backup = *found, baseAssets = std::move(baseAssets), generation] {
+        QueueTintTask(player->GetFormID(), [handle, layer, backup = *found, baseAssets = std::move(baseAssets), generation] {
             if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
             RestoreNow(handle, layer, backup, generation);
         });
@@ -866,9 +871,9 @@ namespace bcn::player_tint
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
         const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
+        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
-        tasks->AddTask([handle, generation] {
+        QueueTintTask(player->GetFormID(), [handle, generation] {
             // Read backups on the game task, not on the UI submission frame.
             // If an older apply was already running, its original capture is
             // visible here and this newest default request can still undo it.

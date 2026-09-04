@@ -1,4 +1,7 @@
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/SkinProfiles.h"
 
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/Settings.h"
@@ -269,6 +272,7 @@ namespace
 
     void RevertState(SKSE::SerializationInterface*)
     {
+        bcn::frame_tasks::Reset(false);
         bcn::ActorRegistry::Get().Revert();
         bcn::player_tint::ResetPersistedState();
     }
@@ -481,12 +485,14 @@ namespace bcn
         const auto settings = Settings::Get().Snapshot();
         const auto options = useDefault ? 0U :
             (settings.nippleRandomization ? 1U : 0U) | (settings.genitalRandomization ? 2U : 0U);
-        return StableStateSignature("body", bodyId, useDefault, options);
+        return StableStateSignature("body", bodyId, useDefault,
+            options, useDefault ? 0 : PresetCatalog::Get().ContentHash(bodyId));
     }
 
     std::uint64_t ActorRegistry::SkinSignature(const std::string_view skinId, const bool useDefault)
     {
-        return StableStateSignature("skin", skinId, useDefault);
+        return StableStateSignature("skin", skinId, useDefault, 0U,
+            useDefault ? 0 : SkinProfiles::Get().ContentHash(skinId));
     }
 
     bool ActorRegistry::NeedsBodyApply(RE::Actor* actor, const std::string_view bodyId,

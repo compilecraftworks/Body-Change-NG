@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
@@ -34,9 +35,10 @@ namespace bcn
         };
 
     private:
-        [[nodiscard]] Rules Snapshot() const;
+        [[nodiscard]] std::shared_ptr<const Rules> Snapshot() const;
 
         mutable std::mutex lock_;
         Rules rules_;
+        mutable std::shared_ptr<const Rules> evaluationRules_;
     };
 }

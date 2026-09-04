@@ -50,6 +50,9 @@ namespace
     [[nodiscard]] bool HasAnyForcedWornArmor(RE::Actor* actor, const bcn::OutfitRefit::Rules& rules)
     {
         if (!actor) return false;
+        // This guard skips ONLY the extra all-slot force scan. Ordinary
+        // chest eligibility and per-outfit mappings below are unaffected.
+        if (rules.forcedOutfitNames.empty() && rules.forcedFormIDs.empty()) return false;
         for (const auto& [boundObject, inventoryData] : actor->GetInventory()) {
             const auto& entry = inventoryData.second;
             if (!boundObject || !entry || !entry->IsWorn()) continue;
@@ -67,10 +70,11 @@ namespace bcn
         return refit;
     }
 
-    OutfitRefit::Rules OutfitRefit::Snapshot() const
+    std::shared_ptr<const OutfitRefit::Rules> OutfitRefit::Snapshot() const
     {
         std::scoped_lock lock(lock_);
-        return rules_;
+        if (!evaluationRules_) evaluationRules_ = std::make_shared<const Rules>(rules_);
+        return evaluationRules_;
     }
 
     bool OutfitRefit::LoadOBodyRules()
@@ -111,6 +115,7 @@ namespace bcn
         }
         std::scoped_lock lock(lock_);
         rules_ = std::move(loaded);
+        evaluationRules_.reset();
         SKSE::log::info(
             "Body Change NG registered OBody outfit-correction rules from {} "
             "(excluded-names={}, excluded-plugins={}, excluded-forms={}, forced-names={}, forced-forms={}, "
@@ -125,11 +130,13 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         rules_ = {};
+        evaluationRules_.reset();
     }
 
     void OutfitRefit::ProcessActor(RE::Actor* actor) const
     {
         if (!actor || !actor->Is3DLoaded()) return;
+        if (racemenu::HasActivePreview(actor)) return;
         const auto settings = Settings::Get().Snapshot();
         if (!settings.orefitEnabled) {
             const auto signature = StableStateSignature("outfit", "disabled", true);
@@ -139,7 +146,8 @@ namespace bcn
             return;
         }
 
-        const auto rules = Snapshot();
+        const auto snapshot = Snapshot();
+        const auto& rules = *snapshot;
         constexpr std::array slots{
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             RE::BGSBipedObjectForm::BipedObjectSlot::kModChestPrimary,
@@ -175,28 +183,19 @@ namespace bcn
                 break;
             }
         }
-        const auto refits = PresetCatalog::Get().RefitSnapshot();
         std::vector<std::string> candidates;
         std::string currentBodyId;
         if (!presetName.empty()) candidates.push_back(std::move(presetName));
         if (const auto currentID = racemenu::CurrentPresetId(actor)) {
             currentBodyId = *currentID;
-            const auto bodies = PresetCatalog::Get().Snapshot();
-            if (const auto current = std::ranges::find(bodies, *currentID, &BodyPreset::PersistentId);
-                current != bodies.end()) {
+            if (const auto current = PresetCatalog::Get().Find(*currentID)) {
                 candidates.push_back(current->name + "-Refit");
             }
         }
         candidates.push_back(female ? "Female-Refit" : "Male-Refit");
 
-        auto found = refits.end();
-        for (const auto& candidate : candidates) {
-            found = std::ranges::find_if(refits, [&](const auto& preset) {
-                return preset.male == !female && preset.name == candidate;
-            });
-            if (found != refits.end()) break;
-        }
-        if (found == refits.end()) {
+        const auto found = PresetCatalog::Get().FindRefit(candidates, !female);
+        if (!found) {
             const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,
                 settings.orefitNippleMorphing ? 1U : 0U);
             if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
@@ -205,7 +204,7 @@ namespace bcn
             return;
         }
         const auto signature = StableStateSignature("outfit", found->PersistentId() + "|" + currentBodyId, false,
-            settings.orefitNippleMorphing ? 1U : 0U);
+            settings.orefitNippleMorphing ? 1U : 0U, found->cachedContentHash);
         if (!ActorRegistry::Get().NeedsOutfitApply(actor, signature)) return;
         const auto result = racemenu::QueueApplyOutfit(actor, found->PersistentId(), signature);
         if (result != racemenu::ApplyResult::queued) {

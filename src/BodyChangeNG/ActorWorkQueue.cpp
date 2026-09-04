@@ -1,203 +1,103 @@
 #include "BodyChangeNG/ActorWorkQueue.h"
-
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OutfitRefit.h"
-#include "BodyChangeNG/Settings.h"
-
-#include <SKSE/Logger.h>
-
 #include <atomic>
 #include <chrono>
-#include <deque>
 #include <mutex>
 #include <unordered_map>
 
 namespace
 {
-    struct PendingActor final
-    {
+    struct PendingActor {
         RE::ActorHandle handle;
-        bcn::ActorWorkReason reason{ bcn::ActorWorkReason::bulkLoad };
-        std::uint64_t session{};
-        bool queued{};
-        bool waitingFor3D{};
+        bcn::ActorWorkReason reason{};
+        std::uint64_t revision{}, session{};
+        unsigned retries{};
     };
-
     std::mutex g_lock;
     std::unordered_map<RE::FormID, PendingActor> g_pending;
-    std::deque<RE::FormID> g_order;
-    bool g_drainScheduled{};
-    std::atomic_uint64_t g_session{ 1U };
-    std::atomic_uint64_t g_requests{};
-    std::atomic_uint64_t g_coalesced{};
-    std::atomic_uint64_t g_waiting{};
-    std::atomic_uint64_t g_processed{};
-    std::atomic_uint64_t g_changed{};
-    std::atomic_uint64_t g_unchanged{};
-    std::atomic_uint64_t g_processingMicros{};
+    std::uint64_t g_revision{};
+    std::atomic_uint64_t g_requests{}, g_coalesced{}, g_waiting{}, g_processed{}, g_changed{}, g_unchanged{}, g_processingMicros{};
     std::atomic_size_t g_maxPending{};
-
-    void DrainOne();
-    void QueueDrainAfterHops(std::uint8_t a_remainingHops);
-    void ScheduleDrain();
-
-    void QueueDrainAfterHops(const std::uint8_t remainingHops)
+    void Schedule(RE::FormID id, PendingActor request, unsigned delay)
     {
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) {
-            std::scoped_lock lock(g_lock);
-            g_drainScheduled = false;
-            return;
-        }
-        if (remainingHops == 0U) {
-            tasks->AddTask(DrainOne);
-            return;
-        }
-        tasks->AddTask([remainingHops] {
-            QueueDrainAfterHops(static_cast<std::uint8_t>(remainingHops - 1U));
-        });
-    }
-
-    void DrainOne()
-    {
-        PendingActor request;
-        RE::FormID formID{};
-        {
-            std::scoped_lock lock(g_lock);
-            g_drainScheduled = false;
-            while (!g_order.empty()) {
-                formID = g_order.front();
-                g_order.pop_front();
-                const auto found = g_pending.find(formID);
-                if (found == g_pending.end() || !found->second.queued) continue;
-                request = found->second;
-                found->second.queued = false;
-                break;
+        bcn::frame_tasks::Queue(id, [id, request]() mutable {
+            {
+                std::scoped_lock lock(g_lock);
+                const auto found = g_pending.find(id);
+                if (found == g_pending.end() || found->second.revision != request.revision) return;
             }
-        }
-        if (formID != 0U && request.session == g_session.load(std::memory_order_acquire)) {
             const auto actor = request.handle.get();
-            if (actor && actor->Is3DLoaded()) {
+            if (bcn::ActorRegistry::Get().SessionGeneration() != request.session || !actor ||
+                actor->GetFormID() != id) {
+                std::scoped_lock lock(g_lock);
+                const auto found = g_pending.find(id);
+                if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
+                return;
+            }
+            if (!actor->Is3DLoaded()) {
+                ++g_waiting;
+                // Bounded retry across actual input updates, never a same-FIFO
+                // spin. Detach/new session cancels immediately. A later attach
+                // can restart after expiry; saved desired choices are untouched.
+                if (++request.retries <= 100) { Schedule(id, request, 6); return; }
+            } else {
                 const auto started = std::chrono::steady_clock::now();
                 const auto changed = bcn::Distribution::Get().ApplyActor(actor.get());
                 bcn::OutfitRefit::Get().ProcessActor(actor.get());
-                const auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - started).count();
-                g_processingMicros.fetch_add(elapsed > 0 ? static_cast<std::uint64_t>(elapsed) : 0U,
-                    std::memory_order_relaxed);
-                g_processed.fetch_add(1U, std::memory_order_relaxed);
-                (changed ? g_changed : g_unchanged).fetch_add(1U, std::memory_order_relaxed);
-                std::scoped_lock lock(g_lock);
-                g_pending.erase(formID);
-            } else {
-                std::scoped_lock lock(g_lock);
-                const auto found = g_pending.find(formID);
-                if (found != g_pending.end()) {
-                    found->second.waitingFor3D = true;
-                    g_waiting.fetch_add(1U, std::memory_order_relaxed);
-                }
+                g_processingMicros += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                    std::chrono::steady_clock::now() - started).count());
+                ++g_processed;
+                ++(changed ? g_changed : g_unchanged);
             }
-        }
-        ScheduleDrain();
-    }
-
-    void ScheduleDrain()
-    {
-        {
             std::scoped_lock lock(g_lock);
-            if (g_drainScheduled || g_order.empty()) return;
-            g_drainScheduled = true;
-        }
-        QueueDrainAfterHops(bcn::AutomaticDrainDelayHops(
-            bcn::Settings::Get().Snapshot().performanceMode));
+            const auto found = g_pending.find(id);
+            if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
+        }, delay, 100, request.reason != bcn::ActorWorkReason::bulkLoad);
     }
-
 }
-
 namespace bcn
 {
-    ActorWorkQueue& ActorWorkQueue::Get()
+    ActorWorkQueue& ActorWorkQueue::Get() { static ActorWorkQueue queue; return queue; }
+    bool ActorWorkQueue::Request(RE::Actor* actor, ActorWorkReason reason)
     {
-        static ActorWorkQueue queue;
-        return queue;
-    }
-
-    bool ActorWorkQueue::Request(RE::Actor* actor, const ActorWorkReason reason)
-    {
-        if (!actor || actor->GetFormID() == 0U) return false;
-        g_requests.fetch_add(1U, std::memory_order_relaxed);
-        const auto formID = actor->GetFormID();
+        if (!frame_tasks::Active() || !actor || !actor->GetFormID() ||
+            actor == RE::PlayerCharacter::GetSingleton()) return false;
+        ++g_requests;
+        const auto id = actor->GetFormID();
+        PendingActor request;
         {
             std::scoped_lock lock(g_lock);
-            auto [found, inserted] = g_pending.try_emplace(formID);
-            auto& pending = found->second;
-            if (!inserted) g_coalesced.fetch_add(1U, std::memory_order_relaxed);
-            const auto previousReason = pending.reason;
-            const auto wasQueued = pending.queued;
-            const auto visiblePriority = reason != ActorWorkReason::bulkLoad;
-            pending.handle = actor->GetHandle();
-            if (inserted || visiblePriority) pending.reason = reason;
-            pending.session = g_session.load(std::memory_order_relaxed);
-            pending.waitingFor3D = !actor->Is3DLoaded();
-            if (!pending.waitingFor3D && !pending.queued) {
-                pending.queued = true;
-                if (visiblePriority) g_order.push_front(formID);
-                else g_order.push_back(formID);
-            } else if (!inserted && visiblePriority && wasQueued &&
-                previousReason == ActorWorkReason::bulkLoad) {
-                // Leave the old bulk entry in place. Once this priority copy is
-                // processed the stale deque entry is skipped because its map
-                // entry has already been erased.
-                g_order.push_front(formID);
+            auto found = g_pending.find(id);
+            if (found == g_pending.end() && g_pending.size() >= 4096) return false;
+            if (found != g_pending.end()) {
+                ++g_coalesced;
+                if (reason == ActorWorkReason::bulkLoad) reason = found->second.reason;
             }
-            auto maximum = g_maxPending.load(std::memory_order_relaxed);
-            while (g_pending.size() > maximum &&
-                !g_maxPending.compare_exchange_weak(maximum, g_pending.size(), std::memory_order_relaxed)) {}
+            request = {actor->GetHandle(), reason, ++g_revision, ActorRegistry::Get().SessionGeneration(), 0};
+            g_pending[id] = request;
+            g_maxPending.store(std::max(g_maxPending.load(), g_pending.size()));
         }
-        ScheduleDrain();
+        Schedule(id, request, 1);
         return true;
     }
-
-    void ActorWorkQueue::NotifyDetached(const std::uint32_t actorFormID)
+    void ActorWorkQueue::NotifyDetached(std::uint32_t id)
     {
-        if (actorFormID == 0U) return;
-        std::scoped_lock lock(g_lock);
-        // A later attach event submits a fresh request and handle. Retaining
-        // an unloaded actor here only grows the wait map for NPCs that never
-        // return to the current game session.
-        g_pending.erase(actorFormID);
+        { std::scoped_lock lock(g_lock); g_pending.erase(id); }
+        frame_tasks::CancelActor(id);
     }
-
     void ActorWorkQueue::ResetSession()
     {
-        const auto generation = g_session.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        {
-            std::scoped_lock lock(g_lock);
-            g_pending.clear();
-            g_order.clear();
-            g_drainScheduled = false;
-        }
-        SKSE::log::info("Body Change NG reset its actor work queue for session {}", generation);
+        std::scoped_lock lock(g_lock);
+        g_pending.clear();
+        ++g_revision;
     }
-
     ActorWorkMetrics ActorWorkQueue::Metrics() const
     {
-        std::size_t pending{};
-        {
-            std::scoped_lock lock(g_lock);
-            pending = g_pending.size();
-        }
-        return ActorWorkMetrics{
-            .requests = g_requests.load(std::memory_order_relaxed),
-            .coalesced = g_coalesced.load(std::memory_order_relaxed),
-            .waitingFor3D = g_waiting.load(std::memory_order_relaxed),
-            .processed = g_processed.load(std::memory_order_relaxed),
-            .changed = g_changed.load(std::memory_order_relaxed),
-            .unchanged = g_unchanged.load(std::memory_order_relaxed),
-            .totalProcessingMicros = g_processingMicros.load(std::memory_order_relaxed),
-            .pending = pending,
-            .maximumPending = g_maxPending.load(std::memory_order_relaxed)
-        };
+        std::scoped_lock lock(g_lock);
+        return {g_requests.load(), g_coalesced.load(), g_waiting.load(), g_processed.load(),
+            g_changed.load(), g_unchanged.load(), g_processingMicros.load(), g_pending.size(), g_maxPending.load()};
     }
 }

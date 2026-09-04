@@ -571,6 +571,7 @@ namespace bcn
             if (!std::filesystem::exists(sourcePath.path)) {
                 std::scoped_lock lock(lock_);
                 rules_ = DefaultExclusionRules();
+                evaluationRules_.reset();
                 return false;
             }
             std::ifstream stream(sourcePath.path);
@@ -626,11 +627,13 @@ namespace bcn
                 sourcePath.path.string(), exception.what());
             std::scoped_lock lock(lock_);
             rules_ = DefaultExclusionRules();
+            evaluationRules_.reset();
             return false;
         }
         {
             std::scoped_lock lock(lock_);
             rules_ = std::move(loaded);
+            evaluationRules_.reset();
         }
         return true;
     }
@@ -652,6 +655,13 @@ namespace bcn
         return WriteDistributionFile(Path(), rules);
     }
 
+    std::shared_ptr<const std::vector<DistributionRule>> Distribution::EvaluationRules() const
+    {
+        std::scoped_lock lock(lock_);
+        if (!evaluationRules_) evaluationRules_ = std::make_shared<const std::vector<DistributionRule>>(rules_);
+        return evaluationRules_;
+    }
+
     std::vector<DistributionRule> Distribution::Snapshot() const
     {
         std::scoped_lock lock(lock_);
@@ -663,6 +673,7 @@ namespace bcn
         rules = NormalizeRules(std::move(rules));
         std::scoped_lock lock(lock_);
         rules_ = std::move(rules);
+        evaluationRules_.reset();
     }
 
     void Distribution::SetManualAssignment(RE::Actor* actor, std::string presetId)
@@ -756,12 +767,15 @@ namespace bcn
 
     bool Distribution::ApplyActor(RE::Actor* actor) const
     {
+        // User preview owns this actor until confirm/close. Automatic
+        // distribution must not replace the interactive body or skin.
+        if (racemenu::HasActivePreview(actor)) return false;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!IsEligibleNPC(actor, player)) return false;
         const auto manual = ActorRegistry::Get().ManualSelection(actor);
         const auto previous = ActorRegistry::Get().Snapshot(actor);
-        const auto rules = Snapshot();
-        const auto selection = ChooseRuleSelection(rules, actor, previous);
+        const auto rules = EvaluationRules();
+        const auto selection = ChooseRuleSelection(*rules, actor, previous);
         ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
         bool queued{};
 

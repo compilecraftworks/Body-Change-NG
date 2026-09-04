@@ -31,7 +31,8 @@ namespace bcn
     };
 
     [[nodiscard]] inline std::uint64_t StableStateSignature(const std::string_view channel,
-        const std::string_view value, const bool useDefault, const std::uint32_t optionBits = 0U) noexcept
+        const std::string_view value, const bool useDefault, const std::uint32_t optionBits = 0U,
+        const std::uint64_t contentHash = 0U) noexcept
     {
         std::uint64_t hash = 1469598103934665603ULL;
         const auto append = [&hash](const std::uint8_t byte) { hash = (hash ^ byte) * 1099511628211ULL; };
@@ -41,6 +42,10 @@ namespace bcn
         append(useDefault ? 1U : 0U);
         for (std::uint32_t shift{}; shift < 32U; shift += 8U) {
             append(static_cast<std::uint8_t>(optionBits >> shift));
+        }
+        if (contentHash != 0) {
+            append(0xFEU);
+            for (std::uint32_t shift{}; shift < 64U; shift += 8U) append(static_cast<std::uint8_t>(contentHash >> shift));
         }
         return hash;
     }

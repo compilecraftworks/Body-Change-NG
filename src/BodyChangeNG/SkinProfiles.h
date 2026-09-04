@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 #include <vector>
+#include <unordered_map>
 
 namespace bcn
 {
@@ -113,6 +114,7 @@ namespace bcn
         // instead of exposing each DDS as a separate skin row.
         std::vector<SkinTextureLayer> faceDetails;
         std::filesystem::path source;
+        std::uint64_t contentHash{};
     };
 
     [[nodiscard]] constexpr body_family::Mask StandardSkinFamilies(const SkinSex sex) noexcept
@@ -167,6 +169,7 @@ namespace bcn
         [[nodiscard]] static std::vector<SkinProfile> ScanDirectory(const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<SkinProfile> Snapshot() const;
         [[nodiscard]] std::optional<SkinProfile> Find(std::string_view a_id) const;
+        [[nodiscard]] std::uint64_t ContentHash(std::string_view a_id) const;
         [[nodiscard]] std::vector<std::string> CompatibleIds(
             const std::vector<std::string>& a_ids, SkinSex a_sex,
             body_family::Mask a_actorFamily, SkinRace a_actorRace) const;
@@ -176,5 +179,6 @@ namespace bcn
     private:
         mutable std::mutex lock_;
         std::vector<SkinProfile> profiles_;
+        std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };
 }

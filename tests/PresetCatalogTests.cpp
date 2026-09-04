@@ -16,6 +16,15 @@ namespace
 
 int main(const int argc, char** argv)
 {
+    bcn::BodyPreset contentA{.name = "same", .source = "same.xml", .family = "CBBE 3BA",
+        .sliders = {{"Breasts", 0.2F, 0.7F}}};
+    auto contentB = contentA;
+    contentB.sliders.front().highWeight = 0.8F;
+    if (!Require(contentA.PersistentId() == contentB.PersistentId() &&
+            contentA.ContentHash() != contentB.ContentHash(), "same-ID XML edit was not detected")) return 1;
+    contentB = contentA;
+    contentB.sliders.clear();
+    if (!Require(contentA.ContentHash() != contentB.ContentHash(), "removed slider was not detected")) return 1;
     if (argc == 2) {
         const auto presets = bcn::PresetCatalog::ScanDirectory(std::filesystem::path{ argv[1] });
         if (!Require(!presets.empty(), "real BodySlide preset folder produced no presets")) return 1;

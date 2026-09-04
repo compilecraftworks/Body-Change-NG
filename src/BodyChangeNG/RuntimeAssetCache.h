@@ -1,11 +1,14 @@
 #pragma once
 
 #include <filesystem>
+#include <cstdint>
 #include <string>
 #include <string_view>
 
 namespace bcn::runtime_assets
 {
+    // Cached at explicit catalog registration; never reads DDS during NPC evaluation.
+    std::uint64_t SourceContentHash(std::string_view path);
     // Drops only one catalog's mappings before a live rescan. Sources owned by
     // the other catalogs remain valid while this prefix is rebuilt.
     void ClearGameRelativeSources(std::string_view a_prefix);

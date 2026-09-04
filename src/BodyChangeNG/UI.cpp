@@ -1,4 +1,5 @@
 #include "BodyChangeNG/UI.h"
+#include "BodyChangeNG/FrameTasks.h"
 
 #include "BodyChangeNG/ActorCatalog.h"
 #include "BodyChangeNG/BodyFamily.h"
@@ -30,6 +31,8 @@
 
 namespace
 {
+    std::atomic_uint64_t g_uiSessionEpoch{};
+    std::mutex g_uiLifecycleLock;
     enum class ActiveTab
     {
         body,
@@ -1076,6 +1079,7 @@ namespace
 
     void CommitPendingSelections()
     {
+        if (!bcn::frame_tasks::IsCurrent(g_uiSessionEpoch.load())) return;
         auto* actor = SelectedActor();
         if (!actor) return;
         const auto actorFormID = actor->GetFormID();
@@ -2289,15 +2293,15 @@ namespace bcn::ui
 
     void Initialize()
     {
-        PresetCatalog::Get().Refresh();
-        SkinProfiles::Get().Refresh();
-        player_tint::Catalog::Get().Refresh();
-        ActorCatalog::Get().Refresh();
+        // DataLoaded populates asset catalogs once; OnOpened refreshes actors.
+        // Avoid hashing all DDS files twice during plugin startup.
         native_ui::Register(&Draw);
     }
 
     void OnOpened()
     {
+        std::scoped_lock lifecycle(g_uiLifecycleLock);
+        g_uiSessionEpoch = frame_tasks::Epoch();
         // The actor list is deliberately refreshed only once at menu open.
         // A previous menu session must not retain an NPC camera target. Start
         // from Player every time. Nearby actors are still rebuilt at open and
@@ -2317,8 +2321,22 @@ namespace bcn::ui
         g_activeTab = ActiveTab::body;
     }
 
+    void OnLoadStart()
+    {
+        std::scoped_lock lifecycle(g_uiLifecycleLock);
+        g_uiSessionEpoch = 0;
+        // A load is not a user confirmation. Do not let a delayed kHide
+        // commit the old save's UI preview into the newly loaded actor.
+        g_pendingBody.reset();
+        g_pendingSkin.reset();
+        g_pendingTint.reset();
+        bcn::menu_character::Presentation::Get().Restore();
+        [[maybe_unused]] const auto closed = native_ui::Close();
+    }
+
     void OnClosed()
     {
+        std::scoped_lock lifecycle(g_uiLifecycleLock);
         // Closing confirms the last live selections for the exact actor that
         // owns them. Commit before removing the BodyMorph preview layer.
         CommitPendingSelections();
@@ -2374,6 +2392,8 @@ namespace bcn::ui
 
     void Draw()
     {
+        std::scoped_lock lifecycle(g_uiLifecycleLock);
+        if (!frame_tasks::IsCurrent(g_uiSessionEpoch.load())) return;
         const auto defaultWindowSize = DefaultWindowSize(kDefaultWindowWidth, kDefaultWindowHeight);
         ImGui::SetNextWindowSize(defaultWindowSize, ImGuiCond_FirstUseEver);
         // The top command row is intentionally one line. Prevent narrowing the

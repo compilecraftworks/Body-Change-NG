@@ -1,11 +1,13 @@
 #include "BodyChangeNG/ActorEvents.h"
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
+#include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/InputSink.h"
 #include "BodyChangeNG/NativeImGuiHost.h"
 #include "BodyChangeNG/OutfitRefit.h"
 #include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/RaceMenuPresetMigration.h"
 #include "BodyChangeNG/Distribution.h"
@@ -26,14 +28,10 @@ namespace
     {
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return;
-        tasks->AddTask([session, remainingHops] {
+        bcn::frame_tasks::Queue(0, [session] {
             if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
-            if (remainingHops > 0U) {
-                QueueInitialDistribution(session, static_cast<std::uint8_t>(remainingHops - 1U));
-                return;
-            }
             [[maybe_unused]] const auto applied = bcn::Distribution::Get().ApplyLoadedNPCs();
-        });
+        }, remainingHops, 101);
     }
 
     void InitializeLogging()
@@ -55,6 +53,12 @@ namespace
     void OnSkseMessage(SKSE::MessagingInterface::Message* message)
     {
         if (!message) return;
+        if (message->type == SKSE::MessagingInterface::kPreLoadGame) {
+            bcn::frame_tasks::Reset(false);
+            bcn::ui::OnLoadStart();
+            bcn::ActorWorkQueue::Get().ResetSession();
+            bcn::ActorEvents::Get().ResetSessionState();
+        }
         if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
             // Public SKSE messaging only: SmoothCam remains entirely
             // optional and there is no load-time DLL dependency.
@@ -67,6 +71,7 @@ namespace
             bcn::racemenu_preset_migration::MigrateVisiblePresets();
             bcn::PresetCatalog::Get().Refresh();
             bcn::SkinProfiles::Get().Refresh();
+            bcn::player_tint::Catalog::Get().Refresh();
             [[maybe_unused]] const auto loadedBodyChangeRules = bcn::Distribution::Get().Load();
             // OBody's JSON is deliberately not read at startup. Outfit-
             // correction rules are registered only by the explicit popup action.
@@ -78,6 +83,7 @@ namespace
         }
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame) {
+            bcn::frame_tasks::Reset(true);
             bcn::ActorWorkQueue::Get().ResetSession();
             bcn::ActorEvents::Get().ResetSessionState();
             bcn::racemenu::ResetSessionState();
@@ -89,7 +95,7 @@ namespace
             // callbacks first. Later cell attachments still use ActorEvents and
             // the normal coalescing queue.
             QueueInitialDistribution(bcn::ActorRegistry::Get().SessionGeneration(),
-                bcn::InitialDistributionDelayHops());
+                bcn::InitialDistributionDelayTicks());
         }
     }
 }
@@ -109,6 +115,7 @@ SKSEPluginLoad(const SKSE::LoadInterface* skse)
     bcn::ui::Initialize();
 
     const auto textInputFilterInstalled = bcn::text_input::Install();
+    bcn::frame_tasks::SetAvailable(textInputFilterInstalled);
     const auto rendererHookInstalled = bcn::native_ui::InstallRendererHook();
     if (auto* messaging = SKSE::GetMessagingInterface()) {
         messaging->RegisterListener(OnSkseMessage);

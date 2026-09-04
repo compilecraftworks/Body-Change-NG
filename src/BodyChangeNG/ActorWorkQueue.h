@@ -36,12 +36,12 @@ namespace bcn
         return true;
     }
 
-    [[nodiscard]] constexpr std::uint8_t AutomaticDrainDelayHops(const bool performanceMode) noexcept
+    [[nodiscard]] constexpr unsigned AutomaticActorBudget(const bool performanceMode) noexcept
     {
-        return performanceMode ? 1U : 0U;
+        return performanceMode ? 2U : 4U;
     }
 
-    [[nodiscard]] constexpr std::uint8_t InitialDistributionDelayHops() noexcept
+    [[nodiscard]] constexpr std::uint8_t InitialDistributionDelayTicks() noexcept
     {
         // Allow serialization listeners and other RaceMenu users to finish
         // their load callbacks before BCNG begins touching loaded actors.
@@ -53,10 +53,8 @@ namespace bcn
     public:
         static ActorWorkQueue& Get();
 
-        // Every mode coalesces automatic actor events and bounds work to one
-        // actor per game-task turn. Performance mode adds one scheduling hop
-        // between actors. Newly visible actors are always prioritized ahead
-        // of save-load bulk work so neither mode bursts a dense cell at once.
+        // Every mode uses the externally clocked frame queue. Performance
+        // mode lowers its actor/time budget, never adds same-FIFO hops.
         [[nodiscard]] bool Request(RE::Actor* a_actor, ActorWorkReason a_reason);
         void NotifyDetached(std::uint32_t a_actorFormID);
         void ResetSession();

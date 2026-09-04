@@ -45,12 +45,14 @@ int main()
             "randomization options were not included");
         Require(bcn::UsesQueuedAutomaticPath(false) && bcn::UsesQueuedAutomaticPath(true),
             "an automatic actor mode bypassed the coalescing queue");
-        Require(bcn::AutomaticDrainDelayHops(false) == 0U,
-            "normal mode unexpectedly delayed the first queued actor");
-        Require(bcn::AutomaticDrainDelayHops(true) == 1U,
-            "performance mode did not add its conservative scheduling hop");
-        Require(bcn::InitialDistributionDelayHops() == 2U,
+        Require(bcn::AutomaticActorBudget(false) == 4U,
+            "normal mode actor budget changed");
+        Require(bcn::AutomaticActorBudget(true) == 2U,
+            "performance mode actor budget changed");
+        Require(bcn::InitialDistributionDelayTicks() == 2U,
             "initial distribution no longer yields to save-load listeners");
+        Require(StableStateSignature("body", "same", false, 0, 1ULL) !=
+            StableStateSignature("body", "same", false, 0, 0x100000001ULL), "upper content hash bits lost");
         const auto omittedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.0F, 0.4F);
         Require(std::abs(omittedCorrection + 0.4F) < 0.00001F &&
                 std::abs(0.4F + omittedCorrection) < 0.00001F,

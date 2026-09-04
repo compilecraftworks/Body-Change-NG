@@ -1,4 +1,5 @@
 #include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/ContentSignature.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
@@ -153,6 +154,43 @@ namespace bcn
         return result;
     }
 
+    std::uint64_t BodyPreset::ContentHash() const
+    {
+        ContentSignature hash;
+        hash.Text(family); hash.Text(bodySet); hash.Number(male); hash.Number(isRefit);
+        for (const auto& slider : sliders) {
+            hash.Text(slider.name); hash.Float(slider.lowWeight); hash.Float(slider.highWeight);
+        }
+        return hash.value;
+    }
+
+    std::optional<BodyPreset> PresetCatalog::Find(std::string_view id, bool refit) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto& catalog = refit ? refitPresets_ : presets_;
+        const auto found = std::ranges::find(catalog, id, &BodyPreset::PersistentId);
+        return found == catalog.end() ? std::nullopt : std::optional<BodyPreset>(*found);
+    }
+
+    std::optional<BodyPreset> PresetCatalog::FindRefit(const std::vector<std::string>& names, bool male) const
+    {
+        std::scoped_lock lock(lock_);
+        for (const auto& name : names) {
+            const auto found = std::ranges::find_if(refitPresets_, [&](const auto& preset) {
+                return preset.male == male && preset.name == name;
+            });
+            if (found != refitPresets_.end()) return *found;
+        }
+        return {};
+    }
+
+    std::uint64_t PresetCatalog::ContentHash(std::string_view id) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto found = contentHashes_.find(std::string(id));
+        return found == contentHashes_.end() ? 0 : found->second;
+    }
+
     void PresetCatalog::Refresh()
     {
         std::vector<BodyPreset> scanned;
@@ -170,6 +208,7 @@ namespace bcn
         normal.reserve(scanned.size());
         refit.reserve(scanned.size());
         for (auto& preset : scanned) {
+            preset.cachedContentHash = preset.ContentHash();
             (preset.isRefit ? refit : normal).push_back(std::move(preset));
         }
         std::array<std::size_t, 8> familyCounts{};
@@ -193,6 +232,9 @@ namespace bcn
         presets_ = std::move(normal);
         refitPresets_ = std::move(refit);
         sliderUniverseCache_.clear();
+        contentHashes_.clear();
+        for (const auto& preset : presets_) contentHashes_[preset.PersistentId()] = preset.cachedContentHash;
+        for (const auto& preset : refitPresets_) contentHashes_[preset.PersistentId()] = preset.cachedContentHash;
     }
 
     std::vector<BodyPreset> PresetCatalog::Snapshot() const

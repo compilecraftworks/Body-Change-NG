@@ -3,6 +3,7 @@
 #include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/RuntimeAssetCache.h"
 
 #include <filesystem>
 #include <fstream>
@@ -606,6 +607,30 @@ int main(const int argc, char** argv)
             (maleTint->bodyFamilies & bcn::body_family::kMaleFamilies) != 0U,
             "male tint was not retained as a male-family asset")) return 1;
 
+    // Content refresh must distinguish equal-size DDS replacements even if
+    // an archive extraction preserves timestamps. Cache aliases must differ.
+    const auto refreshSource = sandbox / "refresh.dds";
+    std::ofstream(refreshSource, std::ios::binary) << "abc";
+    const auto sourceTime = std::filesystem::last_write_time(refreshSource);
+    const auto refreshKey = "BodySkin\\Refresh\\body.dds";
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
+    const auto beforeHash = bcn::runtime_assets::SourceContentHash(refreshKey);
+    std::filesystem::current_path(sandbox);
+    const auto beforePath = bcn::runtime_assets::TexturePathFromGameRelative(refreshKey, "test");
+    std::ofstream(refreshSource, std::ios::binary) << "xyz";
+    std::filesystem::last_write_time(refreshSource, sourceTime);
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
+    const auto afterHash = bcn::runtime_assets::SourceContentHash(refreshKey);
+    const auto afterPath = bcn::runtime_assets::TexturePathFromGameRelative(refreshKey, "test");
+    std::filesystem::current_path(originalCurrentPath);
+    if (!Require(beforeHash != afterHash && !beforePath.empty() && beforePath != afterPath,
+            "same size/time DDS edit retained content signature or texture cache alias")) return 1;
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
+    if (!Require(afterHash == bcn::runtime_assets::SourceContentHash(refreshKey),
+            "unchanged refresh invalidated content hash")) return 1;
     std::filesystem::remove_all(sandbox);
     return 0;
 }

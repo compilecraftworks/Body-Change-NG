@@ -85,6 +85,7 @@ target("BodyChangeNGAssetCatalogTests")
         "src/BodyChangeNG/CatalogRoots.cpp",
         "src/BodyChangeNG/Hotkey.cpp",
         "src/BodyChangeNG/PlayerTint.cpp",
+        "src/BodyChangeNG/FrameTasks.cpp",
         "src/BodyChangeNG/RuntimeAssetCache.cpp",
         "src/BodyChangeNG/Settings.cpp",
         "src/BodyChangeNG/SkinProfiles.cpp"
@@ -123,6 +124,14 @@ target("BodyChangeNGAsyncWorkGuardTests")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
     add_files("tests/AsyncWorkGuardTests.cpp")
+    add_includedirs("src")
+
+target("BodyChangeNGFrameTaskQueueTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/FrameTaskQueueTests.cpp")
     add_includedirs("src")
 
 target("BodyChangeNGActorStateTests")

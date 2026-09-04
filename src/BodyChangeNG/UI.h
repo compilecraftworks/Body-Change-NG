@@ -9,5 +9,6 @@ namespace bcn::ui
     void Draw();
     void OnOpened();
     void OnClosed();
+    void OnLoadStart();
     void Notify(std::string a_message);
 }

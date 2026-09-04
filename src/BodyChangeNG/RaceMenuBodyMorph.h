@@ -59,6 +59,7 @@ namespace bcn::racemenu
     [[nodiscard]] void* QueryInterface(const char* a_name) noexcept;
     [[nodiscard]] std::optional<std::string> CurrentPresetId(const RE::Actor* a_actor);
     void ForgetActorState(std::uint32_t a_actorFormID);
+    [[nodiscard]] bool HasActivePreview(const RE::Actor* a_actor);
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,
         std::uint64_t a_outfitSignature = 0U,
         UpdatePolicy a_updatePolicy = UpdatePolicy::synchronous);

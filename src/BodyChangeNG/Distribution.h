@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -127,6 +128,8 @@ namespace bcn
     private:
         [[nodiscard]] static std::filesystem::path Path();
         mutable std::mutex lock_;
+        [[nodiscard]] std::shared_ptr<const std::vector<DistributionRule>> EvaluationRules() const;
+        mutable std::shared_ptr<const std::vector<DistributionRule>> evaluationRules_;
         std::vector<DistributionRule> rules_;
     };
 }

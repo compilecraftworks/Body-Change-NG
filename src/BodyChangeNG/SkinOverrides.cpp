@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/FrameTasks.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/AsyncWorkGuards.h"
@@ -453,20 +454,26 @@ namespace
     {
     public:
         NodeUpdateCallback(RE::ActorHandle actorHandle, const std::uint64_t generation) :
-            actorHandle_(std::move(actorHandle)), generation_(generation) {}
+            actorHandle_(std::move(actorHandle)), generation_(generation),
+            epoch_(bcn::frame_tasks::Epoch()), lease_(bcn::frame_tasks::CurrentLease()) {}
 
         void operator()(RE::BSScript::Variable) override
         {
             // Actor.QueueNiNodeUpdate is asynchronous with respect to the
             // scene graph used by RaceMenu BodyMorph.  Start the post-rebuild
             // barrier only after Papyrus reports that the call completed.
-            QueueSettledSkinAudit(actorHandle_, generation_, 2U);
+            if (!bcn::frame_tasks::IsCurrent(epoch_) || !bcn::frame_tasks::ValidLease(lease_)) return;
+            bcn::frame_tasks::Continue(lease_, [handle = actorHandle_, generation = generation_] {
+                QueueSettledSkinAudit(handle, generation, 2U);
+            });
         }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
 
     private:
         RE::ActorHandle actorHandle_;
         std::uint64_t generation_{};
+        std::uint64_t epoch_{};
+        bcn::frame_tasks::Lease lease_;
     };
 
     [[nodiscard]] bool QueueNiNodeUpdate(RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
@@ -693,13 +700,13 @@ namespace
     {
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return;
-        tasks->AddTask([actorHandle, generation, remainingTaskHops] {
+        bcn::frame_tasks::Continue(bcn::frame_tasks::CurrentLease(), [actorHandle, generation] {
+            if (!bcn::frame_tasks::ValidLease(bcn::frame_tasks::CurrentLease())) return;
             const auto actor = actorHandle.get();
             if (!actor || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
-            if (remainingTaskHops != 0U) {
-                QueueSettledSkinAudit(actorHandle, generation, remainingTaskHops - 1U);
-                return;
-            }
+            // Keep the quiet interval, but expensive per-DDS scene traversal
+            // and diagnostic texture resolution are opt-in, not shipping work.
+            if (!spdlog::should_log(spdlog::level::debug)) return;
             if (const auto profileID = bcn::skin_override::CurrentProfileId(actor.get())) {
                 if (const auto profile = bcn::SkinProfiles::Get().Find(*profileID)) {
                     AuditLiveSkinProfile(actor.get(), *profile);
@@ -708,7 +715,7 @@ namespace
             SKSE::log::info(
                 "SkinAudit settled actor={:08X} generation={} body-reapply=false",
                 actor->GetFormID(), generation);
-        });
+        }, std::max(1U, remainingTaskHops));
     }
 
     [[nodiscard]] std::optional<FaceNodeInfo> FaceNode(RE::Actor* actor, RE::TESNPC* base)
@@ -1204,6 +1211,8 @@ namespace
     // unspecified order.
     struct LegacyOverrideBatch final
     {
+        bcn::frame_tasks::Lease lease;
+        std::uint64_t epoch{};
         RE::ActorHandle actor;
         const RE::Actor* identity{};
         const RE::BSScript::Internal::VirtualMachine* vmIdentity{};
@@ -1218,6 +1227,8 @@ namespace
     [[nodiscard]] auto MakeLegacyBatch(RE::Actor* actor, const std::uint64_t generation)
     {
         auto batch = std::make_shared<LegacyOverrideBatch>();
+        batch->lease = bcn::frame_tasks::CurrentLease();
+        batch->epoch = bcn::frame_tasks::Epoch();
         batch->actor = actor->GetHandle();
         batch->identity = actor;
         batch->vmIdentity = RE::BSScript::Internal::VirtualMachine::GetSingleton();
@@ -1231,7 +1242,8 @@ namespace
     // callback. Stale callbacks must not reach their captured native arguments.
     [[nodiscard]] RE::NiPointer<RE::Actor> ResolveLegacyBatch(const std::shared_ptr<LegacyOverrideBatch>& batch)
     {
-        if (!batch || batch->session != bcn::ActorRegistry::Get().SessionGeneration() ||
+        if (!batch || !bcn::frame_tasks::ValidLease(batch->lease) || !bcn::frame_tasks::IsCurrent(batch->epoch) ||
+            batch->session != bcn::ActorRegistry::Get().SessionGeneration() ||
             batch->vmIdentity != RE::BSScript::Internal::VirtualMachine::GetSingleton()) return {};
         const auto actor = batch->actor.get();
         if (!actor || actor.get() != batch->identity || !actor->Is3DLoaded() ||
@@ -1244,10 +1256,11 @@ namespace
     void CompleteLegacyBatch(const std::shared_ptr<LegacyOverrideBatch>& batch)
     {
         if (!batch || batch->pending.fetch_sub(1U, std::memory_order_acq_rel) != 1U) return;
+        if (!bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease)) return;
         const auto accepted = batch->accepted.load(std::memory_order_acquire);
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto completion = batch->completion;
-            tasks->AddTask([batch, completion, accepted] {
+            bcn::frame_tasks::Continue(batch->lease, [batch, completion, accepted] {
                 const auto actor = ResolveLegacyBatch(batch);
                 if (actor && completion) completion(accepted);
             });
@@ -1294,17 +1307,23 @@ namespace
         void operator()(RE::BSScript::Variable result) override
         {
             if (!finished_.TryFinish()) return;
+            if (!bcn::frame_tasks::IsCurrent(batch_->epoch) || !bcn::frame_tasks::ValidLease(batch_->lease)) {
+                CompleteLegacyBatch(batch_);
+                return;
+            }
             std::string current;
             if (result.IsString()) current = result.GetString();
             // VM callbacks are not an engine mutation boundary. Hand the
             // follow-up back to the game thread and revalidate there, not only
             // after the entire clear/apply batch has already changed textures.
             if (const auto* tasks = SKSE::GetTaskInterface()) {
-                tasks->AddTask([batch = batch_, completion = completion_, current = std::move(current)]() mutable {
+                const auto queued = bcn::frame_tasks::Continue(batch_->lease,
+                    [batch = batch_, completion = completion_, current = std::move(current)]() mutable {
                     const auto actor = ResolveLegacyBatch(batch);
                     if (actor && completion) completion(std::move(current));
                     CompleteLegacyBatch(batch);
                 });
+                if (!queued) CompleteLegacyBatch(batch_);
             } else CompleteLegacyBatch(batch_);
         }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
@@ -1516,6 +1535,16 @@ namespace
         return submitted != 0U;
     }
 
+    void MarkCurrentSkinContent(RE::Actor* actor, const bcn::SkinProfile& profile, std::uint64_t generation)
+    {
+        if (!actor || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+        if (profile.contentHash != bcn::SkinProfiles::Get().ContentHash(profile.id)) {
+            [[maybe_unused]] const auto refreshed = bcn::skin_override::QueueApply(actor, profile.id);
+            return;
+        }
+        bcn::ActorRegistry::Get().MarkSkinApplied(actor, profile.id, false);
+    }
+
     void ApplyLegacyNow(RE::ActorHandle actorHandle, const bcn::SkinProfile profile,
         const std::uint64_t generation)
     {
@@ -1567,7 +1596,7 @@ namespace
                 const auto [requestedParts, submittedParts] = *partProgress;
                 const auto complete = requestedParts != 0U && submittedParts == requestedParts && accepted != 0U;
                 if (complete) {
-                    bcn::ActorRegistry::Get().MarkSkinApplied(settledActor.get(), profile.id, false);
+                    MarkCurrentSkinContent(settledActor.get(), profile, generation);
                     SKSE::log::info(
                         "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v1",
                         profile.name, settledActor->GetFormID());
@@ -1796,7 +1825,7 @@ namespace
         }
         const auto complete = requestedParts != 0U && appliedParts == requestedParts;
         if (complete) {
-            bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
+            MarkCurrentSkinContent(actor.get(), profile, generation);
             SKSE::log::info("Body Change NG applied texture skin profile '{}' to actor {:08X} synchronously",
                 profile.name, actor->GetFormID());
         } else {
@@ -1872,6 +1901,7 @@ namespace bcn::skin_override
 
     ApplyResult QueueApply(RE::Actor* actor, std::string profileId)
     {
+        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         if (!actor) return ApplyResult::invalidActor;
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         // RaceMenu SE exposes Override v1; AE exposes the public v2 wrapper.
@@ -1911,15 +1941,22 @@ namespace bcn::skin_override
             std::scoped_lock lock(g_selectionLock);
             g_currentProfileIds[actor->GetFormID()] = profile->id;
         }
-        tasks->AddTask([handle, profile = *profile, generation, overrideVersion] {
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, profile = *profile, generation, overrideVersion] {
+            const auto resolved = handle.get();
+            if (!resolved || !IsCurrentSkinChange(resolved->GetFormID(), generation)) return;
+            if (profile.contentHash != SkinProfiles::Get().ContentHash(profile.id)) {
+                [[maybe_unused]] const auto refreshed = QueueApply(resolved.get(), profile.id);
+                return;
+            }
             if (overrideVersion == 1U) ApplyLegacyNow(handle, profile, generation);
             else ApplyNow(handle, profile, generation);
-        });
+        }, 1, 204);
         return ApplyResult::queued;
     }
 
     ApplyResult QueueClear(RE::Actor* actor)
     {
+        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         if (!actor) return ApplyResult::invalidActor;
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         const auto overrideVersion = OverrideVersion();
@@ -1932,12 +1969,12 @@ namespace bcn::skin_override
         const auto generation = BeginSkinChange(actor->GetFormID());
         {
             std::scoped_lock lock(g_selectionLock);
-            g_currentProfileIds.erase(actor->GetFormID());
+            g_currentProfileIds[actor->GetFormID()] = {};
         }
-        tasks->AddTask([handle, generation, overrideVersion] {
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, overrideVersion] {
             if (overrideVersion == 1U) ClearLegacyNow(handle, generation);
             else ClearNow(handle, generation);
-        });
+        }, 1, 204);
         return ApplyResult::queued;
     }
 
@@ -1947,7 +1984,8 @@ namespace bcn::skin_override
         {
             std::scoped_lock lock(g_selectionLock);
             const auto found = g_currentProfileIds.find(actor->GetFormID());
-            if (found != g_currentProfileIds.end()) return found->second;
+            if (found != g_currentProfileIds.end()) return found->second.empty() ?
+                std::nullopt : std::optional<std::string>(found->second);
         }
         // A partial profile can remain pending until its covered geometry is
         // loaded. Keep returning the desired selection so equipment and 3D

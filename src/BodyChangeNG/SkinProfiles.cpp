@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/ContentSignature.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
@@ -1212,7 +1213,29 @@ namespace bcn
             }
         }
         if (error) SKSE::log::warn("Body Change NG could not scan {}: {}", bcn::path_text::Utf8(root), error.message());
-        for (const auto& profile : loaded) AuditProfileDds(dataRoot, root, profile);
+        for (auto& profile : loaded) {
+            AuditProfileDds(dataRoot, root, profile);
+            ContentSignature hash;
+            hash.Number(static_cast<unsigned>(profile.sex)); hash.Number(static_cast<unsigned>(profile.race));
+            hash.Number(profile.bodyFamilies);
+            const auto layers = [&](const auto& list) {
+                hash.Number(list.size());
+                for (const auto& layer : list) {
+                    hash.Number(layer.shaderTextureIndex); hash.Text(layer.path);
+                    hash.Number(runtime_assets::SourceContentHash(layer.path));
+                }
+            };
+            layers(profile.body); layers(profile.hands); layers(profile.feet); layers(profile.face);
+            layers(profile.cbbeGenitalAnal); layers(profile.unpGenitalAnal); layers(profile.vampireFace);
+            layers(profile.elderBody); layers(profile.elderHands); layers(profile.elderFace);
+            layers(profile.faceDetails);
+            for (const auto& list : profile.raceFace) layers(list);
+            for (const auto& variant : profile.maleGenitals) {
+                hash.Text(variant.addonDirectory);
+                layers(variant.humanoid); layers(variant.argonian); layers(variant.khajiit); layers(variant.elder);
+            }
+            profile.contentHash = hash.value;
+        }
         std::ranges::sort(loaded, {}, &SkinProfile::name);
         return loaded;
     }
@@ -1232,6 +1255,8 @@ namespace bcn
         std::ranges::sort(loaded, {}, &SkinProfile::name);
         std::scoped_lock lock(lock_);
         profiles_ = std::move(loaded);
+        contentHashes_.clear();
+        for (const auto& profile : profiles_) contentHashes_[profile.id] = profile.contentHash;
         SKSE::log::info("Body Change NG loaded {} shared texture skin profiles from {}", profiles_.size(), bcn::path_text::Utf8(root));
     }
 
@@ -1239,6 +1264,13 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         return profiles_;
+    }
+
+    std::uint64_t SkinProfiles::ContentHash(const std::string_view id) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto found = contentHashes_.find(std::string(id));
+        return found == contentHashes_.end() ? 0 : found->second;
     }
 
     std::optional<SkinProfile> SkinProfiles::Find(const std::string_view id) const

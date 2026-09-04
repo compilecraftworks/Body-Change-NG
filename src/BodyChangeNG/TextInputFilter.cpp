@@ -1,4 +1,5 @@
 #include "BodyChangeNG/TextInputFilter.h"
+#include "BodyChangeNG/FrameTasks.h"
 
 #include "BodyChangeNG/NativeImGuiHost.h"
 #include "BodyChangeNG/RuntimeLayout.h"
@@ -205,6 +206,7 @@ namespace
             FilterKeyboardEvents(events);
         }
         g_originalPollInputDevices(dispatcher, events);
+        bcn::frame_tasks::OnInputTick();
     }
 }
 
