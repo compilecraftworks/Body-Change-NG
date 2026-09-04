@@ -6,21 +6,20 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.1.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.1.1 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The unified binary contains VR-compatible
 CommonLib code, but its native renderer/input hooks deliberately fail closed on
 VR until VR-specific layouts are verified.
 
-## Current release: 1.1.0
+## Current release: 1.1.1
 
-This update addresses repeated body-morph stacking, male and partial skin
-routing, mixed UBE/CBBE installations, beast/elder/race variants, and SOS
-addon textures. It adds keyword, class, and combat-style distribution targets
-and load-order-safe form rules, with bounded automatic actor work in both
-performance modes.
+This update improves direct-selection responsiveness, completed skin-callback
+ownership, load/RaceMenu recovery, and content refresh. Actor work is scheduled
+across engine update boundaries with bounded processing in both performance
+modes. Existing body, skin, tint, and NPC-rule features are retained.
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
-- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.0.md)
+- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.1.md) · [한국어](docs/RELEASE-NOTES-v1.1.1-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
@@ -262,10 +261,13 @@ so unchanged NPCs are not fully redistributed every time a save loads. Rules
 remain global in `BodyChangeNGdistribution.json`; evaluated actor results are
 save-specific. New or changed actors are coalesced through a handle-based work
 queue, and detached actors do not leave stale preview or apply generations.
-The initial loaded-NPC pass is scheduled after the load callback burst, and the
-queue still processes at most one actor per task turn in normal mode;
-performance mode adds one extra scheduling hop. Catalog and form scans are not
-performed per actor or per frame.
+The initial loaded-NPC pass waits for engine update boundaries after loading.
+Normal mode budgets up to four actor jobs / 2ms per batch; performance mode
+budgets two / 1ms. Direct selections receive a reserved opportunity within that
+budget, with aging protection for automatic work. An indivisible native call
+can exceed the budget. Catalog and form scans are not performed per actor or
+per frame. Content-signature updates can cause a one-time reevaluation of
+older saved apply results.
 
 The outfit popup can explicitly register OBody NG's complete ORefit rule set
 from `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Outfit-name,
@@ -285,7 +287,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.1.0/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.1.1/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

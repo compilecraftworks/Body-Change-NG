@@ -13,9 +13,9 @@ if (-not $output.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCo
 $config = Get-Content -Raw -LiteralPath (Join-Path $repo 'xmake.lua')
 if ($config -notmatch 'local version = "(\d+\.\d+\.\d+)"') { throw 'Missing release version.' }
 $version = $Matches[1]
-$dirty = & git -C $repo status --porcelain --untracked-files=normal
+$dirty = & git -c "safe.directory=$repo" -C $repo status --porcelain --untracked-files=normal
 if ($LASTEXITCODE -ne 0 -or $dirty) { throw 'Commit reviewed changes before packaging a source release.' }
-$revision = (& git -C $repo rev-parse HEAD).Trim()
+$revision = (& git -c "safe.directory=$repo" -C $repo rev-parse HEAD).Trim()
 if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve source revision.' }
 $dll = Join-Path $repo "build\v$version\windows\x64\release\BodyChangeNG.dll"
 if ((Get-Item -LiteralPath $dll).VersionInfo.FileVersion -ne "$version.0") {
@@ -94,7 +94,7 @@ try {
     if ($starter.schemaVersion -ne 4 -or $starter.rules.Count -ne 8) { throw 'Unexpected starter rule schema/count.' }
 
     $projectZip = Join-Path $stage 'project.zip'
-    & git -C $repo archive --format=zip "--output=$projectZip" HEAD
+    & git -c "safe.directory=$repo" -C $repo archive --format=zip "--output=$projectZip" HEAD
     if ($LASTEXITCODE -ne 0) { throw 'git archive failed.' }
     [IO.Compression.ZipFile]::ExtractToDirectory($projectZip, $source)
     # Expand Git's empty submodule placeholders with build-required files only.
@@ -121,8 +121,8 @@ try {
     }
     if ($prohibited) { throw 'Generated/private files found in source staging.' }
     [IO.File]::WriteAllLines((Join-Path $source 'SOURCE-REVISION.txt'), @("Body Change NG $version", "Git revision: $revision", 'Dependency pins: DEPENDENCIES.md and xmake-requires.lock'), [Text.UTF8Encoding]::new($false))
-    $binaryZip = Join-Path $output "Body Change NG v$version.zip"
-    $sourceZip = Join-Path $output "Body Change NG v$version Source.zip"
+    $binaryZip = Join-Path $output "Body-Change-NG-v$version.zip"
+    $sourceZip = Join-Path $output "Body-Change-NG-v$version-Source.zip"
     New-VerifiedArchive $binary $binaryZip
     New-VerifiedArchive $source $sourceZip
     $sums = foreach ($path in @($binaryZip, $sourceZip)) {
