@@ -585,6 +585,9 @@ int main(const int argc, char** argv)
                 bcn::futanari::AddonKind::trx &&
             bcn::futanari::ClassifyEvidence({}, "CBBE_Shlong", {}) ==
                 bcn::futanari::AddonKind::trx &&
+            bcn::futanari::ClassifyEvidence({}, "CBBE_Schlong",
+                R"(textures\BodyChangeNG\Cache\futanari\1234\schlong.dds)") ==
+                bcn::futanari::AddonKind::trx &&
             bcn::futanari::ClassifyEvidence(
                 R"(meshes\ERF_Futanari\futanari_1.nif)", {}, {}) ==
                 bcn::futanari::AddonKind::erf &&
@@ -618,6 +621,14 @@ int main(const int argc, char** argv)
             bcn::skin_geometry::IsUNPGenitalAnal("BaseShapeAnus") &&
             bcn::skin_geometry::IsUNPGenitalAnal("BaseShapeCanal") &&
             bcn::skin_geometry::Matches("3BA", bcn::skin_geometry::BodySelection::regular) &&
+            bcn::skin_geometry::Matches("MaleBody", bcn::skin_geometry::BodySelection::regular,
+                R"(textures\actors\character\male\malebody_1.dds)") &&
+            bcn::skin_geometry::Matches("BaseShape", bcn::skin_geometry::BodySelection::regular,
+                R"(textures\!UBE\Body\femalebody_1_d.dds)") &&
+            !bcn::skin_geometry::Matches("CBBE_Schlong", bcn::skin_geometry::BodySelection::regular) &&
+            !bcn::skin_geometry::Matches("CBBE_Shlong", bcn::skin_geometry::BodySelection::regular) &&
+            !bcn::skin_geometry::Matches("CBBE Schlong", bcn::skin_geometry::BodySelection::regular) &&
+            !bcn::skin_geometry::Matches("Penis", bcn::skin_geometry::BodySelection::regular) &&
             !bcn::skin_geometry::Matches("3BA_Vagina", bcn::skin_geometry::BodySelection::regular) &&
             !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::regular) &&
             !bcn::skin_geometry::Matches("BaseShapeCanal", bcn::skin_geometry::BodySelection::regular) &&
@@ -643,6 +654,8 @@ int main(const int argc, char** argv)
             bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::unpGenitalAnal,
                 "textures/actors/character/female/BakaUNP/VaginalAnalCanal2.dds") &&
             bcn::skin_geometry::Matches("MaleGenitals", bcn::skin_geometry::BodySelection::maleGenitals) &&
+            bcn::skin_geometry::Matches("CBBE_Schlong", bcn::skin_geometry::BodySelection::maleGenitals) &&
+            bcn::skin_geometry::Matches("Penis", bcn::skin_geometry::BodySelection::maleGenitals) &&
             bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::maleGenitals,
                 R"(textures\actors\character\SOS\VectorPlexus Regular\malegenitals_1.dds)") &&
             !bcn::skin_geometry::Matches("MaleBody", bcn::skin_geometry::BodySelection::maleGenitals,
@@ -668,7 +681,11 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::IsBodyGeometryCandidate("FemaleHead",
                 R"(textures\actors\character\female\femalehead.dds)") &&
             !bcn::skin_geometry::IsBodyGeometryCandidate("3BA_Vagina",
-                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)"),
+                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)") &&
+            !bcn::skin_geometry::IsBodyGeometryCandidate("CBBE_Schlong",
+                R"(textures\BodyChangeNG\Cache\futanari\1234\schlong.dds)") &&
+            !bcn::skin_geometry::IsBodyGeometryCandidate("Penis",
+                R"(textures\BodyChangeNG\Cache\futanari\1234\malebody_1_d.dds)"),
             "cross-slot outfit body routing accepted a non-body skin atlas")) return 1;
     if (!Require(
             bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::hands,

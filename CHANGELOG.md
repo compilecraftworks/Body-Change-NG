@@ -14,6 +14,13 @@ All notable public changes to Body Change NG are documented here.
 - Keeps UBE's intentional shared body atlas route and removes only the unnecessary broad calls from conventional layouts.
 - Distinguishes legacy SE Override v0, UBE's AE-backported Override v0, official Override v1, and official Override v2. Both v0 variants and v1 use the serialization-safe Papyrus string route; only audited v2 uses the native interface, and unknown future versions fail closed.
 
+### Futanari and BodySkin ownership isolation
+
+- Keeps the Futanari tab available through BCNG's own NiNode rebuild by detecting the equipped ArmorAddon from the actor's biped slots instead of treating a temporarily detached geometry clone as an unequip.
+- Recognizes the live TRX `CBBE_Schlong` node spelling in addition to earlier variants, so one click reaches the correct UBE/CBBE TRX target.
+- Excludes only verified external futanari genital nodes from ordinary BodySkin body apply and cleanup. Normal CBBE 3BA/BHUNP/UBE body, hands, feet, internal genital/anal atlases, and male HIMBO/SAM plus SOS routes remain independently owned.
+- Leaves the BodyPreset/BodyMorph pipeline unchanged; preview, confirmation, NPC distribution, Default Body, and outfit correction retain their existing absolute-preset behavior.
+
 ### Validation
 
 The Release build and all 12 regression test executables passed. Existing distribution rules, settings, JSON, co-save data, partial skin packs, Default Skin restoration, UBE routing, and normal equipment refresh remain compatible.

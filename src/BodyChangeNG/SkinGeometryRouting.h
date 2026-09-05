@@ -228,10 +228,17 @@ namespace bcn::skin_geometry
         const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
     {
         // SOS addon NIFs consistently expose malegenitals_* material paths.
-        // Keep a narrow node fallback for an already overridden/cache path.
+        // Keep narrow node fallbacks for already overridden/cache paths. TRX
+        // has shipped both Schlong and Shlong spellings; UBE SOS/TNG uses the
+        // exact Penis node. These independent addon geometries must never be
+        // mistaken for the regular body when their live path is a BCNG cache.
         return ContainsIgnoreAsciiCase(texturePath, "malegenitals_") ||
             ContainsIgnoreAsciiCase(nodeName, "malegenital") ||
-            EqualsIgnoreAsciiCase(nodeName, "schlong");
+            EqualsIgnoreAsciiCase(nodeName, "schlong") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE_Schlong") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE_Shlong") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE Schlong") ||
+            EqualsIgnoreAsciiCase(nodeName, "Penis");
     }
 
     // A revealing outfit can keep its visible body copy on any biped slot,
@@ -258,7 +265,9 @@ namespace bcn::skin_geometry
         const std::string_view texturePath = {}) noexcept
     {
         switch (selection) {
-        case BodySelection::regular: return !IsGenitalAnal(nodeName, texturePath);
+        case BodySelection::regular:
+            return !IsGenitalAnal(nodeName, texturePath) &&
+                !IsMaleGenital(nodeName, texturePath);
         case BodySelection::cbbeGenitalAnal: return IsCBBEGenitalAnal(nodeName, texturePath);
         case BodySelection::unpGenitalAnal: return IsUNPGenitalAnal(nodeName, texturePath);
         case BodySelection::maleGenitals: return IsMaleGenital(nodeName, texturePath);

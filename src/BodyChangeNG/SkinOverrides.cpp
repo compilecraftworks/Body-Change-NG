@@ -430,11 +430,26 @@ namespace
                 auto* armor = object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
                 auto* addon = object.addon;
                 auto* partClone = object.partClone.get();
-                if (!armor || !addon || !partClone || !addon->IsValidRace(actor->GetRace()) ||
-                    !inspectedClones.insert(partClone).second) continue;
+                if (!armor || !addon || !addon->IsValidRace(actor->GetRace())) continue;
 
                 const auto modelPath = AddonModelPath(addon, firstPerson);
                 const auto modelKind = bcn::futanari::ClassifyEvidence(modelPath);
+                // The equipped ArmorAddon remains stable while a
+                // QueueNiNodeUpdate temporarily detaches its partClone. Use
+                // that biped-slot evidence for tab presence, but keep live
+                // geometry mandatory before any texture is written.
+                if (modelKind != bcn::futanari::AddonKind::none) {
+                    if (result.addonKind != bcn::futanari::AddonKind::none &&
+                        result.addonKind != modelKind) {
+                        SKSE::log::warn(
+                            "Body Change NG found simultaneous TRX and ERF futanari equipment on actor {:08X}; refusing an ambiguous texture route",
+                            actor->GetFormID());
+                        return {};
+                    }
+                    result.addonKind = modelKind;
+                }
+                if (!partClone || !inspectedClones.insert(partClone).second) continue;
+
                 std::vector<std::string> matchingNodes;
                 auto targetKind = modelKind;
                 RE::BSVisit::TraverseScenegraphGeometries(partClone, [&](RE::BSGeometry* geometry) {
@@ -863,7 +878,7 @@ namespace
         // not alternatives: applying only the first slot found leaves the
         // other visible surface on its previous/default skin.
         auto ubeTargets = FindLoadedPartTargets(actor, kUbeBodySlot,
-            bcn::skin_geometry::BodySelection::all, logTargets);
+            bcn::skin_geometry::BodySelection::regular, logTargets);
         auto standardTargets = FindLoadedPartTargets(actor,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             bcn::skin_geometry::BodySelection::regular, logTargets);
@@ -875,7 +890,7 @@ namespace
         MergeLoadedPartTargets(ubeTargets, std::move(standardTargets));
         return {
             .slot = kUbeBodySlot,
-            .selection = bcn::skin_geometry::BodySelection::all,
+            .selection = bcn::skin_geometry::BodySelection::regular,
             .targets = std::move(ubeTargets)
         };
     }
@@ -1143,12 +1158,14 @@ namespace
     }
 
     [[nodiscard]] bool ClearArmorAddonPart(skee_override::IOverrideInterfaceV2& overrides,
-        RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot)
+        RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const bcn::skin_geometry::BodySelection selection =
+            bcn::skin_geometry::BodySelection::all)
     {
         const auto limb = slot == RE::BGSBipedObjectForm::BipedObjectSlot::kHands ||
             slot == RE::BGSBipedObjectForm::BipedObjectSlot::kFeet;
         return ClearArmorAddonTargets(overrides, actor, female,
-            FindLoadedPartTargets(actor, slot, bcn::skin_geometry::BodySelection::all, true, limb));
+            FindLoadedPartTargets(actor, slot, selection, true, limb));
     }
 
     struct FaceNodeInfo final
@@ -1788,7 +1805,9 @@ namespace
     [[nodiscard]] bool ClearTexturePart(skee_override::IOverrideInterfaceV2& overrides,
                                         RE::Actor* actor, const bool female,
                                         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-                                        const bool includeLegacyTargetMasks = true)
+                                        const bool includeLegacyTargetMasks = true,
+                                        const bcn::skin_geometry::BodySelection selection =
+                                            bcn::skin_geometry::BodySelection::all)
     {
         if (!actor) return false;
         std::unordered_set<std::uint64_t> masks;
@@ -1799,7 +1818,7 @@ namespace
         addMask(false, requestedMask);
         if (actor == RE::PlayerCharacter::GetSingleton()) addMask(true, requestedMask);
         if (includeLegacyTargetMasks) {
-            for (const auto& target : FindLoadedPartTargets(actor, slot)) {
+            for (const auto& target : FindLoadedPartTargets(actor, slot, selection)) {
                 for (const auto& view : target.views) addMask(view.firstPerson, target.slotMask);
             }
         }
@@ -2091,7 +2110,9 @@ namespace
 
     void DispatchLegacyPartClear(RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
         const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-        const std::shared_ptr<LegacyOverrideBatch>& batch)
+        const std::shared_ptr<LegacyOverrideBatch>& batch,
+        const bcn::skin_geometry::BodySelection selection =
+            bcn::skin_geometry::BodySelection::all)
     {
         std::unordered_set<std::uint64_t> masks;
         const auto addMask = [&](const bool firstPerson, const std::uint32_t mask) {
@@ -2101,7 +2122,7 @@ namespace
         addMask(false, requestedMask);
         if (actor == RE::PlayerCharacter::GetSingleton()) addMask(true, requestedMask);
 
-        const auto targets = FindLoadedPartTargets(actor, slot);
+        const auto targets = FindLoadedPartTargets(actor, slot, selection);
         for (const auto& target : targets) {
             for (const auto& view : target.views) addMask(view.firstPerson, target.slotMask);
             auto cleanupNodes = target.persistentNodes;
@@ -2675,8 +2696,10 @@ namespace
         };
 
         DispatchLegacyPartClear(*vm, actor.get(), female,
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
-        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch,
+            bcn::skin_geometry::BodySelection::regular);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch,
+            bcn::skin_geometry::BodySelection::regular);
         // Female SOS/TNG/TRX/ERF geometry is owned by the independent
         // Futanari tab. A normal BodySkin reapply must not erase that choice.
         // Male actors continue to use BodySkin's SOS addon textures.
@@ -2740,8 +2763,10 @@ namespace
                 currentActor.get(), unavailableProfileId, useDefault);
         };
         DispatchLegacyPartClear(*vm, actor.get(), female,
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
-        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch,
+            bcn::skin_geometry::BodySelection::regular);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch,
+            bcn::skin_geometry::BodySelection::regular);
         // Default BodySkin and Default Futanari Skin are independent choices.
         if (bcn::futanari::BodySkinOwnsSosSlot(female)) DispatchLegacyPartClear(
             *vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
@@ -2790,9 +2815,10 @@ namespace
         bool removed = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female);
         const auto includeLegacyTargetMasks = ClaimLegacyCleanup(actor->GetFormID());
         removed = ClearTexturePart(*overrides, actor.get(), female,
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, includeLegacyTargetMasks) || removed;
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, includeLegacyTargetMasks,
+            bcn::skin_geometry::BodySelection::regular) || removed;
         removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot,
-            includeLegacyTargetMasks) || removed;
+            includeLegacyTargetMasks, bcn::skin_geometry::BodySelection::regular) || removed;
         // Never let a female BodySkin selection clear the independently owned
         // futanari material on slot 52. Male SOS skins remain BodySkin-owned.
         if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
@@ -2809,8 +2835,10 @@ namespace
         // This restores the actor's underlying texture for absent parts and
         // absent diffuse/normal/subsurface/detail/specular channels.
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
-        removed = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::regular) || removed;
+        removed = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot,
+            bcn::skin_geometry::BodySelection::regular) || removed;
         if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
             removed = ClearArmorAddonPart(
                 *overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
@@ -2970,8 +2998,11 @@ namespace
         const auto hadTransientRsvFace = ReleaseRsvTransientFace(actor->GetFormID());
         bool cleared{};
         cleared = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female) || cleared;
-        cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
-        cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
+        cleared = ClearTexturePart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, true,
+            bcn::skin_geometry::BodySelection::regular) || cleared;
+        cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot, true,
+            bcn::skin_geometry::BodySelection::regular) || cleared;
         if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
             cleared = ClearTexturePart(
                 *overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
@@ -2979,8 +3010,11 @@ namespace
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
-        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
-        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
+        cleared = ClearArmorAddonPart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::regular) || cleared;
+        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot,
+            bcn::skin_geometry::BodySelection::regular) || cleared;
         if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
             cleared = ClearArmorAddonPart(
                 *overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
@@ -3494,7 +3528,11 @@ namespace bcn::skin_override
     void NotifyNiNodeUpdated(RE::Actor* actor)
     {
         if (!actor || !actor->Is3DLoaded() || !bcn::frame_tasks::Active()) return;
-        InvalidateFutanariDetection(actor->GetFormID());
+        // A NiNode update is not an equip/unequip boundary. During the
+        // rebuild the genital partClone can be absent even though its biped
+        // slot and ArmorAddon remain equipped. TESEquipEvent, actor selection
+        // and actor teardown are the exact cache invalidation points for a
+        // real slot ownership change.
         // Ordinary BCNG skins do not need RSV's delayed face race. Avoid a
         // queued 150-ms reconciliation on every unrelated NiNode rebuild.
         if (!HasRsvTransientFace(actor->GetFormID())) return;

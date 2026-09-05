@@ -76,7 +76,8 @@ namespace bcn::futanari
             return AddonKind::erf;
         }
         if (ContainsIgnoreAsciiCase(texturePath, "[trx] futa addon") ||
-            EqualsIgnoreAsciiCase(nodeName, "CBBE_Shlong")) return AddonKind::trx;
+            EqualsIgnoreAsciiCase(nodeName, "CBBE_Shlong") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE_Schlong")) return AddonKind::trx;
         if (ContainsIgnoreAsciiCase(texturePath, "erf_futanari") ||
             EqualsIgnoreAsciiCase(nodeName, "CBBE Schlong")) return AddonKind::erf;
         if (EqualsIgnoreAsciiCase(nodeName, "Penis") &&
