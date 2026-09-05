@@ -98,6 +98,11 @@ namespace
 
 int main(const int argc, char** argv)
 {
+    if (!Require(!bcn::skin_geometry::MayUseBroadSkinSlotFallback(false),
+            "part-specific CBBE/BHUNP atlases were routed through RaceMenu's broad skin-slot apply")) return 1;
+    if (!Require(bcn::skin_geometry::MayUseBroadSkinSlotFallback(true),
+            "UBE's shared body atlas lost its broad skin-slot fallback")) return 1;
+
     if (argc == 3 || argc == 4) {
         std::cout << "scanning real skin root\n" << std::flush;
         const auto skins = bcn::SkinProfiles::ScanDirectory(std::filesystem::path{ argv[1] });

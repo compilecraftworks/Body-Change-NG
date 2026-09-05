@@ -2505,27 +2505,35 @@ namespace
                 const std::vector<bcn::SkinTextureLayer>& layers,
                 const bcn::skin_geometry::BodySelection selection =
                     bcn::skin_geometry::BodySelection::all,
-                const bool allowExplicitLimbNode = false) {
+                const bool allowExplicitLimbNode = false,
+                const bool usesSharedBodyAtlas = false) {
                 if (layers.empty()) return;
-                requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
-                    currentActor.get(), currentFemale, slot, layers, applyBatch));
-                static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
-                    slot, layers, applyBatch, selection, allowExplicitLimbNode));
+                auto exact = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                    slot, layers, applyBatch, selection, allowExplicitLimbNode);
+                if (bcn::skin_geometry::MayUseBroadSkinSlotFallback(usesSharedBodyAtlas)) {
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale, slot, layers, applyBatch));
+                } else {
+                    requiredParts->push_back(std::move(exact));
+                }
             };
             const auto hasPrimaryParts = !currentBodyLayers.empty() || !currentHandsLayers.empty() ||
                 !profile.feet.empty() || !currentFaceLayers.empty();
             if (!currentBodyLayers.empty()) {
-                requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
-                    currentActor.get(), currentFemale,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-                    currentBodyLayers, applyBatch, "skin", "body-slot-32"));
-                if (UsesUbeBodySlot(profile)) {
+                const auto sharedBodyAtlas = UsesUbeBodySlot(profile);
+                auto exact = DispatchLegacyProfileBodyApply(*currentVM,
+                    currentActor.get(), currentFemale, profile, currentBodyLayers, applyBatch);
+                if (bcn::skin_geometry::MayUseBroadSkinSlotFallback(sharedBodyAtlas)) {
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        currentBodyLayers, applyBatch, "skin", "body-slot-32"));
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, kUbeBodySlot,
                         currentBodyLayers, applyBatch, "skin", "ube-body-slot-53"));
+                } else {
+                    requiredParts->push_back(std::move(exact));
                 }
-                static_cast<void>(DispatchLegacyProfileBodyApply(*currentVM,
-                    currentActor.get(), currentFemale, profile, currentBodyLayers, applyBatch));
             }
             const auto submitGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
                 const bcn::skin_geometry::BodySelection selection) {
@@ -2555,9 +2563,9 @@ namespace
             }
             if (UsesUbeBodySlot(profile)) {
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentBodyLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
+                    bcn::skin_geometry::BodySelection::all, true, true);
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentBodyLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
+                    bcn::skin_geometry::BodySelection::all, true, true);
             } else {
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
                     bcn::skin_geometry::BodySelection::all, true);
@@ -2752,27 +2760,31 @@ namespace
         std::size_t appliedParts{};
         const auto applyPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
             const std::vector<bcn::SkinTextureLayer>& layers,
-            const std::vector<LoadedPartTarget>& targets) {
+            const std::vector<LoadedPartTarget>& targets,
+            const bool usesSharedBodyAtlas = false) {
             if (layers.empty()) return;
             ++requestedParts;
-            const auto durableApplied = ApplySkinSlotPart(
-                *overrides, actor.get(), female, slot, layers);
-            static_cast<void>(ApplyLoadedPart(
-                *overrides, actor.get(), female, slot, layers, targets));
+            const auto exactApplied = ApplyLoadedPart(
+                *overrides, actor.get(), female, slot, layers, targets);
+            const auto durableApplied = bcn::skin_geometry::MayUseBroadSkinSlotFallback(
+                usesSharedBodyAtlas) ?
+                ApplySkinSlotPart(*overrides, actor.get(), female, slot, layers) :
+                exactApplied;
             if (durableApplied) ++appliedParts;
         };
         const auto hasPrimaryParts = !bodyLayers.empty() || !handsLayers.empty() ||
             !profile.feet.empty() || !faceLayers.empty();
         if (!bodyLayers.empty()) {
             ++requestedParts;
-            auto durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kBody, bodyLayers, "skin", "body-slot-32");
-            if (ubeBody) {
+            auto durableApplied = ApplyLoadedPart(*overrides, actor.get(), female, bodyRoute.slot,
+                bodyLayers, bodyRoute.targets);
+            if (bcn::skin_geometry::MayUseBroadSkinSlotFallback(ubeBody)) {
+                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                    bodyLayers, "skin", "body-slot-32");
                 durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
                     kUbeBodySlot, bodyLayers, "skin", "ube-body-slot-53") && durableApplied;
             }
-            static_cast<void>(ApplyLoadedPart(*overrides, actor.get(), female, bodyRoute.slot,
-                bodyLayers, bodyRoute.targets));
             if (durableApplied) {
                 ++appliedParts;
             }
@@ -2800,9 +2812,9 @@ namespace
                     RE::BGSBipedObjectForm::BipedObjectSlot::kTail, bodyLayers, tailTargets));
         }
         applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands,
-            selectedHandsLayers, handsTargets);
+            selectedHandsLayers, handsTargets, ubeBody);
         applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet,
-            selectedFeetLayers, feetTargets);
+            selectedFeetLayers, feetTargets, ubeBody);
         if (!faceLayers.empty()) {
             ++requestedParts;
             if (faceNode && ApplyFacePart(*overrides, actor.get(), female, *faceNode, faceLayers)) {

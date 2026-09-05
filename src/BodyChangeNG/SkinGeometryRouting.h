@@ -6,6 +6,19 @@
 
 namespace bcn::skin_geometry
 {
+    // RaceMenu's SetSkinProperty/AddSkinOverrideString implementation chooses
+    // a Skin Armor from the requested slot, but then visits every ArmorAddon
+    // on that armor. A slot-33 request can therefore repaint the body and feet
+    // as well as the hands. This broad route is safe only for layouts such as
+    // UBE where all three parts intentionally use the same body atlas.
+    // Conventional CBBE/BHUNP/vanilla layouts must stay on exact
+    // Armor+ArmorAddon+geometry overrides.
+    [[nodiscard]] constexpr bool MayUseBroadSkinSlotFallback(
+        const bool usesSharedBodyAtlas) noexcept
+    {
+        return usesSharedBodyAtlas;
+    }
+
     enum class BodySelection
     {
         all,
