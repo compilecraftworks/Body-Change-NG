@@ -2,6 +2,24 @@ Body Change NG - 스킨팩 설치 안내
 
 이 폴더 아래에 스킨팩마다 별도의 폴더를 만드세요.
 
+중요: 선택할 스킨과 바디 계열마다 최상위 폴더를 따로 만드세요.
+CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, 바닐라 파일을 하나의
+BodySkin\<스킨팩 이름> 폴더에 모두 넣지 마세요.
+
+예시:
+BodySkin\CBBE 3BA - Skin A\Textures\actors\character\female\...
+BodySkin\BHUNP UNP - Skin B\Textures\actors\character\female\...
+BodySkin\UBE - Skin C\Textures\!UBE\Body\...
+BodySkin\UBE - Skin C\Textures\!UBE\Head\...
+BodySkin\HIMBO - Skin D\Textures\actors\character\male\...
+BodySkin\HIMBO - Skin D\Textures\actors\character\SOS\<애드온 이름>\...
+BodySkin\SAM - Skin E\Textures\actors\character\male\...
+BodySkin\SAM - Skin E\Textures\actors\character\SOS\<애드온 이름>\...
+
+같은 계열의 한 스킨을 구성하는 몸·손·발·얼굴과 선택적 종족/노인 파일은
+같은 폴더에 둡니다. 남성 SOS 파일도 해당 HIMBO/SAM 스킨팩 폴더에 함께
+두되, 서로 다른 스킨팩이나 바디 계열의 파일은 섞지 않습니다.
+
 일반 CBBE 3BA/BHUNP/UNP 구조:
 BodySkin\<스킨팩 이름>\Textures\actors\character\...
 
@@ -122,3 +140,9 @@ Keep the male body/hand/foot/face files and SOS folders under the same
 BodySkin\<pack name>; BCNG never combines them across pack folders. An explicit
 HIMBO or SAM token in the top-level pack name restricts that pack to the named
 family. Unlabelled general male skins retain the compatible male fallback.
+
+Create a separate top-level pack folder for every selectable skin and body
+family. Do not combine CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, and Vanilla assets
+under one pack name. Keep matching body parts and optional race/elder variants
+together only within that family-specific pack. A male pack may include its own
+matching SOS folders; never mix them with another pack or body family.

@@ -192,20 +192,29 @@ Place standard BodySlide preset XML files in this folder.
 ### **Skin Packs**
 
 ```text
-BodySkin\Your Skin Pack\
-└─ Textures\
-   ├─ actors\character\female\...                 CBBE 3BA / BHUNP / UNP
-   ├─ actors\character\male\...                   Vanilla / HIMBO / SAM
-   ├─ actors\character\SOS\VectorPlexus Regular\...
-   ├─ actors\character\SOS\VectorPlexus Muscular\...
-   ├─ actors\character\SOS\Smurf Average\...
-   ├─ actors\character\femaleold\...              optional elder variant
-   ├─ actors\character\<race and sex folder>\... optional race variant
-   ├─ !UBE\Body\femalebody_1_[d/n/sk].dds         UBE body atlas
-   └─ !UBE\Head\femalehead_[d/n/sk].dds           UBE head atlas
+CBBE 3BA:
+BodySkin\CBBE 3BA - Skin A\Textures\actors\character\female\...
+
+BHUNP / UNP:
+BodySkin\BHUNP UNP - Skin B\Textures\actors\character\female\...
+
+UBE 2.0:
+BodySkin\UBE - Skin C\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds
+BodySkin\UBE - Skin C\Textures\!UBE\Head\femalehead_[d/n/sk].dds
+
+HIMBO with its matching SOS textures:
+BodySkin\HIMBO - Skin D\Textures\actors\character\male\...
+BodySkin\HIMBO - Skin D\Textures\actors\character\SOS\<addon name>\...
+
+SAM with its matching SOS textures:
+BodySkin\SAM - Skin E\Textures\actors\character\male\...
+BodySkin\SAM - Skin E\Textures\actors\character\SOS\<addon name>\...
+
+Vanilla or beast-race packs use their original actors\character folders
+inside another separately named BodySkin folder.
 ```
 
-Create exactly one top-level folder for each selectable skin. Every body, hand, foot, face, race/elder, and SOS file inside `BodySkin\Your Skin Pack` belongs to that one catalog entry; BCNG never combines SOS files from another skin-pack folder. Preserve the source mod's Textures tree and DDS names.
+Create one top-level folder for each selectable skin **and body family**. Do not put CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, and Vanilla assets together under one skin-pack name. Inside that family-specific folder, keep only the matching body, hand, foot, face, optional race/elder, and—on a male pack—SOS files from the same skin. BCNG never combines assets from another skin-pack folder. Preserve the source mod's Textures tree and DDS names.
 
 - **CBBE 3BA genital/anal atlas:** keep `femalebody_etc_v2_1.dds` plus `_msn`, `_sk`, and `_s` in the conventional female directory. They target only matching 3BA/3BBB vagina and anus geometry.
 - **BHUNP/UNP genital/anal atlas:** keep `BakaUNP\VaginalAnalCanal2.dds` plus `_msn`, `_sk`, and `_s` under the conventional female directory. They target only matching vagina, anus, and canal geometry.
