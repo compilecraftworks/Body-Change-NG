@@ -2178,17 +2178,17 @@ namespace
             auto settingsChanged = normalizedNpcCorrection;
             const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Correct breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA 전용입니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
-                "CBBE 3BA only. The UBE player is skipped and supported NPCs continue to receive it.",
-                "仅支持 CBBE 3BA；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
+                "CBBE 3BA와 BHUNP/UNP를 지원합니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
+                "Supports CBBE 3BA and BHUNP/UNP. The UBE player is skipped and supported NPCs continue to receive it.",
+                "支持 CBBE 3BA 与 BHUNP/UNP；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
             settingsChanged |= refitChanged;
             ImGui::Indent();
             if (!settings.orefitEnabled) ImGui::BeginDisabled();
             const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 보정", "Correct nipples while clothed", "穿衣时修正乳头"), &settings.orefitNippleMorphing);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA 전용입니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
-                "CBBE 3BA only. The UBE player is skipped and supported NPCs continue to receive it.",
-                "仅支持 CBBE 3BA；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
+                "CBBE 3BA와 BHUNP/UNP를 지원합니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
+                "Supports CBBE 3BA and BHUNP/UNP. The UBE player is skipped and supported NPCs continue to receive it.",
+                "支持 CBBE 3BA 与 BHUNP/UNP；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
             settingsChanged |= nippleRefitChanged;
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
@@ -2214,16 +2214,16 @@ namespace
                 Text("NPC 유두 형태 무작위화", "Randomize NPC nipple shape", "随机 NPC 乳头形态"),
                 &settings.nippleRandomization);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA NPC 전용입니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
-                "CBBE 3BA NPCs only. The player and UBE NPCs are skipped.",
-                "仅支持 CBBE 3BA NPC；会跳过玩家和 UBE NPC。"));
+                "CBBE 3BA와 BHUNP/UNP NPC를 지원합니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
+                "Supports CBBE 3BA and BHUNP/UNP NPCs. The player and UBE NPCs are skipped.",
+                "支持 CBBE 3BA 与 BHUNP/UNP NPC；会跳过玩家和 UBE NPC。"));
             const auto genitalRandomizationChanged = ImGui::Checkbox(
                 Text("NPC 생식기 형태 무작위화", "Randomize NPC genital shape", "随机 NPC 生殖器形态"),
                 &settings.genitalRandomization);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA NPC 전용입니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
-                "CBBE 3BA NPCs only. The player and UBE NPCs are skipped.",
-                "仅支持 CBBE 3BA NPC；会跳过玩家和 UBE NPC。"));
+                "CBBE 3BA와 BHUNP/UNP NPC를 지원합니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
+                "Supports CBBE 3BA and BHUNP/UNP NPCs. The player and UBE NPCs are skipped.",
+                "支持 CBBE 3BA 与 BHUNP/UNP NPC；会跳过玩家和 UBE NPC。"));
             settingsChanged |= nippleRandomizationChanged || genitalRandomizationChanged;
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
@@ -2321,6 +2321,32 @@ namespace
                 settings.language = static_cast<bcn::UiLanguage>(language);
                 settingsChanged = true;
             }
+            ImGui::Separator();
+            ImGui::TextUnformatted(Text("NPC 배포 바디 타입", "NPC distribution body type", "NPC 分发身体类型"));
+            int femaleNpcBodyType = static_cast<int>(settings.femaleNpcBodyType);
+            ImGui::SetNextItemWidth(Scaled(300.0F));
+            PrepareResizableDropdown(4U);
+            if (ImGui::Combo(Text("여성##femaleNpcBodyType", "Female##femaleNpcBodyType", "女性##femaleNpcBodyType"),
+                &femaleNpcBodyType,
+                Text("CBBE 3BA\0BHUNP / UNP\0UBE\0바닐라\0",
+                    "CBBE 3BA\0BHUNP / UNP\0UBE\0Vanilla\0",
+                    "CBBE 3BA\0BHUNP / UNP\0UBE\0原版\0"))) {
+                settings.femaleNpcBodyType = static_cast<bcn::FemaleNpcBodyType>(femaleNpcBodyType);
+                settingsChanged = true;
+            }
+            int maleNpcBodyType = static_cast<int>(settings.maleNpcBodyType);
+            ImGui::SetNextItemWidth(Scaled(300.0F));
+            PrepareResizableDropdown(3U);
+            if (ImGui::Combo(Text("남성##maleNpcBodyType", "Male##maleNpcBodyType", "男性##maleNpcBodyType"),
+                &maleNpcBodyType,
+                Text("HIMBO\0SAM\0바닐라\0", "HIMBO\0SAM\0Vanilla\0", "HIMBO\0SAM\0原版\0"))) {
+                settings.maleNpcBodyType = static_cast<bcn::MaleNpcBodyType>(maleNpcBodyType);
+                settingsChanged = true;
+            }
+            TextDisabledWrapped(Text(
+                "NPC 자동 배포의 바디 프리셋·바디스킨 후보를 이 계열로 제한합니다. 바닐라는 해당 성별의 Body Change NG 바디 모프를 제거하며, 직접 선택과 메인 목록의 액터 자동 감지는 바뀌지 않습니다.",
+                "Limits automatic NPC distribution body-preset and body-skin candidates to this family. Vanilla removes Body Change NG body morphs for that sex. Direct selection and actor detection in the main list are unchanged.",
+                "将 NPC 自动分发的身体预设和身体皮肤候选项限制为该系列。选择原版会移除该性别的 Body Change NG 身体形态。直接选择和主列表中的角色自动检测不受影响。"));
             settingsChanged |= ImGui::Checkbox(Text("성능 모드", "Performance mode", "性能模式"), &settings.performanceMode);
             TextDisabledWrapped(Text(
                 "자동 NPC 작업은 설정과 관계없이 중복을 합쳐 한 액터씩 안전하게 처리합니다. 켜면 액터 사이에 처리 간격을 한 번 더 두며, 새로 나타난 NPC는 세이브 로드 대량 작업보다 항상 우선합니다. 직접 선택은 즉시 처리되고 최종 결과는 같습니다.",

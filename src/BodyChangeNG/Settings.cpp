@@ -138,6 +138,18 @@ namespace bcn
             }
             ReadIfPresent(root, "pauseGameWhenOpen", data_.pauseGameWhenOpen);
             ReadIfPresent(root, "performanceMode", data_.performanceMode);
+            int femaleNpcBodyType = static_cast<int>(data_.femaleNpcBodyType);
+            int maleNpcBodyType = static_cast<int>(data_.maleNpcBodyType);
+            ReadIfPresent(root, "femaleNpcBodyType", femaleNpcBodyType);
+            ReadIfPresent(root, "maleNpcBodyType", maleNpcBodyType);
+            if (femaleNpcBodyType >= static_cast<int>(FemaleNpcBodyType::cbbe3ba) &&
+                femaleNpcBodyType <= static_cast<int>(FemaleNpcBodyType::vanilla)) {
+                data_.femaleNpcBodyType = static_cast<FemaleNpcBodyType>(femaleNpcBodyType);
+            }
+            if (maleNpcBodyType >= static_cast<int>(MaleNpcBodyType::himbo) &&
+                maleNpcBodyType <= static_cast<int>(MaleNpcBodyType::vanilla)) {
+                data_.maleNpcBodyType = static_cast<MaleNpcBodyType>(maleNpcBodyType);
+            }
             ReadIfPresent(root, "orefitEnabled", data_.orefitEnabled);
             ReadIfPresent(root, "orefitNippleMorphing", data_.orefitNippleMorphing);
             ReadIfPresent(root, "nippleRandomization", data_.nippleRandomization);
@@ -252,6 +264,8 @@ namespace bcn
                 { "textScale", copy.textScale },
                 { "pauseGameWhenOpen", copy.pauseGameWhenOpen },
                 { "performanceMode", copy.performanceMode },
+                { "femaleNpcBodyType", static_cast<int>(copy.femaleNpcBodyType) },
+                { "maleNpcBodyType", static_cast<int>(copy.maleNpcBodyType) },
                 { "orefitEnabled", copy.orefitEnabled },
                 { "orefitNippleMorphing", copy.orefitNippleMorphing },
                 { "nippleRandomization", copy.nippleRandomization },

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/Hotkey.h"
 
 #include <array>
@@ -25,6 +26,52 @@ namespace bcn
         right,
         disabled
     };
+
+    enum class FemaleNpcBodyType : std::uint8_t
+    {
+        cbbe3ba,
+        bhunpUnp,
+        ube,
+        vanilla
+    };
+
+    enum class MaleNpcBodyType : std::uint8_t
+    {
+        himbo,
+        sam,
+        vanilla
+    };
+
+    [[nodiscard]] constexpr body_family::Mask NpcDistributionFamily(
+        const FemaleNpcBodyType type) noexcept
+    {
+        switch (type) {
+        case FemaleNpcBodyType::bhunpUnp: return body_family::Bit(body_family::Family::unp);
+        case FemaleNpcBodyType::ube: return body_family::Bit(body_family::Family::ube);
+        case FemaleNpcBodyType::vanilla: return body_family::Bit(body_family::Family::femaleVanilla);
+        default: return body_family::Bit(body_family::Family::cbbe);
+        }
+    }
+
+    [[nodiscard]] constexpr body_family::Mask NpcDistributionFamily(
+        const MaleNpcBodyType type) noexcept
+    {
+        switch (type) {
+        case MaleNpcBodyType::sam: return body_family::Bit(body_family::Family::sam);
+        case MaleNpcBodyType::vanilla: return body_family::Bit(body_family::Family::maleVanilla);
+        default: return body_family::Bit(body_family::Family::himbo);
+        }
+    }
+
+    [[nodiscard]] constexpr bool UsesNpcBodyPreset(const FemaleNpcBodyType type) noexcept
+    {
+        return type != FemaleNpcBodyType::vanilla;
+    }
+
+    [[nodiscard]] constexpr bool UsesNpcBodyPreset(const MaleNpcBodyType type) noexcept
+    {
+        return type != MaleNpcBodyType::vanilla;
+    }
 
     // Captured once, immediately before Body Change NG changes a player tint
     // layer. This is intentionally a texture path and RGBA value only: player
@@ -55,6 +102,8 @@ namespace bcn
         float mainWindowPositionY{};
         bool pauseGameWhenOpen{ false };
         bool performanceMode{ true };
+        FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
+        MaleNpcBodyType maleNpcBodyType{ MaleNpcBodyType::himbo };
         bool orefitEnabled{ true };
         bool orefitNippleMorphing{ true };
         bool nippleRandomization{};

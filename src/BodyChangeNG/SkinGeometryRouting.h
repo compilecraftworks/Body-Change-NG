@@ -170,6 +170,25 @@ namespace bcn::skin_geometry
             EqualsIgnoreAsciiCase(nodeName, "schlong");
     }
 
+    // A revealing outfit can keep its visible body copy on any biped slot,
+    // rather than on the naked body's conventional slot 32 (or UBE slot 53).
+    // Cross-slot discovery therefore needs stronger evidence than a generic
+    // BaseShape name: accept an explicit body node/path while rejecting the
+    // independent hand, foot, genital and anal atlases.
+    [[nodiscard]] constexpr bool IsBodyGeometryCandidate(
+        const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
+    {
+        if (IsHandsOrFeetSlotPart(nodeName, texturePath) ||
+            IsGenitalAnal(nodeName, texturePath) || IsMaleGenital(nodeName, texturePath)) {
+            return false;
+        }
+        return ContainsIgnoreAsciiCase(texturePath, "body") ||
+            ContainsIgnoreAsciiCase(nodeName, "body") ||
+            ContainsIgnoreAsciiCase(nodeName, "torso") ||
+            ContainsIgnoreAsciiCase(nodeName, "3ba") ||
+            ContainsIgnoreAsciiCase(nodeName, "3bbb");
+    }
+
     [[nodiscard]] constexpr bool Matches(
         const std::string_view nodeName, const BodySelection selection,
         const std::string_view texturePath = {}) noexcept

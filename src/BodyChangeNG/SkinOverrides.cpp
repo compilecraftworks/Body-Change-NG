@@ -366,6 +366,74 @@ namespace
             [nodeName](const std::string& candidate) { return candidate == nodeName; });
     }
 
+    void AppendCrossSlotBodyTargets(RE::Actor* actor,
+        const bcn::skin_geometry::BodySelection selection,
+        std::vector<LoadedPartTarget>& results)
+    {
+        if (!actor) return;
+        auto* skinArmor = actor->GetSkin();
+        for (const bool firstPerson : { false, true }) {
+            if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
+            const auto& biped = actor->GetBiped(firstPerson);
+            if (!biped) continue;
+            std::unordered_set<RE::NiAVObject*> inspectedClones;
+            for (std::size_t index{}; index < RE::BIPED_OBJECTS::kEditorTotal; ++index) {
+                const auto& object = biped->objects[index];
+                auto* armor = object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+                auto* addon = object.addon;
+                auto* partClone = object.partClone.get();
+                if (!armor || armor == skinArmor || !addon || !partClone ||
+                    !addon->IsValidRace(actor->GetRace()) || !inspectedClones.insert(partClone).second) {
+                    continue;
+                }
+
+                std::vector<std::string> matchingNodes;
+                RE::BSVisit::TraverseScenegraphGeometries(partClone, [&](RE::BSGeometry* geometry) {
+                    if (!IsSkinGeometry(geometry, false)) return RE::BSVisit::BSVisitControl::kContinue;
+                    const auto* rawName = geometry->name.c_str();
+                    const std::string name = rawName && rawName[0] != '\0' ? rawName : "";
+                    const auto texturePath = GeometryDiffuseTexture(geometry);
+                    if (!bcn::skin_geometry::IsBodyGeometryCandidate(name, texturePath) ||
+                        !bcn::skin_geometry::Matches(name, selection, texturePath)) {
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    }
+                    if (std::ranges::find(matchingNodes, name) == matchingNodes.end()) {
+                        matchingNodes.push_back(name);
+                    }
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                });
+                if (matchingNodes.empty()) continue;
+
+                const auto armorMask = armor->GetSlotMask().underlying();
+                const auto addonMask = addon->GetSlotMask().underlying();
+                auto target = std::ranges::find_if(results, [&](const LoadedPartTarget& candidate) {
+                    return candidate.armor == armor && candidate.addon == addon;
+                });
+                if (target == results.end()) {
+                    results.push_back({ .armor = armor, .addon = addon,
+                        .slotMask = armorMask & addonMask });
+                    target = std::prev(results.end());
+                }
+                if (std::ranges::none_of(target->views, [partClone, firstPerson](const auto& view) {
+                    return view.object == partClone && view.firstPerson == firstPerson;
+                })) {
+                    target->views.push_back({
+                        .firstPerson = firstPerson,
+                        .actorSkinArmor = false,
+                        .object = partClone,
+                        .nodes = matchingNodes
+                    });
+                }
+                for (const auto& name : matchingNodes) {
+                    if (std::ranges::find(target->immediateNodes, name) == target->immediateNodes.end()) {
+                        target->immediateNodes.push_back(name);
+                        target->persistentNodes.push_back(name);
+                    }
+                }
+            }
+        }
+    }
+
     [[nodiscard]] std::vector<LoadedPartTarget> FindLoadedPartTargets(RE::Actor* actor,
         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all,
@@ -437,6 +505,19 @@ namespace
         const auto requestedHandsOrFeet =
             slot == RE::BGSBipedObjectForm::BipedObjectSlot::kHands ||
             slot == RE::BGSBipedObjectForm::BipedObjectSlot::kFeet;
+
+        const auto requestedBody =
+            slot == RE::BGSBipedObjectForm::BipedObjectSlot::kBody || slot == kUbeBodySlot;
+        const auto hasExactWornBody = requestedBody && std::ranges::any_of(results,
+            [skinArmor](const LoadedPartTarget& target) { return target.armor != skinArmor; });
+        if (requestedBody && !hasExactWornBody) {
+            // Some revealing outfits anchor their embedded body clone to a
+            // non-body biped slot. Scan the fixed 32-entry Biped array only
+            // for this apply/verify operation and accept FaceGen skin
+            // materials with explicit body evidence; never repaint the
+            // outfit's fabric/metal geometries.
+            AppendCrossSlotBodyTargets(actor, selection, results);
+        }
         if (requestedHandsOrFeet) {
             // The exact slot may contain a sleeve/glove/boot clone with no
             // skin geometry.  Such a placeholder is not an applicable skin

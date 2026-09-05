@@ -2,6 +2,7 @@
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/Settings.h"
 
 #include <cmath>
 #include <iostream>
@@ -113,6 +114,26 @@ int main()
         rule.presetIds = { "male-body" };
         Require(!bcn::SetDistributionRuleSex(rule, false) && rule.presetIds.size() == 1U,
             "unchanged rule sex unnecessarily destroyed compatible selections");
+        Require(bcn::NpcDistributionFamily(bcn::FemaleNpcBodyType::cbbe3ba) ==
+                bcn::body_family::Bit(bcn::body_family::Family::cbbe) &&
+                bcn::NpcDistributionFamily(bcn::FemaleNpcBodyType::bhunpUnp) ==
+                bcn::body_family::Bit(bcn::body_family::Family::unp) &&
+                bcn::NpcDistributionFamily(bcn::FemaleNpcBodyType::ube) ==
+                bcn::body_family::Bit(bcn::body_family::Family::ube) &&
+                bcn::NpcDistributionFamily(bcn::MaleNpcBodyType::himbo) ==
+                bcn::body_family::Bit(bcn::body_family::Family::himbo) &&
+                bcn::NpcDistributionFamily(bcn::MaleNpcBodyType::sam) ==
+                bcn::body_family::Bit(bcn::body_family::Family::sam),
+            "NPC distribution body-type settings crossed family boundaries");
+        Require(!bcn::UsesNpcBodyPreset(bcn::FemaleNpcBodyType::vanilla) &&
+                !bcn::UsesNpcBodyPreset(bcn::MaleNpcBodyType::vanilla) &&
+                bcn::UsesNpcBodyPreset(bcn::FemaleNpcBodyType::cbbe3ba) &&
+                bcn::UsesNpcBodyPreset(bcn::MaleNpcBodyType::himbo),
+            "Vanilla NPC body settings did not disable only automatic BodySlide morph distribution");
+        const bcn::SettingsData defaultSettings;
+        Require(defaultSettings.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba &&
+                defaultSettings.maleNpcBodyType == bcn::MaleNpcBodyType::himbo,
+            "new-install NPC body-type defaults were not CBBE 3BA and HIMBO");
         std::cout << "ActorStateTests passed\n";
         return 0;
     } catch (const std::exception& error) {

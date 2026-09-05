@@ -181,6 +181,9 @@ int main(const int argc, char** argv)
             "legacy settings were not copied to the BodyChangeNG path")) return 1;
     if (!Require(migratedSnapshot.openHotkey.key == 66U && migratedSnapshot.openHotkey.ctrl,
             "legacy settings values were not preserved during migration")) return 1;
+    if (!Require(migratedSnapshot.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba &&
+            migratedSnapshot.maleNpcBodyType == bcn::MaleNpcBodyType::himbo,
+            "legacy settings migration did not preserve the new CBBE 3BA/HIMBO defaults")) return 1;
 
     const std::string skinPackName{ "피부팩 简体" };
     const auto female = sandbox / "BodySkin" / std::filesystem::path{ L"피부팩 简体" } /
@@ -535,6 +538,20 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::NeedsStandardBodyFallback(true, 1U) &&
             !bcn::skin_geometry::NeedsStandardBodyFallback(false, 0U),
             "UBE body routing did not fall back only when its slot-53 target was absent")) return 1;
+    if (!Require(
+            bcn::skin_geometry::IsBodyGeometryCandidate("3BA",
+                R"(textures\actors\character\female\femalebody_1.dds)") &&
+            bcn::skin_geometry::IsBodyGeometryCandidate("BaseShape",
+                R"(textures\!UBE\Body\femalebody_1_d.dds)") &&
+            bcn::skin_geometry::IsBodyGeometryCandidate("MaleBody",
+                R"(textures\actors\character\male\malebody_1.dds)") &&
+            !bcn::skin_geometry::IsBodyGeometryCandidate("FemaleHands",
+                R"(textures\actors\character\female\femalehands_1.dds)") &&
+            !bcn::skin_geometry::IsBodyGeometryCandidate("FemaleHead",
+                R"(textures\actors\character\female\femalehead.dds)") &&
+            !bcn::skin_geometry::IsBodyGeometryCandidate("3BA_Vagina",
+                R"(textures\actors\character\female\femalebody_etc_v2_1.dds)"),
+            "cross-slot outfit body routing accepted a non-body skin atlas")) return 1;
     if (!Require(
             bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::hands,
                 "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)") &&

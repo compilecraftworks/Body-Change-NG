@@ -10,6 +10,7 @@ namespace bcn::body_morph_policy
     {
         none,
         cbbe3ba,
+        bhunpUnp,
         ube
     };
 
@@ -21,11 +22,15 @@ namespace bcn::body_morph_policy
         const body_family::Mask presetFamily = 0U) noexcept
     {
         const auto supported = body_family::Bit(body_family::Family::cbbe) |
+            body_family::Bit(body_family::Family::unp) |
             body_family::Bit(body_family::Family::ube);
         auto candidates = actorFamily & supported;
         if (candidates == 0U) candidates = presetFamily & supported;
         if (candidates == body_family::Bit(body_family::Family::cbbe)) {
             return FemaleFamily::cbbe3ba;
+        }
+        if (candidates == body_family::Bit(body_family::Family::unp)) {
+            return FemaleFamily::bhunpUnp;
         }
         if (candidates == body_family::Bit(body_family::Family::ube)) {
             return FemaleFamily::ube;
@@ -33,19 +38,21 @@ namespace bcn::body_morph_policy
         return FemaleFamily::none;
     }
 
-    // Outfit breast/nipple correction is derived from OBody NG's CBBE/3BA
-    // slider set. UBE uses a materially different anatomy and non-zero body
-    // defaults, so guessing equivalent targets can visibly damage its shape.
+    // CBBE/3BA and BHUNP/UNP use different verified slider dialects; the
+    // caller selects the matching dialect. UBE uses materially different
+    // anatomy and non-zero body defaults, so guessing targets can visibly
+    // damage its shape.
     [[nodiscard]] constexpr bool SupportsOutfitCorrection(const FemaleFamily family) noexcept
     {
-        return family == FemaleFamily::cbbe3ba;
+        return family == FemaleFamily::cbbe3ba || family == FemaleFamily::bhunpUnp;
     }
 
-    // Anatomy randomization is an NPC distribution feature and currently has
-    // the same verified CBBE/3BA-only support boundary as OBody NG.
+    // Anatomy randomization is an NPC-only feature. Both supported families
+    // have an explicit slider dialect; UBE and ambiguous actors fail closed.
     [[nodiscard]] constexpr bool SupportsNpcAnatomyRandomization(
         const FemaleFamily family, const bool player) noexcept
     {
-        return !player && family == FemaleFamily::cbbe3ba;
+        return !player &&
+            (family == FemaleFamily::cbbe3ba || family == FemaleFamily::bhunpUnp);
     }
 }

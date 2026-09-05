@@ -74,20 +74,29 @@ int main()
         Require(ResolveFemaleFamily(Bit(Family::ube), Bit(Family::cbbe) | Bit(Family::ube)) ==
                 FemaleFamily::ube,
             "combined preset metadata overrode a known UBE actor");
+        Require(ResolveFemaleFamily(Bit(Family::unp), Bit(Family::cbbe)) ==
+                FemaleFamily::bhunpUnp,
+            "known BHUNP/UNP actor did not select its slider dialect");
         Require(ResolveFemaleFamily(0U, Bit(Family::ube)) == FemaleFamily::ube,
             "unambiguous UBE preset fallback was rejected");
         Require(ResolveFemaleFamily(Bit(Family::cbbe) | Bit(Family::ube),
                 Bit(Family::cbbe) | Bit(Family::ube)) == FemaleFamily::none,
             "ambiguous actor evidence mixed CBBE/3BA and UBE anatomy sliders");
-        Require(SupportsOutfitCorrection(FemaleFamily::cbbe3ba),
-            "CBBE/3BA outfit correction was disabled");
+        Require(ResolveFemaleFamily(Bit(Family::cbbe) | Bit(Family::unp),
+                Bit(Family::unp)) == FemaleFamily::none,
+            "ambiguous actor evidence mixed CBBE/3BA and BHUNP/UNP slider dialects");
+        Require(SupportsOutfitCorrection(FemaleFamily::cbbe3ba) &&
+                SupportsOutfitCorrection(FemaleFamily::bhunpUnp),
+            "CBBE/3BA or BHUNP/UNP outfit correction was disabled");
         Require(!SupportsOutfitCorrection(FemaleFamily::ube) &&
                 !SupportsOutfitCorrection(FemaleFamily::none),
             "unsupported female family received outfit correction");
-        Require(SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, false),
-            "CBBE/3BA NPC anatomy randomization was disabled");
+        Require(SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, false) &&
+                SupportsNpcAnatomyRandomization(FemaleFamily::bhunpUnp, false),
+            "CBBE/3BA or BHUNP/UNP NPC anatomy randomization was disabled");
         Require(!SupportsNpcAnatomyRandomization(FemaleFamily::ube, false) &&
                 !SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, true) &&
+                !SupportsNpcAnatomyRandomization(FemaleFamily::bhunpUnp, true) &&
                 !SupportsNpcAnatomyRandomization(FemaleFamily::none, false),
             "player or unsupported family received NPC anatomy randomization");
         std::cout << "AsyncWorkGuardTests passed\n";

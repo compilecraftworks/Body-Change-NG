@@ -457,46 +457,86 @@ namespace
             const auto randomizeNpcAnatomy = bcn::body_morph_policy::SupportsNpcAnatomyRandomization(
                 femaleFamily, actor.get() == RE::PlayerCharacter::GetSingleton());
             if (settings.nippleRandomization && randomizeNpcAnatomy) {
-                const auto smallAreola = StableChance(actor->GetFormID(), preset.name, "AreolaSize", 2, .15F);
-                setRandom("AreolaSize", 1, smallAreola ? -1.0F : 0.0F, smallAreola ? 0.0F : 1.0F);
-                if (StableChance(actor->GetFormID(), preset.name, "AreolaPull_v2", 3, .75F)) setRandom("AreolaPull_v2", 4, -.25F, 1.0F);
-                const auto longerNipple = StableChance(actor->GetFormID(), preset.name, "NippleLength", 6, .15F);
-                setRandom("NippleLength", 5, longerNipple ? .2F : 0.0F, longerNipple ? .3F : .1F);
-                setRandom("NippleManga", 7, -.3F, .8F);
-                if (StableChance(actor->GetFormID(), preset.name, "NipplePerkManga", 8, .25F)) setRandom("NipplePerkManga", 9, -.3F, 1.2F);
-                if (StableChance(actor->GetFormID(), preset.name, "NipBGone", 10, .15F)) setRandom("NipBGone", 11, .6F, 1.0F);
-                setRandom("NippleSize", 12, -.5F, .3F);
-                setRandom("NippleDip", 13, 0.0F, 1.0F);
-                setRandom("NippleCrease_v2", 14, -.4F, 1.0F);
-                if (StableChance(actor->GetFormID(), preset.name, "NipplePuffy_v2", 15, .06F)) setRandom("NipplePuffy_v2", 16, .4F, .7F);
-                if (StableChance(actor->GetFormID(), preset.name, "NippleThicc_v2", 17, .35F)) setRandom("NippleThicc_v2", 18, 0.0F, .9F);
-                if (StableChance(actor->GetFormID(), preset.name, "NippleInvert_v2", 19, .02F)) setRandom("NippleInvert_v2", 20, .65F, 1.0F);
+                if (femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
+                    const auto smallAreola = StableChance(actor->GetFormID(), preset.name, "AreolaSize", 2, .15F);
+                    setRandom("AreolaSize", 1, smallAreola ? -1.0F : 0.0F, smallAreola ? 0.0F : 1.0F);
+                    if (StableChance(actor->GetFormID(), preset.name, "AreolaPull_v2", 3, .75F)) setRandom("AreolaPull_v2", 4, -.25F, 1.0F);
+                    const auto longerNipple = StableChance(actor->GetFormID(), preset.name, "NippleLength", 6, .15F);
+                    setRandom("NippleLength", 5, longerNipple ? .2F : 0.0F, longerNipple ? .3F : .1F);
+                    setRandom("NippleManga", 7, -.3F, .8F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NipplePerkManga", 8, .25F)) setRandom("NipplePerkManga", 9, -.3F, 1.2F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NipBGone", 10, .15F)) setRandom("NipBGone", 11, .6F, 1.0F);
+                    setRandom("NippleSize", 12, -.5F, .3F);
+                    setRandom("NippleDip", 13, 0.0F, 1.0F);
+                    setRandom("NippleCrease_v2", 14, -.4F, 1.0F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NipplePuffy_v2", 15, .06F)) setRandom("NipplePuffy_v2", 16, .4F, .7F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NippleThicc_v2", 17, .35F)) setRandom("NippleThicc_v2", 18, 0.0F, .9F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NippleInvert_v2", 19, .02F)) setRandom("NippleInvert_v2", 20, .65F, 1.0F);
+                } else if (femaleFamily == bcn::body_morph_policy::FemaleFamily::bhunpUnp) {
+                    // BHUNP/UNP exposes the same concepts through its own
+                    // non-v2 slider names. Never mix these into CBBE/3BA or UBE.
+                    const auto smallAreola = StableChance(actor->GetFormID(), preset.name, "NippleAreola", 102, .15F);
+                    setRandom("NippleAreola", 101, smallAreola ? -1.0F : 0.0F, smallAreola ? 0.0F : 1.0F);
+                    if (StableChance(actor->GetFormID(), preset.name, "AreolaPull", 103, .75F)) setRandom("AreolaPull", 104, -.25F, 1.0F);
+                    const auto longerNipple = StableChance(actor->GetFormID(), preset.name, "NippleLength", 106, .15F);
+                    setRandom("NippleLength", 105, longerNipple ? .2F : 0.0F, longerNipple ? .3F : .1F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NipplePerkManga", 108, .25F)) setRandom("NipplePerkManga", 109, -.3F, 1.2F);
+                    setRandom("NippleSize", 112, -.5F, .3F);
+                    setRandom("NippleTip", 113, 0.0F, 1.0F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NipplePuffyAreola", 115, .06F)) setRandom("NipplePuffyAreola", 116, .4F, .7F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NippleThicc", 117, .35F)) setRandom("NippleThicc", 118, 0.0F, .9F);
+                    if (StableChance(actor->GetFormID(), preset.name, "NippleInverted", 119, .02F)) setRandom("NippleInverted", 120, .65F, 1.0F);
+                }
             }
             if (settings.genitalRandomization && randomizeNpcAnatomy) {
-                const auto innie = StableChance(actor->GetFormID(), preset.name, "Innieoutie", 21, .20F);
-                const auto average = !innie && StableChance(actor->GetFormID(), preset.name, "Innieoutie", 22, .75F);
-                setRandom("Innieoutie", 23, innie ? .95F : average ? .4F : -.25F, innie ? 1.1F : average ? .75F : .3F);
-                setRandom("Labiapuffyness", 24, innie ? .75F : average ? .5F : .2F, innie ? 1.25F : average ? 1.0F : .5F);
-                setRandom("LabiaMorePuffyness_v2", 25, 0.0F, innie ? 1.0F : average ? .75F : .35F);
-                setRandom("Labiaprotrude", 26, 0.0F, innie ? .5F : 1.0F);
-                setRandom("Labiaprotrude2", 27, 0.0F, innie ? .1F : average ? .75F : 1.0F);
-                setRandom("Labiaprotrudeback", 28, 0.0F, innie ? .1F : 1.0F);
-                setRandom("Labiaspread", 29, 0.0F, innie ? 0.0F : 1.0F);
-                setRandom("LabiaCrumpled_v2", 30, 0.0F, innie ? .3F : average ? .7F : 1.0F);
-                setRandom("LabiaBulgogi_v2", 31, 0.0F, innie ? 0.0F : average ? .3F : 1.0F);
-                setRandom("LabiaNeat_v2", 32, 0.0F, innie || average ? 0.0F : .25F);
-                setRandom("VaginaHole", 33, innie ? -.2F : average ? -.2F : 0.0F, innie ? .05F : average ? .4F : 1.0F);
-                setRandom("Clit", 34, -.4F, .25F);
-                setRandom("Vaginasize", 35, 0.0F, 1.0F);
-                setRandom("ClitSwell_v2", 36, -.3F, 1.1F);
-                setRandom("Cutepuffyness", 37, 0.0F, 1.0F);
-                setRandom("LabiaTightUp", 38, 0.0F, 1.0F);
-                setRandom("CBPC", 39, StableChance(actor->GetFormID(), preset.name, "CBPC", 40, .60F) ? -.25F : .6F,
-                    StableChance(actor->GetFormID(), preset.name, "CBPC", 40, .60F) ? .25F : 1.0F);
-                setRandom("AnalPosition_v2", 41, 0.0F, 1.0F);
-                setRandom("AnalTexPos_v2", 42, 0.0F, 1.0F);
-                setRandom("AnalTexPosRe_v2", 43, 0.0F, 1.0F);
-                desiredMorphs.insert_or_assign("AnalLoose_v2", -.1F);
+                if (femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
+                    const auto innie = StableChance(actor->GetFormID(), preset.name, "Innieoutie", 21, .20F);
+                    const auto average = !innie && StableChance(actor->GetFormID(), preset.name, "Innieoutie", 22, .75F);
+                    setRandom("Innieoutie", 23, innie ? .95F : average ? .4F : -.25F, innie ? 1.1F : average ? .75F : .3F);
+                    setRandom("Labiapuffyness", 24, innie ? .75F : average ? .5F : .2F, innie ? 1.25F : average ? 1.0F : .5F);
+                    setRandom("LabiaMorePuffyness_v2", 25, 0.0F, innie ? 1.0F : average ? .75F : .35F);
+                    setRandom("Labiaprotrude", 26, 0.0F, innie ? .5F : 1.0F);
+                    setRandom("Labiaprotrude2", 27, 0.0F, innie ? .1F : average ? .75F : 1.0F);
+                    setRandom("Labiaprotrudeback", 28, 0.0F, innie ? .1F : 1.0F);
+                    setRandom("Labiaspread", 29, 0.0F, innie ? 0.0F : 1.0F);
+                    setRandom("LabiaCrumpled_v2", 30, 0.0F, innie ? .3F : average ? .7F : 1.0F);
+                    setRandom("LabiaBulgogi_v2", 31, 0.0F, innie ? 0.0F : average ? .3F : 1.0F);
+                    setRandom("LabiaNeat_v2", 32, 0.0F, innie || average ? 0.0F : .25F);
+                    setRandom("VaginaHole", 33, innie ? -.2F : average ? -.2F : 0.0F, innie ? .05F : average ? .4F : 1.0F);
+                    setRandom("Clit", 34, -.4F, .25F);
+                    setRandom("Vaginasize", 35, 0.0F, 1.0F);
+                    setRandom("ClitSwell_v2", 36, -.3F, 1.1F);
+                    setRandom("Cutepuffyness", 37, 0.0F, 1.0F);
+                    setRandom("LabiaTightUp", 38, 0.0F, 1.0F);
+                    setRandom("CBPC", 39, StableChance(actor->GetFormID(), preset.name, "CBPC", 40, .60F) ? -.25F : .6F,
+                        StableChance(actor->GetFormID(), preset.name, "CBPC", 40, .60F) ? .25F : 1.0F);
+                    setRandom("AnalPosition_v2", 41, 0.0F, 1.0F);
+                    setRandom("AnalTexPos_v2", 42, 0.0F, 1.0F);
+                    setRandom("AnalTexPosRe_v2", 43, 0.0F, 1.0F);
+                    desiredMorphs.insert_or_assign("AnalLoose_v2", -.1F);
+                } else if (femaleFamily == bcn::body_morph_policy::FemaleFamily::bhunpUnp) {
+                    const auto innie = StableChance(actor->GetFormID(), preset.name, "PussyClosed", 121, .20F);
+                    const auto average = !innie && StableChance(actor->GetFormID(), preset.name, "PussyClosed", 122, .75F);
+                    setRandom("PussyClosed", 123, innie ? .7F : average ? .3F : 0.0F,
+                        innie ? 1.0F : average ? .7F : .3F);
+                    setRandom("PussyOpen", 124, innie ? 0.0F : average ? .1F : .3F,
+                        innie ? .15F : average ? .5F : 1.0F);
+                    setRandom("PussyMajora", 125, innie ? 0.0F : average ? .2F : .5F,
+                        innie ? .4F : average ? .7F : 1.0F);
+                    setRandom("PussyMinora", 126, innie ? 0.0F : average ? .2F : .5F,
+                        innie ? .3F : average ? .7F : 1.0F);
+                    setRandom("PussyMajoraBig", 127, 0.0F, innie ? .2F : average ? .6F : 1.0F);
+                    setRandom("PussyCute", 128, 0.0F, 1.0F);
+                    setRandom("PussyHilly", 129, 0.0F, 1.0F);
+                    setRandom("PussyWide", 130, 0.0F, innie ? .2F : average ? .6F : 1.0F);
+                    setRandom("Clit", 131, -.4F, .25F);
+                    setRandom("ClitorisErection", 132, 0.0F, 1.0F);
+                    setRandom("ClitorisPrepuce", 133, 0.0F, 1.0F);
+                    setRandom("ClitSpread", 134, 0.0F, 1.0F);
+                    setRandom("LabiaStretch", 135, 0.0F, 1.0F);
+                    setRandom("AnusSpread", 136, 0.0F, 1.0F);
+                    setRandom("AnalPositionlow", 137, 0.0F, 1.0F);
+                }
             }
         }
         if (mode != bcn::racemenu::ApplyMode::outfit) {
@@ -603,7 +643,7 @@ namespace
         const auto femaleFamily = bcn::body_morph_policy::ResolveFemaleFamily(
             bcn::body_family::ResolveActor(actor.get()), presetFamily);
         const auto settings = bcn::Settings::Get().MorphOptions();
-        if (bcn::body_morph_policy::SupportsOutfitCorrection(femaleFamily)) {
+        if (femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
             derive("BreastSideShape", 0.0F);
             derive("BreastUnderDepth", 0.0F);
             derive("BreastCleavage", 1.0F);
@@ -626,6 +666,34 @@ namespace
                 derive("NipplePuffy_v2", 0.0F);
                 derive("AreolaSize", -0.3F);
                 derive("NipBGone", 1.0F);
+                fixed("NippleDistance", 0.05F, 0.08F);
+                fixed("NippleDown", 0.0F, -0.1F);
+                derive("NipplePerkManga", -0.25F);
+            }
+        } else if (femaleFamily == bcn::body_morph_policy::FemaleFamily::bhunpUnp) {
+            // Verified against BHUNP/UNP SliderSets. Keep this dialect
+            // separate: several similarly named CBBE/3BA v2 sliders do not
+            // exist on BHUNP and would otherwise leave its nipples unchanged.
+            derive("BreastSideShape", 0.0F);
+            derive("BreastUnderDepth", 0.0F);
+            derive("BreastCleavage", 1.0F);
+            fixed("BreastGravity", -0.1F, -0.05F);
+            fixed("Breasts", -0.05F, -0.05F);
+            fixed("BreastHeight", 0.15F, 0.15F);
+            derive("ButtDimples", 0.0F);
+            derive("ButtUnderFold", 0.0F);
+            fixed("AppleCheeks", -0.05F, -0.05F);
+            fixed("Butt", -0.05F, -0.05F);
+            derive("Clavicle", 0.0F);
+            derive("NavelEven", 1.0F);
+            derive("HipCarved", 0.0F);
+
+            if (settings.outfitNippleCorrection) {
+                derive("NippleTip", 0.0F);
+                derive("NippleErection", 0.0F);
+                derive("NippleInverted", 0.0F);
+                derive("NipplePuffyAreola", 0.0F);
+                derive("NippleAreola", -0.3F);
                 fixed("NippleDistance", 0.05F, 0.08F);
                 fixed("NippleDown", 0.0F, -0.1F);
                 derive("NipplePerkManga", -0.25F);

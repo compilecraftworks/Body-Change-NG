@@ -254,8 +254,10 @@ namespace
 
     struct RuleSelection final
     {
+        bool matched{};
         bool bodyExcluded{};
         bool skinExcluded{};
+        bool defaultBodyRequested{};
         std::optional<std::string> presetId;
         std::optional<std::string> skinProfileId;
 
@@ -280,42 +282,46 @@ namespace
     }
 
     [[nodiscard]] std::vector<std::string> CompatibleSkinPool(
-        const std::vector<std::string>& pool, RE::Actor* actor)
+        const std::vector<std::string>& pool, RE::Actor* actor,
+        const bcn::body_family::Mask distributionFamily)
     {
         if (pool.empty() || !actor) return {};
 
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorFemale = base->GetSex() == RE::SEX::kFemale;
-        const auto actorFamily = bcn::body_family::ResolveActor(actor);
         return bcn::SkinProfiles::Get().CompatibleIds(pool,
-            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, actorFamily,
+            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, distributionFamily,
             bcn::ResolveActorSkinRace(actor));
     }
 
     [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
-        const std::vector<std::string>& pool, RE::Actor* actor)
+        const std::vector<std::string>& pool, RE::Actor* actor,
+        const bcn::body_family::Mask distributionFamily)
     {
         if (pool.empty() || !actor) return {};
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorMale = base->GetSex() != RE::SEX::kFemale;
-        const auto actorFamily = bcn::body_family::ResolveActor(actor);
-        return bcn::PresetCatalog::Get().CompatibleIds(pool, actorMale, actorFamily);
+        return bcn::PresetCatalog::Get().CompatibleIds(pool, actorMale, distributionFamily);
     }
 
     [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
-        RE::Actor* actor, const std::optional<bcn::ActorState>& previous)
+        RE::Actor* actor, const std::optional<bcn::ActorState>& previous,
+        const bcn::body_family::Mask distributionFamily, const bool useBodyPreset)
     {
         for (const auto& rule : rules) {
             if (!MatchesTarget(rule, actor)) continue;
-            const auto compatiblePresets = rule.bodyExcluded ? std::vector<std::string>{} :
-                CompatiblePresetPool(rule.presetIds, actor);
+            const auto compatiblePresets = rule.bodyExcluded || !useBodyPreset ?
+                std::vector<std::string>{} :
+                CompatiblePresetPool(rule.presetIds, actor, distributionFamily);
             const auto compatibleSkins = rule.skinExcluded ? std::vector<std::string>{} :
-                CompatibleSkinPool(rule.skinProfileIds, actor);
+                CompatibleSkinPool(rule.skinProfileIds, actor, distributionFamily);
             return RuleSelection{
+                .matched = true,
                 .bodyExcluded = rule.bodyExcluded,
                 .skinExcluded = rule.skinExcluded,
+                .defaultBodyRequested = !rule.bodyExcluded && !useBodyPreset,
                 .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, compatiblePresets,
                     actor, "body", previous && !previous->manualBody ?
                         std::string_view{ previous->selectedBodyId } : std::string_view{}),
@@ -775,7 +781,16 @@ namespace bcn
         const auto manual = ActorRegistry::Get().ManualSelection(actor);
         const auto previous = ActorRegistry::Get().Snapshot(actor);
         const auto rules = EvaluationRules();
-        const auto selection = ChooseRuleSelection(*rules, actor, previous);
+        const auto actorFemale = actor->GetActorBase() &&
+            actor->GetActorBase()->GetSex() == RE::SEX::kFemale;
+        const auto settings = Settings::Get().Snapshot();
+        const auto distributionFamily = actorFemale ?
+            NpcDistributionFamily(settings.femaleNpcBodyType) :
+            NpcDistributionFamily(settings.maleNpcBodyType);
+        const auto useBodyPreset = actorFemale ? UsesNpcBodyPreset(settings.femaleNpcBodyType) :
+            UsesNpcBodyPreset(settings.maleNpcBodyType);
+        const auto selection = ChooseRuleSelection(
+            *rules, actor, previous, distributionFamily, useBodyPreset);
         ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
         bool queued{};
 
@@ -796,6 +811,11 @@ namespace bcn
             queued = racemenu::QueueApply(actor, *selection.presetId,
                 racemenu::ApplyMode::commit, 0U,
                 racemenu::UpdatePolicy::deferred) == racemenu::ApplyResult::queued;
+        } else if ((!manual || !manual->hasBody) && selection.matched &&
+            selection.defaultBodyRequested &&
+            ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
+            racemenu::QueueClearBodyChangeMorphs(actor);
+            queued = true;
         }
 
         if (manual && manual->hasSkin && manual->useDefaultSkin &&

@@ -204,9 +204,9 @@ namespace bcn
         if (actorFamily == 0U) actorFamily = currentBodyFamily;
         if (female && !body_morph_policy::SupportsOutfitCorrection(
                 body_morph_policy::ResolveFemaleFamily(actorFamily, currentBodyFamily))) {
-            // OBody NG's procedural breast/nipple correction is authored for
-            // CBBE/3BA. UBE (and an ambiguous family) must not receive either
-            // a guessed procedural layer or an imported/named ORefit layer.
+            // CBBE/3BA and BHUNP/UNP each use an explicitly supported slider
+            // dialect. UBE (and an ambiguous family) must not receive either
+            // a guessed procedural layer or an imported/named refit layer.
             // Clear a layer written by an earlier BCNG build once, then cache
             // the no-op signature so ordinary equip events stay inexpensive.
             const auto signature = StableStateSignature("outfit", "unsupported-female-family", true,
