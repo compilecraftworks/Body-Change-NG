@@ -4,31 +4,40 @@ All notable public changes to Body Change NG are documented here.
 
 ## 1.1.1 — 2026-09-05
 
-### Direct selection and skin updates
+### NPC distribution and saved-state recovery
 
-- Gives direct body, skin, and tint selections a reserved processing opportunity within the existing frame budget, while preserving service for automatic NPC distribution.
-- Promotes the selected actor's required follow-up work without reordering that actor's preview, confirmation, or skin updates.
-- Releases completed skin-callback ownership when the callback finishes, rather than waiting for the VM to destroy its callback object. Unfinished native calls remain protected.
-- Keeps the latest queued selection and skips superseded skin-query follow-ups. Adds queued, applying, and delayed status in the existing UI help line.
+- Verifies a manually assigned or rule-distributed NPC's live body and skin once after loading. Missing results are reapplied, while already-correct actors are skipped.
+- Coalesces overlapping actor initialization, cell-attach, and equipment work, invalidates stale session work on load, and bounds retries for unavailable 3D.
+- Records an application as complete only after it succeeds.
 
-### Load safety, previews, and outfit correction
+### Body presets and outfit correction
 
-- Schedules automatic distribution, equipment changes, and rebuild recovery across actual engine update boundaries instead of repeatedly draining the same task queue.
-- Prevents overlapping BCNG updates on the same actor. Cancels stale session work during loading and bounds retries for actors whose 3D is unavailable.
-- Prevents another NPC's automatic distribution from cancelling the selected actor's body preview. Loading a save no longer confirms pending choices from the previous UI session.
-- Coordinates RaceMenu-close recovery with outstanding actor work. Default body/skin requests no longer fall back to an older selected result while removal is pending.
-- Refreshes outfit correction after body reapplication and calculates procedural correction against the combined morph result without deleting other mods' morph keys.
+- Prevents presets from accumulating on top of RaceMenu 3BA MORPHS values or repeated distribution. XML-omitted compatible sliders target zero, while morph keys owned by other mods remain intact.
+- Uses the same absolute-result path for preview, confirmation, and NPC distribution and prevents stale work from replacing the current selection.
+- Recalculates outfit correction after body changes against the complete evaluated morph result.
+- Separates CBBE 3BA and UBE 2.0 breast/nipple correction and stable nipple/genital randomization by the actor's live body family.
 
-### Refresh and processing cost
+### BodySkin application and compatibility
 
-- Detects changed XML/DDS content under the same preset or pack ID. Refreshing changed DDS content uses a new texture-cache identity so the previous cached file is not reused.
-- Caches content signatures and read-only rule snapshots; avoids repeated full-catalog copies and unnecessary force-outfit inventory searches.
-- Keeps full DDS reads at initial catalog loading or explicit refresh, not at each NPC event. Expensive post-apply texture audits remain debug-only.
-- Preserves existing rules, settings, co-save identifiers, starter exclusions, body-family filtering, skin part/channel routing, and camera values.
+- Routes body, hand, and foot geometry separately in multi-part Skin Armor and prevents body textures from being copied onto hands or feet.
+- Partial packs replace only supplied parts and diffuse, normal, subsurface, or specular channels; absent content keeps the actor's current textures.
+- Repairs selected skin parts after equipment rebuilds, including looting dead NPCs, and rebuilds missing BCNG cache files from the source pack.
+- Supports actor-matched CBBE 3BA and UBE 2.0 profiles, standard female and male skins, SOS male genital textures, Argonian/Khajiit skins, and optional elder/race face variants.
+- Adds bounded compatibility for Racial Skin Variance and Mu Dynamic NormalMap companion files.
+- Improves compatibility with OverlayFix by tightening actor-update and asynchronous-work boundaries.
+
+### Responsiveness, performance, and stability
+
+- Prioritizes direct body, skin, and tint selections while preserving fair automatic-distribution service within the frame budget.
+- Prepares only the selected actor's required skin files on one background worker, keeps the latest request, and reuses prepared cache files.
+- Deduplicates full DDS hashing when MO2 exposes one backing file through both physical and virtual Data paths; large per-file diagnostics are debug-only.
+- Limits full DDS content reads to initial catalog loading or explicit Refresh and detects changed XML/DDS content under the same ID.
+- Releases completed callback ownership immediately, times out a RaceMenu SE callback batch that never returns, and rejects late or superseded follow-up work.
+- Avoids equipment-event work for actors using neither BodySkin nor outfit correction and reduces unnecessary hot-path settings/rule copies.
 
 ### Validation
 
-Release build and all 12 regression test executables passed. Automated tests cover queue ordering, callback lifetime/cancellation, latest-selection handling, catalog refresh, and existing routing/state rules. This release is not a confirmed fix for the reported OverlayFix CTD and does not certify stutter-free gameplay or in-game appearance.
+Release build and all 12 regression test executables passed, including restored actor state, task/callback lifetime, body-family isolation, partial-skin routing, catalog refresh, and MO2 path-alias deduplication. Existing rules, JSON, settings, co-save identifiers, starter exclusions, favorites, and camera values are preserved.
 
 ## 1.1.0 — 2026-09-04
 

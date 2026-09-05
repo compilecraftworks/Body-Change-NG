@@ -65,6 +65,14 @@ namespace bcn
         std::vector<PlayerTintBackup> playerTintBackups;
     };
 
+    struct BodyMorphOptions
+    {
+        bool outfitCorrection{};
+        bool outfitNippleCorrection{};
+        bool nippleRandomization{};
+        bool genitalRandomization{};
+    };
+
     class Settings final
     {
     public:
@@ -73,6 +81,10 @@ namespace bcn
         void Load();
         [[nodiscard]] bool Save() const;
         [[nodiscard]] SettingsData Snapshot() const;
+        [[nodiscard]] bool PerformanceMode() const;
+        [[nodiscard]] bool OutfitCorrectionEnabled() const;
+        [[nodiscard]] std::uint32_t RandomizationOptions() const;
+        [[nodiscard]] BodyMorphOptions MorphOptions() const;
         void Update(const SettingsData& a_data);
 
     private:

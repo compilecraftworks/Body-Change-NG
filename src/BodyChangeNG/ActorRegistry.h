@@ -57,9 +57,9 @@ namespace bcn
         void SetRuleSelection(RE::Actor* a_actor, std::optional<std::string> a_bodyId,
             std::optional<std::string> a_skinId);
         [[nodiscard]] bool NeedsBodyApply(RE::Actor* a_actor, std::string_view a_bodyId,
-            bool a_useDefault) const;
+            bool a_useDefault);
         [[nodiscard]] bool NeedsSkinApply(RE::Actor* a_actor, std::string_view a_skinId,
-            bool a_useDefault) const;
+            bool a_useDefault);
 
         // Called only by the successful game-thread end of each existing
         // backend. A queued request is never serialized as completed.

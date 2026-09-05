@@ -195,6 +195,7 @@ The [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/sk
 - Confirmed Body, Skin, and Tint selections are reapplied after RaceMenu closes
 - After removing legacy BodyChange.esp, obsolete non-UBE RaceMenu face references can be repaired with an adjacent backup and available High Poly Head/vanilla fallback; UBE custom-head presets are preserved
 - Skin support replaces matching texture channels; it does not create missing geometry or change its UV mapping
+- **Racial Skin Variance (RSV)** — Body Preset and TintMask features are independent of RSV. When a BCNG BodySkin is selected for an RSV actor, BCNG targets that actor's live RSV Skin Armor and applies every available body, hands, feet, face, and conditional channel. RSV keeps ownership of its serialized FaceGen keys; BCNG paints its selected face on the live node and performs one coalesced reconciliation after RSV's deferred node update. Clearing the BCNG skin naturally reveals RSV again. Missing BCNG channels continue to use the RSV/base texture
 
 ---
 

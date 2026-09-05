@@ -172,14 +172,23 @@ namespace bcn
         return found == catalog.end() ? std::nullopt : std::optional<BodyPreset>(*found);
     }
 
-    std::optional<BodyPreset> PresetCatalog::FindRefit(const std::vector<std::string>& names, bool male) const
+    std::optional<BodyPreset> PresetCatalog::FindRefit(const std::vector<std::string>& names, const bool male,
+        const body_family::Mask actorFamily) const
     {
         std::scoped_lock lock(lock_);
+        return SelectRefit(refitPresets_, names, male, actorFamily);
+    }
+
+    std::optional<BodyPreset> PresetCatalog::SelectRefit(
+        const std::vector<BodyPreset>& presets, const std::vector<std::string>& names,
+        const bool male, const body_family::Mask actorFamily)
+    {
         for (const auto& name : names) {
-            const auto found = std::ranges::find_if(refitPresets_, [&](const auto& preset) {
-                return preset.male == male && preset.name == name;
+            const auto found = std::ranges::find_if(presets, [&](const auto& preset) {
+                return preset.male == male && preset.name == name &&
+                    body_family::Matches(body_family::PresetMask(preset.family, preset.male), actorFamily);
             });
-            if (found != refitPresets_.end()) return *found;
+            if (found != presets.end()) return *found;
         }
         return {};
     }

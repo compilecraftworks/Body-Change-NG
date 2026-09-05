@@ -1,13 +1,16 @@
 #pragma once
 
 #include <RE/M/MenuOpenCloseEvent.h>
+#include <SKSE/Events.h>
 
 namespace bcn
 {
     class ActorEvents final : public RE::BSTEventSink<RE::TESInitScriptEvent>,
                               public RE::BSTEventSink<RE::TESCellAttachDetachEvent>,
                               public RE::BSTEventSink<RE::TESEquipEvent>,
-                              public RE::BSTEventSink<RE::MenuOpenCloseEvent>
+                              public RE::BSTEventSink<RE::TESContainerChangedEvent>,
+                              public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
+                              public RE::BSTEventSink<SKSE::NiNodeUpdateEvent>
     {
     public:
         static ActorEvents& Get();
@@ -30,8 +33,16 @@ namespace bcn
             RE::BSTEventSource<RE::TESEquipEvent>* a_source) override;
 
         RE::BSEventNotifyControl ProcessEvent(
+            const RE::TESContainerChangedEvent* a_event,
+            RE::BSTEventSource<RE::TESContainerChangedEvent>* a_source) override;
+
+        RE::BSEventNotifyControl ProcessEvent(
             const RE::MenuOpenCloseEvent* a_event,
             RE::BSTEventSource<RE::MenuOpenCloseEvent>* a_source) override;
+
+        RE::BSEventNotifyControl ProcessEvent(
+            const SKSE::NiNodeUpdateEvent* a_event,
+            RE::BSTEventSource<SKSE::NiNodeUpdateEvent>* a_source) override;
 
     private:
         bool registered_{};

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -25,10 +26,37 @@ namespace bcn
         bool appliedDefaultSkin{};
         bool bodyApplied{};
         bool skinApplied{};
+        // Runtime-only proof. Serialized completion metadata is only a hint
+        // until the new session verifies RaceMenu's live state once.
+        bool bodyVerifiedThisSession{};
+        bool skinVerifiedThisSession{};
         std::uint64_t bodySignature{};
         std::uint64_t skinSignature{};
         std::uint64_t outfitSignature{};
     };
+
+    enum class RestoredApplicationDecision : std::uint8_t
+    {
+        apply,
+        acceptLive,
+        skipVerified
+    };
+
+    [[nodiscard]] constexpr RestoredApplicationDecision EvaluateRestoredApplication(
+        const bool applied, const bool verifiedThisSession, const bool signatureMatches,
+        const std::optional<bool> liveStateMatches) noexcept
+    {
+        if (!applied || !signatureMatches) return RestoredApplicationDecision::apply;
+        if (verifiedThisSession) return RestoredApplicationDecision::skipVerified;
+        return liveStateMatches.value_or(false) ? RestoredApplicationDecision::acceptLive :
+            RestoredApplicationDecision::apply;
+    }
+
+    inline void PrepareRestoredState(ActorState& state) noexcept
+    {
+        state.bodyVerifiedThisSession = false;
+        state.skinVerifiedThisSession = false;
+    }
 
     [[nodiscard]] inline std::uint64_t StableStateSignature(const std::string_view channel,
         const std::string_view value, const bool useDefault, const std::uint32_t optionBits = 0U,

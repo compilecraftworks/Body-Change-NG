@@ -17,7 +17,7 @@ namespace
 
     void Pump(std::uint64_t epoch)
     {
-        const auto performance = bcn::Settings::Get().Snapshot().performanceMode;
+        const auto performance = bcn::Settings::Get().PerformanceMode();
         const auto started = std::chrono::steady_clock::now();
         const auto budget = std::chrono::microseconds(performance ? 1000 : 2000);
         // The budget includes actual native calls, not only distribution

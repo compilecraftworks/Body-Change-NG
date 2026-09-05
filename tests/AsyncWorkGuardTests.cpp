@@ -1,4 +1,5 @@
 #include "BodyChangeNG/AsyncWorkGuards.h"
+#include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include <atomic>
 #include <cmath>
@@ -61,6 +62,21 @@ int main()
                     "outfit target depends on foreign morph ownership");
             }
         }
+        using bcn::body_family::Bit;
+        using bcn::body_family::Family;
+        using bcn::body_morph_policy::FemaleFamily;
+        using bcn::body_morph_policy::ResolveFemaleFamily;
+        Require(ResolveFemaleFamily(Bit(Family::cbbe), Bit(Family::cbbe) | Bit(Family::ube)) ==
+                FemaleFamily::cbbe3ba,
+            "combined preset metadata overrode a known CBBE/3BA actor");
+        Require(ResolveFemaleFamily(Bit(Family::ube), Bit(Family::cbbe) | Bit(Family::ube)) ==
+                FemaleFamily::ube,
+            "combined preset metadata overrode a known UBE actor");
+        Require(ResolveFemaleFamily(0U, Bit(Family::ube)) == FemaleFamily::ube,
+            "unambiguous UBE preset fallback was rejected");
+        Require(ResolveFemaleFamily(Bit(Family::cbbe) | Bit(Family::ube),
+                Bit(Family::cbbe) | Bit(Family::ube)) == FemaleFamily::none,
+            "ambiguous actor evidence mixed CBBE/3BA and UBE anatomy sliders");
         std::cout << "AsyncWorkGuardTests passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

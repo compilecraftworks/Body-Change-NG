@@ -1025,7 +1025,10 @@ namespace
             if (activePaths.contains(gamePath)) ++active;
             else if (conditionalPaths.contains(gamePath)) ++conditional;
             else ++unmapped;
-            SKSE::log::info(
+            // Per-file output is useful for diagnosis but extremely noisy for
+            // multi-gigabyte packs. Keep the compact per-profile summary at
+            // info level and emit individual paths only in debug logs.
+            SKSE::log::debug(
                 "SkinCatalogAudit pack='{}' sex={} file='{}' mapping={}",
                 profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
                 bcn::path_text::Utf8(it->path()), classification);
@@ -1243,6 +1246,9 @@ namespace bcn
     void SkinProfiles::Refresh()
     {
         const auto root = RootPath();
+        // Start the bounded cache worker at an explicit catalog boundary so
+        // the first actor selection never pays thread-startup cost.
+        runtime_assets::InitializeTexturePreparation();
         runtime_assets::ClearGameRelativeSources("BodySkin\\");
         std::vector<SkinProfile> loaded;
         for (const auto& scanRoot : catalog_roots::Discover(root)) {

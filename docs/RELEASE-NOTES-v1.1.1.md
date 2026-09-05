@@ -7,6 +7,7 @@ Responsiveness, update scheduling, and load-safety fixes — 2026-09-05.
 - Gives direct body, skin, and tint selections a reserved processing opportunity within the existing frame budget, while preserving service for automatic NPC distribution.
 - Promotes the selected actor's required follow-up work without reordering that actor's preview, confirmation, or skin updates.
 - Releases completed skin-callback ownership when the callback finishes, rather than waiting for the VM to destroy its callback object. Unfinished native calls remain protected.
+- Cancels a RaceMenu SE callback batch that never returns after a bounded timeout. Late callbacks remain invalid, and the actor queue resumes only after its normal quiet boundary.
 - Keeps the latest queued selection and skips superseded skin-query follow-ups. Adds queued, applying, and delayed status in the existing UI help line.
 
 ### Load safety, previews, and outfit correction
@@ -16,17 +17,25 @@ Responsiveness, update scheduling, and load-safety fixes — 2026-09-05.
 - Prevents another NPC's automatic distribution from cancelling the selected actor's body preview. Loading a save no longer confirms pending choices from the previous UI session.
 - Coordinates RaceMenu-close recovery with outstanding actor work. Default body/skin requests no longer fall back to an older selected result while removal is pending.
 - Refreshes outfit correction after body reapplication and calculates procedural correction against the combined morph result without deleting other mods' morph keys.
+- Separates CBBE 3BA and UBE 2.0 breast/nipple outfit correction and stable nipple/genital randomization by the actor's live body family. Same-named refit presets from multiple families are resolved only within that actor's family.
+- Cross-checked the UBE controls against TAKEALOOK's installed UBE 2.0 BodySlide SliderSets. All 26 inspected UBE presets classified as UBE; conflicting actor evidence safely avoids mixing anatomical sliders from different families.
 
 ### Refresh and processing cost
 
 - Detects changed XML/DDS content under the same preset or pack ID. Refreshing changed DDS content uses a new texture-cache identity so the previous cached file is not reused.
 - Caches content signatures and read-only rule snapshots; avoids repeated full-catalog copies and unnecessary force-outfit inventory searches.
+- Reads only the required boolean options on automatic body and outfit paths instead of copying settings with all favorite lists. Equipment events create no BCNG work for actors using neither BodySkin nor outfit correction.
+- Routes body, hand, and foot geometry separately even when one multi-slot Skin Armor clone contains all three. Partial skin packs replace only the supplied parts and channels while preserving the actor's current textures for everything absent.
+- Prepares only the selected actor's effective skin texture aliases on one background worker before entering the geometry-application continuation. Direct selections are prioritized over bulk distribution and cached aliases are reused.
 - Keeps full DDS reads at initial catalog loading or explicit refresh, not at each NPC event. Expensive post-apply texture audits remain debug-only.
+- Adds bounded Racial Skin Variance compatibility: BCNG targets the actor's live RSV Skin Armor, keeps RSV's serialized FaceGen ownership intact, paints the selected BCNG face immediately, and coalesces one face-only reconciliation after RSV's deferred node update. Body Preset and TintMask-only use remains independent and adds no RSV polling or file scans.
+- Improves compatibility with OverlayFix by tightening actor-update and asynchronous-work boundaries.
+- Deduplicates full DDS hashing when MO2 exposes the same backing file through both its physical mod directory and virtual Data path. Per-file catalog diagnostics for large packs are debug-only.
 - Preserves existing rules, settings, co-save identifiers, starter exclusions, body-family filtering, skin part/channel routing, and camera values.
 
 ### Validation
 
-Release build and all 12 regression test executables passed. Automated tests cover queue ordering, callback lifetime/cancellation, latest-selection handling, catalog refresh, and existing routing/state rules. This release is not a confirmed fix for the reported OverlayFix CTD and does not certify stutter-free gameplay or in-game appearance.
+Release build and all 12 regression test executables passed. Automated tests cover queue ordering, callback lifetime/cancellation, latest-selection handling, catalog refresh, MO2 path-alias deduplication, and existing routing/state rules.
 
 ## Updating from 1.1.0
 

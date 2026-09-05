@@ -103,6 +103,7 @@ namespace bcn::body_family
     [[nodiscard]] std::string PresetFamilyLabel(const PresetClassification& classification);
     [[nodiscard]] Mask PresetMask(std::string_view family, bool male);
     [[nodiscard]] Mask ResolveActor(RE::Actor* actor);
+    void ForgetActorState(std::uint32_t actorFormID);
     void ResetRuntimeCaches();
 
     [[nodiscard]] constexpr bool Matches(const Mask presetFamilies, const Mask actorFamily) noexcept

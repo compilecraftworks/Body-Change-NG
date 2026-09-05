@@ -43,7 +43,11 @@ namespace bcn
         [[nodiscard]] std::vector<BodyPreset> Snapshot() const;
         [[nodiscard]] std::vector<BodyPreset> RefitSnapshot() const;
         [[nodiscard]] std::optional<BodyPreset> Find(std::string_view id, bool refit = false) const;
-        [[nodiscard]] std::optional<BodyPreset> FindRefit(const std::vector<std::string>& names, bool male) const;
+        [[nodiscard]] std::optional<BodyPreset> FindRefit(const std::vector<std::string>& names, bool male,
+            body_family::Mask actorFamily) const;
+        [[nodiscard]] static std::optional<BodyPreset> SelectRefit(
+            const std::vector<BodyPreset>& presets, const std::vector<std::string>& names,
+            bool male, body_family::Mask actorFamily);
         [[nodiscard]] std::uint64_t ContentHash(std::string_view id) const;
         // Avoid copying every preset's slider vector while evaluating each
         // NPC; only return compatible IDs from the requested rule pool.

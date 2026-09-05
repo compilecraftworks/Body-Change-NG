@@ -295,6 +295,36 @@ namespace bcn
         return data_;
     }
 
+    bool Settings::PerformanceMode() const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.performanceMode;
+    }
+
+    bool Settings::OutfitCorrectionEnabled() const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.orefitEnabled;
+    }
+
+    std::uint32_t Settings::RandomizationOptions() const
+    {
+        std::scoped_lock lock(lock_);
+        return (data_.nippleRandomization ? 1U : 0U) |
+            (data_.genitalRandomization ? 2U : 0U);
+    }
+
+    BodyMorphOptions Settings::MorphOptions() const
+    {
+        std::scoped_lock lock(lock_);
+        return {
+            .outfitCorrection = data_.orefitEnabled,
+            .outfitNippleCorrection = data_.orefitNippleMorphing,
+            .nippleRandomization = data_.nippleRandomization,
+            .genitalRandomization = data_.genitalRandomization
+        };
+    }
+
     void Settings::Update(const SettingsData& a_data)
     {
         std::scoped_lock lock(lock_);

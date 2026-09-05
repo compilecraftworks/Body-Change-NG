@@ -527,6 +527,57 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::Matches("MaleBody", bcn::skin_geometry::BodySelection::maleGenitals,
                 R"(textures\actors\character\male\malebody_1.dds)"),
             "CBBE 3BA and BHUNP/UNP genital/anal geometry routing crossed body or family boundaries")) return 1;
+    if (!Require(bcn::skin_geometry::NeedsFixedBipedFallback(true, 0U) &&
+            !bcn::skin_geometry::NeedsFixedBipedFallback(true, 1U) &&
+            !bcn::skin_geometry::NeedsFixedBipedFallback(false, 0U),
+            "an unusable exact hands/feet slot did not preserve the bounded Skin Armor fallback")) return 1;
+    if (!Require(
+            bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::hands,
+                "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)") &&
+            !bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::hands,
+                "FemaleBody", R"(textures\actors\character\female\femalebody_1.dds)") &&
+            bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::feet,
+                "FemaleFoot", R"(textures\actors\character\female\femalefeet_1.dds)") &&
+            !bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::feet,
+                "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)"),
+            "body, hands, and feet fallback routing crossed texture-part boundaries")) return 1;
+    constexpr std::uint32_t bodyMask = 1U << 2U;
+    constexpr std::uint32_t handsMask = 1U << 3U;
+    constexpr std::uint32_t feetMask = 1U << 4U;
+    if (!Require(
+            bcn::skin_geometry::MatchesRequestedPart(bodyMask, bodyMask, handsMask, feetMask,
+                "FemaleBody", R"(textures\actors\character\female\femalebody_1.dds)") &&
+            !bcn::skin_geometry::MatchesRequestedPart(bodyMask, bodyMask, handsMask, feetMask,
+                "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)") &&
+            bcn::skin_geometry::MatchesRequestedPart(handsMask, bodyMask, handsMask, feetMask,
+                "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)") &&
+            !bcn::skin_geometry::MatchesRequestedPart(handsMask, bodyMask, handsMask, feetMask,
+                "FemaleFeet", R"(textures\actors\character\female\femalefeet_1.dds)") &&
+            bcn::skin_geometry::MatchesRequestedPart(feetMask, bodyMask, handsMask, feetMask,
+                "FemaleFeet", R"(textures\actors\character\female\femalefeet_1.dds)") &&
+            !bcn::skin_geometry::MatchesRequestedPart(feetMask, bodyMask, handsMask, feetMask,
+                "FemaleBody", R"(textures\actors\character\female\femalebody_1.dds)"),
+            "a multi-slot naked Skin Armor routed body, hands, or feet into the wrong part")) return 1;
+    struct FakeNifGeometry final
+    {
+        std::string_view node;
+        std::string_view diffuse;
+    };
+    constexpr std::array fakeMultiSlotNif{
+        FakeNifGeometry{ "3BA", R"(textures\actors\character\female\femalebody_1.dds)" },
+        FakeNifGeometry{ "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)" },
+        FakeNifGeometry{ "FemaleFeet", R"(textures\actors\character\female\femalefeet_1.dds)" },
+        FakeNifGeometry{ "3BA_Vagina", R"(textures\actors\character\female\femalebody_etc_v2_1.dds)" }
+    };
+    const auto fakeNifPartCount = [&](const std::uint32_t requestedMask) {
+        return std::ranges::count_if(fakeMultiSlotNif, [&](const FakeNifGeometry& geometry) {
+            return bcn::skin_geometry::MatchesRequestedPart(
+                requestedMask, bodyMask, handsMask, feetMask, geometry.node, geometry.diffuse);
+        });
+    };
+    if (!Require(fakeNifPartCount(bodyMask) == 2U &&
+            fakeNifPartCount(handsMask) == 1U && fakeNifPartCount(feetMask) == 1U,
+            "fake multi-slot NIF did not isolate body/genital, hands, and feet node sets")) return 1;
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto unpFamily = bcn::body_family::Bit(bcn::body_family::Family::unp);
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
@@ -624,6 +675,68 @@ int main(const int argc, char** argv)
     bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
     const auto afterHash = bcn::runtime_assets::SourceContentHash(refreshKey);
     const auto afterPath = bcn::runtime_assets::TexturePathFromGameRelative(refreshKey, "test");
+    const auto expectedAfterPath =
+        bcn::runtime_assets::ExpectedTexturePathFromGameRelative(refreshKey, "test");
+    if (!Require(expectedAfterPath == afterPath &&
+            bcn::runtime_assets::CachedTextureExists(afterPath),
+            "exact runtime texture cache alias was not discoverable")) return 1;
+
+    // A user may clean MO2 overwrite while the RaceMenu co-save still points
+    // at a BCNG alias. Detection must be metadata-only, and the next normal
+    // materialization must recreate the same stable path from the source.
+    std::filesystem::remove(sandbox / "Data" / std::filesystem::path{ afterPath });
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
+    if (!Require(!bcn::runtime_assets::CachedTextureExists(afterPath),
+            "deleted runtime texture cache alias was accepted as live")) return 1;
+    const auto repairedPath = bcn::runtime_assets::TexturePathFromGameRelative(refreshKey, "test");
+    if (!Require(repairedPath == afterPath &&
+            bcn::runtime_assets::CachedTextureExists(repairedPath),
+            "deleted runtime texture cache alias was not repaired from its source")) return 1;
+
+    // Mu Dynamic NormalMap derives optional detail, mask, and overlay files
+    // from the active normal-map basename. A private cache directory prevents
+    // collisions, but the basename and installed companions must survive.
+    const auto normalDirectory = sandbox / "mu-normal";
+    std::filesystem::create_directories(normalDirectory);
+    const auto normalSource = normalDirectory / "femalebody_1_msn.dds";
+    const auto detailSource = normalDirectory / "femalebody_1_n.dds";
+    const auto maskSource = normalDirectory / "femalebody_1_n_m.dds";
+    const auto overlaySource = normalDirectory / "femalebody_1_n_ov.dds";
+    std::ofstream(normalSource, std::ios::binary) << "normal";
+    std::ofstream(detailSource, std::ios::binary) << "detail";
+    std::ofstream(maskSource, std::ios::binary) << "mask-a";
+    std::ofstream(overlaySource, std::ios::binary) << "overlay";
+    constexpr std::string_view normalKey =
+        "BodySkin\\Mu\\Textures\\actors\\character\\female\\femalebody_1_msn.dds";
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(normalKey, normalSource);
+    const auto normalHash = bcn::runtime_assets::SourceContentHash(normalKey);
+    const auto cachedNormal = bcn::runtime_assets::TexturePathFromGameRelative(normalKey, "skin");
+    const auto cachedDirectory = sandbox / "Data" /
+        std::filesystem::path{ cachedNormal }.parent_path();
+    if (!Require(Filename(cachedNormal) == "femalebody_1_msn.dds" &&
+            std::filesystem::is_regular_file(cachedDirectory / "femalebody_1_n.dds") &&
+            std::filesystem::is_regular_file(cachedDirectory / "femalebody_1_n_m.dds") &&
+            std::filesystem::is_regular_file(cachedDirectory / "femalebody_1_n_ov.dds"),
+            "Mu normal-map basename or optional sibling bundle was lost in the runtime cache")) return 1;
+    const auto maskTime = std::filesystem::last_write_time(maskSource);
+    std::ofstream(maskSource, std::ios::binary) << "mask-b";
+    std::filesystem::last_write_time(maskSource, maskTime);
+    bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(normalKey, normalSource);
+    const auto changedNormalHash = bcn::runtime_assets::SourceContentHash(normalKey);
+    const auto changedCachedNormal =
+        bcn::runtime_assets::TexturePathFromGameRelative(normalKey, "skin");
+    if (!Require(changedNormalHash != normalHash && changedCachedNormal != cachedNormal &&
+            Filename(changedCachedNormal) == "femalebody_1_msn.dds",
+            "a same-size/timestamp Mu mask replacement did not invalidate the normal bundle")) return 1;
+
+    Touch(sandbox / "Data" / "textures" / "BodyChangeNG" / "outside.dds");
+    if (!Require(!bcn::runtime_assets::CachedTextureExists(
+            "textures\\BodyChangeNG\\Cache\\..\\outside.dds") &&
+            !bcn::runtime_assets::CachedTextureExists("C:\\outside.dds"),
+            "runtime texture cache existence check accepted an unsafe path")) return 1;
     std::filesystem::current_path(originalCurrentPath);
     if (!Require(beforeHash != afterHash && !beforePath.empty() && beforePath != afterPath,
             "same size/time DDS edit retained content signature or texture cache alias")) return 1;
@@ -631,6 +744,20 @@ int main(const int argc, char** argv)
     bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, refreshSource);
     if (!Require(afterHash == bcn::runtime_assets::SourceContentHash(refreshKey),
             "unchanged refresh invalidated content hash")) return 1;
+
+    // MO2 may expose one backing DDS both through its provider directory and
+    // through the virtual Data tree. Windows path aliases for that same file
+    // must share one source identity; otherwise large packs are fully hashed
+    // once per catalog root. Mutating the file between alias registrations
+    // makes an accidental second hash observable without exposing test-only
+    // cache internals.
+    const auto extendedRefreshSource = std::filesystem::path{
+        std::wstring{ LR"(\\?\)" } + refreshSource.wstring()
+    };
+    std::ofstream(refreshSource, std::ios::binary) << "uvw";
+    bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, extendedRefreshSource);
+    if (!Require(afterHash == bcn::runtime_assets::SourceContentHash(refreshKey),
+            "one physical DDS was rehashed through a second Windows path alias")) return 1;
     std::filesystem::remove_all(sandbox);
     return 0;
 }

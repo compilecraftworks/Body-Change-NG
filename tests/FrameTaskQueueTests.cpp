@@ -166,6 +166,30 @@ int main()
         cancelledResult.reset(); queue.Advance(); queue.Advance();
         Check(!queue.HasActorWork(56), "cancelled completed callback retained actor");
 
+        // A VM callback is allowed to retain its callback object forever.
+        // The watchdog cancels the shared lease; the queue must then release
+        // the actor after the same quiet boundary even though the callback's
+        // strong reference never returns.
+        queue.Reset(true);
+        queue.Submit(57, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        NativeCallback neverReturning(job->lease);
+        const auto neverReturningLease = job->lease;
+        job.reset();
+        queue.Submit(57, 201, [&] { result = 570; }, 1, true, true);
+        for (unsigned n=0; n<4; ++n) queue.Advance();
+        Check(!queue.Take(true), "unreturned callback lease released without cancellation");
+        neverReturningLease->cancelled.store(true);
+        queue.Advance();
+        Check(!queue.Take(true), "timed-out callback skipped quiet boundary");
+        queue.Advance(); job = queue.Take(true);
+        Check(job && job->actor == 57 && job->channel == 201,
+            "timed-out callback permanently blocked the actor");
+        job->run();
+        Check(result == 570 && !FrameTaskQueue::ValidLease(neverReturningLease),
+            "late callback lease revived after timeout");
+        Check(neverReturning.Take() && !FrameTaskQueue::ValidLease(neverReturningLease),
+            "retained callback did not preserve cancellation");
+
         queue.Reset(true);
         queue.Submit(60, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
         auto detachedLease = job->lease; job.reset(); queue.CancelActor(60);

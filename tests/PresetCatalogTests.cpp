@@ -85,7 +85,15 @@ int main(const int argc, char** argv)
                << "<Preset name='Unknown Extension' set=''><SetSlider name='ForeignUnknownSlider'/></Preset>"
                << "<Preset name='3BBB Only' set='3BBB'><SetSlider name='3BBB'/></Preset>"
                << "<Preset name='UBE Anus 3BA' set='3BBB Body Amazing UBE Anus'/>>"
-               << "<Preset name='Dual Female' set='CBBE BHUNP'/></SliderPresets>";
+               << "<Preset name='Dual Female' set='CBBE BHUNP'/>"
+               << "<Preset name='Shared-Refit' set='CBBE 3BA'><SetSlider name='Breasts'/></Preset>"
+               << "</SliderPresets>";
+    }
+
+    {
+        std::ofstream preset(root / "Nested" / "ube-refit.xml");
+        preset << "<SliderPresets><Preset name='Shared-Refit' set='UBE 2.0'>"
+               << "<SetSlider name='ClaviclesAngle'/></Preset></SliderPresets>";
     }
 
     {
@@ -101,7 +109,7 @@ int main(const int argc, char** argv)
     }
 
     const auto presets = bcn::PresetCatalog::ScanDirectory(root);
-    if (!Require(presets.size() == 12U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
+    if (!Require(presets.size() == 14U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
     const auto find = [&](const std::string_view name) {
         return std::ranges::find(presets, name, &bcn::BodyPreset::name);
     };
@@ -129,6 +137,16 @@ int main(const int argc, char** argv)
     if (!Require(find("Dual Female")->family == "CBBE 3BA / BHUNP / UNP", "combined female set lost either family")) return 1;
     if (!Require(find("Generic UBE Preset")->family == "UBE", "UBE Group metadata was not used")) return 1;
     if (!Require(!threeBa->PersistentId().empty(), "persistent preset id is empty")) return 1;
+
+    const std::vector refitNames{ std::string{ "Shared-Refit" } };
+    const auto cbbeRefit = bcn::PresetCatalog::SelectRefit(presets, refitNames, false,
+        bcn::body_family::Bit(bcn::body_family::Family::cbbe));
+    const auto ubeRefit = bcn::PresetCatalog::SelectRefit(presets, refitNames, false,
+        bcn::body_family::Bit(bcn::body_family::Family::ube));
+    if (!Require(cbbeRefit && cbbeRefit->family == "CBBE 3BA",
+            "named refit selected the wrong family for a CBBE/3BA actor")) return 1;
+    if (!Require(ubeRefit && ubeRefit->family == "UBE",
+            "named refit selected the wrong family for a UBE actor")) return 1;
 
     const auto cbbeSliderUniverse = bcn::PresetCatalog::CollectCompatibleSliderNames(
         presets, false, bcn::body_family::Bit(bcn::body_family::Family::cbbe));

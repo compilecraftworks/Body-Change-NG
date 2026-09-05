@@ -286,6 +286,13 @@ namespace bcn::body_family
         return family;
     }
 
+    void ForgetActorState(const std::uint32_t actorFormID)
+    {
+        if (actorFormID == 0U) return;
+        std::scoped_lock lock(g_cacheLock);
+        g_actorCache.erase(actorFormID);
+    }
+
     void ResetRuntimeCaches()
     {
         std::scoped_lock lock(g_cacheLock);

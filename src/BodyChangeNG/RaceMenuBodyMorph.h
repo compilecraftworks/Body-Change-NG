@@ -58,6 +58,14 @@ namespace bcn::racemenu
     // The caller owns only the typed view; RaceMenu retains the object.
     [[nodiscard]] void* QueryInterface(const char* a_name) noexcept;
     [[nodiscard]] std::optional<std::string> CurrentPresetId(const RE::Actor* a_actor);
+    // Verifies only BCNG-owned RaceMenu keys. The saved preset ID/signature is
+    // checked by ActorRegistry; this call proves that the corresponding live
+    // layer survived the current save load without scanning preset XML.
+    [[nodiscard]] std::optional<bool> LiveBodyChangeStateMatches(
+        const RE::Actor* a_actor, bool a_expectDefault);
+    // Cheap key lookup used to avoid scheduling equipment work for actors
+    // that have neither an active nor a legacy BCNG outfit correction.
+    [[nodiscard]] bool HasOutfitCorrection(const RE::Actor* a_actor);
     void ForgetActorState(std::uint32_t a_actorFormID);
     [[nodiscard]] bool HasActivePreview(const RE::Actor* a_actor);
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,

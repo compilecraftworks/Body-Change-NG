@@ -85,6 +85,22 @@ int main()
         };
         Require(state.manualBody && state.manualSkin && state.selectedBodyId != state.selectedSkinId,
             "body and skin channels did not remain independent");
+        state.bodyApplied = state.skinApplied = true;
+        state.bodyVerifiedThisSession = state.skinVerifiedThisSession = true;
+        bcn::PrepareRestoredState(state);
+        Require(state.bodyApplied && state.skinApplied && !state.bodyVerifiedThisSession &&
+                !state.skinVerifiedThisSession,
+            "cosave restore did not separate persisted completion from live-session proof");
+        using Decision = bcn::RestoredApplicationDecision;
+        Require(bcn::EvaluateRestoredApplication(true, false, true, true) == Decision::acceptLive,
+            "a matching restored live state was not accepted");
+        Require(bcn::EvaluateRestoredApplication(true, false, true, false) == Decision::apply &&
+                bcn::EvaluateRestoredApplication(true, false, true, std::nullopt) == Decision::apply,
+            "a missing or unverifiable restored live state was incorrectly skipped");
+        Require(bcn::EvaluateRestoredApplication(true, true, true, std::nullopt) == Decision::skipVerified,
+            "current-session verification was not cached");
+        Require(bcn::EvaluateRestoredApplication(true, false, false, true) == Decision::apply,
+            "a stale persisted signature was accepted from live state alone");
         bcn::DistributionRule rule{
             .female = true,
             .bodyFamily = "CBBE 3BA",

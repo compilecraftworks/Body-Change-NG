@@ -39,6 +39,17 @@ namespace bcn::skin_override::ownership
             ContainsNormalized(value, "bodychangerng\\cache\\skin-face\\");
     }
 
+    // Racial Skin Variance owns the actor's race-specific FaceGen texture
+    // channels through persistent NiOverride node keys. BCNG recognizes only
+    // RSV's private namespace so it can leave those serialized keys intact
+    // while temporarily painting an explicitly selected BodySkin on the live
+    // face. Arbitrary foreign overrides keep the normal ownership protection.
+    [[nodiscard]] constexpr bool IsRacialSkinVarianceTexturePath(
+        const std::string_view value) noexcept
+    {
+        return ContainsNormalized(value, "actors\\character\\rsv\\");
+    }
+
     [[nodiscard]] constexpr bool MayReplace(const bool exists, const std::string_view currentValue) noexcept
     {
         return !exists || IsOwnedTexturePath(currentValue);

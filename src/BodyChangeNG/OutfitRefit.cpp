@@ -137,8 +137,11 @@ namespace bcn
     {
         if (!actor || !actor->Is3DLoaded()) return;
         if (racemenu::HasActivePreview(actor)) return;
-        const auto settings = Settings::Get().Snapshot();
-        if (!settings.orefitEnabled) {
+        const auto settings = Settings::Get().MorphOptions();
+        if (!settings.outfitCorrection) {
+            // A globally disabled feature has nothing to evaluate unless an
+            // old BCNG/OBody outfit layer actually needs to be removed.
+            if (!racemenu::HasOutfitCorrection(actor)) return;
             const auto signature = StableStateSignature("outfit", "disabled", true);
             if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
                 racemenu::QueueClearOutfit(actor, signature);
@@ -164,7 +167,7 @@ namespace bcn
         forceRefit = forceRefit || HasAnyForcedWornArmor(actor, rules);
         if (!hasEligibleOutfit && !forceRefit) {
             const auto signature = StableStateSignature("outfit", "clear", true,
-                settings.orefitNippleMorphing ? 1U : 0U);
+                settings.outfitNippleCorrection ? 1U : 0U);
             if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
                 racemenu::QueueClearOutfit(actor, signature);
             }
@@ -185,26 +188,30 @@ namespace bcn
         }
         std::vector<std::string> candidates;
         std::string currentBodyId;
+        body_family::Mask currentBodyFamily{};
         if (!presetName.empty()) candidates.push_back(std::move(presetName));
         if (const auto currentID = racemenu::CurrentPresetId(actor)) {
             currentBodyId = *currentID;
             if (const auto current = PresetCatalog::Get().Find(*currentID)) {
                 candidates.push_back(current->name + "-Refit");
+                currentBodyFamily = body_family::PresetMask(current->family, current->male);
             }
         }
         candidates.push_back(female ? "Female-Refit" : "Male-Refit");
 
-        const auto found = PresetCatalog::Get().FindRefit(candidates, !female);
+        auto actorFamily = body_family::ResolveActor(actor);
+        if (actorFamily == 0U) actorFamily = currentBodyFamily;
+        const auto found = PresetCatalog::Get().FindRefit(candidates, !female, actorFamily);
         if (!found) {
             const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,
-                settings.orefitNippleMorphing ? 1U : 0U);
+                settings.outfitNippleCorrection ? 1U : 0U);
             if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
                 racemenu::QueueApplyProceduralOutfit(actor, signature);
             }
             return;
         }
         const auto signature = StableStateSignature("outfit", found->PersistentId() + "|" + currentBodyId, false,
-            settings.orefitNippleMorphing ? 1U : 0U, found->cachedContentHash);
+            settings.outfitNippleCorrection ? 1U : 0U, found->cachedContentHash);
         if (!ActorRegistry::Get().NeedsOutfitApply(actor, signature)) return;
         const auto result = racemenu::QueueApplyOutfit(actor, found->PersistentId(), signature);
         if (result != racemenu::ApplyResult::queued) {

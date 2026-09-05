@@ -85,7 +85,14 @@ namespace bcn::async_work
         {
             ++tick_;
             for (auto it = busy_.begin(); it != busy_.end();) {
-                if (!it->second.lease.expired()) { ++it; continue; }
+                // A timed-out native callback can remain owned by the VM
+                // indefinitely.  Cancellation is therefore a terminal lease
+                // state just like destruction: late callbacks observe the
+                // atomic flag and may not mutate the actor, while the queue
+                // retains the usual one quiet-tick boundary before another
+                // job for that actor can begin.
+                const auto lease = it->second.lease.lock();
+                if (lease && !lease->cancelled.load()) { ++it; continue; }
                 if (!it->second.released) { it->second.released = tick_; ++it; }
                 else if (tick_ > it->second.released) it = busy_.erase(it);
                 else ++it;

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstddef>
+#include <cstdint>
 #include <string_view>
 
 namespace bcn::skin_geometry
@@ -12,6 +14,22 @@ namespace bcn::skin_geometry
         unpGenitalAnal,
         maleGenitals
     };
+
+    enum class LimbSelection
+    {
+        hands,
+        feet
+    };
+
+    // Hands and feet can live in a multi-slot naked Skin Armor clone instead
+    // of the exact biped-array entry.  An exact entry is useful only after at
+    // least one skin geometry has been identified; a sleeve/glove object with
+    // zero matching skin nodes must not suppress the bounded fallback scan.
+    [[nodiscard]] constexpr bool NeedsFixedBipedFallback(
+        const bool requestedHandsOrFeet, const std::size_t usableExactTargets) noexcept
+    {
+        return requestedHandsOrFeet && usableExactTargets == 0U;
+    }
 
     [[nodiscard]] constexpr char LowerAscii(const char value) noexcept
     {
@@ -44,6 +62,45 @@ namespace bcn::skin_geometry
             if (match) return true;
         }
         return false;
+    }
+
+    [[nodiscard]] constexpr bool MatchesLimb(
+        const LimbSelection selection, const std::string_view nodeName,
+        const std::string_view texturePath = {}) noexcept
+    {
+        if (selection == LimbSelection::hands) {
+            return ContainsIgnoreAsciiCase(nodeName, "hand") ||
+                ContainsIgnoreAsciiCase(texturePath, "hands");
+        }
+        return ContainsIgnoreAsciiCase(nodeName, "feet") ||
+            ContainsIgnoreAsciiCase(nodeName, "foot") ||
+            ContainsIgnoreAsciiCase(texturePath, "feet");
+    }
+
+    [[nodiscard]] constexpr bool IsHandsOrFeetSlotPart(
+        const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
+    {
+        return MatchesLimb(LimbSelection::hands, nodeName, texturePath) ||
+            MatchesLimb(LimbSelection::feet, nodeName, texturePath);
+    }
+
+    [[nodiscard]] constexpr bool MatchesRequestedPart(
+        const std::uint32_t requestedSlotMask, const std::uint32_t bodySlotMask,
+        const std::uint32_t handsSlotMask, const std::uint32_t feetSlotMask,
+        const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
+    {
+        if (requestedSlotMask == handsSlotMask) {
+            return MatchesLimb(LimbSelection::hands, nodeName, texturePath);
+        }
+        if (requestedSlotMask == feetSlotMask) {
+            return MatchesLimb(LimbSelection::feet, nodeName, texturePath);
+        }
+        // A naked Skin Armor may expose one multi-slot clone from each biped
+        // entry. Keep its hand/foot geometries out of a slot-32 body request.
+        if (requestedSlotMask == bodySlotMask) {
+            return !IsHandsOrFeetSlotPart(nodeName, texturePath);
+        }
+        return true;
     }
 
     [[nodiscard]] constexpr bool IsCBBEGenitalAnalTexture(
