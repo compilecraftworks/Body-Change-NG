@@ -1,0 +1,7 @@
+Body Change NG 1.1.2 — 2026-09-05
+
+- Restyled the entire native UI foundation in black, charcoal, and grayscale, including windows, panels, popups, title bars, idle controls, inputs, cards, tables, scrollbars, resize grips, and navigation surfaces.
+- Preserved existing selection, hover, pressed, warning, success, progress, favorite, incompatibility, and live tint-preview colors as functional highlights.
+- Renamed the nearby-actor refresh button to `Refresh actors`, with matching Korean and Simplified Chinese labels; behavior is unchanged.
+- Kept UI layout and scaling, keyboard/gamepad input, camera behavior, catalogs, NPC distribution, settings, JSON/co-save compatibility, and all body, skin, tint, and outfit-correction behavior unchanged.
+- Release build and all 12 regression test executables passed. The theme adds no runtime scanning or actor-processing cost.

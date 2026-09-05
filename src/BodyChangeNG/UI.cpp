@@ -132,6 +132,12 @@ namespace
     constexpr auto kDefaultWindowWidth = 700.0F;
     constexpr auto kDefaultWindowHeight = 875.0F;
     constexpr auto kWindowPositionTolerance = 0.5F;
+    constexpr ImU32 kCardNormal = IM_COL32(29, 29, 29, 255);
+    constexpr ImU32 kCardHovered = IM_COL32(42, 63, 77, 255);
+    constexpr ImU32 kCardSelected = IM_COL32(48, 103, 129, 255);
+    constexpr ImU32 kCardText = IM_COL32(238, 238, 238, 255);
+    constexpr ImU32 kCardSubtext = IM_COL32(170, 170, 170, 255);
+    constexpr ImU32 kCardIncompatible = IM_COL32(192, 145, 120, 255);
 
     [[nodiscard]] bcn::UiLanguage WindowsLanguage()
     {
@@ -361,11 +367,11 @@ namespace
         }
         if (hovered) {
             ImGui::GetWindowDrawList()->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
-                IM_COL32(55, 78, 92, 255), Scaled(4.0F));
+                kCardHovered, Scaled(4.0F));
         }
         ImGui::GetWindowDrawList()->AddText(font, fontSize,
             ImVec2(cursor.x + (width - textSize.x) * 0.5F, textY),
-            favorite ? IM_COL32(255, 190, 72, 255) : IM_COL32(205, 218, 226, 255), glyph);
+            favorite ? IM_COL32(255, 190, 72, 255) : IM_COL32(182, 182, 182, 255), glyph);
         return ImGui::IsItemClicked();
     }
 
@@ -1193,11 +1199,11 @@ namespace
                 const auto navigationFocused = navigation.hasFocus && navigation.focused == row;
                 const auto draw = ImGui::GetWindowDrawList();
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + cardHeight),
-                    confirmedBodyId.empty() ? IM_COL32(48, 103, 129, 255) :
-                    hovered || navigationFocused ? IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
-                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255),
+                    confirmedBodyId.empty() ? kCardSelected :
+                    hovered || navigationFocused ? kCardHovered : kCardNormal, Scaled(4.0F));
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText,
                     Text("기본 바디", "Default body", "默认身体"));
-                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), IM_COL32(160, 181, 193, 255),
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), kCardSubtext,
                     Text("이 액터의 Body Change NG·기존 OBody 바디 모프 제거", "Remove Body Change NG and legacy OBody body morphs from this actor", "移除此角色的 Body Change NG 与旧版 OBody 身体形态"));
                 if (doubleClicked) {
                     FocusCatalogRow(row);
@@ -1234,15 +1240,15 @@ namespace
                 const bool doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
                 const auto draw = ImGui::GetWindowDrawList();
                 const auto confirmedCurrent = item.id == confirmedBodyId;
-                const ImU32 fill = confirmedCurrent ? IM_COL32(48, 103, 129, 255) :
+                const ImU32 fill = confirmedCurrent ? kCardSelected :
                     hovered || (navigation.hasFocus && navigation.focused == row) ?
-                    IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255);
+                    kCardHovered : kCardNormal;
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + cardHeight), fill, Scaled(4.0F));
-                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255), item.name.c_str());
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText, item.name.c_str());
                 const auto sub = item.family + (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) :
                     item.compatible ? "" : " · " + std::string(Text("호환되지 않음", "Not compatible", "不兼容")));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
-                    item.compatible ? IM_COL32(160, 181, 193, 255) : IM_COL32(192, 145, 120, 255), sub.c_str());
+                    item.compatible ? kCardSubtext : kCardIncompatible, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(item.favorite, cardHeight)) ToggleFavorite(item);
                 if (doubleClicked) {
@@ -1350,12 +1356,12 @@ namespace
             const auto defaultDoubleClicked = defaultHovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
             const auto defaultDraw = ImGui::GetWindowDrawList();
             defaultDraw->AddRectFilled(defaultCursor, ImVec2(defaultCursor.x + defaultWidth, defaultCursor.y + defaultHeight),
-                confirmedSkinId.empty() ? IM_COL32(48, 103, 129, 255) :
+                confirmedSkinId.empty() ? kCardSelected :
                 defaultHovered || (navigation.hasFocus && navigation.focused == row) ?
-                IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
-            defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255),
+                kCardHovered : kCardNormal, Scaled(4.0F));
+            defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(7.0F)), kCardText,
                 Text("기본 스킨", "Default skin", "默认皮肤"));
-            defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(27.0F)), IM_COL32(160, 181, 193, 255),
+            defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(27.0F)), kCardSubtext,
                 Text("몸 · 손 · 발 · 얼굴 텍스처 오버라이드 제거", "Remove body · hands · feet · face texture overrides", "移除身体 · 手 · 脚 · 脸部纹理覆盖"));
             if (defaultDoubleClicked) {
                 FocusCatalogRow(row);
@@ -1398,11 +1404,11 @@ namespace
                 const auto confirmedCurrent = skin.id == confirmedSkinId;
                 auto* draw = ImGui::GetWindowDrawList();
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
-                    confirmedCurrent ? IM_COL32(48, 103, 129, 255) :
+                    confirmedCurrent ? kCardSelected :
                     hovered || (navigation.hasFocus && navigation.focused == row) ?
-                    IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
+                    kCardHovered : kCardNormal, Scaled(4.0F));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)),
-                    IM_COL32(238, 244, 248, 255), skin.name.c_str());
+                    kCardText, skin.name.c_str());
                 std::unordered_set<std::string> texturePaths;
                 const auto collectPaths = [&texturePaths](const auto& layers) {
                     for (const auto& layer : layers) texturePaths.insert(layer.path);
@@ -1426,7 +1432,7 @@ namespace
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
                     (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
-                    IM_COL32(160, 181, 193, 255), sub.c_str());
+                    kCardSubtext, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(favorite, height)) ToggleSkinFavorite(skin.id);
                 if (doubleClicked) {
@@ -1555,12 +1561,12 @@ namespace
             const auto doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
             auto* draw = ImGui::GetWindowDrawList();
             draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
-                confirmedTintPack.empty() ? IM_COL32(48, 103, 129, 255) :
+                confirmedTintPack.empty() ? kCardSelected :
                 hovered || (navigation.hasFocus && navigation.focused == row) ?
-                IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
-            draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255),
+                kCardHovered : kCardNormal, Scaled(4.0F));
+            draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText,
                 Text("기본 틴트", "Default tint", "默认色调"));
-            draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), IM_COL32(160, 181, 193, 255),
+            draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), kCardSubtext,
                 Text("첫 변경 전에 저장한 RaceMenu 원본 레이어 복원", "Restore RaceMenu source layers saved before the first change", "还原首次更改前保存的 RaceMenu 原始图层"));
             if (doubleClicked) {
                 FocusCatalogRow(row);
@@ -1599,13 +1605,13 @@ namespace
                 const auto selected = pack.name == confirmedTintPack;
                 draw = ImGui::GetWindowDrawList();
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height), selected ?
-                    IM_COL32(48, 103, 129, 255) : hovered || (navigation.hasFocus && navigation.focused == row) ?
-                    IM_COL32(42, 63, 77, 255) : IM_COL32(35, 47, 57, 255), Scaled(4.0F));
-                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), IM_COL32(238, 244, 248, 255), pack.name.c_str());
+                    kCardSelected : hovered || (navigation.hasFocus && navigation.focused == row) ?
+                    kCardHovered : kCardNormal, Scaled(4.0F));
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText, pack.name.c_str());
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
                     " · " + bcn::player_tint::TintFamilyLabel(pack.bodyFamilies) +
                     " · DDS " + std::to_string(pack.count) + Text("개", "", " 个");
-                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), IM_COL32(160, 181, 193, 255), sub.c_str());
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), kCardSubtext, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(favorite, height)) ToggleTintFavorite(pack.name);
                 if (packDoubleClicked) {
@@ -1844,8 +1850,8 @@ namespace
                         if (index == g_selectedDistributionRule || hovered) {
                             draw->AddRectFilled(rowStart,
                                 ImVec2(rowStart.x + rowWidth, rowStart.y + rowHeight),
-                                index == g_selectedDistributionRule ? IM_COL32(48, 103, 129, 255) :
-                                IM_COL32(42, 63, 77, 255), Scaled(3.0F));
+                                index == g_selectedDistributionRule ? kCardSelected :
+                                kCardHovered, Scaled(3.0F));
                         }
                         draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
                             ImVec2(rowStart.x + padding, rowStart.y + padding),
@@ -2447,7 +2453,7 @@ namespace bcn::ui
         }
         const auto selected = std::ranges::find(actors, g_selectedActorFormID, &ActorEntry::formID);
         const auto selectedName = selected != actors.end() ? ActorLabel(*selected) : ActorLabel(SelectedActor());
-        const auto* refreshActorsLabel = Text("주변 액터 새로고침", "Refresh nearby actors", "刷新附近角色");
+        const auto* refreshActorsLabel = Text("액터 새로고침", "Refresh actors", "刷新角色");
         const auto* distributionLabel = Text("NPC 배포", "NPC distribution", "NPC 分发");
         const auto* outfitLabel = Text("의상·랜덤화", "Outfit · randomization", "服装·随机化");
         const auto* settingsLabel = Text("모드 설정", "Mod settings", "模组设置");

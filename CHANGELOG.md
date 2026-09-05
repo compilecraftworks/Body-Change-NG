@@ -2,6 +2,19 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.1.2 — 2026-09-05
+
+### Interface theme
+
+- Changes the native UI foundation to black, charcoal, and grayscale across windows, child panels, popups, title bars, idle controls, inputs, cards, tables, scrollbars, resize grips, and navigation surfaces.
+- Keeps the existing blue selection, hover, and pressed states plus warning, success, progress, favorite, incompatibility, and live tint-preview colors as functional highlights.
+- Shortens the nearby-actor refresh button to `Refresh actors`, with matching Korean and Simplified Chinese labels; its loaded-actor refresh behavior is unchanged.
+- Preserves UI layout and scaling, keyboard/gamepad behavior, camera presentation, catalogs, distribution rules, settings, JSON and co-save compatibility, and all body, skin, tint, and outfit-correction paths.
+
+### Validation
+
+Release build and all 12 regression test executables passed. This update changes presentation only and adds no per-frame scanning, file work, actor work, or distribution cost.
+
 ## 1.1.1 — 2026-09-05
 
 ### NPC distribution and saved-state recovery

@@ -6,20 +6,20 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.1.1 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.1.2 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The unified binary contains VR-compatible
 CommonLib code, but its native renderer/input hooks deliberately fail closed on
 VR until VR-specific layouts are verified.
 
-## Current release: 1.1.1
+## Current release: 1.1.2
 
-This update improves direct-selection responsiveness, completed skin-callback
-ownership, load/RaceMenu recovery, and content refresh. Actor work is scheduled
-across engine update boundaries with bounded processing in both performance
-modes. Existing body, skin, tint, and NPC-rule features are retained.
+This update gives the native interface a black, charcoal, and grayscale
+foundation while retaining the existing state and content highlight colors.
+It changes presentation only; existing body, skin, tint, NPC-rule, input,
+camera, settings, JSON, and co-save behavior is retained.
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
-- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.1.md) · [한국어](docs/RELEASE-NOTES-v1.1.1-KO.md)
+- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.2.md) · [한국어](docs/RELEASE-NOTES-v1.1.2-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
@@ -287,7 +287,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.1.1/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.1.2/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and
