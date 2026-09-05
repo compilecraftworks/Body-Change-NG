@@ -74,6 +74,7 @@ namespace
         }
 
         return path.starts_with("BodySkin\\") || path.starts_with("bodyskin\\") ||
+            path.starts_with("Futanari\\") || path.starts_with("futanari\\") ||
             path.starts_with("textures\\") || path.starts_with("Textures\\");
     }
 
@@ -703,6 +704,17 @@ namespace
         return std::nullopt;
     }
 
+    [[nodiscard]] std::optional<std::filesystem::path> FindDescendantDirectory(
+        std::filesystem::path parent, const std::initializer_list<std::string_view> components)
+    {
+        for (const auto component : components) {
+            const auto child = FindChildDirectory(parent, component);
+            if (!child) return std::nullopt;
+            parent = *child;
+        }
+        return parent;
+    }
+
     [[nodiscard]] bool HasAsciiToken(const std::filesystem::path& path,
         const std::initializer_list<std::string_view> tokens)
     {
@@ -1138,6 +1150,16 @@ namespace bcn
         return "Unclassified";
     }
 
+    std::string FutanariSkinTypeLabel(const FutanariSkinType type)
+    {
+        switch (type) {
+        case FutanariSkinType::ubeTrx: return "UBE · SOS/TNG";
+        case FutanariSkinType::cbbeTrx: return "CBBE 3BA · TRX";
+        case FutanariSkinType::erf: return "CBBE 3BA · ERF";
+        }
+        return "Unknown";
+    }
+
     SkinProfiles& SkinProfiles::Get()
     {
         static SkinProfiles profiles;
@@ -1300,5 +1322,135 @@ namespace bcn
                 SkinMatchesActor(found->bodyFamilies, actorFamily)) compatible.push_back(id);
         }
         return compatible;
+    }
+
+    FutanariSkinProfiles& FutanariSkinProfiles::Get()
+    {
+        static FutanariSkinProfiles profiles;
+        return profiles;
+    }
+
+    std::filesystem::path FutanariSkinProfiles::RootPath()
+    {
+        return std::filesystem::current_path() / "Data" / "Futanari";
+    }
+
+    std::vector<FutanariSkinProfile> FutanariSkinProfiles::ScanDirectory(
+        const std::filesystem::path& root)
+    {
+        const auto dataRoot = root.parent_path();
+        std::vector<FutanariSkinProfile> loaded;
+        std::error_code error;
+        if (!std::filesystem::exists(root, error)) return loaded;
+
+        for (std::filesystem::directory_iterator it(root,
+                 std::filesystem::directory_options::skip_permission_denied, error), end;
+             it != end; it.increment(error)) {
+            if (error) {
+                error.clear();
+                continue;
+            }
+            std::error_code statusError;
+            if (!it->is_directory(statusError) || statusError || loaded.size() >= kMaxProfiles) continue;
+            const auto packDirectory = it->path();
+            const auto packRelative = RelativeWithin(packDirectory, root);
+            if (!packRelative) continue;
+            const auto packID = bcn::path_text::GenericUtf8(*packRelative);
+            if (packID.empty()) continue;
+            const auto name = bcn::path_text::Utf8(packDirectory.filename());
+
+            const auto append = [&](const FutanariSkinType type, const std::string_view suffix,
+                const std::optional<std::filesystem::path>& directory,
+                const std::string_view stem, const bool ubeNames) {
+                if (!directory || loaded.size() >= kMaxProfiles) return;
+                auto layers = ubeNames ? AutoUbePart(dataRoot, *directory, stem) :
+                    AutoPart(dataRoot, *directory, stem);
+                if (layers.empty()) return;
+                ContentSignature hash;
+                hash.Number(static_cast<unsigned>(type));
+                for (const auto& layer : layers) {
+                    hash.Number(layer.shaderTextureIndex);
+                    hash.Text(layer.path);
+                    hash.Number(runtime_assets::SourceContentHash(layer.path));
+                }
+                loaded.push_back({
+                    .id = "futanari:" + packID + ":" + std::string{ suffix },
+                    .name = name,
+                    .type = type,
+                    .layers = std::move(layers),
+                    .source = *directory,
+                    .contentHash = hash.value
+                });
+            };
+
+            append(FutanariSkinType::ubeTrx, "ube-trx",
+                FindDescendantDirectory(packDirectory, { "Textures", "!UBE", "Body" }),
+                "malebody_1", true);
+            append(FutanariSkinType::cbbeTrx, "cbbe-trx",
+                FindDescendantDirectory(packDirectory,
+                    { "Textures", "[TRX] Futa addon", "Regular", "Default" }),
+                "schlong", false);
+            append(FutanariSkinType::erf, "erf",
+                FindDescendantDirectory(packDirectory,
+                    { "Textures", "ERF_Futanari", "FairSkinCBBE" }),
+                "futanari_schlong", false);
+        }
+        if (error) {
+            SKSE::log::warn("Body Change NG could not scan {}: {}",
+                bcn::path_text::Utf8(root), error.message());
+        }
+        std::ranges::sort(loaded, [](const auto& left, const auto& right) {
+            if (left.name != right.name) return left.name < right.name;
+            return static_cast<unsigned>(left.type) < static_cast<unsigned>(right.type);
+        });
+        return loaded;
+    }
+
+    void FutanariSkinProfiles::Refresh()
+    {
+        const auto root = RootPath();
+        runtime_assets::InitializeTexturePreparation();
+        runtime_assets::ClearGameRelativeSources("Futanari\\");
+        std::vector<FutanariSkinProfile> loaded;
+        for (const auto& scanRoot : catalog_roots::Discover(root)) {
+            for (auto& profile : ScanDirectory(scanRoot)) {
+                if (const auto found = std::ranges::find(loaded, profile.id,
+                        &FutanariSkinProfile::id); found != loaded.end()) {
+                    *found = std::move(profile);
+                } else {
+                    loaded.push_back(std::move(profile));
+                }
+            }
+        }
+        std::ranges::sort(loaded, [](const auto& left, const auto& right) {
+            if (left.name != right.name) return left.name < right.name;
+            return static_cast<unsigned>(left.type) < static_cast<unsigned>(right.type);
+        });
+        std::scoped_lock lock(lock_);
+        profiles_ = std::move(loaded);
+        contentHashes_.clear();
+        for (const auto& profile : profiles_) contentHashes_[profile.id] = profile.contentHash;
+        SKSE::log::info("Body Change NG loaded {} futanari skin profiles from {}",
+            profiles_.size(), bcn::path_text::Utf8(root));
+    }
+
+    std::vector<FutanariSkinProfile> FutanariSkinProfiles::Snapshot() const
+    {
+        std::scoped_lock lock(lock_);
+        return profiles_;
+    }
+
+    std::optional<FutanariSkinProfile> FutanariSkinProfiles::Find(const std::string_view id) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto found = std::ranges::find(profiles_, id, &FutanariSkinProfile::id);
+        return found == profiles_.end() ? std::nullopt : std::optional<FutanariSkinProfile>{ *found };
+    }
+
+    std::uint64_t FutanariSkinProfiles::ContentHash(const std::string_view id) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto found = contentHashes_.find(std::string{ id });
+        return found == contentHashes_.end() ? 0U : found->second;
     }
 }

@@ -22,7 +22,9 @@ namespace
     constexpr std::uint32_t kCosaveID = 0x42434E47U;       // BCNG
     constexpr std::uint32_t kActorRecord = 0x41535452U;    // ASTR
     constexpr std::uint32_t kTintRecord = 0x54494E54U;     // TINT
-    constexpr std::uint32_t kRecordVersion = 1U;
+    constexpr std::uint32_t kActorRecordVersion = 2U;
+    constexpr std::uint32_t kLegacyActorRecordVersion = 1U;
+    constexpr std::uint32_t kTintRecordVersion = 1U;
     constexpr std::uint32_t kMaxActors = 16384U;
     constexpr std::uint32_t kMaxStrings = 131072U;
     constexpr std::uint32_t kMaxTintLayers = 32U;
@@ -40,13 +42,30 @@ namespace
         kSkinApplied = 1U << 7U
     };
 
-    struct SerializedActorState final
+    struct SerializedActorStateV1 final
     {
         std::uint32_t actorFormID{};
         std::uint32_t baseLocalFormID{};
         std::uint32_t basePluginIndex{};
         std::uint32_t selectedBodyIndex{};
         std::uint32_t selectedSkinIndex{};
+        std::uint32_t appliedBodyIndex{};
+        std::uint32_t appliedSkinIndex{};
+        std::uint16_t flags{};
+        std::uint16_t reserved{};
+        std::uint64_t bodySignature{};
+        std::uint64_t skinSignature{};
+        std::uint64_t outfitSignature{};
+    };
+
+    struct SerializedActorStateV2 final
+    {
+        std::uint32_t actorFormID{};
+        std::uint32_t baseLocalFormID{};
+        std::uint32_t basePluginIndex{};
+        std::uint32_t selectedBodyIndex{};
+        std::uint32_t selectedSkinIndex{};
+        std::uint32_t selectedFutanariSkinIndex{};
         std::uint32_t appliedBodyIndex{};
         std::uint32_t appliedSkinIndex{};
         std::uint16_t flags{};
@@ -122,7 +141,7 @@ namespace
                 kMaxActors);
             states.resize(kMaxActors);
         }
-        if (output && output->OpenRecord(kActorRecord, kRecordVersion)) {
+        if (output && output->OpenRecord(kActorRecord, kActorRecordVersion)) {
             std::vector<std::string> strings{ std::string{} };
             std::unordered_map<std::string, std::uint32_t> indexByString{ { {}, 0U } };
             auto indexFor = [&](const std::string& value) {
@@ -133,7 +152,7 @@ namespace
                 indexByString.emplace(value, index);
                 return index;
             };
-            std::vector<SerializedActorState> serialized;
+            std::vector<SerializedActorStateV2> serialized;
             serialized.reserve(states.size());
             for (const auto& state : states) {
                 std::uint16_t flags{};
@@ -145,12 +164,13 @@ namespace
                 if (state.appliedDefaultSkin) flags |= kAppliedDefaultSkin;
                 if (state.bodyApplied) flags |= kBodyApplied;
                 if (state.skinApplied) flags |= kSkinApplied;
-                serialized.push_back(SerializedActorState{
+                serialized.push_back(SerializedActorStateV2{
                     .actorFormID = state.actorFormID,
                     .baseLocalFormID = state.baseLocalFormID,
                     .basePluginIndex = indexFor(state.basePlugin),
                     .selectedBodyIndex = indexFor(state.selectedBodyId),
                     .selectedSkinIndex = indexFor(state.selectedSkinId),
+                    .selectedFutanariSkinIndex = indexFor(state.selectedFutanariSkinId),
                     .appliedBodyIndex = indexFor(state.appliedBodyId),
                     .appliedSkinIndex = indexFor(state.appliedSkinId),
                     .flags = flags,
@@ -168,7 +188,7 @@ namespace
             if (!ok) SKSE::log::error("Body Change NG could not write its actor registry cosave record");
         }
 
-        if (output && output->OpenRecord(kTintRecord, kRecordVersion)) {
+        if (output && output->OpenRecord(kTintRecord, kTintRecordVersion)) {
             const auto tint = bcn::player_tint::SnapshotPersistedState();
             auto ok = WriteString(output, tint.pack.value_or(std::string{}));
             const auto count = static_cast<std::uint32_t>((std::min)(tint.layers.size(),
@@ -187,7 +207,7 @@ namespace
         }
     }
 
-    void LoadActorRecord(SKSE::SerializationInterface* input)
+    void LoadActorRecord(SKSE::SerializationInterface* input, const std::uint32_t version)
     {
         std::uint32_t stringCount{};
         if (!ReadValue(input, stringCount) || stringCount == 0U || stringCount > kMaxStrings) return;
@@ -198,12 +218,33 @@ namespace
         std::vector<bcn::ActorState> loaded;
         loaded.reserve(actorCount);
         for (std::uint32_t index{}; index < actorCount; ++index) {
-            SerializedActorState source;
-            if (!ReadValue(input, source)) return;
+            SerializedActorStateV2 source;
+            if (version == kLegacyActorRecordVersion) {
+                SerializedActorStateV1 legacy;
+                if (!ReadValue(input, legacy)) return;
+                source = {
+                    .actorFormID = legacy.actorFormID,
+                    .baseLocalFormID = legacy.baseLocalFormID,
+                    .basePluginIndex = legacy.basePluginIndex,
+                    .selectedBodyIndex = legacy.selectedBodyIndex,
+                    .selectedSkinIndex = legacy.selectedSkinIndex,
+                    .selectedFutanariSkinIndex = 0U,
+                    .appliedBodyIndex = legacy.appliedBodyIndex,
+                    .appliedSkinIndex = legacy.appliedSkinIndex,
+                    .flags = legacy.flags,
+                    .reserved = legacy.reserved,
+                    .bodySignature = legacy.bodySignature,
+                    .skinSignature = legacy.skinSignature,
+                    .outfitSignature = legacy.outfitSignature
+                };
+            } else if (!ReadValue(input, source)) {
+                return;
+            }
             if (!input->ResolveFormID(source.actorFormID, source.actorFormID)) continue;
             const auto validIndex = [&strings](const std::uint32_t value) { return value < strings.size(); };
             if (!validIndex(source.basePluginIndex) || !validIndex(source.selectedBodyIndex) ||
-                !validIndex(source.selectedSkinIndex) || !validIndex(source.appliedBodyIndex) ||
+                !validIndex(source.selectedSkinIndex) || !validIndex(source.selectedFutanariSkinIndex) ||
+                !validIndex(source.appliedBodyIndex) ||
                 !validIndex(source.appliedSkinIndex)) continue;
             loaded.push_back(bcn::ActorState{
                 .actorFormID = source.actorFormID,
@@ -211,6 +252,7 @@ namespace
                 .basePlugin = strings[source.basePluginIndex],
                 .selectedBodyId = strings[source.selectedBodyIndex],
                 .selectedSkinId = strings[source.selectedSkinIndex],
+                .selectedFutanariSkinId = strings[source.selectedFutanariSkinIndex],
                 .manualBody = (source.flags & kManualBody) != 0U,
                 .manualSkin = (source.flags & kManualSkin) != 0U,
                 .useDefaultBody = (source.flags & kDefaultBody) != 0U,
@@ -261,12 +303,14 @@ namespace
         std::uint32_t version{};
         std::uint32_t length{};
         while (input && input->GetNextRecordInfo(type, version, length)) {
-            if (version != kRecordVersion) {
+            if (type == kActorRecord &&
+                (version == kLegacyActorRecordVersion || version == kActorRecordVersion)) {
+                LoadActorRecord(input, version);
+            } else if (type == kTintRecord && version == kTintRecordVersion) {
+                LoadTintRecord(input);
+            } else {
                 SKSE::log::warn("Body Change NG ignored cosave record {:08X} version {}", type, version);
-                continue;
             }
-            if (type == kActorRecord) LoadActorRecord(input);
-            else if (type == kTintRecord) LoadTintRecord(input);
         }
         SKSE::log::info("Body Change NG loaded {} actor registry entries from the current save",
             bcn::ActorRegistry::Get().Size());
@@ -393,6 +437,14 @@ namespace bcn
             std::optional{ state->appliedSkinId } : std::nullopt;
     }
 
+    std::optional<std::string> ActorRegistry::SelectedFutanariSkinId(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && !state->selectedFutanariSkinId.empty() ?
+            std::optional{ state->selectedFutanariSkinId } : std::nullopt;
+    }
+
     void ActorRegistry::SetManualBody(RE::Actor* actor, std::string bodyId, const bool useDefault)
     {
         if (!actor || (!useDefault && bodyId.empty()) || bodyId.size() > kMaxStringLength) return;
@@ -411,6 +463,22 @@ namespace bcn
         state.selectedSkinId = useDefault ? std::string{} : std::move(skinId);
         state.manualSkin = true;
         state.useDefaultSkin = useDefault;
+    }
+
+    void ActorRegistry::SetFutanariSkin(RE::Actor* actor, std::string skinId)
+    {
+        if (!actor || skinId.empty() || skinId.size() > kMaxStringLength) return;
+        std::scoped_lock lock(lock_);
+        EnsureLocked(actor).selectedFutanariSkinId = std::move(skinId);
+    }
+
+    void ActorRegistry::ClearFutanariSkin(RE::Actor* actor)
+    {
+        if (!actor) return;
+        std::scoped_lock lock(lock_);
+        if (auto* state = const_cast<ActorState*>(FindValidatedLocked(actor))) {
+            state->selectedFutanariSkinId.clear();
+        }
     }
 
     bool ActorRegistry::RemoveManual(RE::Actor* actor)

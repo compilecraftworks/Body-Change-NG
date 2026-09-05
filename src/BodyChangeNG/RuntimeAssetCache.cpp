@@ -30,7 +30,7 @@ namespace
     {
         std::uint64_t value{};
         std::string gamePath;
-        std::vector<std::filesystem::path> normalCompanions;
+        std::vector<std::filesystem::path> textureCompanions;
     };
     std::unordered_map<std::string, SourceHash> g_sourceHashes;
     // Cache existence is immutable for normal gameplay. Catalog Refresh clears
@@ -79,7 +79,7 @@ namespace
             condition_.notify_all();
         }
 
-        bool Submit(const std::uint32_t key,
+        bool Submit(const std::uint64_t key,
             std::vector<bcn::runtime_assets::TexturePreparation> paths,
             std::function<void(bool)> completion, const bool urgent)
         {
@@ -104,7 +104,7 @@ namespace
     private:
         struct Job final
         {
-            std::uint32_t key{};
+            std::uint64_t key{};
             std::vector<bcn::runtime_assets::TexturePreparation> paths;
             std::function<void(bool)> completion;
         };
@@ -169,19 +169,45 @@ namespace
         return value;
     }
 
-    [[nodiscard]] std::vector<std::filesystem::path> NormalCompanions(
+    [[nodiscard]] std::vector<std::filesystem::path> TextureCompanions(
         const std::filesystem::path& source)
     {
         if (LowerAscii(bcn::path_text::Utf8(source.extension())) != ".dds") return {};
         const auto stem = bcn::path_text::Utf8(source.stem());
         const auto lower = LowerAscii(stem);
+        std::vector<std::filesystem::path> result;
+
+        // TRX wet-skin integrations select an alternate specular such as
+        // wetschlong_110_s.dds beside the active Schlong_s.dds.  The primary
+        // texture is redirected to a BCNG cache directory, so preserve every
+        // matching wet schlong specular in that same directory as a companion.
+        if (lower.ends_with("_s") && lower.find("schlong") != std::string::npos) {
+            std::error_code error;
+            for (std::filesystem::directory_iterator it(source.parent_path(),
+                     std::filesystem::directory_options::skip_permission_denied, error), end;
+                 it != end; it.increment(error)) {
+                if (error) {
+                    error.clear();
+                    continue;
+                }
+                std::error_code statusError;
+                if (!it->is_regular_file(statusError) || statusError || it->path() == source) continue;
+                const auto candidate = LowerAscii(bcn::path_text::Utf8(it->path().filename()));
+                if (candidate.starts_with("wet") && candidate.find("schlong") != std::string::npos &&
+                    candidate.ends_with("_s.dds")) result.push_back(it->path());
+            }
+            std::ranges::sort(result, {}, [](const auto& path) {
+                return LowerAscii(bcn::path_text::Utf8(path.filename()));
+            });
+            return result;
+        }
+
         std::string base;
         if (lower.ends_with("_msn")) base = stem.substr(0, stem.size() - 4U);
         else if (lower.ends_with("_n") && !lower.ends_with("_n_m") &&
                  !lower.ends_with("_n_ov")) base = stem.substr(0, stem.size() - 2U);
         else return {};
 
-        std::vector<std::filesystem::path> result;
         const auto add = [&](const std::string_view suffix) {
             const auto candidate = source.parent_path() /
                 bcn::path_text::FromUtf8(base + std::string{ suffix });
@@ -324,12 +350,12 @@ namespace bcn::runtime_assets
             // changed mask gets a fresh cache path and one normal-map refresh.
             ContentSignature hash;
             HashFile(hash, stableSource);
-            auto companions = NormalCompanions(stableSource);
+            auto companions = TextureCompanions(stableSource);
             for (const auto& companion : companions) HashFile(hash, companion);
             g_sourceHashes[identity] = {
                 .value = hash.value,
                 .gamePath = NormalizeGamePath(path),
-                .normalCompanions = std::move(companions)
+                .textureCompanions = std::move(companions)
             };
         }
         g_registeredSources.insert_or_assign(NormalizeGamePath(path), stableSource);
@@ -391,7 +417,7 @@ namespace bcn::runtime_assets
         {
             std::scoped_lock lock(g_registeredSourcesLock);
             const auto found = g_sourceHashes.find(SourceIdentity(source));
-            if (found != g_sourceHashes.end()) companions = found->second.normalCompanions;
+            if (found != g_sourceHashes.end()) companions = found->second.textureCompanions;
         }
         for (const auto& companion : companions) {
             const auto companionDestination = destination.parent_path() / companion.filename();
@@ -467,7 +493,7 @@ namespace bcn::runtime_assets
         return source ? TexturePath(*source, nameSpace) : std::string{};
     }
 
-    bool PrepareTexturePathsAsync(const std::uint32_t key,
+    bool PrepareTexturePathsAsync(const std::uint64_t key,
         std::vector<TexturePreparation> paths, std::function<void(bool)> completion,
         const bool urgent)
     {

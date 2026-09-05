@@ -40,11 +40,14 @@ namespace bcn
         [[nodiscard]] std::vector<ActorState> SnapshotAll() const;
         [[nodiscard]] std::optional<ManualActorSelection> ManualSelection(const RE::Actor* a_actor) const;
         [[nodiscard]] std::optional<std::string> SelectedSkinId(const RE::Actor* a_actor) const;
+        [[nodiscard]] std::optional<std::string> SelectedFutanariSkinId(const RE::Actor* a_actor) const;
         [[nodiscard]] std::optional<std::string> AppliedBodyId(const RE::Actor* a_actor) const;
         [[nodiscard]] std::optional<std::string> AppliedSkinId(const RE::Actor* a_actor) const;
 
         void SetManualBody(RE::Actor* a_actor, std::string a_bodyId, bool a_useDefault);
         void SetManualSkin(RE::Actor* a_actor, std::string a_skinId, bool a_useDefault);
+        void SetFutanariSkin(RE::Actor* a_actor, std::string a_skinId);
+        void ClearFutanariSkin(RE::Actor* a_actor);
         [[nodiscard]] bool RemoveManual(RE::Actor* a_actor);
         [[nodiscard]] bool RemoveManualBody(RE::Actor* a_actor);
         void ClearManualSelections();

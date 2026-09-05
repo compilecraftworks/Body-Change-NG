@@ -79,6 +79,7 @@ int main()
             .basePlugin = "Example.esp",
             .selectedBodyId = "preset-a",
             .selectedSkinId = "skin-a",
+            .selectedFutanariSkinId = "futanari:skin-a:cbbe-trx",
             .manualBody = true,
             .manualSkin = true,
             .bodySignature = body,
@@ -89,9 +90,11 @@ int main()
         state.bodyApplied = state.skinApplied = true;
         state.bodyVerifiedThisSession = state.skinVerifiedThisSession = true;
         bcn::PrepareRestoredState(state);
-        Require(state.bodyApplied && state.skinApplied && !state.bodyVerifiedThisSession &&
+        Require(state.bodyApplied && state.skinApplied &&
+                state.selectedFutanariSkinId == "futanari:skin-a:cbbe-trx" &&
+                !state.bodyVerifiedThisSession &&
                 !state.skinVerifiedThisSession,
-            "cosave restore did not separate persisted completion from live-session proof");
+            "cosave restore lost the futanari selection or live-session proof boundary");
         using Decision = bcn::RestoredApplicationDecision;
         Require(bcn::EvaluateRestoredApplication(true, false, true, true) == Decision::acceptLive,
             "a matching restored live state was not accepted");

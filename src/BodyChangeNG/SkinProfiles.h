@@ -117,6 +117,25 @@ namespace bcn
         std::uint64_t contentHash{};
     };
 
+    enum class FutanariSkinType : std::uint8_t
+    {
+        ubeTrx,
+        cbbeTrx,
+        erf
+    };
+
+    struct FutanariSkinProfile final
+    {
+        std::string id;
+        std::string name;
+        FutanariSkinType type{ FutanariSkinType::cbbeTrx };
+        std::vector<SkinTextureLayer> layers;
+        std::filesystem::path source;
+        std::uint64_t contentHash{};
+    };
+
+    [[nodiscard]] std::string FutanariSkinTypeLabel(FutanariSkinType a_type);
+
     [[nodiscard]] constexpr body_family::Mask StandardSkinFamilies(const SkinSex sex) noexcept
     {
         return sex == SkinSex::female ?
@@ -179,6 +198,29 @@ namespace bcn
     private:
         mutable std::mutex lock_;
         std::vector<SkinProfile> profiles_;
+        std::unordered_map<std::string, std::uint64_t> contentHashes_;
+    };
+
+    class FutanariSkinProfiles final
+    {
+    public:
+        static FutanariSkinProfiles& Get();
+
+        // Each top-level Futanari folder is one user-facing pack. A pack may
+        // expose more than one supported atlas and receives one typed row for
+        // each. Missing material channels are intentional and stay untouched.
+        void Refresh();
+        [[nodiscard]] static std::vector<FutanariSkinProfile> ScanDirectory(
+            const std::filesystem::path& a_root);
+        [[nodiscard]] std::vector<FutanariSkinProfile> Snapshot() const;
+        [[nodiscard]] std::optional<FutanariSkinProfile> Find(std::string_view a_id) const;
+        [[nodiscard]] std::uint64_t ContentHash(std::string_view a_id) const;
+
+        [[nodiscard]] static std::filesystem::path RootPath();
+
+    private:
+        mutable std::mutex lock_;
+        std::vector<FutanariSkinProfile> profiles_;
         std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };
 }

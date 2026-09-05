@@ -35,8 +35,10 @@ namespace bcn::skin_override::ownership
     {
         return ContainsNormalized(value, "bodychangeng\\cache\\skin\\") ||
             ContainsNormalized(value, "bodychangeng\\cache\\skin-face\\") ||
+            ContainsNormalized(value, "bodychangeng\\cache\\futanari\\") ||
             ContainsNormalized(value, "bodychangerng\\cache\\skin\\") ||
-            ContainsNormalized(value, "bodychangerng\\cache\\skin-face\\");
+            ContainsNormalized(value, "bodychangerng\\cache\\skin-face\\") ||
+            ContainsNormalized(value, "bodychangerng\\cache\\futanari\\");
     }
 
     // Racial Skin Variance owns the actor's race-specific FaceGen texture

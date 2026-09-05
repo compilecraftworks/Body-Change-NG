@@ -44,7 +44,7 @@ namespace bcn::runtime_assets
     // Prepares only the selected profile's effective actor layers on one
     // bounded worker. Completion runs on that worker and must hand any engine
     // access back to the game task queue.
-    bool PrepareTexturePathsAsync(std::uint32_t a_key,
+    bool PrepareTexturePathsAsync(std::uint64_t a_key,
         std::vector<TexturePreparation> a_paths, std::function<void(bool)> a_completion,
         bool a_urgent = false);
     void InitializeTexturePreparation();

@@ -15,6 +15,10 @@ namespace bcn
 
         std::string selectedBodyId;
         std::string selectedSkinId;
+        // Manual futanari genital texture choice. It remains selected while
+        // the addon is unequipped so SOS Gender Bender/TNG can restore it on
+        // the next matching equipment rebuild.
+        std::string selectedFutanariSkinId;
         bool manualBody{};
         bool manualSkin{};
         bool useDefaultBody{};

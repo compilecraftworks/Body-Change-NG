@@ -3,6 +3,7 @@
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OutfitRefit.h"
+#include "BodyChangeNG/SkinOverrides.h"
 #include <atomic>
 #include <chrono>
 #include <mutex>
@@ -47,6 +48,7 @@ namespace
                 const auto started = std::chrono::steady_clock::now();
                 const auto changed = bcn::Distribution::Get().ApplyActor(actor.get());
                 bcn::OutfitRefit::Get().ProcessActor(actor.get());
+                bcn::skin_override::QueueReapplyCurrentFutanari(actor.get());
                 g_processingMicros += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - started).count());
                 ++g_processed;

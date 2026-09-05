@@ -136,6 +136,8 @@ namespace bcn
                 // geometry; body distribution is deliberately not rerun.
                 ActorRegistry::Get().InvalidateOutfit(actor.get());
                 OutfitRefit::Get().ProcessActor(actor.get());
+                skin_override::InvalidateFutanariDetection(actorFormID);
+                skin_override::QueueReapplyCurrentFutanari(actor.get());
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
                     [[maybe_unused]] const auto result = skin_override::QueueApply(actor.get(), *skin);
                     if (verifyFinalSkin) {
@@ -184,6 +186,8 @@ namespace bcn
                 if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
                     [[maybe_unused]] const auto skinResult = skin_override::QueueApply(actor.get(), *skin);
                 }
+                skin_override::InvalidateFutanariDetection(actor->GetFormID());
+                skin_override::QueueReapplyCurrentFutanari(actor.get());
                 [[maybe_unused]] const auto tintResult = player_tint::QueueReapplyCurrent();
                 SKSE::log::info("Body Change NG queued player body, skin and tint restoration after RaceMenu close "
                                 "generation={} verification-passes-left={}",
@@ -282,10 +286,14 @@ namespace bcn
         }
         if (auto* actor = event->actor->As<RE::Actor>()) {
             if (!frame_tasks::Active()) return RE::BSEventNotifyControl::kContinue;
+            skin_override::InvalidateFutanariDetection(actor->GetFormID());
             const auto hasSkin = skin_override::CurrentProfileId(actor).has_value();
+            const auto hasFutanariSkin = skin_override::CurrentFutanariProfileId(actor).has_value();
             const auto needsOutfit = Settings::Get().OutfitCorrectionEnabled() ||
                 racemenu::HasOutfitCorrection(actor);
-            if (!hasSkin && !needsOutfit) return RE::BSEventNotifyControl::kContinue;
+            if (!hasSkin && !hasFutanariSkin && !needsOutfit) {
+                return RE::BSEventNotifyControl::kContinue;
+            }
             // TESEquipEvent is emitted before the replacement BipedAnim clone
             // is always available. Consecutive equipment events are coalesced;
             // only the newest settled outfit is corrected and repainted.
@@ -310,7 +318,9 @@ namespace bcn
         }
         auto* oldContainer = RE::TESForm::LookupByID(event->oldContainer);
         auto* actor = oldContainer ? oldContainer->As<RE::Actor>() : nullptr;
-        if (!actor || !actor->IsDead() || !skin_override::CurrentProfileId(actor)) {
+        if (!actor || !actor->IsDead() ||
+            (!skin_override::CurrentProfileId(actor) &&
+                !skin_override::CurrentFutanariProfileId(actor))) {
             return RE::BSEventNotifyControl::kContinue;
         }
 

@@ -38,6 +38,7 @@ namespace
     {
         body,
         skin,
+        futanari,
         tint
     };
 
@@ -579,6 +580,7 @@ namespace
             g_pendingTint.reset();
             bcn::menu_character::Presentation::Get().Restore();
             g_selectedActorFormID = formID;
+            bcn::skin_override::InvalidateFutanariDetection(formID);
             ResetCatalogNavigation();
         }
         g_actorSearch.clear();
@@ -982,6 +984,10 @@ namespace
             return Text("선택한 스킨팩은 이 액터의 종족과 맞지 않습니다.", "The selected skin pack does not match this actor's race.", "所选皮肤包与该角色的种族不匹配。");
         case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
+        case bcn::skin_override::ApplyResult::incompatibleFutanariType:
+            return Text("선택한 후타나리 스킨은 현재 성기 유형과 맞지 않습니다.", "The selected futanari skin does not match the active genital type.", "所选扶她皮肤与当前生殖器类型不匹配。");
+        case bcn::skin_override::ApplyResult::futanariGeometryUnavailable:
+            return Text("현재 액터에서 지원되는 UBE SOS/TNG, TRX 또는 ERF 성기 메시를 찾지 못했습니다.", "No supported UBE SOS/TNG, TRX, or ERF genital geometry is currently loaded on this actor.", "当前角色未加载受支持的 UBE SOS/TNG、TRX 或 ERF 生殖器几何体。");
         case bcn::skin_override::ApplyResult::faceGeometryUnavailable:
             return Text("이 스킨팩의 얼굴 텍스처를 적용할 현재 얼굴 지오메트리를 찾지 못했습니다.", "The live face geometry required by this skin pack's face textures was not found.", "未找到应用此皮肤包脸部纹理所需的当前脸部几何体。");
         case bcn::skin_override::ApplyResult::noTaskInterface:
@@ -1116,7 +1122,7 @@ namespace
         }
     }
 
-    void HandleTabNavigation(const bool playerSelected)
+    void HandleTabNavigation(const bool playerSelected, const bool futanariAvailable)
     {
         if (CatalogNavigationBlocked()) return;
         const auto left = NavigationKeyPressed(
@@ -1125,17 +1131,18 @@ namespace
             ImGuiKey_RightArrow, ImGuiKey_D, ImGuiKey_GamepadDpadRight, false);
         if (left == right) return;
 
-        const std::array playerTabs{ ActiveTab::body, ActiveTab::skin, ActiveTab::tint };
-        const std::array npcTabs{ ActiveTab::body, ActiveTab::skin };
-        const auto move = [&](const auto& tabs) {
-            auto found = std::ranges::find(tabs, g_activeTab);
-            auto index = found == tabs.end() ? std::size_t{} : static_cast<std::size_t>(found - tabs.begin());
-            if (left) index = index == 0U ? tabs.size() - 1U : index - 1U;
-            else index = (index + 1U) % tabs.size();
-            g_activeTab = tabs[index];
+        std::vector<ActiveTab> tabs{ ActiveTab::body, ActiveTab::skin };
+        if (futanariAvailable) tabs.push_back(ActiveTab::futanari);
+        if (playerSelected) tabs.push_back(ActiveTab::tint);
+        const auto move = [&](const auto& availableTabs) {
+            auto found = std::ranges::find(availableTabs, g_activeTab);
+            auto index = found == availableTabs.end() ? std::size_t{} :
+                static_cast<std::size_t>(found - availableTabs.begin());
+            if (left) index = index == 0U ? availableTabs.size() - 1U : index - 1U;
+            else index = (index + 1U) % availableTabs.size();
+            g_activeTab = availableTabs[index];
         };
-        if (playerSelected) move(playerTabs);
-        else move(npcTabs);
+        move(tabs);
     }
 
     void DrawCatalog(std::vector<CatalogItem>& items, const bool body)
@@ -1455,6 +1462,122 @@ namespace
                 ImGui::Dummy(ImVec2(0.0F, 0.0F));
                 ImGui::PopID();
                 ++row;
+            }
+        }
+        ImGui::EndChild();
+    }
+
+    void DrawFutanariCatalog()
+    {
+        auto* actor = SelectedActor();
+        if (!actor) {
+            ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
+            return;
+        }
+        const auto actorType = bcn::skin_override::CurrentFutanariType(actor);
+        if (!actorType) {
+            ImGui::TextUnformatted(Text(
+                "현재 액터에 지원되는 후타나리 성기 메시가 없습니다.",
+                "The selected actor has no supported futanari genital geometry.",
+                "所选角色没有受支持的扶她生殖器几何体。"));
+            return;
+        }
+
+        const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } +
+            "##futanariCatalogRefresh";
+        if (ImGui::Button(refreshLabel.c_str())) bcn::FutanariSkinProfiles::Get().Refresh();
+        ImGui::SameLine();
+        ImGui::TextDisabled("%s", Text(
+            "Futanari\\<스킨팩>에서 현재 UBE SOS/TNG·CBBE TRX·ERF 유형만 표시합니다.",
+            "Shows only the active UBE SOS/TNG, CBBE TRX, or ERF type from Futanari\\<skin pack>.",
+            "仅显示 Futanari\\<皮肤包> 中当前适用的 UBE SOS/TNG、CBBE TRX 或 ERF 类型。"));
+
+        const auto profiles = bcn::FutanariSkinProfiles::Get().Snapshot();
+        const auto currentID = bcn::skin_override::CurrentFutanariProfileId(actor).value_or(std::string{});
+        std::vector<const bcn::FutanariSkinProfile*> visible;
+        visible.reserve(profiles.size());
+        for (const auto& profile : profiles) {
+            if (profile.type != *actorType) continue;
+            if (!g_search.empty() && Lower(profile.name).find(Lower(g_search)) == std::string::npos &&
+                Lower(profile.id).find(Lower(g_search)) == std::string::npos) continue;
+            visible.push_back(&profile);
+        }
+        std::size_t preferredIndex{};
+        if (!currentID.empty()) {
+            const auto current = std::ranges::find(visible, currentID,
+                [](const bcn::FutanariSkinProfile* profile) -> const std::string& {
+                    return profile->id;
+                });
+            if (current != visible.end()) {
+                preferredIndex = 1U + static_cast<std::size_t>(current - visible.begin());
+            }
+        }
+        const auto navigation = HandleCatalogNavigation(visible.size() + 1U, preferredIndex);
+        const auto applyRow = [&](const std::size_t row) {
+            const auto result = row == 0U ?
+                bcn::skin_override::QueueClearFutanari(actor) :
+                bcn::skin_override::QueueApplyFutanari(actor, visible[row - 1U]->id);
+            if (result != bcn::skin_override::ApplyResult::queued) {
+                bcn::ui::Notify(SkinApplyResultMessage(result));
+            }
+        };
+        if (navigation.preview || navigation.confirm) applyRow(navigation.focused);
+
+        if (ImGui::BeginChild("FutanariCatalog", ImVec2(0.0F, CatalogListHeight()), true,
+                ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
+            std::size_t row{};
+            const auto drawRow = [&](const std::string& id, const std::string& name,
+                const std::string& subtitle, const bool current) {
+                ImGui::PushID(id.c_str());
+                const auto cursor = ImGui::GetCursorScreenPos();
+                const auto width = ImGui::GetContentRegionAvail().x;
+                const auto height = Scaled(48.0F);
+                ImGui::InvisibleButton("item", ImVec2(width, height));
+                const auto hovered = ImGui::IsItemHovered();
+                const auto clicked = ImGui::IsItemClicked();
+                const auto doubleClicked = hovered &&
+                    ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                auto* draw = ImGui::GetWindowDrawList();
+                draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
+                    current ? kCardSelected :
+                    hovered || (navigation.hasFocus && navigation.focused == row) ?
+                    kCardHovered : kCardNormal, Scaled(4.0F));
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)),
+                    kCardText, name.c_str());
+                draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
+                    kCardSubtext, subtitle.c_str());
+                if (doubleClicked || clicked) {
+                    FocusCatalogRow(row);
+                    applyRow(row);
+                }
+                ScrollFocusedCatalogRow(row);
+                ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + height + Scaled(5.0F)));
+                ImGui::Dummy(ImVec2(0.0F, 0.0F));
+                ImGui::PopID();
+                ++row;
+            };
+
+            drawRow("DefaultFutanariSkin",
+                Text("기본 후타나리 스킨", "Default futanari skin", "默认扶她皮肤"),
+                Text("BCNG 성기 텍스처 오버라이드 제거",
+                    "Remove only BCNG genital texture overrides",
+                    "仅移除 BCNG 生殖器纹理覆盖"), currentID.empty());
+
+            if (visible.empty()) {
+                ImGui::TextWrapped("%s", Text(
+                    "현재 유형에 맞는 스킨이 없습니다. UBE SOS/TNG는 Textures\\!UBE\\Body, CBBE 3BA+TRX는 Textures\\[TRX] Futa addon\\Regular\\Default, ERF는 Textures\\ERF_Futanari\\FairSkinCBBE 경로를 사용하세요.",
+                    "No matching skin was found. Use Textures\\!UBE\\Body for UBE SOS/TNG, Textures\\[TRX] Futa addon\\Regular\\Default for CBBE 3BA+TRX, or Textures\\ERF_Futanari\\FairSkinCBBE for ERF.",
+                    "未找到匹配皮肤。UBE SOS/TNG 使用 Textures\\!UBE\\Body，CBBE 3BA+TRX 使用 Textures\\[TRX] Futa addon\\Regular\\Default，ERF 使用 Textures\\ERF_Futanari\\FairSkinCBBE。"));
+            }
+            for (const auto* profile : visible) {
+                auto subtitle = bcn::FutanariSkinTypeLabel(profile->type) + " · " +
+                    Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(profile->layers.size()) +
+                    Text("개", "", " 个");
+                if (profile->id == currentID) {
+                    subtitle += " · ";
+                    subtitle += Text("현재 적용", "Current", "当前应用");
+                }
+                drawRow(profile->id, profile->name, subtitle, profile->id == currentID);
             }
         }
         ImGui::EndChild();
@@ -2406,6 +2529,7 @@ namespace bcn::ui
         // by the explicit refresh button, but never replace that initial row.
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             g_selectedActorFormID = player->GetFormID();
+            bcn::skin_override::InvalidateFutanariDetection(g_selectedActorFormID);
         } else {
             g_selectedActorFormID = 0;
         }
@@ -2620,6 +2744,10 @@ namespace bcn::ui
         auto* player = RE::PlayerCharacter::GetSingleton();
         const auto playerSelected = selectedActor && player &&
             selectedActor->GetFormID() == player->GetFormID();
+        const auto futanariType = selectedActor ?
+            bcn::skin_override::CurrentFutanariType(const_cast<RE::Actor*>(selectedActor)) :
+            std::optional<bcn::FutanariSkinType>{};
+        const auto futanariAvailable = futanariType.has_value();
         if (!playerSelected && g_activeTab == ActiveTab::tint) {
             // Applying a tint is already immediate, so dropping this transient
             // UI confirmation does not alter the saved/current tint state.
@@ -2629,16 +2757,26 @@ namespace bcn::ui
             g_showTintDetails = false;
             bcn::menu_character::Presentation::Get().SetTintFocus(false);
         }
+        if (!futanariAvailable && g_activeTab == ActiveTab::futanari) {
+            g_activeTab = ActiveTab::skin;
+        }
 
         bcn::menu_character::Presentation::Get().Apply(runtimeSettings.characterPosition, SelectedActor());
 
         ImGui::Separator();
-        HandleTabNavigation(playerSelected);
+        HandleTabNavigation(playerSelected, futanariAvailable);
         if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
                 g_activeTab == ActiveTab::body)) g_activeTab = ActiveTab::body;
         ImGui::SameLine();
         if (TabButton(Text("바디스킨", "Body Skins", "身体皮肤"), g_activeTab == ActiveTab::skin)) {
             g_activeTab = ActiveTab::skin;
+        }
+        if (futanariAvailable) {
+            ImGui::SameLine();
+            if (TabButton(Text("후타나리", "Futanari", "扶她"),
+                    g_activeTab == ActiveTab::futanari)) {
+                g_activeTab = ActiveTab::futanari;
+            }
         }
         if (playerSelected) {
             ImGui::SameLine();
@@ -2648,14 +2786,19 @@ namespace bcn::ui
         }
         ImGui::SameLine();
         const auto* favoritesLabel = Text("즐겨찾기", "Favorites", "收藏");
-        const auto favoritesControlWidth = ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-            ImGui::CalcTextSize(favoritesLabel).x;
+        const auto showFavorites = g_activeTab != ActiveTab::futanari;
+        const auto favoritesControlWidth = showFavorites ?
+            ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
+                ImGui::CalcTextSize(favoritesLabel).x : 0.0F;
         const auto searchWidth = (std::max)(1.0F,
-            ImGui::GetContentRegionAvail().x - favoritesControlWidth - ImGui::GetStyle().ItemSpacing.x);
+            ImGui::GetContentRegionAvail().x - favoritesControlWidth -
+                (showFavorites ? ImGui::GetStyle().ItemSpacing.x : 0.0F));
         ImGui::SetNextItemWidth(searchWidth);
         ImGui::InputTextWithHint("##search", Text("이름 검색", "Search", "搜索名称"), &g_search);
-        ImGui::SameLine();
-        ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
+        if (showFavorites) {
+            ImGui::SameLine();
+            ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
+        }
         const auto workStatus = selectedActor ? frame_tasks::Status(selectedActor->GetFormID()) :
             async_work::FrameTaskQueue::WorkStatus{};
         if (workStatus.queued || workStatus.busy) {
@@ -2677,6 +2820,11 @@ namespace bcn::ui
                 Text("RaceMenu BodyMorph 인터페이스를 기다리는 중", "Waiting for RaceMenu's BodyMorph interface", "正在等待 RaceMenu 的 BodyMorph 接口"));
         } else if (g_activeTab == ActiveTab::skin) {
             ImGui::TextDisabled("%s", Text("선택 액터에게 RaceMenu NiOverride로 즉시 적용", "Applies immediately to the selected actor through RaceMenu NiOverride", "通过 RaceMenu NiOverride 立即应用于所选角色"));
+        } else if (g_activeTab == ActiveTab::futanari) {
+            ImGui::TextDisabled("%s", Text(
+                "현재 장착된 UBE SOS/TNG·TRX·ERF 성기 메시의 텍스처에만 즉시 적용",
+                "Applies immediately only to the active UBE SOS/TNG, TRX, or ERF genital geometry",
+                "仅立即应用于当前 UBE SOS/TNG、TRX 或 ERF 生殖器几何体"));
         } else {
             ImGui::TextDisabled("%s", Text("플레이어의 현재 RaceMenu 틴트 레이어에만 적용", "Applies only to the player's current RaceMenu tint layers", "仅应用于玩家当前的 RaceMenu 色调图层"));
         }
@@ -2708,6 +2856,8 @@ namespace bcn::ui
             DrawCatalog(items, true);
         } else if (g_activeTab == ActiveTab::skin) {
             DrawSkinCatalog();
+        } else if (g_activeTab == ActiveTab::futanari) {
+            DrawFutanariCatalog();
         } else {
             DrawPlayerTintCatalog();
         }

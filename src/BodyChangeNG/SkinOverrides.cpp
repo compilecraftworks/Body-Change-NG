@@ -1,5 +1,6 @@
 #include "BodyChangeNG/SkinOverrides.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FutanariRouting.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/AsyncWorkGuards.h"
@@ -143,12 +144,20 @@ namespace
     std::mutex g_generationLock;
     std::mutex g_legacyCleanupLock;
     std::mutex g_rsvFaceLock;
+    std::mutex g_futanariLock;
     std::unordered_map<RE::FormID, std::string> g_currentProfileIds;
     std::unordered_map<RE::FormID, std::uint64_t> g_applyGenerations;
     std::unordered_map<RE::FormID, std::uint64_t> g_rsvFaceGenerations;
     std::unordered_set<RE::FormID> g_rsvTransientFaces;
+    struct CachedFutanariType final
+    {
+        std::optional<bcn::FutanariSkinType> type;
+    };
+    std::unordered_map<RE::FormID, CachedFutanariType> g_futanariTypes;
+    std::unordered_map<RE::FormID, std::uint64_t> g_futanariApplyGenerations;
     std::atomic_uint64_t g_nextApplyGeneration{ 1U };
     std::atomic_uint64_t g_nextRsvFaceGeneration{ 1U };
+    std::atomic_uint64_t g_nextFutanariApplyGeneration{ 1U };
     std::unordered_set<RE::FormID> g_legacyCleanupComplete;
     std::atomic<skee_override::IPluginInterface*> g_overrideInterface{};
     std::atomic_uint32_t g_overrideVersion{};
@@ -228,6 +237,22 @@ namespace
         std::scoped_lock lock(g_generationLock);
         const auto found = g_applyGenerations.find(actorFormID);
         return found != g_applyGenerations.end() && found->second == generation;
+    }
+
+    [[nodiscard]] std::uint64_t BeginFutanariChange(const RE::FormID actorFormID)
+    {
+        std::scoped_lock lock(g_futanariLock);
+        const auto generation = g_nextFutanariApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
+        g_futanariApplyGenerations.insert_or_assign(actorFormID, generation);
+        return generation;
+    }
+
+    [[nodiscard]] bool IsCurrentFutanariChange(
+        const RE::FormID actorFormID, const std::uint64_t generation)
+    {
+        std::scoped_lock lock(g_futanariLock);
+        const auto found = g_futanariApplyGenerations.find(actorFormID);
+        return found != g_futanariApplyGenerations.end() && found->second == generation;
     }
 
     [[nodiscard]] std::uint64_t BeginRsvFaceRefresh(const RE::FormID actorFormID)
@@ -318,6 +343,129 @@ namespace
         std::vector<std::string> immediateNodes;
         std::vector<std::string> persistentNodes;
     };
+
+    struct LoadedFutanariRoute final
+    {
+        bcn::futanari::AddonKind addonKind{ bcn::futanari::AddonKind::none };
+        std::optional<bcn::FutanariSkinType> type;
+        std::vector<LoadedPartTarget> targets;
+    };
+
+    [[nodiscard]] std::string_view GeometryDiffuseTexture(RE::BSGeometry* geometry);
+
+    [[nodiscard]] std::string AddonModelPath(RE::TESObjectARMA* addon, const bool firstPerson)
+    {
+        if (!addon) return {};
+        const auto* rawPath = firstPerson ? addon->bipedModel1stPersons[1U].GetModel() :
+            addon->bipedModels[1U].GetModel();
+        auto path = rawPath ? std::string{ rawPath } : std::string{};
+        std::ranges::replace(path, '/', '\\');
+        return path;
+    }
+
+    [[nodiscard]] std::optional<bcn::FutanariSkinType> FutanariTypeFor(
+        const bcn::futanari::AddonKind kind, const bcn::body_family::Mask actorFamily)
+    {
+        const auto ube = bcn::body_family::Bit(bcn::body_family::Family::ube);
+        const auto cbbe = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+        if (kind == bcn::futanari::AddonKind::ube && (actorFamily & ube) != 0U) {
+            return bcn::FutanariSkinType::ubeTrx;
+        }
+        if (kind == bcn::futanari::AddonKind::trx) {
+            if ((actorFamily & ube) != 0U) return bcn::FutanariSkinType::ubeTrx;
+            if ((actorFamily & cbbe) != 0U) return bcn::FutanariSkinType::cbbeTrx;
+        } else if (kind == bcn::futanari::AddonKind::erf && (actorFamily & cbbe) != 0U) {
+            return bcn::FutanariSkinType::erf;
+        }
+        return std::nullopt;
+    }
+
+    [[nodiscard]] LoadedFutanariRoute FindLoadedFutanariRoute(
+        RE::Actor* actor, const bool logTargets = true)
+    {
+        LoadedFutanariRoute result;
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!actor || !base || base->GetSex() != RE::SEX::kFemale || !actor->Is3DLoaded()) return result;
+
+        for (const bool firstPerson : { false, true }) {
+            if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
+            const auto& biped = actor->GetBiped(firstPerson);
+            if (!biped) continue;
+            std::unordered_set<RE::NiAVObject*> inspectedClones;
+            for (std::size_t index{}; index < RE::BIPED_OBJECTS::kEditorTotal; ++index) {
+                const auto& object = biped->objects[index];
+                auto* armor = object.item ? object.item->As<RE::TESObjectARMO>() : nullptr;
+                auto* addon = object.addon;
+                auto* partClone = object.partClone.get();
+                if (!armor || !addon || !partClone || !addon->IsValidRace(actor->GetRace()) ||
+                    !inspectedClones.insert(partClone).second) continue;
+
+                const auto modelPath = AddonModelPath(addon, firstPerson);
+                const auto modelKind = bcn::futanari::ClassifyEvidence(modelPath);
+                std::vector<std::string> matchingNodes;
+                auto targetKind = modelKind;
+                RE::BSVisit::TraverseScenegraphGeometries(partClone, [&](RE::BSGeometry* geometry) {
+                    if (!geometry) return RE::BSVisit::BSVisitControl::kContinue;
+                    const auto* rawName = geometry->name.c_str();
+                    const std::string name = rawName && rawName[0] != '\0' ? rawName : "";
+                    if (name.empty()) return RE::BSVisit::BSVisitControl::kContinue;
+                    const auto geometryKind = bcn::futanari::ClassifyEvidence(
+                        {}, name, GeometryDiffuseTexture(geometry));
+                    if (geometryKind == bcn::futanari::AddonKind::none ||
+                        (modelKind != bcn::futanari::AddonKind::none && geometryKind != modelKind)) {
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    }
+                    if (targetKind == bcn::futanari::AddonKind::none) targetKind = geometryKind;
+                    if (geometryKind == targetKind &&
+                        std::ranges::find(matchingNodes, name) == matchingNodes.end()) {
+                        matchingNodes.push_back(name);
+                    }
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                });
+                if (targetKind == bcn::futanari::AddonKind::none || matchingNodes.empty()) continue;
+                if (result.addonKind != bcn::futanari::AddonKind::none &&
+                    result.addonKind != targetKind) {
+                    SKSE::log::warn(
+                        "Body Change NG found simultaneous TRX and ERF futanari targets on actor {:08X}; refusing an ambiguous texture route",
+                        actor->GetFormID());
+                    return {};
+                }
+                result.addonKind = targetKind;
+
+                auto target = std::ranges::find_if(result.targets, [&](const LoadedPartTarget& candidate) {
+                    return candidate.armor == armor && candidate.addon == addon;
+                });
+                if (target == result.targets.end()) {
+                    result.targets.push_back({
+                        .armor = armor,
+                        .addon = addon,
+                        .slotMask = armor->GetSlotMask().underlying() & addon->GetSlotMask().underlying()
+                    });
+                    target = std::prev(result.targets.end());
+                }
+                target->views.push_back({
+                    .firstPerson = firstPerson,
+                    .actorSkinArmor = false,
+                    .object = partClone,
+                    .nodes = matchingNodes
+                });
+                for (const auto& node : matchingNodes) {
+                    if (std::ranges::find(target->immediateNodes, node) == target->immediateNodes.end()) {
+                        target->immediateNodes.push_back(node);
+                        target->persistentNodes.push_back(node);
+                    }
+                }
+            }
+        }
+        result.type = FutanariTypeFor(result.addonKind, bcn::body_family::ResolveActor(actor));
+        if (!result.type) result.targets.clear();
+        if (logTargets && result.type) {
+            SKSE::log::info(
+                "SkinAudit futanari target actor={:08X} type={} addon-targets={}",
+                actor->GetFormID(), bcn::FutanariSkinTypeLabel(*result.type), result.targets.size());
+        }
+        return result;
+    }
 
     [[nodiscard]] bool IsSkinGeometry(RE::BSGeometry* geometry, const bool actorSkinArmor)
     {
@@ -662,11 +810,13 @@ namespace
         {
             RE::ActorHandle actor;
             std::uint64_t generation{}, epoch{};
+            bool auditSkin{ true };
             bcn::frame_tasks::Lease lease;
         };
     public:
-        NodeUpdateCallback(RE::ActorHandle actorHandle, const std::uint64_t generation) :
-            payload_(Payload{std::move(actorHandle), generation, bcn::frame_tasks::Epoch(),
+        NodeUpdateCallback(RE::ActorHandle actorHandle, const std::uint64_t generation,
+            const bool auditSkin) :
+            payload_(Payload{std::move(actorHandle), generation, bcn::frame_tasks::Epoch(), auditSkin,
                 bcn::frame_tasks::CurrentLease()}) {}
 
         void operator()(RE::BSScript::Variable) override
@@ -677,6 +827,7 @@ namespace
             auto payload = payload_.Take();
             if (!payload || !bcn::frame_tasks::IsCurrent(payload->epoch) ||
                 !bcn::frame_tasks::ValidLease(payload->lease)) return;
+            if (!payload->auditSkin) return;
             bcn::frame_tasks::Continue(std::move(payload->lease), [handle = payload->actor, generation = payload->generation] {
                 QueueSettledSkinAudit(handle, generation, 2U);
             });
@@ -688,7 +839,7 @@ namespace
     };
 
     [[nodiscard]] bool QueueNiNodeUpdate(RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
-        RE::ActorHandle actorHandle, const std::uint64_t generation)
+        RE::ActorHandle actorHandle, const std::uint64_t generation, const bool auditSkin = true)
     {
         if (!actor) return false;
         auto* policy = vm.GetObjectHandlePolicy();
@@ -697,7 +848,7 @@ namespace
             static_cast<RE::VMTypeID>(actor->GetFormType()), actor);
         if (handle == policy->EmptyHandle()) return false;
         RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(
-            new NodeUpdateCallback(std::move(actorHandle), generation));
+            new NodeUpdateCallback(std::move(actorHandle), generation, auditSkin));
         return vm.DispatchMethodCall(handle, "Actor", "QueueNiNodeUpdate",
             RE::MakeFunctionArguments(), callback);
     }
@@ -706,7 +857,9 @@ namespace
                                  RE::Actor* actor, const bool female,
                                  const RE::BGSBipedObjectForm::BipedObjectSlot slot,
                                  const std::vector<bcn::SkinTextureLayer>& layers,
-                                 const std::vector<LoadedPartTarget>& targets)
+                                 const std::vector<LoadedPartTarget>& targets,
+                                 const std::string_view cacheNamespace = "skin",
+                                 const std::string_view partName = {})
     {
         if (!actor) return false;
         if (targets.empty()) return false;
@@ -714,7 +867,7 @@ namespace
         std::vector<std::pair<std::uint8_t, std::string>> resolvedLayers;
         resolvedLayers.reserve(layers.size());
         for (const auto& layer : layers) {
-            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, "skin");
+            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, cacheNamespace);
             if (!path.empty()) {
                 resolvedLayers.emplace_back(static_cast<std::uint8_t>(layer.shaderTextureIndex), std::move(path));
             }
@@ -732,7 +885,8 @@ namespace
                     if (!bcn::skin_override::ownership::MayReplace(exists, current.Value())) {
                         SKSE::log::warn(
                             "SkinOverride persistent-register skipped actor={:08X} part={} armor={:08X} addon={:08X} node='{}' index={} reason=foreign-owner current='{}'",
-                            actor->GetFormID(), SkinPartName(slot), target.armor->GetFormID(),
+                            actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
+                            target.armor->GetFormID(),
                             target.addon->GetFormID(), node, static_cast<std::uint32_t>(textureIndex), current.Value());
                         continue;
                     }
@@ -741,7 +895,8 @@ namespace
                         static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value);
                     SKSE::log::info(
                         "SkinOverride persistent-register actor={:08X} part={} armor={:08X} addon={:08X} node='{}' index={}({}) action={} value='{}'",
-                        actor->GetFormID(), SkinPartName(slot), target.armor->GetFormID(),
+                        actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
+                        target.armor->GetFormID(),
                         target.addon->GetFormID(), node, static_cast<std::uint32_t>(textureIndex),
                         TextureIndexName(textureIndex), exists ? "replace-owned" : "add", path);
                     ++submitted;
@@ -755,7 +910,8 @@ namespace
             }
         }
         SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} exact-targets={} mode=RaceMenu-v2-exact-persistent",
-            actor->GetFormID(), SkinPartName(slot), submitted, appliedTargets);
+            actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
+            submitted, appliedTargets);
         return submitted != 0U && appliedTargets != 0U;
     }
 
@@ -779,10 +935,9 @@ namespace
         return ApplyLoadedPart(overrides, actor, female, route.slot, layers, route.targets);
     }
 
-    [[nodiscard]] bool ClearArmorAddonPart(skee_override::IOverrideInterfaceV2& overrides,
-        RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot)
+    [[nodiscard]] bool ClearArmorAddonTargets(skee_override::IOverrideInterfaceV2& overrides,
+        RE::Actor* actor, const bool female, const std::vector<LoadedPartTarget>& targets)
     {
-        const auto targets = FindLoadedPartTargets(actor, slot);
         bool removed{};
         for (const auto& target : targets) {
             auto cleanupNodes = target.persistentNodes;
@@ -809,6 +964,13 @@ namespace
             }
         }
         return removed;
+    }
+
+    [[nodiscard]] bool ClearArmorAddonPart(skee_override::IOverrideInterfaceV2& overrides,
+        RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot)
+    {
+        return ClearArmorAddonTargets(overrides, actor, female,
+            FindLoadedPartTargets(actor, slot));
     }
 
     struct FaceNodeInfo final
@@ -1503,6 +1665,7 @@ namespace
         std::uint64_t generation{};
         std::uint64_t session{};
         bool female{};
+        bool futanari{};
         std::atomic_uint32_t pending{ 1U };  // submission sentinel
         std::atomic_uint32_t accepted{};
         std::atomic_bool timedOut{};
@@ -1571,7 +1734,8 @@ namespace
         std::atomic_uint32_t accepted{};
     };
 
-    [[nodiscard]] auto MakeLegacyBatch(RE::Actor* actor, const std::uint64_t generation)
+    [[nodiscard]] auto MakeLegacyBatch(RE::Actor* actor, const std::uint64_t generation,
+        const bool futanari = false)
     {
         auto batch = std::make_shared<LegacyOverrideBatch>();
         batch->lease = bcn::frame_tasks::CurrentLease();
@@ -1581,11 +1745,18 @@ namespace
         batch->identity = actor;
         batch->vmIdentity = RE::BSScript::Internal::VirtualMachine::GetSingleton();
         batch->generation = generation;
+        batch->futanari = futanari;
         batch->session = bcn::ActorRegistry::Get().SessionGeneration();
         batch->female = actor->GetActorBase() && actor->GetActorBase()->GetSex() == RE::SEX::kFemale;
         batch->deadline = std::chrono::steady_clock::now() + kLegacyCallbackTimeout;
         ArmLegacyWatchdog(batch);
         return batch;
+    }
+
+    [[nodiscard]] bool IsCurrentLegacyChange(const LegacyOverrideBatch& batch)
+    {
+        return batch.futanari ? IsCurrentFutanariChange(batch.actorFormID, batch.generation) :
+            IsCurrentSkinChange(batch.actorFormID, batch.generation);
     }
 
     // Keep an owning actor reference alive throughout an intermediate query
@@ -1598,7 +1769,7 @@ namespace
             batch->vmIdentity != RE::BSScript::Internal::VirtualMachine::GetSingleton()) return {};
         const auto actor = batch->actor.get();
         if (!actor || actor.get() != batch->identity || !actor->Is3DLoaded() ||
-            !IsCurrentSkinChange(actor->GetFormID(), batch->generation)) return {};
+            !IsCurrentLegacyChange(*batch)) return {};
         const auto* base = actor->GetActorBase();
         if (!base || (base->GetSex() == RE::SEX::kFemale) != batch->female) return {};
         return actor;
@@ -1609,7 +1780,7 @@ namespace
         if (!batch || batch->pending.fetch_sub(1U, std::memory_order_acq_rel) != 1U) return;
         if (batch->timedOut.load(std::memory_order_acquire) ||
             !bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease) ||
-            !IsCurrentSkinChange(batch->actorFormID, batch->generation)) return;
+            !IsCurrentLegacyChange(*batch)) return;
         const auto accepted = batch->accepted.load(std::memory_order_acquire);
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto completion = batch->completion;
@@ -1778,17 +1949,54 @@ namespace
         }
     }
 
+    void DispatchLegacyTargetsClear(RE::BSScript::Internal::VirtualMachine& vm,
+        RE::Actor* actor, const bool female, const std::vector<LoadedPartTarget>& targets,
+        const std::shared_ptr<LegacyOverrideBatch>& batch)
+    {
+        for (const auto& target : targets) {
+            auto cleanupNodes = target.persistentNodes;
+            if (std::ranges::find(cleanupNodes, std::string{}) == cleanupNodes.end()) {
+                cleanupNodes.emplace_back();
+            }
+            for (const auto& node : cleanupNodes) {
+                for (const auto textureIndex : kTextureIndices) {
+                    auto* armor = target.armor;
+                    auto* addon = target.addon;
+                    DispatchLegacyOwnershipQuery(vm, "GetOverrideString", RE::MakeFunctionArguments(
+                        static_cast<RE::TESObjectREFR*>(actor), bool{ female },
+                        static_cast<RE::TESObjectARMO*>(armor), static_cast<RE::TESObjectARMA*>(addon),
+                        std::string{ node }, static_cast<std::uint32_t>(kShaderTextureProperty),
+                        static_cast<std::uint32_t>(textureIndex)), batch,
+                        [&vm, actor, female, armor, addon, node, textureIndex, batch](std::string current) {
+                            if (!bcn::skin_override::ownership::MayRemove(!current.empty(), current)) return;
+                            static_cast<void>(DispatchLegacy(vm, "RemoveOverride", RE::MakeFunctionArguments(
+                                static_cast<RE::TESObjectREFR*>(actor), bool{ female },
+                                static_cast<RE::TESObjectARMO*>(armor), static_cast<RE::TESObjectARMA*>(addon),
+                                std::string{ node }, static_cast<std::uint32_t>(kShaderTextureProperty),
+                                static_cast<std::uint32_t>(textureIndex)), batch));
+                            SKSE::log::info(
+                                "SkinOverride futanari-remove actor={:08X} armor={:08X} addon={:08X} node='{}' index={} owner=BCNG mode=RaceMenu-v1",
+                                actor->GetFormID(), armor->GetFormID(), addon->GetFormID(), node,
+                                textureIndex);
+                        });
+                }
+            }
+        }
+    }
+
     [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyLoadedPartApply(
         RE::BSScript::Internal::VirtualMachine& vm,
         RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const std::vector<bcn::SkinTextureLayer>& layers,
         const std::shared_ptr<LegacyOverrideBatch>& batch,
-        const std::vector<LoadedPartTarget>& targets)
+        const std::vector<LoadedPartTarget>& targets,
+        const std::string_view cacheNamespace = "skin",
+        const std::string_view partName = {})
     {
         std::vector<std::pair<std::uint32_t, std::string>> resolvedLayers;
         resolvedLayers.reserve(layers.size());
         for (const auto& layer : layers) {
-            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, "skin");
+            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, cacheNamespace);
             if (!path.empty()) resolvedLayers.emplace_back(layer.shaderTextureIndex, std::move(path));
         }
         if (resolvedLayers.empty()) return {};
@@ -1830,7 +2038,7 @@ namespace
             }
         }
         SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} mode=RaceMenu-v1-exact",
-            actor->GetFormID(), SkinPartName(slot), submitted);
+            actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName, submitted);
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
     }
 
@@ -2415,6 +2623,106 @@ namespace
                 }
             }, 8U, 109U);
     }
+
+    void ApplyFutanariV2Now(RE::ActorHandle actorHandle,
+        const bcn::FutanariSkinProfile profile, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        if (!actor || !actor->Is3DLoaded() ||
+            !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
+        const auto route = FindLoadedFutanariRoute(actor.get());
+        if (!route.type || *route.type != profile.type || route.targets.empty()) return;
+        auto* overrides = OverrideInterfaceV2();
+        if (!overrides) return;
+        static_cast<void>(ClearArmorAddonTargets(*overrides, actor.get(), true, route.targets));
+        if (ApplyLoadedPart(*overrides, actor.get(), true, kSosMaleGenitalSlot,
+                profile.layers, route.targets, "futanari", "futanari-genitals")) {
+            SKSE::log::info(
+                "Body Change NG applied futanari skin '{}' ({}) to actor {:08X}",
+                profile.name, bcn::FutanariSkinTypeLabel(profile.type), actor->GetFormID());
+        }
+    }
+
+    void ClearFutanariV2Now(RE::ActorHandle actorHandle, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        if (!actor || !actor->Is3DLoaded() ||
+            !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
+        const auto route = FindLoadedFutanariRoute(actor.get());
+        auto* overrides = OverrideInterfaceV2();
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!overrides || route.targets.empty()) return;
+        const auto cleared = ClearArmorAddonTargets(*overrides, actor.get(), true, route.targets);
+        if (cleared && vm) {
+            static_cast<void>(QueueNiNodeUpdate(*vm, actor.get(), actorHandle, generation, false));
+        }
+        SKSE::log::info("Body Change NG restored the default futanari skin for actor {:08X}",
+            actor->GetFormID());
+    }
+
+    void ApplyFutanariLegacyNow(RE::ActorHandle actorHandle,
+        const bcn::FutanariSkinProfile profile, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !actor->Is3DLoaded() || !vm ||
+            !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
+        const auto route = FindLoadedFutanariRoute(actor.get());
+        if (!route.type || *route.type != profile.type || route.targets.empty()) return;
+
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation, true);
+        clearBatch->completion = [actorHandle, profile, generation](const std::uint32_t) {
+            const auto currentActor = actorHandle.get();
+            auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            if (!currentActor || !currentActor->Is3DLoaded() || !currentVM ||
+                !IsCurrentFutanariChange(currentActor->GetFormID(), generation)) return;
+            const auto currentRoute = FindLoadedFutanariRoute(currentActor.get());
+            if (!currentRoute.type || *currentRoute.type != profile.type ||
+                currentRoute.targets.empty()) return;
+            auto applyBatch = MakeLegacyBatch(currentActor.get(), generation, true);
+            applyBatch->completion = [actorHandle, profile, generation](const std::uint32_t accepted) {
+                const auto settledActor = actorHandle.get();
+                if (!settledActor || !IsCurrentFutanariChange(
+                        settledActor->GetFormID(), generation)) return;
+                if (accepted != 0U) {
+                    SKSE::log::info(
+                        "Body Change NG applied futanari skin '{}' ({}) to actor {:08X} through RaceMenu Override v1",
+                        profile.name, bcn::FutanariSkinTypeLabel(profile.type),
+                        settledActor->GetFormID());
+                }
+            };
+            static_cast<void>(DispatchLegacyLoadedPartApply(*currentVM, currentActor.get(), true,
+                kSosMaleGenitalSlot, profile.layers, applyBatch, currentRoute.targets,
+                "futanari", "futanari-genitals"));
+            CompleteLegacyBatch(applyBatch);
+        };
+        DispatchLegacyTargetsClear(*vm, actor.get(), true, route.targets, clearBatch);
+        CompleteLegacyBatch(clearBatch);
+    }
+
+    void ClearFutanariLegacyNow(RE::ActorHandle actorHandle, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !actor->Is3DLoaded() || !vm ||
+            !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
+        const auto route = FindLoadedFutanariRoute(actor.get());
+        if (route.targets.empty()) return;
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation, true);
+        clearBatch->completion = [actorHandle, generation](const std::uint32_t) {
+            const auto currentActor = actorHandle.get();
+            auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            if (!currentActor || !currentVM || !IsCurrentFutanariChange(
+                    currentActor->GetFormID(), generation)) return;
+            static_cast<void>(QueueNiNodeUpdate(
+                *currentVM, currentActor.get(), actorHandle, generation, false));
+            SKSE::log::info(
+                "Body Change NG restored the default futanari skin for actor {:08X} through RaceMenu Override v1",
+                currentActor->GetFormID());
+        };
+        DispatchLegacyTargetsClear(*vm, actor.get(), true, route.targets, clearBatch);
+        CompleteLegacyBatch(clearBatch);
+    }
 }
 
 namespace bcn::skin_override
@@ -2449,6 +2757,11 @@ namespace bcn::skin_override
             std::scoped_lock lock(g_rsvFaceLock);
             g_rsvFaceGenerations.clear();
             g_rsvTransientFaces.clear();
+        }
+        {
+            std::scoped_lock lock(g_futanariLock);
+            g_futanariTypes.clear();
+            g_futanariApplyGenerations.clear();
         }
     }
 
@@ -2530,7 +2843,8 @@ namespace bcn::skin_override
                     }));
             };
             if (!bcn::runtime_assets::PrepareTexturePathsAsync(
-                    resolved->GetFormID(), std::move(paths), continueApply,
+                    static_cast<std::uint64_t>(resolved->GetFormID()) << 1U,
+                    std::move(paths), continueApply,
                     bcn::async_work::FrameTaskQueue::InteractiveLease(lease))) {
                 continueApply(false);
             }
@@ -2559,9 +2873,134 @@ namespace bcn::skin_override
         return bcn::ActorRegistry::Get().AppliedSkinId(actor);
     }
 
+    std::optional<bcn::FutanariSkinType> CurrentFutanariType(
+        RE::Actor* actor, const bool refresh)
+    {
+        if (!actor || !actor->Is3DLoaded()) return std::nullopt;
+        auto* base = actor->GetActorBase();
+        if (!base || base->GetSex() != RE::SEX::kFemale) return std::nullopt;
+        if (!refresh) {
+            std::scoped_lock lock(g_futanariLock);
+            const auto found = g_futanariTypes.find(actor->GetFormID());
+            if (found != g_futanariTypes.end()) return found->second.type;
+        }
+        const auto detected = FindLoadedFutanariRoute(actor, false).type;
+        {
+            std::scoped_lock lock(g_futanariLock);
+            g_futanariTypes[actor->GetFormID()] = { detected };
+        }
+        return detected;
+    }
+
+    ApplyResult QueueApplyFutanari(RE::Actor* actor, std::string profileId)
+    {
+        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
+        if (!actor) return ApplyResult::invalidActor;
+        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
+        auto* base = actor->GetActorBase();
+        if (!base || base->GetSex() != RE::SEX::kFemale) return ApplyResult::incompatibleSex;
+        const auto overrideVersion = OverrideVersion();
+        if (overrideVersion == 0U ||
+            (overrideVersion == 1U && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
+            return ApplyResult::unavailable;
+        }
+        const auto profile = bcn::FutanariSkinProfiles::Get().Find(profileId);
+        if (!profile) return ApplyResult::missingProfile;
+        const auto actorType = CurrentFutanariType(actor, true);
+        if (!actorType) return ApplyResult::futanariGeometryUnavailable;
+        if (*actorType != profile->type) return ApplyResult::incompatibleFutanariType;
+        if (!SKSE::GetTaskInterface()) return ApplyResult::noTaskInterface;
+
+        bcn::ActorRegistry::Get().SetFutanariSkin(actor, profile->id);
+        const auto handle = actor->GetHandle();
+        const auto generation = BeginFutanariChange(actor->GetFormID());
+        bcn::frame_tasks::Queue(actor->GetFormID(),
+            [handle, profile = *profile, generation, overrideVersion] {
+                const auto current = handle.get();
+                if (!current || !IsCurrentFutanariChange(current->GetFormID(), generation)) return;
+                if (profile.contentHash != bcn::FutanariSkinProfiles::Get().ContentHash(profile.id)) {
+                    QueueReapplyCurrentFutanari(current.get());
+                    return;
+                }
+                std::vector<bcn::runtime_assets::TexturePreparation> paths;
+                paths.reserve(profile.layers.size());
+                for (const auto& layer : profile.layers) {
+                    paths.push_back({ layer.path, "futanari" });
+                }
+                const auto lease = bcn::frame_tasks::CurrentLease();
+                const auto continueApply = [lease, handle, profile, generation, overrideVersion](const bool prepared) {
+                    if (!prepared) {
+                        SKSE::log::warn(
+                            "Body Change NG could not prepare every futanari texture for '{}'; unavailable channels remain unchanged",
+                            profile.name);
+                    }
+                    static_cast<void>(bcn::frame_tasks::Continue(lease,
+                        [handle, profile, generation, overrideVersion] {
+                            const auto resolved = handle.get();
+                            if (!resolved || !IsCurrentFutanariChange(
+                                    resolved->GetFormID(), generation)) return;
+                            if (overrideVersion == 1U) {
+                                ApplyFutanariLegacyNow(handle, profile, generation);
+                            } else {
+                                ApplyFutanariV2Now(handle, profile, generation);
+                            }
+                        }));
+                };
+                if (!bcn::runtime_assets::PrepareTexturePathsAsync(
+                        (static_cast<std::uint64_t>(current->GetFormID()) << 1U) | 1U,
+                        std::move(paths), continueApply,
+                        bcn::async_work::FrameTaskQueue::InteractiveLease(lease))) {
+                    continueApply(false);
+                }
+            }, 1U, 205U);
+        return ApplyResult::queued;
+    }
+
+    ApplyResult QueueClearFutanari(RE::Actor* actor)
+    {
+        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
+        if (!actor) return ApplyResult::invalidActor;
+        bcn::ActorRegistry::Get().ClearFutanariSkin(actor);
+        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
+        const auto overrideVersion = OverrideVersion();
+        if (overrideVersion == 0U ||
+            (overrideVersion == 1U && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
+            return ApplyResult::unavailable;
+        }
+        if (!CurrentFutanariType(actor, true)) return ApplyResult::futanariGeometryUnavailable;
+        if (!SKSE::GetTaskInterface()) return ApplyResult::noTaskInterface;
+        const auto handle = actor->GetHandle();
+        const auto generation = BeginFutanariChange(actor->GetFormID());
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, overrideVersion] {
+            if (overrideVersion == 1U) ClearFutanariLegacyNow(handle, generation);
+            else ClearFutanariV2Now(handle, generation);
+        }, 1U, 205U);
+        return ApplyResult::queued;
+    }
+
+    std::optional<std::string> CurrentFutanariProfileId(const RE::Actor* actor)
+    {
+        return bcn::ActorRegistry::Get().SelectedFutanariSkinId(actor);
+    }
+
+    void QueueReapplyCurrentFutanari(RE::Actor* actor)
+    {
+        if (const auto profile = CurrentFutanariProfileId(actor)) {
+            [[maybe_unused]] const auto result = QueueApplyFutanari(actor, *profile);
+        }
+    }
+
+    void InvalidateFutanariDetection(const std::uint32_t actorFormID)
+    {
+        if (actorFormID == 0U) return;
+        std::scoped_lock lock(g_futanariLock);
+        g_futanariTypes.erase(actorFormID);
+    }
+
     void NotifyNiNodeUpdated(RE::Actor* actor)
     {
         if (!actor || !actor->Is3DLoaded() || !bcn::frame_tasks::Active()) return;
+        InvalidateFutanariDetection(actor->GetFormID());
         // Ordinary BCNG skins do not need RSV's delayed face race. Avoid a
         // queued 150-ms reconciliation on every unrelated NiNode rebuild.
         if (!HasRsvTransientFace(actor->GetFormID())) return;
@@ -2754,6 +3193,11 @@ namespace bcn::skin_override
         {
             std::scoped_lock lock(g_generationLock);
             g_applyGenerations.erase(actorFormID);
+        }
+        {
+            std::scoped_lock lock(g_futanariLock);
+            g_futanariTypes.erase(actorFormID);
+            g_futanariApplyGenerations.erase(actorFormID);
         }
         {
             std::scoped_lock lock(g_legacyCleanupLock);

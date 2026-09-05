@@ -78,6 +78,7 @@ try {
     $expectedBinaryFiles = @(
         'BodySkin/README.txt',
         'CalienteTools/BodySlide/SliderPresets/README.txt',
+        'Futanari/README.txt',
         'LICENSE',
         'SKSE/Plugins/BodyChangeNG.dll',
         'SKSE/Plugins/BodyChangeNGdistribution.json',

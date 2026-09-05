@@ -115,6 +115,9 @@ button after adding files:
 - `BodySkin\<pack name>\Textures\actors\character\argonianfemale|argonianmale|khajiitfemale|khajiitmale` — beast-race skin packs
 - `BodySkin\<pack name>\Textures\!UBE\Body` and `...\Head` — UBE 2.0 skin packs
 - `TintMask\<pack name>\textures\...\tintmasks` — player tint DDS packs
+- `Futanari\<pack name>\Textures\!UBE\Body` — UBE SOS/TNG genital skin packs
+- `Futanari\<pack name>\Textures\[TRX] Futa addon\Regular\Default` — CBBE 3BA TRX genital skin packs
+- `Futanari\<pack name>\Textures\ERF_Futanari\FairSkinCBBE` — CBBE 3BA ERF genital skin packs
 
 ## Runtime UI
 

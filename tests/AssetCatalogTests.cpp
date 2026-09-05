@@ -1,6 +1,7 @@
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinGeometryRouting.h"
+#include "BodyChangeNG/FutanariRouting.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
@@ -97,7 +98,7 @@ namespace
 
 int main(const int argc, char** argv)
 {
-    if (argc == 3) {
+    if (argc == 3 || argc == 4) {
         std::cout << "scanning real skin root\n" << std::flush;
         const auto skins = bcn::SkinProfiles::ScanDirectory(std::filesystem::path{ argv[1] });
         std::cout << "scanning real tint root\n" << std::flush;
@@ -155,8 +156,16 @@ int main(const int argc, char** argv)
             }
         }
         if (!Require(verifiedSkinTextures != 0U, "real skin packs exposed no standard DDS channels")) return 1;
+        std::size_t futanariSkins{};
+        if (argc == 4) {
+            const auto profiles = bcn::FutanariSkinProfiles::ScanDirectory(
+                std::filesystem::path{ argv[3] });
+            if (!Require(!profiles.empty(), "real futanari root produced no profiles")) return 1;
+            futanariSkins = profiles.size();
+        }
         std::cout << "skins=" << skins.size() << " mapped-skin-dds=" << verifiedSkinTextures
-                  << " unrelated-dds=" << unrelatedDdsFiles << " tints=" << tints.size() << '\n';
+                  << " unrelated-dds=" << unrelatedDdsFiles << " tints=" << tints.size()
+                  << " futanari=" << futanariSkins << '\n';
         return 0;
     }
 
@@ -492,6 +501,58 @@ int main(const int argc, char** argv)
     }
     if (!Require(argonianRows == 2U && khajiitRows == 2U,
             "beast-race packs did not produce separate female and male rows")) return 1;
+
+    const auto futanariRoot = sandbox / "Futanari";
+    const auto futaUbe = futanariRoot / "UBE TRX" / "Textures" / "!UBE" / "Body";
+    Touch(futaUbe / "malebody_1_d.dds");
+    Touch(futaUbe / "malebody_1_n.dds");
+    const auto futaTrx = futanariRoot / "CBBE TRX" / "textures" /
+        "[TRX] Futa addon" / "Regular" / "Default";
+    for (const auto* file : { "schlong.dds", "schlong_msn.dds", "schlong_sk.dds",
+             "schlong_s.dds", "wetschlong_110_s.dds" }) Touch(futaTrx / file);
+    // An unrelated optional atlas in the same pack must not create a second
+    // or incorrectly typed row.
+    Touch(futanariRoot / "CBBE TRX" / "textures" / "Dw3BA" / "Default" / "schlong.dds");
+    const auto futaErf = futanariRoot / "ERF" / "textures" /
+        "erf_futanari" / "fairskincbbe";
+    for (const auto* file : { "futanari_schlong.dds", "futanari_schlong_msn.dds",
+             "futanari_schlong_sk.dds", "futanari_schlong_s.dds" }) Touch(futaErf / file);
+
+    const auto futanari = bcn::FutanariSkinProfiles::ScanDirectory(futanariRoot);
+    if (!Require(futanari.size() == 3U,
+            "futanari catalog did not isolate UBE TRX, CBBE TRX, and ERF rows")) return 1;
+    const auto requireFutanari = [&](const bcn::FutanariSkinType type,
+        const std::size_t layerCount, const std::string_view stem) {
+        const auto found = std::ranges::find(futanari, type, &bcn::FutanariSkinProfile::type);
+        return found != futanari.end() && found->layers.size() == layerCount &&
+            std::ranges::all_of(found->layers, [&](const auto& layer) {
+                return Filename(Lower(layer.path)).starts_with(stem);
+            });
+    };
+    if (!Require(requireFutanari(bcn::FutanariSkinType::ubeTrx, 2U, "malebody_1_") &&
+            requireFutanari(bcn::FutanariSkinType::cbbeTrx, 4U, "schlong") &&
+            requireFutanari(bcn::FutanariSkinType::erf, 4U, "futanari_schlong"),
+            "futanari skin files crossed addon/body types or material channels")) return 1;
+    if (!Require(
+            bcn::futanari::ClassifyEvidence(
+                R"(meshes\[TRX] Futa addon\Regular\trx_schlong_1.nif)", {}, {}) ==
+                bcn::futanari::AddonKind::trx &&
+            bcn::futanari::ClassifyEvidence(
+                R"(meshes\!UBE\SOS_Addon\ube_penis_1.nif)", {}, {}) ==
+                bcn::futanari::AddonKind::ube &&
+            bcn::futanari::ClassifyEvidence({}, "Penis",
+                R"(Textures\!UBE\Body\malebody_1_d.dds)") ==
+                bcn::futanari::AddonKind::ube &&
+            bcn::futanari::ClassifyEvidence({}, "CBBE_Shlong", {}) ==
+                bcn::futanari::AddonKind::trx &&
+            bcn::futanari::ClassifyEvidence(
+                R"(meshes\ERF_Futanari\futanari_1.nif)", {}, {}) ==
+                bcn::futanari::AddonKind::erf &&
+            bcn::futanari::ClassifyEvidence({}, "CBBE Schlong", {}) ==
+                bcn::futanari::AddonKind::erf &&
+            bcn::futanari::ClassifyEvidence({}, "FemaleBody", {}) ==
+                bcn::futanari::AddonKind::none,
+            "futanari geometry evidence confused normal body nodes or addon families")) return 1;
     if (!Require(bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Anus") &&
@@ -751,6 +812,21 @@ int main(const int argc, char** argv)
     if (!Require(changedNormalHash != normalHash && changedCachedNormal != cachedNormal &&
             Filename(changedCachedNormal) == "femalebody_1_msn.dds",
             "a same-size/timestamp Mu mask replacement did not invalidate the normal bundle")) return 1;
+
+    // TRX wet integrations derive a sibling wet specular from the active
+    // Schlong_s location. It must follow the selected profile into the same
+    // private cache without replacing the normal slot-7 texture.
+    constexpr std::string_view trxSpecularKey =
+        "Futanari\\CBBE TRX\\textures\\[TRX] Futa addon\\Regular\\Default\\schlong_s.dds";
+    bcn::runtime_assets::ClearGameRelativeSources("Futanari\\");
+    bcn::runtime_assets::RegisterGameRelativeSource(trxSpecularKey, futaTrx / "schlong_s.dds");
+    const auto cachedTrxSpecular =
+        bcn::runtime_assets::TexturePathFromGameRelative(trxSpecularKey, "futanari");
+    const auto cachedTrxDirectory = sandbox / "Data" /
+        std::filesystem::path{ cachedTrxSpecular }.parent_path();
+    if (!Require(Filename(cachedTrxSpecular) == "schlong_s.dds" &&
+            std::filesystem::is_regular_file(cachedTrxDirectory / "wetschlong_110_s.dds"),
+            "TRX wet specular did not follow the selected futanari skin into the runtime cache")) return 1;
 
     Touch(sandbox / "Data" / "textures" / "BodyChangeNG" / "outside.dds");
     if (!Require(!bcn::runtime_assets::CachedTextureExists(

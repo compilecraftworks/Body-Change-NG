@@ -71,6 +71,7 @@ namespace
             bcn::racemenu_preset_migration::MigrateVisiblePresets();
             bcn::PresetCatalog::Get().Refresh();
             bcn::SkinProfiles::Get().Refresh();
+            bcn::FutanariSkinProfiles::Get().Refresh();
             bcn::player_tint::Catalog::Get().Refresh();
             [[maybe_unused]] const auto loadedBodyChangeRules = bcn::Distribution::Get().Load();
             // OBody's JSON is deliberately not read at startup. Outfit-
