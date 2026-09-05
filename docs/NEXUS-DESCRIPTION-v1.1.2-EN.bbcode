@@ -26,6 +26,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 [*][b]Expanded compatibility[/b] — actor-matched CBBE 3BA and UBE 2.0, standard female/male and SOS skins, Argonian/Khajiit, Racial Skin Variance, Mu Dynamic NormalMap, and improved OverlayFix coexistence
 [*][b]More responsive processing[/b] — direct selections are prioritized, required skin files are prepared off the game thread, stale work is cancelled, and automatic distribution remains frame-budgeted
 [*][b]Faster MO2 skin catalogs[/b] — one backing DDS exposed through physical and virtual Data paths is hashed only once; full DDS reads do not run per NPC event
+[*][b]Safer mixed-body anatomy options[/b] — clothed breast/nipple correction and stable NPC nipple/genital randomization are limited to verified CBBE 3BA actors; UBE actors are skipped with clear in-game guidance
 [/list]
 
 [line]
@@ -120,9 +121,10 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 [size=4][color=#9AD7F5][b]Outfit Correction and Randomization[/b][/color][/size]
 [list]
-[*]Optional breast correction while clothed
-[*]Separate nipple-correction toggle
-[*]Optional stable nipple and genital slider randomization
+[*]Optional CBBE 3BA breast correction while clothed, with a separate nipple-correction toggle
+[*]Optional stable CBBE 3BA NPC nipple and genital slider randomization
+[*]UBE uses a materially different slider system, so these anatomy options are not applied to UBE actors; selecting one shows an in-game warning and tooltips
+[*]Global switches remain available in mixed UBE-player/CBBE-NPC installations and are enforced per actor
 [/list]
 
 [size=4][color=#9AD7F5][b]UI and Input[/b][/color][/size]

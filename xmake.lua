@@ -10,7 +10,7 @@ set_policy("package.requires_lock", true)
 set_config("skse_xbyak", true)
 set_config("skyrim_se", true)
 set_config("skyrim_ae", true)
-set_config("skyrim_vr", true)
+set_config("skyrim_vr", false)
 
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 add_rules("plugin.vsxmake.autoupdate")

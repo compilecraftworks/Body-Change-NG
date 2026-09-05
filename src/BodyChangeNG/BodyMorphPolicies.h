@@ -32,4 +32,20 @@ namespace bcn::body_morph_policy
         }
         return FemaleFamily::none;
     }
+
+    // Outfit breast/nipple correction is derived from OBody NG's CBBE/3BA
+    // slider set. UBE uses a materially different anatomy and non-zero body
+    // defaults, so guessing equivalent targets can visibly damage its shape.
+    [[nodiscard]] constexpr bool SupportsOutfitCorrection(const FemaleFamily family) noexcept
+    {
+        return family == FemaleFamily::cbbe3ba;
+    }
+
+    // Anatomy randomization is an NPC distribution feature and currently has
+    // the same verified CBBE/3BA-only support boundary as OBody NG.
+    [[nodiscard]] constexpr bool SupportsNpcAnatomyRandomization(
+        const FemaleFamily family, const bool player) noexcept
+    {
+        return !player && family == FemaleFamily::cbbe3ba;
+    }
 }

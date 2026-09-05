@@ -3,6 +3,7 @@
 
 #include "BodyChangeNG/ActorCatalog.h"
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/InputSink.h"
 #include "BodyChangeNG/MenuCharacterPresentation.h"
@@ -2126,14 +2127,31 @@ namespace
                 return;
             }
             ImGui::TextDisabled("%s", Text("지원되는 BodySlide 슬라이더에만 적용", "Only applies to supported BodySlide sliders", "仅适用于受支持的 BodySlide 滑块"));
+            const auto selectedFamily = bcn::body_morph_policy::ResolveFemaleFamily(
+                bcn::body_family::ResolveActor(SelectedActor()));
+            const auto selectedUbe = selectedFamily == bcn::body_morph_policy::FemaleFamily::ube;
+            if (selectedUbe) {
+                ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
+                    "선택한 UBE 액터에는 가슴·유두 보정과 NPC 신체 무작위화를 적용하지 않습니다.",
+                    "Breast/nipple correction and NPC anatomy randomization are disabled for the selected UBE actor.",
+                    "不会对所选 UBE 角色应用胸部/乳头修正或 NPC 身体随机化。"));
+            }
             ImGui::Separator();
             auto settings = bcn::Settings::Get().Snapshot();
             auto settingsChanged = false;
             const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Correct breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
+                "CBBE 3BA 전용입니다. UBE 액터에는 적용되지 않습니다.",
+                "CBBE 3BA only. UBE actors are skipped.",
+                "仅支持 CBBE 3BA；会跳过 UBE 角色。"));
             settingsChanged |= refitChanged;
             ImGui::Indent();
             if (!settings.orefitEnabled) ImGui::BeginDisabled();
             const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 보정", "Correct nipples while clothed", "穿衣时修正乳头"), &settings.orefitNippleMorphing);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
+                "CBBE 3BA 전용입니다. UBE 액터에는 적용되지 않습니다.",
+                "CBBE 3BA only. UBE actors are skipped.",
+                "仅支持 CBBE 3BA；会跳过 UBE 角色。"));
             settingsChanged |= nippleRefitChanged;
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
@@ -2155,11 +2173,19 @@ namespace
             }
             ImGui::Separator();
             const auto nippleRandomizationChanged = ImGui::Checkbox(
-                Text("유두 형태 무작위화", "Randomize nipple shape", "随机乳头形态"),
+                Text("NPC 유두 형태 무작위화", "Randomize NPC nipple shape", "随机 NPC 乳头形态"),
                 &settings.nippleRandomization);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
+                "CBBE 3BA NPC 전용입니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
+                "CBBE 3BA NPCs only. The player and UBE NPCs are skipped.",
+                "仅支持 CBBE 3BA NPC；会跳过玩家和 UBE NPC。"));
             const auto genitalRandomizationChanged = ImGui::Checkbox(
-                Text("생식기 형태 무작위화", "Randomize genital shape", "随机生殖器形态"),
+                Text("NPC 생식기 형태 무작위화", "Randomize NPC genital shape", "随机 NPC 生殖器形态"),
                 &settings.genitalRandomization);
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
+                "CBBE 3BA NPC 전용입니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
+                "CBBE 3BA NPCs only. The player and UBE NPCs are skipped.",
+                "仅支持 CBBE 3BA NPC；会跳过玩家和 UBE NPC。"));
             settingsChanged |= nippleRandomizationChanged || genitalRandomizationChanged;
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);

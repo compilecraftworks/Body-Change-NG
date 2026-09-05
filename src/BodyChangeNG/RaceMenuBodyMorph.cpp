@@ -454,8 +454,9 @@ namespace
                 desiredMorphs.insert_or_assign(
                     name, StableRange(actor->GetFormID(), preset.name, name, salt, low, high));
             };
-            if (settings.nippleRandomization &&
-                femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
+            const auto randomizeNpcAnatomy = bcn::body_morph_policy::SupportsNpcAnatomyRandomization(
+                femaleFamily, actor.get() == RE::PlayerCharacter::GetSingleton());
+            if (settings.nippleRandomization && randomizeNpcAnatomy) {
                 const auto smallAreola = StableChance(actor->GetFormID(), preset.name, "AreolaSize", 2, .15F);
                 setRandom("AreolaSize", 1, smallAreola ? -1.0F : 0.0F, smallAreola ? 0.0F : 1.0F);
                 if (StableChance(actor->GetFormID(), preset.name, "AreolaPull_v2", 3, .75F)) setRandom("AreolaPull_v2", 4, -.25F, 1.0F);
@@ -470,28 +471,8 @@ namespace
                 if (StableChance(actor->GetFormID(), preset.name, "NipplePuffy_v2", 15, .06F)) setRandom("NipplePuffy_v2", 16, .4F, .7F);
                 if (StableChance(actor->GetFormID(), preset.name, "NippleThicc_v2", 17, .35F)) setRandom("NippleThicc_v2", 18, 0.0F, .9F);
                 if (StableChance(actor->GetFormID(), preset.name, "NippleInvert_v2", 19, .02F)) setRandom("NippleInvert_v2", 20, .65F, 1.0F);
-            } else if (settings.nippleRandomization &&
-                femaleFamily == bcn::body_morph_policy::FemaleFamily::ube) {
-                const auto largeAreola = StableChance(
-                    actor->GetFormID(), preset.name, "AreolaeSizeBig", 101, .45F);
-                const auto areolaSize = StableRange(actor->GetFormID(), preset.name,
-                    largeAreola ? "AreolaeSizeBig" : "AreolaeSizeSmall", 102, .05F, .45F);
-                desiredMorphs.insert_or_assign(largeAreola ? "AreolaeSizeBig" : "AreolaeSizeSmall", areolaSize);
-                desiredMorphs.insert_or_assign(
-                    largeAreola ? "AreolaeSizeBig_UV_fix" : "AreolaeSizeSmall_UV_fix", areolaSize);
-                setRandom("AreolaErection", 103, 0.0F, .35F);
-                setRandom("NippleLength", 104, 0.0F, .18F);
-                setRandom("NippleDiameter n|p", 105, -.20F, .20F);
-                setRandom("NipplesPerkiness", 107, 0.0F, .35F);
-                if (StableChance(actor->GetFormID(), preset.name, "NippleCircularCrease", 108, .20F)) {
-                    setRandom("NippleCircularCrease", 109, 0.0F, .35F);
-                }
-                if (StableChance(actor->GetFormID(), preset.name, "Nippleinverted", 110, .04F)) {
-                    setRandom("Nippleinverted", 111, .25F, .65F);
-                }
             }
-            if (settings.genitalRandomization &&
-                femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
+            if (settings.genitalRandomization && randomizeNpcAnatomy) {
                 const auto innie = StableChance(actor->GetFormID(), preset.name, "Innieoutie", 21, .20F);
                 const auto average = !innie && StableChance(actor->GetFormID(), preset.name, "Innieoutie", 22, .75F);
                 setRandom("Innieoutie", 23, innie ? .95F : average ? .4F : -.25F, innie ? 1.1F : average ? .75F : .3F);
@@ -516,22 +497,6 @@ namespace
                 setRandom("AnalTexPos_v2", 42, 0.0F, 1.0F);
                 setRandom("AnalTexPosRe_v2", 43, 0.0F, 1.0F);
                 desiredMorphs.insert_or_assign("AnalLoose_v2", -.1F);
-            } else if (settings.genitalRandomization &&
-                femaleFamily == bcn::body_morph_policy::FemaleFamily::ube) {
-                // UBE 2.0 Release Body.osp names from the live TAKEALOOK
-                // installation. Deliberately avoid hidden/opening controls
-                // such as Vagina_spread and AnusSpread.
-                setRandom("AnusSize", 121, -.10F, .30F);
-                if (StableChance(actor->GetFormID(), preset.name, "BiggerAnus", 122, .20F)) {
-                    setRandom("BiggerAnus", 123, 0.0F, .25F);
-                }
-                if (StableChance(actor->GetFormID(), preset.name, "AnusTriangular", 124, .25F)) {
-                    setRandom("AnusTriangular", 125, 0.0F, .30F);
-                }
-                setRandom("ClitorisErection", 126, -.10F, .25F);
-                setRandom("PussyCute", 127, 0.0F, .35F);
-                setRandom("Vagina_shape", 128, -.20F, .25F);
-                setRandom("Vagina_shape_wider", 129, -.10F, .20F);
             }
         }
         if (mode != bcn::racemenu::ApplyMode::outfit) {
@@ -638,7 +603,7 @@ namespace
         const auto femaleFamily = bcn::body_morph_policy::ResolveFemaleFamily(
             bcn::body_family::ResolveActor(actor.get()), presetFamily);
         const auto settings = bcn::Settings::Get().MorphOptions();
-        if (femaleFamily == bcn::body_morph_policy::FemaleFamily::cbbe3ba) {
+        if (bcn::body_morph_policy::SupportsOutfitCorrection(femaleFamily)) {
             derive("BreastSideShape", 0.0F);
             derive("BreastUnderDepth", 0.0F);
             derive("BreastCleavage", 1.0F);
@@ -664,27 +629,6 @@ namespace
                 fixed("NippleDistance", 0.05F, 0.08F);
                 fixed("NippleDown", 0.0F, -0.1F);
                 derive("NipplePerkManga", -0.25F);
-            }
-        } else if (femaleFamily == bcn::body_morph_policy::FemaleFamily::ube) {
-            // UBE uses a different breast/nipple vocabulary; writing the 3BA
-            // names produces no correction and can leave a false "applied"
-            // signature. These targets are present in UBE 2.0's body and
-            // outfit SliderSets in TAKEALOOK.
-            derive("Big_SaggyBreasts", 0.0F);
-            derive("SaggingBreastsZone", 0.0F);
-            derive("Juicy_breasts", 0.0F);
-            derive("BreastsCupSag n|p", 0.0F);
-            derive("BreastsRotate_Y", 0.0F);
-            fixed("Breasts_Perky", .10F, .15F);
-            if (settings.outfitNippleCorrection) {
-                derive("AreolaErection", 0.0F);
-                derive("NippleLength", 0.0F);
-                derive("NipplesShowUp", 0.0F);
-                derive("Nipples_Fantasy", 0.0F);
-                derive("Nippleinverted", 0.0F);
-                derive("NippleInverted_PuffyAreola", 0.0F);
-                derive("NippleInverted_PuffyAreola_UV_fix", 0.0F);
-                derive("NippleFlatten", 1.0F);
             }
         }
         // Outfit correction is an automatic runtime operation. RaceMenu's

@@ -66,6 +66,8 @@ int main()
         using bcn::body_family::Family;
         using bcn::body_morph_policy::FemaleFamily;
         using bcn::body_morph_policy::ResolveFemaleFamily;
+        using bcn::body_morph_policy::SupportsNpcAnatomyRandomization;
+        using bcn::body_morph_policy::SupportsOutfitCorrection;
         Require(ResolveFemaleFamily(Bit(Family::cbbe), Bit(Family::cbbe) | Bit(Family::ube)) ==
                 FemaleFamily::cbbe3ba,
             "combined preset metadata overrode a known CBBE/3BA actor");
@@ -77,6 +79,17 @@ int main()
         Require(ResolveFemaleFamily(Bit(Family::cbbe) | Bit(Family::ube),
                 Bit(Family::cbbe) | Bit(Family::ube)) == FemaleFamily::none,
             "ambiguous actor evidence mixed CBBE/3BA and UBE anatomy sliders");
+        Require(SupportsOutfitCorrection(FemaleFamily::cbbe3ba),
+            "CBBE/3BA outfit correction was disabled");
+        Require(!SupportsOutfitCorrection(FemaleFamily::ube) &&
+                !SupportsOutfitCorrection(FemaleFamily::none),
+            "unsupported female family received outfit correction");
+        Require(SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, false),
+            "CBBE/3BA NPC anatomy randomization was disabled");
+        Require(!SupportsNpcAnatomyRandomization(FemaleFamily::ube, false) &&
+                !SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, true) &&
+                !SupportsNpcAnatomyRandomization(FemaleFamily::none, false),
+            "player or unsupported family received NPC anatomy randomization");
         std::cout << "AsyncWorkGuardTests passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

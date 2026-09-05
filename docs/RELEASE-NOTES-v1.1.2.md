@@ -1,13 +1,13 @@
 # Body Change NG v1.1.2
 
-Black/gray interface refresh with functional highlights preserved — 2026-09-05.
+Black/gray interface refresh and a verified CBBE 3BA anatomy safety boundary — 2026-09-05.
 
 ### Interface theme
 
 - Replaces the blue-tinted window, child-panel, popup, title, idle button, input, card, table, scrollbar, resize-grip, and navigation surfaces with a consistent black, charcoal, and grayscale foundation.
 - Preserves the established blue selection, hover, and pressed states plus warning, success, progress, favorite, incompatibility, and live tint-preview colors that convey state or content.
 - Shortens the nearby-actor refresh button to `Refresh actors`, with matching Korean and Simplified Chinese labels; its loaded-actor refresh behavior is unchanged.
-- Changes presentation only. UI layout, scaling, keyboard/gamepad input, catalog behavior, camera behavior, rules, settings, JSON schemas, co-save identifiers, and body/skin/tint application paths are unchanged.
+- Preserves UI layout, scaling, keyboard/gamepad input, catalog behavior, camera behavior, rules, settings, JSON schemas, co-save identifiers, and body/skin/tint application paths.
 
 ### Direct selection and skin updates
 
@@ -24,8 +24,10 @@ Black/gray interface refresh with functional highlights preserved — 2026-09-05
 - Prevents another NPC's automatic distribution from cancelling the selected actor's body preview. Loading a save no longer confirms pending choices from the previous UI session.
 - Coordinates RaceMenu-close recovery with outstanding actor work. Default body/skin requests no longer fall back to an older selected result while removal is pending.
 - Refreshes outfit correction after body reapplication and calculates procedural correction against the combined morph result without deleting other mods' morph keys.
-- Separates CBBE 3BA and UBE 2.0 breast/nipple outfit correction and stable nipple/genital randomization by the actor's live body family. Same-named refit presets from multiple families are resolved only within that actor's family.
-- Cross-checked the UBE controls against TAKEALOOK's installed UBE 2.0 BodySlide SliderSets. All 26 inspected UBE presets classified as UBE; conflicting actor evidence safely avoids mixing anatomical sliders from different families.
+- Limits clothed breast/nipple correction to verified CBBE 3BA actors. UBE uses materially different slider names and non-zero body defaults, so UBE and ambiguous female families are skipped rather than receiving guessed anatomy values or imported/named ORefit layers.
+- Limits stable nipple/genital randomization to CBBE 3BA NPCs. The controls are explicitly named `Randomize NPC nipple shape` and `Randomize NPC genital shape` in English, with equivalent Korean and Simplified Chinese labels.
+- Shows an UBE warning and tooltips for the selected actor. Global switches remain usable so mixed installations can skip an UBE player while still correcting or randomizing verified CBBE 3BA NPCs.
+- Cross-checked this boundary against TAKEALOOK's installed UBE 2.0 SliderSets and OBody NG's CBBE-oriented ORefit/randomization implementation. A previously owned unsupported outfit layer is cleared once and later equipment events reuse a cached no-op signature.
 
 ### Refresh and processing cost
 
@@ -49,6 +51,7 @@ Release build and all 12 regression test executables passed. Automated tests cov
 - Close Skyrim before replacing the DLL.
 - Keep your existing `Data\SKSE\Plugins\BodyChangeNGdistribution.json`, settings, and personal BodySkin, TintMask, and SliderPresets content. Back up any active MO2 Overwrite/profile copies; do not replace personal rules with the bundled starter JSON.
 - No new save is required by this update; JSON schema and co-save identifiers are unchanged. Content signatures may cause older saved results to be reevaluated/reapplied once.
+- If a private/test build previously wrote experimental UBE anatomy values, reapply the current body preset once after installing this release. BCNG rebuilds only its own committed morph key; it does not globally clear morph keys owned by other mods.
 - Full DDS content checks run during initial catalog loading or explicit Refresh. Large packs can make those scans take longer; they are not repeated for each NPC.
 - A delayed status does not mean a failed application. BCNG does not force a new update over an unfinished native call.
 

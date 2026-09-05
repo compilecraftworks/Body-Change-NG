@@ -43,14 +43,6 @@
             },
             version = "v3.12.0"
         },
-        ["rapidcsv v8.92#f56260b5"] = {
-            repo = {
-                branch = "master",
-                commit = "e36e822129b0fcbdfb51633a7fcee8c76af344bf",
-                url = "https://gitlab.com/tboox/xmake-repo.git"
-            },
-            version = "v8.92"
-        },
         ["spdlog v1.16.0#09c8c173"] = {
             repo = {
                 branch = "master",

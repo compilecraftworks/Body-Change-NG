@@ -7,16 +7,16 @@ The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
 Version 1.1.2 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
-1.6.x runtimes through 1.6.1179. The unified binary contains VR-compatible
-CommonLib code, but its native renderer/input hooks deliberately fail closed on
-VR until VR-specific layouts are verified.
+1.6.x runtimes through 1.6.1179. The project is built for Skyrim SE/AE only.
 
 ## Current release: 1.1.2
 
 This update gives the native interface a black, charcoal, and grayscale
 foundation while retaining the existing state and content highlight colors.
-It changes presentation only; existing body, skin, tint, NPC-rule, input,
-camera, settings, JSON, and co-save behavior is retained.
+It also limits clothed breast/nipple correction and NPC nipple/genital
+randomization to their verified CBBE 3BA target. UBE body presets, BodySkin,
+and player TintMask support remain available; incompatible UBE anatomy sliders
+are skipped.
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
 - [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.2.md) · [한국어](docs/RELEASE-NOTES-v1.1.2-KO.md)

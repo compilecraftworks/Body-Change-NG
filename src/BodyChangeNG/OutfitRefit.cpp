@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/OutfitRefitRules.h"
 #include "BodyChangeNG/PresetCatalog.h"
@@ -201,6 +202,24 @@ namespace bcn
 
         auto actorFamily = body_family::ResolveActor(actor);
         if (actorFamily == 0U) actorFamily = currentBodyFamily;
+        if (female && !body_morph_policy::SupportsOutfitCorrection(
+                body_morph_policy::ResolveFemaleFamily(actorFamily, currentBodyFamily))) {
+            // OBody NG's procedural breast/nipple correction is authored for
+            // CBBE/3BA. UBE (and an ambiguous family) must not receive either
+            // a guessed procedural layer or an imported/named ORefit layer.
+            // Clear a layer written by an earlier BCNG build once, then cache
+            // the no-op signature so ordinary equip events stay inexpensive.
+            const auto signature = StableStateSignature("outfit", "unsupported-female-family", true,
+                static_cast<std::uint32_t>(actorFamily));
+            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
+                if (racemenu::HasOutfitCorrection(actor)) {
+                    racemenu::QueueClearOutfit(actor, signature);
+                } else {
+                    ActorRegistry::Get().MarkOutfitApplied(actor, signature);
+                }
+            }
+            return;
+        }
         const auto found = PresetCatalog::Get().FindRefit(candidates, !female, actorFamily);
         if (!found) {
             const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,

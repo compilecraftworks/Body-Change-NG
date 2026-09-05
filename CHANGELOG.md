@@ -11,9 +11,16 @@ All notable public changes to Body Change NG are documented here.
 - Shortens the nearby-actor refresh button to `Refresh actors`, with matching Korean and Simplified Chinese labels; its loaded-actor refresh behavior is unchanged.
 - Preserves UI layout and scaling, keyboard/gamepad behavior, camera presentation, catalogs, distribution rules, settings, JSON and co-save compatibility, and all body, skin, tint, and outfit-correction paths.
 
+### CBBE 3BA anatomy safety boundary
+
+- Limits clothed breast/nipple correction to verified CBBE 3BA actors. UBE and ambiguous female body families are skipped instead of receiving guessed 3BA-compatible or experimental UBE slider values.
+- Limits stable nipple/genital randomization to CBBE 3BA NPCs and labels both controls as NPC options in Korean, English, and Simplified Chinese.
+- Shows an in-game UBE warning and per-control tooltips. The global controls remain available in mixed installations so an UBE player can be skipped while CBBE 3BA NPCs continue to use the enabled options.
+- Clears a previously owned outfit-correction layer once when an unsupported female family is encountered, then caches the no-op result so later equipment events add no repeated work.
+
 ### Validation
 
-Release build and all 12 regression test executables passed. This update changes presentation only and adds no per-frame scanning, file work, actor work, or distribution cost.
+Release build and all 12 regression test executables passed. The theme and family-policy checks add no per-frame scanning or file work; unsupported UBE anatomy paths now stop before morph application.
 
 ## 1.1.1 — 2026-09-05
 
