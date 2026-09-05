@@ -2843,9 +2843,9 @@ namespace bcn::ui
             ImGui::TextDisabled("%s", Text("선택 액터에게 RaceMenu NiOverride로 즉시 적용", "Applies immediately to the selected actor through RaceMenu NiOverride", "通过 RaceMenu NiOverride 立即应用于所选角色"));
         } else if (g_activeTab == ActiveTab::futanari) {
             ImGui::TextDisabled("%s", Text(
-                "현재 장착된 UBE SOS/TNG·TRX·ERF 성기 메시의 텍스처에만 즉시 적용",
-                "Applies immediately only to the active UBE SOS/TNG, TRX, or ERF genital geometry",
-                "仅立即应用于当前 UBE SOS/TNG、TRX 或 ERF 生殖器几何体"));
+                "현재 장착된 후타나리 성기 메시의 텍스처에만 즉시 적용",
+                "Applies immediately only to the currently equipped futanari genital mesh textures",
+                "仅立即应用于当前装备的扶她生殖器网格纹理"));
         } else {
             ImGui::TextDisabled("%s", Text("플레이어의 현재 RaceMenu 틴트 레이어에만 적용", "Applies only to the player's current RaceMenu tint layers", "仅应用于玩家当前的 RaceMenu 色调图层"));
         }

@@ -2051,7 +2051,7 @@ namespace
             // Only inspect locked generation/session data on the VM thread.
             // Stale query results cannot submit another ownership mutation.
             if (!bcn::frame_tasks::IsCurrent(batch->epoch) || !bcn::frame_tasks::ValidLease(batch->lease) ||
-                !IsCurrentSkinChange(batch->actorFormID, batch->generation)) {
+                !IsCurrentLegacyChange(*batch)) {
                 CompleteLegacyBatch(batch);
                 return;
             }
@@ -3166,6 +3166,14 @@ namespace
                         "Body Change NG applied futanari skin '{}' ({}) to actor {:08X} through RaceMenu Override v0/v1 Papyrus",
                         profile.name, bcn::FutanariSkinTypeLabel(profile.type),
                         settledActor->GetFormID());
+                    // The legacy Papyrus route stores exact persistent keys but
+                    // does not repaint an already loaded addon clone. Rebuild
+                    // this actor once after the batch, just like BodySkin, so
+                    // UBE SOS/TNG, UBE/CBBE TRX, and CBBE ERF all update now.
+                    if (auto* settledVM = RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
+                        static_cast<void>(QueueNiNodeUpdate(
+                            *settledVM, settledActor.get(), actorHandle, generation, false));
+                    }
                 }
             };
             static_cast<void>(DispatchLegacyLoadedPartApply(*currentVM, currentActor.get(), true,
