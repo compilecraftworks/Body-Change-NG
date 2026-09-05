@@ -1,10 +1,29 @@
 Body Change NG 1.1.3 — 2026-09-06
 
-- Applies CBBE 3BA, BHUNP, and vanilla BodySkin body, hand, and foot textures to each part's exact ArmorAddon and loaded geometry.
-- Fixes a RaceMenu broad skin-slot call that allowed the final foot assignment to overwrite the hands. CBBE-family feet keep the intended body atlas while hands retain their dedicated hand textures.
-- Handles equipment that is visually hidden by SFS but still occupies its real biped slot: only the missing part receives a durable one-bit fallback, and visible exact parts are protected from cross-part repainting.
-- Uses the same corrected path for player/NPC manual selection, direct NPC assignment, rule-based distribution, and recovery after equipment changes or looting a dead NPC.
-- Rechecks previously distributed NPCs once after loading and reapplies the selected skin when the live body, hand, or foot result is incomplete.
-- Separates legacy SE Override v0, UBE's AE-backported Override v0, official v1, and official v2. v0/v1 use the serialization-safe Papyrus route; only audited v2 uses the native interface.
-- Preserves UBE shared-atlas routing and existing rules, settings, JSON, co-save data, partial skins, and Default Skin restoration.
-- Adds no recurring filesystem scan or all-NPC polling. The missing-part fallback runs only during an actual skin application and performs at most one coalesced rebuild. The Release build and all 12 regression test executables passed.
+Includes all changes from 1.1.2.
+
+- Reworked the native UI around a black, charcoal, and gray foundation while preserving functional highlight colors for selection, hover, warnings, success, progress, favorites, incompatibility notices, and live tint previews.
+- Renamed the loaded-actor refresh control to Refresh actors, with matching Korean and Simplified Chinese translations and no behavioral change.
+- Renamed the main tabs to Body Presets, Body Skins, and Tint Masks, and added localized empty-list guidance with exact asset paths and refresh instructions.
+- Clarified in the UI, bundled guides, and Nexus description that tint-mask-based tints are supported while overlay-based tints are not.
+- Changed the eight bundled starter distribution-rule names to English while preserving all user-authored existing rule names.
+- Removed the per-rule body-family dropdown. NPC rule body/skin pools now use the female and male NPC body types selected in Mod Settings and display that effective family in the editor.
+- Removed Combat Style from newly created rule targets and made race, faction, keyword, class, and other detailed selectors open downward.
+- Filters the Body Skin list to the selected actor's detected body family and filters NPC distribution skin pools to the configured female or male NPC body type.
+- Limits clothed breast/nipple correction and stable NPC nipple/genital randomization to verified CBBE 3BA actors. UBE and uncertain female families are skipped with localized guidance, while mixed UBE-player/CBBE-NPC setups retain their NPC settings.
+- Updates both UBE slot-32 and slot-53 skin geometry when present and keeps the UBE Body atlas consistent across body, hands, and feet.
+- Applies CBBE 3BA, BHUNP, vanilla, and UBE BodySkin channels to each part's exact ArmorAddon and loaded geometry.
+- Fixes the RaceMenu broad skin-slot path that allowed the final foot assignment to overwrite the hands. Conventional feet keep the intended body atlas while hands retain their dedicated hand textures.
+- Stores body, hands, and feet in separate one-bit RaceMenu skin slots and keeps exact outfit-node updates as the primary visible route, preventing clothed and naked parts from independently reverting to the underlying skin.
+- Handles equipment visually hidden by SFS while its real biped slot remains occupied. Only an absent part receives the durable fallback, and exact visible parts are repaired afterward to prevent cross-part repainting.
+- Uses the same corrected multipart route for player/NPC manual selection, direct NPC assignment, rule-based distribution, equipment changes, and recovery after looting a dead NPC.
+- Preserves partial skin packs by changing only supplied body parts and channels; missing files retain the actor's underlying textures without copying body, hand, foot, or face files into another part.
+- Fixes Default Skin restoration by clearing loaded BCNG clones as well as owned RaceMenu keys. Explicit Default selections remain stable after equipment changes, and stale legacy outfit keys are cleaned only for the affected actor.
+- Rechecks previously distributed NPCs once after loading and reapplies the saved body or skin only when the live result is missing or incomplete.
+- Repeated BodyMorph preview, confirmation, and distribution now converge on the selected XML preset's absolute target without globally clearing morph keys owned by other mods.
+- Keeps genital and anal atlases, race/elder face variants, Argonian/Khajiit male and female assets, SOS textures, and partial-channel behavior separated by the correct actor, part, and material.
+- Separates legacy SE Override v0, UBE's AE-backported Override v0, official v1, and official v2. v0/v1 use the serialization-safe Papyrus path; only audited v2 uses the native interface.
+- Improves coexistence with Racial Skin Variance, Mu Dynamic NormalMap, and OverlayFix while retaining ownership-aware cleanup.
+- Prioritizes direct selections, prepares required skin files off the game thread, cancels stale work, and keeps automatic distribution frame-budgeted.
+- Deduplicates MO2 skin-catalog hashing across physical and virtual Data paths. No recurring filesystem scan, full-NPC polling, or per-event full-DDS read was added.
+- The Release build and all 12 regression test executables passed.

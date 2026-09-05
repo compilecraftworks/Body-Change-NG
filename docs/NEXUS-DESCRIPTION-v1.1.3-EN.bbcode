@@ -15,7 +15,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 
 [line]
 
-[size=5][color=#5FB8E8][b]WHAT'S NEW IN 1.1.3[/b][/color][/size]
+[size=5][color=#5FB8E8][b]WHAT'S NEW IN 1.1.2–1.1.3[/b][/color][/size]
 
 [list]
 [*][b]Correct conventional hand and foot routing[/b] — CBBE 3BA, BHUNP, and vanilla body, hand, and foot channels target their exact ArmorAddon geometry, so the final foot assignment cannot repaint the hands
@@ -23,6 +23,10 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 [*][b]Separated RaceMenu Override generations[/b] — legacy SE v0, UBE's AE-backported v0, official v1, and official v2 are classified independently; v0/v1 use safe Papyrus strings and only audited v2 uses the native wrapper
 [*][b]Black and gray interface[/b] — window, panel, card, input, and idle-control surfaces now use a consistent black/charcoal/grayscale foundation, while existing selection, hover, warning, success, progress, favorite, and tint-preview colors remain visible as functional highlights
 [*][b]Shorter actor refresh label[/b] — the button now reads [b]Refresh actors[/b], with matching Korean and Simplified Chinese labels; its loaded-actor refresh behavior is unchanged
+[*][b]Clearer catalogs and rule editor[/b] — Body Skin entries follow the selected actor's detected family, NPC rule pools follow the female/male body types selected in Mod Settings, the redundant per-rule family dropdown and Combat Style target are removed, and detailed target lists open downward
+[*][b]Localized asset guidance[/b] — the tabs are named [b]Body Presets[/b], [b]Body Skins[/b], and [b]Tint Masks[/b], with Korean, English, and Simplified Chinese empty-list instructions for exact paths and live refresh; tint masks and unsupported overlays are clearly distinguished
+[*][b]Stable Default Skin restoration[/b] — clearing a BCNG skin now removes owned keys and already loaded BCNG texture clones, while equipment changes clean stale legacy outfit keys only on the affected actor
+[*][b]Portable starter rules[/b] — the eight bundled editable starter exclusions now use English names without renaming rules already created by the user
 [*][b]Reliable saved NPC results[/b] — after loading, BCNG verifies each saved body or skin once and reapplies only a missing or broken result
 [*][b]Non-stacking BodyMorph application[/b] — repeated preview and distribution reach the preset's absolute target without deleting morph keys owned by other mods
 [*][b]Complete multipart skin routing[/b] — body, hands, feet, face, genital, and conditional race/elder parts keep their correct channels through equipment rebuilds and partial packs
