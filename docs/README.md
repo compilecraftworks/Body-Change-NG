@@ -8,7 +8,7 @@ Engineering handover (2026-09-04): [한국어 전체 인수인계](HANDOVER-v1.1
 
 | Purpose | English | 한국어 |
 | --- | --- | --- |
-| Feature description (1.1.0 baseline) | [BBCode](NEXUS-DESCRIPTION-v1.1.0-EN.bbcode) · [Markdown](NEXUS-DESCRIPTION-v1.1.0.md) | [HTML](NEXUS-DESCRIPTION-v1.1.0-KO.html) |
+| Feature description (1.1.1) | [BBCode](NEXUS-DESCRIPTION-v1.1.1-EN.bbcode) · [Markdown](NEXUS-DESCRIPTION-v1.1.1.md) | [HTML](NEXUS-DESCRIPTION-v1.1.1-KO.html) |
 | Short description | [Plain text](NEXUS-SHORT-DESCRIPTION-v1.1.0-EN.txt) | [일반 텍스트](NEXUS-SHORT-DESCRIPTION-v1.1.0-KO.txt) |
 | Nexus changelog | [Plain text](NEXUS-CHANGELOG-v1.1.1-EN.txt) | [일반 텍스트](NEXUS-CHANGELOG-v1.1.1-KO.txt) |
 | Complete update history | [Markdown, no BBCode](../CHANGELOG.md) | [Markdown](../CHANGELOG-KO.md) |
@@ -16,4 +16,4 @@ Engineering handover (2026-09-04): [한국어 전체 인수인계](HANDOVER-v1.1
 
 Paste the English BBCode description into the Nexus BBCode editor. Changelog text and Markdown history are separate, tag-free files. Korean HTML is a browser-readable counterpart, not BBCode.
 
-The approved short description is unchanged. Versioned older files are retained as historical documentation. Use the 1.1.1 changelog and release notes for this update; full feature descriptions remain the 1.1.0 baseline. Runtime settings, user asset folders, and JSON names are not renamed for 1.1.1.
+The approved short description is unchanged. Versioned 1.1.0 description files are retained as historical documentation. Use the 1.1.1 descriptions, changelog, and release notes for the current release. Runtime settings, user asset folders, and JSON names are not renamed for 1.1.1.
