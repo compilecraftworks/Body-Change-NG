@@ -44,6 +44,9 @@ namespace bcn::skin_override
     // (for example Wet Function's gloss/alpha values) remain.
     [[nodiscard]] ApplyResult QueueClear(RE::Actor* a_actor);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* a_actor);
+    // True only for actors whose skin was explicitly managed this session,
+    // including an explicit Default Skin selection.
+    [[nodiscard]] bool HasTrackedSelection(const RE::Actor* a_actor);
     // The futanari path is independent from the full BodySkin profile. It
     // targets only a currently loaded TRX/ERF genital ArmorAddon and retains
     // the chosen profile while Gender Bender/TNG temporarily removes it.

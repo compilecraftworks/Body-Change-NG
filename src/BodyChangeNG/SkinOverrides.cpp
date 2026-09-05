@@ -943,6 +943,21 @@ namespace
             RE::MakeFunctionArguments(), callback);
     }
 
+    [[nodiscard]] std::vector<std::pair<std::uint8_t, std::string>> ResolveTextureLayers(
+        const std::vector<bcn::SkinTextureLayer>& layers, const std::string_view cacheNamespace)
+    {
+        std::vector<std::pair<std::uint8_t, std::string>> resolvedLayers;
+        resolvedLayers.reserve(layers.size());
+        for (const auto& layer : layers) {
+            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, cacheNamespace);
+            if (!path.empty()) {
+                resolvedLayers.emplace_back(
+                    static_cast<std::uint8_t>(layer.shaderTextureIndex), std::move(path));
+            }
+        }
+        return resolvedLayers;
+    }
+
     [[nodiscard]] bool ApplyLoadedPart(skee_override::IOverrideInterfaceV2& overrides,
                                  RE::Actor* actor, const bool female,
                                  const RE::BGSBipedObjectForm::BipedObjectSlot slot,
@@ -954,14 +969,7 @@ namespace
         if (!actor) return false;
         if (targets.empty()) return false;
 
-        std::vector<std::pair<std::uint8_t, std::string>> resolvedLayers;
-        resolvedLayers.reserve(layers.size());
-        for (const auto& layer : layers) {
-            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, cacheNamespace);
-            if (!path.empty()) {
-                resolvedLayers.emplace_back(static_cast<std::uint8_t>(layer.shaderTextureIndex), std::move(path));
-            }
-        }
+        const auto resolvedLayers = ResolveTextureLayers(layers, cacheNamespace);
         if (resolvedLayers.empty()) return false;
 
         std::size_t appliedTargets{};
@@ -970,32 +978,33 @@ namespace
             for (const auto& node : target.persistentNodes) {
                 for (const auto& [textureIndex, path] : resolvedLayers) {
                     skee_override::StringVisitor current;
-                    const auto exists = overrides.GetArmorOverride(actor, female, target.armor, target.addon,
-                        node.c_str(), static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, current);
+                    const auto exists = overrides.GetArmorOverride(actor, female, target.armor,
+                        target.addon, node.c_str(),
+                        static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, current);
                     if (!bcn::skin_override::ownership::MayReplace(exists, current.Value())) {
                         SKSE::log::warn(
                             "SkinOverride persistent-register skipped actor={:08X} part={} armor={:08X} addon={:08X} node='{}' index={} reason=foreign-owner current='{}'",
                             actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
-                            target.armor->GetFormID(),
-                            target.addon->GetFormID(), node, static_cast<std::uint32_t>(textureIndex), current.Value());
+                            target.armor->GetFormID(), target.addon->GetFormID(), node,
+                            static_cast<std::uint32_t>(textureIndex), current.Value());
                         continue;
                     }
                     skee_override::StringVariant value{ path };
-                    overrides.AddArmorOverride(actor, female, target.armor, target.addon, node.c_str(),
-                        static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value);
+                    overrides.AddArmorOverride(actor, female, target.armor, target.addon,
+                        node.c_str(), static_cast<std::uint16_t>(kShaderTextureProperty),
+                        textureIndex, value);
                     SKSE::log::info(
                         "SkinOverride persistent-register actor={:08X} part={} armor={:08X} addon={:08X} node='{}' index={}({}) action={} value='{}'",
                         actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
-                        target.armor->GetFormID(),
-                        target.addon->GetFormID(), node, static_cast<std::uint32_t>(textureIndex),
-                        TextureIndexName(textureIndex), exists ? "replace-owned" : "add", path);
+                        target.armor->GetFormID(), target.addon->GetFormID(), node,
+                        static_cast<std::uint32_t>(textureIndex), TextureIndexName(textureIndex),
+                        exists ? "replace-owned" : "add", path);
                     ++submitted;
                 }
             }
             for (const auto& view : target.views) {
-                // The persistent map is armor/addon/node based; the exact
-                // loaded addon clone is repainted immediately after storage.
-                overrides.ApplyArmorOverrides(actor, target.armor, target.addon, view.object, true);
+                overrides.ApplyArmorOverrides(
+                    actor, target.armor, target.addon, view.object, true);
                 ++appliedTargets;
             }
         }
@@ -1003,6 +1012,64 @@ namespace
             actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
             submitted, appliedTargets);
         return submitted != 0U && appliedTargets != 0U;
+    }
+
+    [[nodiscard]] bool ApplySkinSlotPart(skee_override::IOverrideInterfaceV2& overrides,
+        RE::Actor* actor, const bool female,
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const std::vector<bcn::SkinTextureLayer>& layers,
+        const std::string_view cacheNamespace = "skin",
+        const std::string_view partName = {})
+    {
+        if (!actor) return false;
+        const auto mask = static_cast<std::uint32_t>(slot);
+        if (mask == 0U || !std::has_single_bit(mask)) return false;
+        const auto resolvedLayers = ResolveTextureLayers(layers, cacheNamespace);
+        if (resolvedLayers.empty()) return false;
+
+        std::size_t stored{};
+        std::size_t transient{};
+        bool thirdPersonApplied{};
+        for (const bool firstPerson : { false, true }) {
+            if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
+            for (const auto& [textureIndex, path] : resolvedLayers) {
+                skee_override::StringVisitor current;
+                const auto exists = overrides.GetSkinOverride(actor, female, firstPerson, mask,
+                    static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, current);
+                const auto mayPersist = bcn::skin_override::ownership::MayReplace(exists, current.Value());
+                const auto rsvTransient = exists &&
+                    bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(current.Value());
+                if (!mayPersist && !rsvTransient) {
+                    SKSE::log::warn(
+                        "SkinOverride skin-slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=foreign-owner current='{}'",
+                        actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
+                        firstPerson ? "1p" : "3p", mask,
+                        static_cast<std::uint32_t>(textureIndex), current.Value());
+                    continue;
+                }
+
+                skee_override::StringVariant value{ path };
+                if (mayPersist) {
+                    overrides.AddSkinOverride(actor, female, firstPerson, mask,
+                        static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value);
+                    ++stored;
+                } else {
+                    ++transient;
+                }
+                // SetSkinProperty updates the currently loaded race-skin part,
+                // including UBE hands/feet that are not exposed through the
+                // actor's BipedAnim object array. The one-bit mask keeps body,
+                // hands and feet strictly separated.
+                overrides.SetSkinProperty(actor, firstPerson, mask,
+                    static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value, true);
+                if (!firstPerson) thirdPersonApplied = true;
+            }
+        }
+        SKSE::log::info(
+            "SkinAudit actor={:08X} part={} stored-keys={} transient-rsv-keys={} mode=RaceMenu-v2-single-skin-slot",
+            actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
+            stored, transient);
+        return thirdPersonApplied;
     }
 
     [[nodiscard]] bool ApplyPart(skee_override::IOverrideInterfaceV2& overrides, RE::Actor* actor,
@@ -1701,7 +1768,8 @@ namespace
 
     [[nodiscard]] bool ClearTexturePart(skee_override::IOverrideInterfaceV2& overrides,
                                         RE::Actor* actor, const bool female,
-                                        const RE::BGSBipedObjectForm::BipedObjectSlot slot)
+                                        const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+                                        const bool includeLegacyTargetMasks = true)
     {
         if (!actor) return false;
         std::unordered_set<std::uint64_t> masks;
@@ -1711,8 +1779,10 @@ namespace
         const auto requestedMask = static_cast<std::uint32_t>(slot);
         addMask(false, requestedMask);
         if (actor == RE::PlayerCharacter::GetSingleton()) addMask(true, requestedMask);
-        for (const auto& target : FindLoadedPartTargets(actor, slot)) {
-            for (const auto& view : target.views) addMask(view.firstPerson, target.slotMask);
+        if (includeLegacyTargetMasks) {
+            for (const auto& target : FindLoadedPartTargets(actor, slot)) {
+                for (const auto& view : target.views) addMask(view.firstPerson, target.slotMask);
+            }
         }
 
         // Do not call RemoveAllSkinOverrides here: that would erase unrelated
@@ -1769,10 +1839,10 @@ namespace
     // Override v1 predates RaceMenu's public SetVariant wrapper. Constructing
     // its internal OverrideVariant in another DLL is not serialization-safe
     // because strings must be interned in RaceMenu's private StringTable.
-    // Use the stable NiOverride Papyrus natives for v1 strings instead. The
-    // exact Armor + ArmorAddon + geometry-node key avoids the broad legacy
-    // AddSkinOverrideString behavior that repaints body, hands and feet in an
-    // unspecified order.
+    // Use the stable NiOverride Papyrus natives for v1 strings instead. Skin
+    // overrides below always receive exactly one biped bit; combined masks are
+    // never used, so body, hands and feet cannot overwrite one another. Exact
+    // Armor + ArmorAddon + node keys cover skin embedded by current outfits.
     struct LegacyOverrideBatch final
     {
         bcn::frame_tasks::Lease lease;
@@ -2161,6 +2231,76 @@ namespace
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
     }
 
+    [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacySkinSlotApply(
+        RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor, const bool female,
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const std::vector<bcn::SkinTextureLayer>& layers,
+        const std::shared_ptr<LegacyOverrideBatch>& batch,
+        const std::string_view cacheNamespace = "skin",
+        const std::string_view partName = {})
+    {
+        if (!actor) return {};
+        const auto mask = static_cast<std::uint32_t>(slot);
+        if (mask == 0U || !std::has_single_bit(mask)) return {};
+
+        std::vector<std::pair<std::uint32_t, std::string>> resolvedLayers;
+        resolvedLayers.reserve(layers.size());
+        for (const auto& layer : layers) {
+            auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, cacheNamespace);
+            if (!path.empty()) resolvedLayers.emplace_back(layer.shaderTextureIndex, std::move(path));
+        }
+        if (resolvedLayers.empty()) return {};
+
+        auto mutation = std::make_shared<LegacyMutationTracker>();
+        std::size_t submitted{};
+        const std::string loggedPart{ partName.empty() ? SkinPartName(slot) : partName };
+        for (const bool firstPerson : { false, true }) {
+            if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
+            for (const auto& [textureIndex, path] : resolvedLayers) {
+                DispatchLegacyOwnershipQuery(vm, "GetSkinOverrideString", RE::MakeFunctionArguments(
+                    static_cast<RE::TESObjectREFR*>(actor), bool{ female }, bool{ firstPerson },
+                    static_cast<std::uint32_t>(mask),
+                    static_cast<std::uint32_t>(kShaderTextureProperty),
+                    static_cast<std::uint32_t>(textureIndex)), batch,
+                    [&vm, actor, female, firstPerson, mask, textureIndex, path, loggedPart,
+                        batch, mutation](std::string current) {
+                        const auto exists = !current.empty();
+                        const auto mayPersist =
+                            bcn::skin_override::ownership::MayReplace(exists, current);
+                        const auto rsvTransient = exists &&
+                            bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(current);
+                        if (!mayPersist && !rsvTransient) {
+                            SKSE::log::warn(
+                                "SkinOverride skin-slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=foreign-owner mode=RaceMenu-v1 current='{}'",
+                                actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p",
+                                mask, textureIndex, current);
+                            return;
+                        }
+                        // Persist our own single-slot key. If RSV owns this
+                        // channel, paint only the live node and leave RSV's
+                        // serialized value untouched.
+                        const auto dispatched = DispatchLegacy(vm, "AddSkinOverrideString",
+                            RE::MakeFunctionArguments(static_cast<RE::TESObjectREFR*>(actor),
+                                bool{ female }, bool{ firstPerson }, static_cast<std::uint32_t>(mask),
+                                static_cast<std::uint32_t>(kShaderTextureProperty),
+                                static_cast<std::uint32_t>(textureIndex),
+                                std::string{ path }, bool{ mayPersist }), batch);
+                        if (dispatched) mutation->accepted.fetch_add(1U, std::memory_order_release);
+                        SKSE::log::info(
+                            "SkinOverride skin-slot-register actor={:08X} part={} view={} mask={:08X} index={}({}) mode={} value='{}' RaceMenu-v1",
+                            actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p", mask,
+                            textureIndex, TextureIndexName(textureIndex),
+                            mayPersist ? "persistent" : "transient-rsv", path);
+                    });
+                ++submitted;
+            }
+        }
+        SKSE::log::info(
+            "SkinAudit actor={:08X} part={} queried-keys={} mode=RaceMenu-v1-single-skin-slot",
+            actor->GetFormID(), loggedPart, submitted);
+        return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
+    }
+
     [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyPartApply(
         RE::BSScript::Internal::VirtualMachine& vm,
         RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
@@ -2367,13 +2507,24 @@ namespace
                     bcn::skin_geometry::BodySelection::all,
                 const bool allowExplicitLimbNode = false) {
                 if (layers.empty()) return;
-                requiredParts->push_back(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
+                requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                    currentActor.get(), currentFemale, slot, layers, applyBatch));
+                static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                     slot, layers, applyBatch, selection, allowExplicitLimbNode));
             };
             const auto hasPrimaryParts = !currentBodyLayers.empty() || !currentHandsLayers.empty() ||
                 !profile.feet.empty() || !currentFaceLayers.empty();
             if (!currentBodyLayers.empty()) {
-                requiredParts->push_back(DispatchLegacyProfileBodyApply(*currentVM,
+                requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                    currentActor.get(), currentFemale,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                    currentBodyLayers, applyBatch, "skin", "body-slot-32"));
+                if (UsesUbeBodySlot(profile)) {
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale, kUbeBodySlot,
+                        currentBodyLayers, applyBatch, "skin", "ube-body-slot-53"));
+                }
+                static_cast<void>(DispatchLegacyProfileBodyApply(*currentVM,
                     currentActor.get(), currentFemale, profile, currentBodyLayers, applyBatch));
             }
             const auto submitGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
@@ -2383,7 +2534,10 @@ namespace
                     static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                         RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, applyBatch, selection));
                 } else {
-                    submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, selection);
+                    requiredParts->push_back(DispatchLegacyPartApply(*currentVM,
+                        currentActor.get(), currentFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        layers, applyBatch, selection));
                 }
             };
             submitGenitalAnal(profile.cbbeGenitalAnal,
@@ -2526,22 +2680,23 @@ namespace
         const auto handsLayers = EffectiveHandsLayers(profile, base);
         const auto feetLayers = EffectiveFeetLayers(profile, base);
         const auto maleGenitalLayers = EffectiveMaleGenitalLayers(profile, actor.get(), base);
-        // Store exact Armor + ArmorAddon + geometry keys, then repaint only
-        // that loaded addon clone. Broad AddSkinOverrideString/skin-slot
-        // registration is intentionally never used for new entries.
+        // Single-bit skin-slot keys cover the actor's underlying body, hands
+        // and feet across naked/equipped rebuilds. Exact armor/addon keys remain
+        // complementary for outfits that embed visible skin in their own NIF.
         bool removed = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female);
-        if (ClaimLegacyCleanup(actor->GetFormID())) {
-            removed = ClearTexturePart(*overrides, actor.get(), female,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
-            removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
-            removed = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
-            removed = ClearTexturePart(*overrides, actor.get(), female,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
-            removed = ClearTexturePart(*overrides, actor.get(), female,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || removed;
-            removed = ClearTexturePart(*overrides, actor.get(), female,
-                RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || removed;
-        }
+        const auto includeLegacyTargetMasks = ClaimLegacyCleanup(actor->GetFormID());
+        removed = ClearTexturePart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, includeLegacyTargetMasks) || removed;
+        removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot,
+            includeLegacyTargetMasks) || removed;
+        removed = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot,
+            includeLegacyTargetMasks) || removed;
+        removed = ClearTexturePart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kHands, includeLegacyTargetMasks) || removed;
+        removed = ClearTexturePart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, includeLegacyTargetMasks) || removed;
+        removed = ClearTexturePart(*overrides, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kTail, includeLegacyTargetMasks) || removed;
         // Reconcile every owned exact key before writing the new profile.
         // This restores the actor's underlying texture for absent parts and
         // absent diffuse/normal/subsurface/detail/specular channels.
@@ -2600,14 +2755,25 @@ namespace
             const std::vector<LoadedPartTarget>& targets) {
             if (layers.empty()) return;
             ++requestedParts;
-            if (ApplyLoadedPart(*overrides, actor.get(), female, slot, layers, targets)) ++appliedParts;
+            const auto durableApplied = ApplySkinSlotPart(
+                *overrides, actor.get(), female, slot, layers);
+            static_cast<void>(ApplyLoadedPart(
+                *overrides, actor.get(), female, slot, layers, targets));
+            if (durableApplied) ++appliedParts;
         };
         const auto hasPrimaryParts = !bodyLayers.empty() || !handsLayers.empty() ||
             !profile.feet.empty() || !faceLayers.empty();
         if (!bodyLayers.empty()) {
             ++requestedParts;
-            if (ApplyLoadedPart(*overrides, actor.get(), female, bodyRoute.slot,
-                    bodyLayers, bodyRoute.targets)) {
+            auto durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                RE::BGSBipedObjectForm::BipedObjectSlot::kBody, bodyLayers, "skin", "body-slot-32");
+            if (ubeBody) {
+                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                    kUbeBodySlot, bodyLayers, "skin", "ube-body-slot-53") && durableApplied;
+            }
+            static_cast<void>(ApplyLoadedPart(*overrides, actor.get(), female, bodyRoute.slot,
+                bodyLayers, bodyRoute.targets));
+            if (durableApplied) {
                 ++appliedParts;
             }
         }
@@ -2618,7 +2784,12 @@ namespace
                 static_cast<void>(ApplyLoadedPart(*overrides, actor.get(), female,
                     RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, targets));
             } else {
-                applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody, layers, targets);
+                ++requestedParts;
+                if (ApplyLoadedPart(*overrides, actor.get(), female,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        layers, targets)) {
+                    ++appliedParts;
+                }
             }
         };
         applyGenitalAnal(profile.cbbeGenitalAnal, cbbeGenitalTargets);
@@ -3043,6 +3214,13 @@ namespace bcn::skin_override
         // refresh events retry it instead of reviving an older complete skin.
         if (const auto selected = bcn::ActorRegistry::Get().SelectedSkinId(actor)) return selected;
         return bcn::ActorRegistry::Get().AppliedSkinId(actor);
+    }
+
+    bool HasTrackedSelection(const RE::Actor* actor)
+    {
+        if (!actor) return false;
+        std::scoped_lock lock(g_selectionLock);
+        return g_currentProfileIds.contains(actor->GetFormID());
     }
 
     std::optional<bcn::FutanariSkinType> CurrentFutanariType(

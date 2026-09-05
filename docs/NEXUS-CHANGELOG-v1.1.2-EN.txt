@@ -7,7 +7,9 @@ Body Change NG 1.1.2 — 2026-09-06
 - Restricted stable nipple/genital randomization to CBBE 3BA NPCs and renamed the controls to `Randomize NPC nipple shape` and `Randomize NPC genital shape`, with matching Korean and Simplified Chinese labels.
 - Added UBE-specific warnings and tooltips while keeping the global controls usable in mixed UBE-player/CBBE-NPC installations.
 - Updates both live geometries when an UBE outfit splits visible body skin across slots 32 and 53, and consistently applies/verifies the UBE Body atlas on body, hands, and feet.
+- Stores body, hand, and foot textures under separate one-bit RaceMenu skin slots and keeps exact outfit-node updates as a complementary path. This fixes clothed/naked CBBE-family and UBE parts falling back independently when a limb has no ordinary Biped target.
 - Fixed Default Skin restoration when RaceMenu removed the saved keys but left BCNG textures on already-loaded body, hand, or foot clones. Only the affected actor is rebuilt, and only after a live mismatch is confirmed.
+- Keeps an explicit Default Skin clean across later equipment changes for that actor, including migration cleanup of older outfit-specific BCNG keys, without adding all-NPC scans.
 - Filters the Body Skins tab to the selected actor's actual body family and filters NPC-distribution skin pools to the female/male NPC body type selected in Mod Settings.
 - Removed the per-rule body-family selector in favor of the Mod Settings value shown as text. Combat Style is no longer offered for new rules, and detailed race/faction/keyword/class lists now open downward only.
 - Restored the full `Body Presets`, `Body Skins`, and `Tint Masks` tab names and added Korean, English, and Simplified Chinese empty-list guidance with the exact asset paths and Refresh instruction.

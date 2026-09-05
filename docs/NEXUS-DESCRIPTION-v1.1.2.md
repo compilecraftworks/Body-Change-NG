@@ -20,6 +20,9 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 - **Reliable saved NPC results** — after loading, BCNG verifies each saved body or skin once and reapplies only a missing or broken result
 - **Non-stacking BodyMorph application** — repeated preview and distribution reach the preset's absolute target without deleting morph keys owned by other mods
 - **Complete multipart skin routing** — body, hands, feet, face, genital, and conditional race/elder parts keep their correct channels through equipment rebuilds and partial packs
+- **Clothed and naked skin consistency** — durable one-slot RaceMenu keys keep body, hands, and feet separate even when an UBE naked limb is absent from the ordinary Biped target list; exact outfit skin nodes are updated as a complementary route
+- **Correct UBE and conventional limb atlases** — UBE body, hand, and foot surfaces use the UBE Body atlas; CBBE 3BA/BHUNP hands use their hand atlas while feet use the body atlas unless the pack supplies a dedicated feet set
+- **Actor-aware futanari skins** — a conditional catalog supports the active UBE SOS/TNG, CBBE 3BA TRX, or CBBE 3BA ERF genital type, including optional wet companion textures
 - **Expanded compatibility** — actor-matched CBBE 3BA and UBE 2.0, standard female/male and SOS skins, Argonian/Khajiit, Racial Skin Variance, Mu Dynamic NormalMap, and improved OverlayFix coexistence
 - **More responsive processing** — direct selections are prioritized, required skin files are prepared off the game thread, stale work is cancelled, and automatic distribution remains frame-budgeted
 - **Faster MO2 skin catalogs** — one backing DDS exposed through physical and virtual Data paths is hashed only once; full DDS reads do not run per NPC event
@@ -74,15 +77,27 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 
 - Apply independent skin packs to the player or a selected loaded NPC
 - Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire face, diffuse, normal, subsurface, specular, and compatible detail textures
+- Body, hands, and feet use separate single-bit skin-slot keys, while exact outfit ArmorAddon nodes are also updated when clothing embeds visible skin; the two routes prevent clothed and naked parts from falling back independently
 - Partial skin packs are supported: only supplied parts and channels change, missing values retain the actor's underlying textures, and files are never substituted across body, hands, feet, or face
 - Selected skin parts are verified and repaired after equipment or 3D rebuilds, including looting a dead NPC; missing BCNG cache files are rebuilt from the original pack
-- UBE 2.0 Body/Head d-n-sk atlases are detected separately; the Body atlas follows every live UBE body, hand, and foot surface across slots 32/53 while the Head atlas targets the face
+- Default Skin clears every BCNG-owned body, hand, foot, face, and conditional texture route. A previously managed Default selection is checked only when that actor's equipment changes, so a stale legacy outfit key is removed without scanning unrelated NPCs
+- UBE 2.0 Body/Head d-n-sk atlases are detected separately; the Body atlas follows exact UBE body, hand, and foot skin nodes across slots 32/53 while the Head atlas targets the face
+- Conventional CBBE 3BA/BHUNP hands use femalehands channels and feet use the body atlas unless an explicit feet atlas exists; exact limb-node matching avoids repainting gloves, boots, or fabric nodes
 - The Body Skins tab shows only the selected actor's detected body family; NPC rule pools use the female/male NPC body type selected in Mod Settings
 - Argonian and Khajiit female/male folders are detected separately and matched to each actor's race and sex for preview, reapply, and NPC distribution; their body atlas is also applied to the matching live tail geometry
 - CBBE 3BA and BHUNP/UNP genital/anal atlases are routed only to matching material geometry, separately from regular body maps
 - Optional SOS Smurf Average, VectorPlexus Regular, and VectorPlexus Muscular textures match the actor's live addon, race, and elder variant
 - Femaleold and race-specific face normals apply only when matching files exist; Astrid/Afflicted textures and BodySkin tint-mask DDS are excluded
 - Ownership-aware cleanup does not delete another mod's texture keys
+- All current body, hand, and foot targets are captured before the first live repaint, and transient detached texture sets are rejected instead of being traversed again during the same selection
+
+### **Futanari Skin**
+
+- The Futanari tab appears only when the selected actor currently has supported UBE SOS/TNG, CBBE 3BA TRX, or CBBE 3BA ERF genital geometry
+- Only skin packs matching the actor's live body/addon combination are listed and applied; genital textures remain independent from the full BodySkin profile
+- Default futanari skin removes only BCNG genital texture overrides and restores the installed addon's original material
+- The selected profile remains saved if the genital addon is temporarily removed and is reapplied when the same supported type returns
+- Missing channels are left unchanged, and TRX wet companions such as **wetschlong_110_s.dds** are preserved beside the selected cached skin
 
 ### **Player Tint**
 
@@ -142,7 +157,7 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 ---
 
-## **ADDING BODY PRESETS, SKIN PACKS, AND TINT PACKS**
+## **ADDING BODY PRESETS, SKIN PACKS, FUTANARI SKINS, AND TINT PACKS**
 
 All paths below are relative to an MO2 mod root. You may place these assets inside Body Change NG or in separate enabled MO2 mods that provide the same virtual paths.
 
@@ -165,6 +180,13 @@ BodySkin\YourSkinPack\Textures\!UBE\Head\femalehead_[d/n/sk].dds
 
 Create one folder per skin pack and preserve the skin mod's original Textures tree and DDS files. One pack may contain all four Argonian/Khajiit race-sex folders; each populated combination is detected separately. Do not move UBE atlases into the conventional female folder. Catalog rows are matched to the selected actor's race, sex, and detected body family.
 
+### **Futanari Skin Packs**
+**UBE with UBE SOS/TNG:** `Futanari\YourSkinPack\Textures\!UBE\Body\...`
+**CBBE 3BA with TRX:** `Futanari\YourSkinPack\Textures\[TRX] Futa addon\Regular\Default\...`
+**CBBE 3BA with ERF:** `Futanari\YourSkinPack\Textures\ERF_Futanari\FairSkinCBBE\...`
+
+Create one folder per pack and preserve the original DDS names. The catalog appears only while the selected actor has supported genital geometry and shows only the matching type. Press **Refresh** on the Futanari tab after adding or replacing a pack while Skyrim is running.
+
 ### **Tint Packs**
 `TintMask\YourTintPack\textures\actors\character\character assets\tintmasks\*.dds`
 
@@ -175,7 +197,7 @@ For a UBE-only tint-mask pack, include **UBE** in the top-level pack name. Packs
 
 **Adding files while Skyrim is running**
 
-BodySlide preset XML files, skin-pack folders, and tint-pack folders may be added or replaced while the game is running. Open the corresponding **Body Presets**, **Body Skins**, or **Tint Masks** tab and press **Refresh** to rescan the files and update the list without restarting Skyrim.
+BodySlide preset XML files and BodySkin, Futanari, or TintMask pack folders may be added or replaced while the game is running. Open the corresponding tab and press **Refresh** to rescan the files and update the list without restarting Skyrim.
 
 The archive includes a README in every user-asset folder and a valid schema-4 distribution JSON with eight editable starter exclusions. Existing schema-3 files remain readable and are upgraded when saved.
 
@@ -188,7 +210,7 @@ The archive includes a README in every user-asset folder and a valid schema-4 di
 **Optional OBody NG file**
 `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`
 
-Place it beside `BodyChangeNGdistribution.json[/b] under [b]Data\SKSE\Plugins`. Do not rename either file, merge the two JSON files, or replace Body Change NG's own JSON.
+Place it beside `BodyChangeNGdistribution.json` under `Data\SKSE\Plugins`. Do not rename either file, merge the two JSON files, or replace Body Change NG's own JSON.
 
 - **Distribution conditions** — press **Load saved values** in the NPC Distribution window to import supported OBody distribution rules when the file exists
 - **Outfit-correction rules** — press **Register OBody NG outfit-correction rules** in the Outfit · randomization window

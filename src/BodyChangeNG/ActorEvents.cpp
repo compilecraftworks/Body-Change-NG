@@ -78,6 +78,17 @@ namespace bcn
 
                     const auto skin = skin_override::CurrentProfileId(actor.get());
                     if (!skin) {
+                        if (skin_override::HasTrackedSelection(actor.get())) {
+                            const auto liveMatches = skin_override::LiveSkinStateMatches(
+                                actor.get(), {}, true,
+                                skin_override::LiveCheckScope::equipmentParts);
+                            if (!liveMatches.value_or(false) && remainingRepairs != 0U) {
+                                static_cast<void>(skin_override::QueueClear(actor.get()));
+                                VerifyEquipmentSkin(handle, actorFormID, generation, session,
+                                    remainingRepairs - 1U, remainingLoadRetries);
+                                return;
+                            }
+                        }
                         FinishEquipmentChange(actorFormID, generation);
                         return;
                     }
@@ -144,6 +155,17 @@ namespace bcn
                         // Corpse looting can replace the naked Biped clone after
                         // TESEquipEvent. Verify that final clone rather than
                         // assuming this first repaint survives.
+                        VerifyEquipmentSkin(handle, actorFormID, generation, session, 2U);
+                        return;
+                    }
+                } else if (skin_override::HasTrackedSelection(actor.get())) {
+                    const auto liveMatches = skin_override::LiveSkinStateMatches(
+                        actor.get(), {}, true,
+                        skin_override::LiveCheckScope::equipmentParts);
+                    if (!liveMatches.value_or(false)) {
+                        [[maybe_unused]] const auto result = skin_override::QueueClear(actor.get());
+                    }
+                    if (verifyFinalSkin && !liveMatches.value_or(false)) {
                         VerifyEquipmentSkin(handle, actorFormID, generation, session, 2U);
                         return;
                     }
@@ -287,7 +309,7 @@ namespace bcn
         if (auto* actor = event->actor->As<RE::Actor>()) {
             if (!frame_tasks::Active()) return RE::BSEventNotifyControl::kContinue;
             skin_override::InvalidateFutanariDetection(actor->GetFormID());
-            const auto hasSkin = skin_override::CurrentProfileId(actor).has_value();
+            const auto hasSkin = skin_override::HasTrackedSelection(actor);
             const auto hasFutanariSkin = skin_override::CurrentFutanariProfileId(actor).has_value();
             const auto needsOutfit = Settings::Get().OutfitCorrectionEnabled() ||
                 racemenu::HasOutfitCorrection(actor);
@@ -319,7 +341,7 @@ namespace bcn
         auto* oldContainer = RE::TESForm::LookupByID(event->oldContainer);
         auto* actor = oldContainer ? oldContainer->As<RE::Actor>() : nullptr;
         if (!actor || !actor->IsDead() ||
-            (!skin_override::CurrentProfileId(actor) &&
+            (!skin_override::HasTrackedSelection(actor) &&
                 !skin_override::CurrentFutanariProfileId(actor))) {
             return RE::BSEventNotifyControl::kContinue;
         }
