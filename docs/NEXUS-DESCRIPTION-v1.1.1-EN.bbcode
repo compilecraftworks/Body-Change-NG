@@ -7,7 +7,7 @@
 
 [line]
 
-[size=5][color=#5FB8E8][b]OVERVIEW[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]OVERVIEW[/b][/color][/size][/center]
 
 Body Change NG manages BodySlide body morphs, actor skin textures, and player RaceMenu tint layers from one native in-game interface. Select the player or a loaded NPC, preview changes immediately, edit NPC distribution conditions in game, and either distribute to loaded NPCs now or save the rules for the next launch.
 
@@ -15,7 +15,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 
 [line]
 
-[size=5][color=#5FB8E8][b]WHAT'S NEW IN 1.1.1[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]WHAT'S NEW IN 1.1.1[/b][/color][/size][/center]
 
 [list]
 [*][b]Reliable saved NPC results[/b] — after loading, BCNG verifies each saved body or skin once and reapplies only a missing or broken result
@@ -28,9 +28,9 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 
 [line]
 
-[size=5][color=#5FB8E8][b]WHY BODY CHANGE NG?[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]WHY BODY CHANGE NG?[/b][/color][/size][/center]
 
-[size=4][color=#9AD7F5][b]Compared with OBody NG[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Compared with OBody NG[/b][/color][/size][/center]
 
 Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data. Body Change NG does not swap in a separate body mesh. The difference is the selection, distribution, and state-management layer built above that shared morph pipeline.
 
@@ -46,7 +46,7 @@ Both mods ultimately deform a built body through RaceMenu BodyMorph and TRI data
 [*][b]One integrated workflow[/b] — actor skins, player tint detail, RaceMenu rebuild recovery, favorites, and NPC distribution share the same UI and state model
 [/list]
 
-[size=4][color=#9AD7F5][b]Compared with Legacy Mesh-Slot Systems[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Compared with Legacy Mesh-Slot Systems[/b][/color][/size][/center]
 
 Legacy mesh-slot systems build a separate body mesh for each predefined slot, then use Papyrus to replace prepared ESP Skin Armor, HeadPart, and TextureSet records as a unit. A skin slot therefore also requires its matching built mesh and records.
 
@@ -63,9 +63,9 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 
 [line]
 
-[size=5][color=#5FB8E8][b]FEATURES[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]FEATURES[/b][/color][/size][/center]
 
-[size=4][color=#9AD7F5][b]Body[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Body[/b][/color][/size][/center]
 [list]
 [*]Select the player or a loaded NPC and apply compatible BodySlide presets immediately
 [*]Low/high-weight values are interpolated using the actor's current weight
@@ -76,7 +76,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Body application uses RaceMenu BodyMorph; no body mesh is generated or replaced while the game is running
 [/list]
 
-[size=4][color=#9AD7F5][b]Skin[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Skin[/b][/color][/size][/center]
 [list]
 [*]Apply independent skin packs to the player or a selected loaded NPC
 [*]Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire face, diffuse, normal, subsurface, specular, and compatible detail textures
@@ -90,7 +90,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Ownership-aware cleanup does not delete another mod's texture keys
 [/list]
 
-[size=4][color=#9AD7F5][b]Player Tint[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Player Tint[/b][/color][/size][/center]
 [list]
 [*]Install multiple tint packs and choose a pack from the Tint tab
 [*]Automatically select a usable DDS for each layer and the player's current race
@@ -99,7 +99,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Reapply the confirmed tint selection after RaceMenu rebuilds the player
 [/list]
 
-[size=4][color=#9AD7F5][b]NPC Distribution[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]NPC Distribution[/b][/color][/size][/center]
 [list]
 [*]Rules are evaluated from top to bottom; the first matching rule owns Body and Skin
 [*]Body and Skin can independently distribute selected entries, be excluded from distribution, or be left unchanged
@@ -116,14 +116,14 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 
 The in-game editor writes this file, so manual JSON editing is not required. To preserve your rules when reinstalling the mod, Skyrim, or an MO2 profile, back up the file, copy it back to the same path, and press [b]Load saved values[/b] in the NPC Distribution window.
 
-[size=4][color=#9AD7F5][b]Outfit Correction and Randomization[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Outfit Correction and Randomization[/b][/color][/size][/center]
 [list]
 [*]Optional breast correction while clothed
 [*]Separate nipple-correction toggle
 [*]Optional stable nipple and genital slider randomization
 [/list]
 
-[size=4][color=#9AD7F5][b]UI and Input[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]UI and Input[/b][/color][/size][/center]
 [list]
 [*]Korean, English, and Simplified Chinese UI
 [*]Default F7 menu hotkey can be rebound in Mod Settings, including Ctrl, Shift, and Ctrl+Shift combinations
@@ -134,7 +134,7 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 [line]
 
-[size=5][color=#5FB8E8][b]REQUIREMENTS[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]REQUIREMENTS[/b][/color][/size][/center]
 
 [list]
 [*]Skyrim SE 1.5.97 or a verified Skyrim AE 1.6.x runtime through 1.6.1179
@@ -145,7 +145,7 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 [line]
 
-[size=5][color=#5FB8E8][b]INSTALLATION[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]INSTALLATION[/b][/color][/size][/center]
 
 [list=1]
 [*]Install the main archive with MO2
@@ -155,16 +155,16 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 [line]
 
-[size=5][color=#5FB8E8][b]ADDING BODY PRESETS, SKIN PACKS, AND TINT PACKS[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]ADDING BODY PRESETS, SKIN PACKS, AND TINT PACKS[/b][/color][/size][/center]
 
 All paths below are relative to an MO2 mod root. You may place these assets inside Body Change NG or in separate enabled MO2 mods that provide the same virtual paths.
 
-[size=4][color=#9AD7F5][b]Body Preset XML[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Body Preset XML[/b][/color][/size][/center]
 [b]CalienteTools\BodySlide\SliderPresets\*.xml[/b]
 
 Place standard BodySlide preset XML files in this folder.
 
-[size=4][color=#9AD7F5][b]Skin Packs[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Skin Packs[/b][/color][/size][/center]
 [b]Conventional:[/b] BodySkin\YourSkinPack\Textures\actors\character\...
 [b]CBBE 3BA female genital/anal atlas:[/b] femalebody_etc_v2_1.dds plus _msn, _sk, and _s in the conventional female directory. These files target the matching 3BA/3BBB vagina and anus geometries that share the atlas, never another body part.
 [b]BHUNP/UNP female genital/anal atlas:[/b] BakaUNP\VaginalAnalCanal2.dds plus _msn, _sk, and _s under the conventional female directory. These files target the matching vagina, anus, and canal geometries only.
@@ -178,7 +178,7 @@ BodySkin\YourSkinPack\Textures\!UBE\Head\femalehead_[d/n/sk].dds
 
 Create one folder per skin pack and preserve the skin mod's original Textures tree and DDS files. One pack may contain all four Argonian/Khajiit race-sex folders; each populated combination is detected separately. Do not move UBE atlases into the conventional female folder. Catalog rows are matched to the selected actor's race, sex, and detected body family.
 
-[size=4][color=#9AD7F5][b]Tint Packs[/b][/color][/size]
+[center][size=4][color=#9AD7F5][b]Tint Packs[/b][/color][/size][/center]
 [b]TintMask\YourTintPack\textures\actors\character\character assets\tintmasks\*.dds[/b]
 
 Create one folder per tint pack and preserve its RaceMenu tint-mask filenames and folder structure. Each folder directly under [b]TintMask[/b] becomes one entry in the in-game catalog.
@@ -192,7 +192,7 @@ The archive includes a README in every user-asset folder and a valid schema-4 di
 
 [line]
 
-[size=5][color=#5FB8E8][b]OPTIONAL OBODY NG JSON COMPATIBILITY[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]OPTIONAL OBODY NG JSON COMPATIBILITY[/b][/color][/size][/center]
 
 [b]This is optional.[/b] Body Change NG works without OBody NG or its JSON. Use this only if you want to reuse OBody NG-format distribution conditions, outfit-correction rules, or both.
 
@@ -212,7 +212,7 @@ The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Nex
 
 [line]
 
-[size=5][color=#5FB8E8][b]COMPATIBILITY NOTES[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]COMPATIBILITY NOTES[/b][/color][/size][/center]
 
 [list]
 [*]Body Change NG does not edit NIFs, Skin Armor records, ArmorAddon records, or equipped slots
@@ -226,7 +226,7 @@ The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Nex
 
 [line]
 
-[size=5][color=#5FB8E8][b]CREDITS & LICENSE[/b][/color][/size]
+[center][size=5][color=#5FB8E8][b]CREDITS & LICENSE[/b][/color][/size][/center]
 
 Body Change NG is licensed under [url=https://www.gnu.org/licenses/gpl-3.0.html][b]GNU GPLv3[/b][/url]. The complete source code, build scripts, and matching version tags are available on [url=https://github.com/compilecraftworks/Body-Change-NG][b]GitHub[/b][/url]. Nexus provides the MO2-ready Release ZIP only.
 
