@@ -531,6 +531,10 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::NeedsFixedBipedFallback(true, 1U) &&
             !bcn::skin_geometry::NeedsFixedBipedFallback(false, 0U),
             "an unusable exact hands/feet slot did not preserve the bounded Skin Armor fallback")) return 1;
+    if (!Require(bcn::skin_geometry::NeedsStandardBodyFallback(true, 0U) &&
+            !bcn::skin_geometry::NeedsStandardBodyFallback(true, 1U) &&
+            !bcn::skin_geometry::NeedsStandardBodyFallback(false, 0U),
+            "UBE body routing did not fall back only when its slot-53 target was absent")) return 1;
     if (!Require(
             bcn::skin_geometry::MatchesLimb(bcn::skin_geometry::LimbSelection::hands,
                 "FemaleHands", R"(textures\actors\character\female\femalehands_1.dds)") &&
@@ -657,7 +661,6 @@ int main(const int argc, char** argv)
     if (!Require(maleTint != tints.end() && maleTint->sex == bcn::player_tint::Sex::male &&
             (maleTint->bodyFamilies & bcn::body_family::kMaleFamilies) != 0U,
             "male tint was not retained as a male-family asset")) return 1;
-
     // Content refresh must distinguish equal-size DDS replacements even if
     // an archive extraction preserves timestamps. Cache aliases must differ.
     const auto refreshSource = sandbox / "refresh.dds";

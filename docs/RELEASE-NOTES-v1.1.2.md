@@ -1,6 +1,6 @@
 # Body Change NG v1.1.2
 
-Black/gray interface refresh and a verified CBBE 3BA anatomy safety boundary — 2026-09-05.
+Black/gray interface refresh, verified CBBE 3BA anatomy safety, and corrected UBE BodySkin routing — 2026-09-05.
 
 ### Interface theme
 
@@ -41,6 +41,14 @@ Black/gray interface refresh and a verified CBBE 3BA anatomy safety boundary —
 - Improves compatibility with OverlayFix by tightening actor-update and asynchronous-work boundaries.
 - Deduplicates full DDS hashing when MO2 exposes the same backing file through both its physical mod directory and virtual Data path. Per-file catalog diagnostics for large packs are debug-only.
 - Preserves existing rules, settings, co-save identifiers, starter exclusions, body-family filtering, skin part/channel routing, and camera values.
+
+### Catalog and release guidance
+
+- Falls back from UBE body slot 53 to standard body slot 32 only when no usable live slot-53 body target exists. This fixes UBE profiles that changed the face but not the body without spilling one profile across two body routes.
+- Restores the full `Body Presets`, `Body Skins`, and `Tint Masks` tab names and keeps the player Tint Masks tab visible so its catalog and installation guidance remain accessible.
+- Adds Korean, English, and Simplified Chinese empty-list messages with exact BodySlide, BodySkin, UBE Body/Head, and TintMask placement paths plus the Refresh action.
+- States explicitly that tint-mask-based facial tints are supported while overlay-based tints are not.
+- Uses English names for the eight bundled starter rules and runtime-generated defaults. Existing user-authored rule names remain unchanged.
 
 ### Validation
 

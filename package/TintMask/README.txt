@@ -9,6 +9,8 @@ RaceMenu에서 사용하는 틴트마스크 DDS와 같은 파일명·폴더 구�
 유지하세요. 현재 액터의 종족과 실제 DDS가 확인되는 틴트만 목록에
 표시됩니다.
 
+틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.
+
 UBE 전용 틴트마스크 팩은 최상위 <틴트팩 이름>에 UBE를 포함하세요.
 COtR 표기가 있는 팩은 일반 여성과 UBE 양쪽에 호환되는 팩으로 처리합니다.
 일반 틴트마스크를 UBE 전용으로 잘못 분류하지 않도록 파일 내용만 보고
@@ -23,3 +25,4 @@ TintMask\<pack name>\textures\actors\character\character assets\tintmasks.
 Press Refresh on the Tint tab after adding a pack while the game is running.
 Include UBE in the top-level pack name for UBE-only tint masks. Packs marked
 COtR remain available to both conventional female and UBE actors.
+Only tint-mask-based tints are supported; overlay-based tints are not supported.

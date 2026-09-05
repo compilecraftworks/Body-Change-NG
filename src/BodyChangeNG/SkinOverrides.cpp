@@ -164,12 +164,6 @@ namespace
             bcn::body_family::Family::ube)) != 0U;
     }
 
-    [[nodiscard]] auto ProfileBodySlot(const bcn::SkinProfile& profile) noexcept
-    {
-        return UsesUbeBodySlot(profile) ? kUbeBodySlot :
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody;
-    }
-
     [[nodiscard]] bool UsesBeastTail(const bcn::SkinProfile& profile) noexcept
     {
         // Vanilla Argonian/Khajiit tail NIFs deliberately reference the same
@@ -531,6 +525,53 @@ namespace
         return results;
     }
 
+    struct LoadedProfileBodyRoute final
+    {
+        RE::BGSBipedObjectForm::BipedObjectSlot slot{
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody };
+        bcn::skin_geometry::BodySelection selection{
+            bcn::skin_geometry::BodySelection::regular };
+        std::vector<LoadedPartTarget> targets;
+    };
+
+    [[nodiscard]] LoadedProfileBodyRoute FindLoadedProfileBodyRoute(
+        RE::Actor* actor, const bcn::SkinProfile& profile, const bool logTargets = true)
+    {
+        if (!UsesUbeBodySlot(profile)) {
+            return {
+                .slot = RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                .selection = bcn::skin_geometry::BodySelection::regular,
+                .targets = FindLoadedPartTargets(actor,
+                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                    bcn::skin_geometry::BodySelection::regular, logTargets)
+            };
+        }
+
+        auto ubeTargets = FindLoadedPartTargets(actor, kUbeBodySlot,
+            bcn::skin_geometry::BodySelection::all, logTargets);
+        if (!bcn::skin_geometry::NeedsStandardBodyFallback(true, ubeTargets.size())) {
+            return {
+                .slot = kUbeBodySlot,
+                .selection = bcn::skin_geometry::BodySelection::all,
+                .targets = std::move(ubeTargets)
+            };
+        }
+
+        auto standardTargets = FindLoadedPartTargets(actor,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::regular, logTargets);
+        if (logTargets && !standardTargets.empty()) {
+            SKSE::log::info(
+                "SkinAudit UBE body fallback actor={:08X} slot-53-targets=0 standard-body-targets={}",
+                actor ? actor->GetFormID() : 0U, standardTargets.size());
+        }
+        return {
+            .slot = RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            .selection = bcn::skin_geometry::BodySelection::regular,
+            .targets = std::move(standardTargets)
+        };
+    }
+
     void QueueSettledSkinAudit(RE::ActorHandle actorHandle, std::uint64_t generation,
         std::uint32_t remainingTaskHops);
 
@@ -580,14 +621,13 @@ namespace
             RE::MakeFunctionArguments(), callback);
     }
 
-    [[nodiscard]] bool ApplyPart(skee_override::IOverrideInterfaceV2& overrides, RE::Actor* actor,
-                                 const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+    [[nodiscard]] bool ApplyLoadedPart(skee_override::IOverrideInterfaceV2& overrides,
+                                 RE::Actor* actor, const bool female,
+                                 const RE::BGSBipedObjectForm::BipedObjectSlot slot,
                                  const std::vector<bcn::SkinTextureLayer>& layers,
-                                 const bcn::skin_geometry::BodySelection selection =
-                                     bcn::skin_geometry::BodySelection::all)
+                                 const std::vector<LoadedPartTarget>& targets)
     {
         if (!actor) return false;
-        const auto targets = FindLoadedPartTargets(actor, slot, selection);
         if (targets.empty()) return false;
 
         std::vector<std::pair<std::uint8_t, std::string>> resolvedLayers;
@@ -636,6 +676,26 @@ namespace
         SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} exact-targets={} mode=RaceMenu-v2-exact-persistent",
             actor->GetFormID(), SkinPartName(slot), submitted, appliedTargets);
         return submitted != 0U && appliedTargets != 0U;
+    }
+
+    [[nodiscard]] bool ApplyPart(skee_override::IOverrideInterfaceV2& overrides, RE::Actor* actor,
+                                 const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+                                 const std::vector<bcn::SkinTextureLayer>& layers,
+                                 const bcn::skin_geometry::BodySelection selection =
+                                     bcn::skin_geometry::BodySelection::all)
+    {
+        if (!actor) return false;
+        const auto targets = FindLoadedPartTargets(actor, slot, selection);
+        return ApplyLoadedPart(overrides, actor, female, slot, layers, targets);
+    }
+
+    [[nodiscard]] bool ApplyProfileBodyPart(skee_override::IOverrideInterfaceV2& overrides,
+        RE::Actor* actor, const bool female, const bcn::SkinProfile& profile,
+        const std::vector<bcn::SkinTextureLayer>& layers)
+    {
+        if (!actor) return false;
+        const auto route = FindLoadedProfileBodyRoute(actor, profile);
+        return ApplyLoadedPart(overrides, actor, female, route.slot, layers, route.targets);
     }
 
     [[nodiscard]] bool ClearArmorAddonPart(skee_override::IOverrideInterfaceV2& overrides,
@@ -1197,9 +1257,14 @@ namespace
         const auto verifyPart = [&](const std::string_view part,
             const std::vector<bcn::SkinTextureLayer>& layers,
             const std::optional<RE::BGSBipedObjectForm::BipedObjectSlot> slot,
-            const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all) {
+            const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all,
+            const std::vector<LoadedPartTarget>* loadedTargets = nullptr) {
             std::vector<LoadedPartView> views;
-            if (slot) {
+            if (loadedTargets) {
+                for (const auto& target : *loadedTargets) {
+                    views.insert(views.end(), target.views.begin(), target.views.end());
+                }
+            } else if (slot) {
                 for (const auto& target : FindLoadedPartTargets(actor, *slot, selection)) {
                     views.insert(views.end(), target.views.begin(), target.views.end());
                 }
@@ -1252,9 +1317,9 @@ namespace
                     matchingNodes.size(), nodeList);
             }
         };
-        verifyPart(UsesUbeBodySlot(profile) ? "ube-body-slot-53" : "body",
-            bodyLayers, ProfileBodySlot(profile), UsesUbeBodySlot(profile) ?
-                bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+        const auto bodyRoute = FindLoadedProfileBodyRoute(actor, profile);
+        verifyPart(SkinPartName(bodyRoute.slot), bodyLayers, bodyRoute.slot,
+            bodyRoute.selection, &bodyRoute.targets);
         verifyPart("cbbe-genital-anal", profile.cbbeGenitalAnal,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
@@ -1632,12 +1697,12 @@ namespace
         }
     }
 
-    [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyPartApply(
+    [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyLoadedPartApply(
         RE::BSScript::Internal::VirtualMachine& vm,
         RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const std::vector<bcn::SkinTextureLayer>& layers,
         const std::shared_ptr<LegacyOverrideBatch>& batch,
-        const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
+        const std::vector<LoadedPartTarget>& targets)
     {
         std::vector<std::pair<std::uint32_t, std::string>> resolvedLayers;
         resolvedLayers.reserve(layers.size());
@@ -1649,7 +1714,7 @@ namespace
 
         auto mutation = std::make_shared<LegacyMutationTracker>();
         std::size_t submitted{};
-        for (const auto& target : FindLoadedPartTargets(actor, slot, selection)) {
+        for (const auto& target : targets) {
             for (const auto& node : target.persistentNodes) {
                 for (const auto& [textureIndex, path] : resolvedLayers) {
                     auto* armor = target.armor;
@@ -1686,6 +1751,27 @@ namespace
         SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} mode=RaceMenu-v1-exact",
             actor->GetFormID(), SkinPartName(slot), submitted);
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
+    }
+
+    [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyPartApply(
+        RE::BSScript::Internal::VirtualMachine& vm,
+        RE::Actor* actor, const bool female, const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+        const std::vector<bcn::SkinTextureLayer>& layers,
+        const std::shared_ptr<LegacyOverrideBatch>& batch,
+        const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all)
+    {
+        const auto targets = FindLoadedPartTargets(actor, slot, selection);
+        return DispatchLegacyLoadedPartApply(vm, actor, female, slot, layers, batch, targets);
+    }
+
+    [[nodiscard]] std::shared_ptr<LegacyMutationTracker> DispatchLegacyProfileBodyApply(
+        RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor, const bool female,
+        const bcn::SkinProfile& profile, const std::vector<bcn::SkinTextureLayer>& layers,
+        const std::shared_ptr<LegacyOverrideBatch>& batch)
+    {
+        const auto route = FindLoadedProfileBodyRoute(actor, profile);
+        return DispatchLegacyLoadedPartApply(
+            vm, actor, female, route.slot, layers, batch, route.targets);
     }
 
     void DispatchLegacyFaceClear(RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
@@ -1874,8 +1960,10 @@ namespace
             };
             const auto hasPrimaryParts = !currentBodyLayers.empty() || !currentHandsLayers.empty() ||
                 !profile.feet.empty() || !currentFaceLayers.empty();
-            submitPart(ProfileBodySlot(profile), currentBodyLayers, UsesUbeBodySlot(profile) ?
-                bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+            if (!currentBodyLayers.empty()) {
+                requiredParts->push_back(DispatchLegacyProfileBodyApply(*currentVM,
+                    currentActor.get(), currentFemale, profile, currentBodyLayers, applyBatch));
+            }
             const auto submitGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
                 const bcn::skin_geometry::BodySelection selection) {
                 if (layers.empty()) return;
@@ -2060,8 +2148,12 @@ namespace
         };
         const auto hasPrimaryParts = !bodyLayers.empty() || !handsLayers.empty() ||
             !profile.feet.empty() || !faceLayers.empty();
-        applyPart(ProfileBodySlot(profile), bodyLayers, UsesUbeBodySlot(profile) ?
-            bcn::skin_geometry::BodySelection::all : bcn::skin_geometry::BodySelection::regular);
+        if (!bodyLayers.empty()) {
+            ++requestedParts;
+            if (ApplyProfileBodyPart(*overrides, actor.get(), female, profile, bodyLayers)) {
+                ++appliedParts;
+            }
+        }
         const auto applyGenitalAnal = [&](const std::vector<bcn::SkinTextureLayer>& layers,
             const bcn::skin_geometry::BodySelection selection) {
             if (layers.empty()) return;
@@ -2457,9 +2549,14 @@ namespace bcn::skin_override
         const auto inspectPart = [&](const std::vector<bcn::SkinTextureLayer>& layers,
             const std::optional<RE::BGSBipedObjectForm::BipedObjectSlot> slot,
             const bcn::skin_geometry::BodySelection selection = bcn::skin_geometry::BodySelection::all,
-            const std::string_view cacheNamespace = "skin") {
+            const std::string_view cacheNamespace = "skin",
+            const std::vector<LoadedPartTarget>* loadedTargets = nullptr) {
             std::vector<LoadedPartView> views;
-            if (slot) {
+            if (loadedTargets) {
+                for (const auto& target : *loadedTargets) {
+                    views.insert(views.end(), target.views.begin(), target.views.end());
+                }
+            } else if (slot) {
                 for (const auto& target : FindLoadedPartTargets(actor, *slot, selection, false)) {
                     views.insert(views.end(), target.views.begin(), target.views.end());
                 }
@@ -2533,9 +2630,9 @@ namespace bcn::skin_override
             }
         };
 
-        inspectPart(EffectiveBodyLayers(*profile, base), ProfileBodySlot(*profile),
-            UsesUbeBodySlot(*profile) ? bcn::skin_geometry::BodySelection::all :
-                bcn::skin_geometry::BodySelection::regular);
+        const auto bodyRoute = FindLoadedProfileBodyRoute(actor, *profile, false);
+        inspectPart(EffectiveBodyLayers(*profile, base), bodyRoute.slot,
+            bodyRoute.selection, "skin", &bodyRoute.targets);
         inspectPart(profile->cbbeGenitalAnal, RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             bcn::skin_geometry::BodySelection::cbbeGenitalAnal);
         inspectPart(profile->unpGenitalAnal, RE::BGSBipedObjectForm::BipedObjectSlot::kBody,

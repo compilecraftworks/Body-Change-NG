@@ -6,5 +6,9 @@ Body Change NG 1.1.2 — 2026-09-05
 - Restricted clothed breast/nipple correction to verified CBBE 3BA actors. UBE and ambiguous female families are safely skipped instead of receiving incompatible anatomy sliders.
 - Restricted stable nipple/genital randomization to CBBE 3BA NPCs and renamed the controls to `Randomize NPC nipple shape` and `Randomize NPC genital shape`, with matching Korean and Simplified Chinese labels.
 - Added UBE-specific warnings and tooltips while keeping the global controls usable in mixed UBE-player/CBBE-NPC installations.
+- Fixed UBE BodySkin profiles that changed the face but not the body when the live UBE body geometry was exposed through standard slot 32 instead of slot 53. The fallback is used only when no usable slot-53 target exists.
+- Restored the full `Body Presets`, `Body Skins`, and `Tint Masks` tab names and added Korean, English, and Simplified Chinese empty-list guidance with the exact asset paths and Refresh instruction.
+- Clarified that the Tint Masks catalog supports tint-mask-based facial tints, not overlay-based tints.
+- Changed the eight bundled starter-rule names and their runtime regeneration defaults to English. Existing user-authored rule names are preserved.
 - Preserved body-preset, BodySkin, TintMask, distribution, camera, input, JSON, and co-save behavior. Unsupported UBE anatomy paths now do less work.
 - Release build and all 12 regression test executables passed.

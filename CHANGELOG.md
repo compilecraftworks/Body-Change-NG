@@ -18,6 +18,14 @@ All notable public changes to Body Change NG are documented here.
 - Shows an in-game UBE warning and per-control tooltips. The global controls remain available in mixed installations so an UBE player can be skipped while CBBE 3BA NPCs continue to use the enabled options.
 - Clears a previously owned outfit-correction layer once when an unsupported female family is encountered, then caches the no-op result so later equipment events add no repeated work.
 
+### Catalog guidance and UBE BodySkin routing
+
+- Falls back from UBE body slot 53 to the standard body slot 32 only when the live actor has no usable slot-53 body target. This fixes UBE profiles that changed the face but not the body without applying one body profile to two geometry routes.
+- Restores the full `Body Presets`, `Body Skins`, and `Tint Masks` tab names.
+- Adds Korean, English, and Simplified Chinese empty-list guidance for each catalog, including exact placement paths and the Refresh action.
+- Clarifies in the UI, packaged TintMask guide, and Nexus descriptions that tint-mask-based facial tints are supported while overlay-based tints are not.
+- Uses English names for the eight bundled starter rules and for runtime regeneration of those defaults. Existing saved user rule names are not rewritten.
+
 ### Validation
 
 Release build and all 12 regression test executables passed. The theme and family-policy checks add no per-frame scanning or file work; unsupported UBE anatomy paths now stop before morph application.

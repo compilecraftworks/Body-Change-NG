@@ -1219,9 +1219,13 @@ namespace
                 ++row;
                 if (items.empty()) {
                     ImGui::TextWrapped("%s", Text(
-                        "선택한 액터의 성별에 맞는 바디 프리셋을 찾지 못했습니다.",
-                        "No body presets match the selected actor's sex.",
-                        "未找到与所选角色性别匹配的身体预设。"));
+                        "선택한 액터의 성별·바디 계열에 맞는 BodySlide 프리셋이 없습니다.",
+                        "No BodySlide presets were found for the selected actor's sex and body family.",
+                        "未找到适用于所选角色性别和体型系列的 BodySlide 预设。"));
+                    ImGui::TextWrapped("%s", Text(
+                        "CalienteTools\\BodySlide\\SliderPresets\\*.xml에 프리셋 XML을 넣고 새로고침하세요.",
+                        "Place preset XML files in CalienteTools\\BodySlide\\SliderPresets\\*.xml, then press Refresh.",
+                        "请将预设 XML 文件放入 CalienteTools\\BodySlide\\SliderPresets\\*.xml，然后点击‘刷新’。"));
                     ImGui::Spacing();
                 }
             }
@@ -1382,12 +1386,15 @@ namespace
                     bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily);
             });
             if (!hasMatchingSkin) {
-                ImGui::TextUnformatted(Text("이 액터의 종족·성별·바디 계열에 맞는 스킨팩을 찾지 못했습니다.", "No skin packs were found for this actor's race, sex, and body family.", "未找到适用于该角色种族、性别和身体系列的皮肤包。"));
+                ImGui::TextUnformatted(Text(
+                    "선택한 액터의 종족·성별·바디 계열에 맞는 스킨팩이 없습니다.",
+                    "No skin packs were found for the selected actor's race, sex, and body family.",
+                    "未找到适用于所选角色种族、性别和体型系列的皮肤包。"));
                 ImGui::Spacing();
                 ImGui::TextWrapped("%s", Text(
-                    "일반·아르고니안·카짓 스킨은 BodySkin\\<스킨 이름>\\Textures\\actors\\character 구조를, UBE 스킨은 BodySkin\\<스킨 이름>\\Textures\\!UBE\\Body 및 Head 구조를 그대로 유지하세요.",
-                    "Keep humanoid, Argonian, and Khajiit skins under BodySkin\\<skin name>\\Textures\\actors\\character, and UBE skins under BodySkin\\<skin name>\\Textures\\!UBE\\Body and Head.",
-                    "普通人形、亚龙人和虎人皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\actors\\character 结构；UBE 皮肤请保留 BodySkin\\<皮肤名称>\\Textures\\!UBE\\Body 和 Head 结构。"));
+                    "일반 스킨은 BodySkin\\<스킨팩>\\Textures\\actors\\character\\..., UBE 스킨은 BodySkin\\<스킨팩>\\Textures\\!UBE\\Body 및 Head 구조로 넣고 새로고침하세요.",
+                    "Use BodySkin\\<skin pack>\\Textures\\actors\\character\\... for standard skins, or BodySkin\\<skin pack>\\Textures\\!UBE\\Body and Head for UBE skins, then press Refresh.",
+                    "普通皮肤请使用 BodySkin\\<皮肤包>\\Textures\\actors\\character\\...；UBE 皮肤请使用 BodySkin\\<皮肤包>\\Textures\\!UBE\\Body 和 Head 结构，然后点击‘刷新’。"));
             }
             for (const auto* skinPointer : visibleSkins) {
                 const auto& skin = *skinPointer;
@@ -1469,6 +1476,10 @@ namespace
         }
         ImGui::SameLine();
         ImGui::TextDisabled("%s", Text("TintMask\\의 Tint 폴더를 읽습니다.", "Reads Tint folders under TintMask\\.", "读取 TintMask\\ 下的 Tint 文件夹。"));
+        ImGui::TextWrapped("%s", Text(
+            "틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.",
+            "Only tint-mask-based tints are supported; overlay-based tints are not supported.",
+            "仅支持色调蒙版方式；不支持叠加层方式。"));
 
         const auto* base = selectedActor->GetActorBase();
         const bool female = base && base->GetSex() == RE::SEX::kFemale;
@@ -1583,11 +1594,18 @@ namespace
             ++row;
 
             if (packs.empty()) {
-                ImGui::TextUnformatted(Text("플레이어의 성별·바디 계열에 맞는 틴트팩을 찾지 못했습니다.", "No tint packs were found for the player's sex and body family.", "未找到适用于玩家性别和身体系列的色调包。"));
+                ImGui::TextUnformatted(Text(
+                    "플레이어에게 사용할 수 있는 틴트마스크팩이 없습니다.",
+                    "No tint-mask packs are available for the player.",
+                    "未找到可供玩家使用的色调蒙版包。"));
                 ImGui::TextWrapped("%s", Text(
-                    "MO2 모드 루트의 TintMask\\<틴트팩>\\textures\\actors\\character\\character assets\\tintmasks에 DDS 파일을 넣고 새로고침하세요.",
-                    "Place DDS files in TintMask\\<tint pack>\\textures\\actors\\character\\character assets\\tintmasks at the MO2 mod root, then refresh.",
-                    "请将 DDS 文件放入 MO2 模组根目录的 TintMask\\<色调包>\\textures\\actors\\character\\character assets\\tintmasks，然后刷新。"));
+                    "TintMask\\<틴트팩>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds에 RaceMenu 얼굴 틴트마스크 DDS를 넣고 새로고침하세요.",
+                    "Place RaceMenu facial tint-mask DDS files in TintMask\\<tint pack>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds, then press Refresh.",
+                    "请将 RaceMenu 面部色调蒙版 DDS 文件放入 TintMask\\<色调包>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds，然后点击‘刷新’。"));
+                ImGui::TextWrapped("%s", Text(
+                    "틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.",
+                    "Only tint-mask-based tints are supported; overlay-based tints are not supported.",
+                    "仅支持色调蒙版方式；不支持叠加层方式。"));
                 ImGui::Spacing();
             }
 
@@ -2127,10 +2145,19 @@ namespace
                 return;
             }
             ImGui::TextDisabled("%s", Text("지원되는 BodySlide 슬라이더에만 적용", "Only applies to supported BodySlide sliders", "仅适用于受支持的 BodySlide 滑块"));
+            auto* player = RE::PlayerCharacter::GetSingleton();
+            const auto playerUbe = player &&
+                (bcn::body_family::ResolveActor(player) &
+                    bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U;
             const auto selectedFamily = bcn::body_morph_policy::ResolveFemaleFamily(
                 bcn::body_family::ResolveActor(SelectedActor()));
             const auto selectedUbe = selectedFamily == bcn::body_morph_policy::FemaleFamily::ube;
-            if (selectedUbe) {
+            if (playerUbe) {
+                ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
+                    "UBE 플레이어에는 가슴·유두 보정을 적용하지 않습니다. 활성화된 보정은 지원되는 NPC에만 적용됩니다.",
+                    "Breast/nipple correction skips the UBE player. The enabled corrections apply only to supported NPCs.",
+                    "胸部/乳头修正会跳过 UBE 玩家；已启用的修正仅应用于受支持的 NPC。"));
+            } else if (selectedUbe) {
                 ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
                     "선택한 UBE 액터에는 가슴·유두 보정과 NPC 신체 무작위화를 적용하지 않습니다.",
                     "Breast/nipple correction and NPC anatomy randomization are disabled for the selected UBE actor.",
@@ -2138,23 +2165,34 @@ namespace
             }
             ImGui::Separator();
             auto settings = bcn::Settings::Get().Snapshot();
-            auto settingsChanged = false;
+            // These settings remain enabled for supported NPCs even when the
+            // player uses UBE. Normalize an older disabled setting once, then
+            // present both controls as checked/read-only for that environment.
+            const auto normalizedNpcCorrection = playerUbe &&
+                (!settings.orefitEnabled || !settings.orefitNippleMorphing);
+            if (playerUbe) {
+                settings.orefitEnabled = true;
+                settings.orefitNippleMorphing = true;
+                ImGui::BeginDisabled();
+            }
+            auto settingsChanged = normalizedNpcCorrection;
             const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Correct breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
-            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA 전용입니다. UBE 액터에는 적용되지 않습니다.",
-                "CBBE 3BA only. UBE actors are skipped.",
-                "仅支持 CBBE 3BA；会跳过 UBE 角色。"));
+            if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
+                "CBBE 3BA 전용입니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
+                "CBBE 3BA only. The UBE player is skipped and supported NPCs continue to receive it.",
+                "仅支持 CBBE 3BA；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
             settingsChanged |= refitChanged;
             ImGui::Indent();
             if (!settings.orefitEnabled) ImGui::BeginDisabled();
             const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 보정", "Correct nipples while clothed", "穿衣时修正乳头"), &settings.orefitNippleMorphing);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA 전용입니다. UBE 액터에는 적용되지 않습니다.",
-                "CBBE 3BA only. UBE actors are skipped.",
-                "仅支持 CBBE 3BA；会跳过 UBE 角色。"));
+                "CBBE 3BA 전용입니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
+                "CBBE 3BA only. The UBE player is skipped and supported NPCs continue to receive it.",
+                "仅支持 CBBE 3BA；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
             settingsChanged |= nippleRefitChanged;
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
+            if (playerUbe) ImGui::EndDisabled();
             if (ImGui::Button(Text("OBody NG 의상 보정 규칙 등록", "Register OBody NG outfit-correction rules", "注册 OBody NG 服装修正规则"))) {
                 const auto registered = bcn::OutfitRefit::Get().LoadOBodyRules();
                 if (registered) {
@@ -2192,14 +2230,16 @@ namespace
                 if (!bcn::Settings::Get().Save()) {
                     bcn::ui::Notify(Text("의상·랜덤화 설정을 저장하지 못했습니다.", "Could not save outfit and randomization settings.", "无法保存服装与随机化设置。"));
                 }
-                if (refitChanged || nippleRefitChanged) bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
+                if (normalizedNpcCorrection || refitChanged || nippleRefitChanged) {
+                    bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
+                }
                 // The popup has no separate Apply button. Rebuild the owned
                 // committed key immediately so disabling randomization also
                 // removes values that were generated by the previous state.
                 if (nippleRandomizationChanged || genitalRandomizationChanged) {
                     bcn::racemenu::QueueReapplyCurrent(SelectedActor());
                 }
-                if (refitChanged || nippleRefitChanged || nippleRandomizationChanged ||
+                if (normalizedNpcCorrection || refitChanged || nippleRefitChanged || nippleRandomizationChanged ||
                     genitalRandomizationChanged) {
                     // Signatures keep unchanged channels cheap: this scan
                     // updates only the body/outfit result whose option bits
@@ -2550,14 +2590,23 @@ namespace bcn::ui
         if (ImGui::Button(settingsLabel)) g_showSettings = true;
         ImGui::PopStyleVar(2);
 
+        const auto* selectedActor = SelectedActor();
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        const auto playerSelected = selectedActor && player &&
+            selectedActor->GetFormID() == player->GetFormID();
+        if (!playerSelected && g_activeTab == ActiveTab::tint) {
+            // Applying a tint is already immediate, so dropping this transient
+            // UI confirmation does not alter the saved/current tint state.
+            g_activeTab = ActiveTab::body;
+            g_pendingTint.reset();
+            g_selectedTintAssetID.clear();
+            g_showTintDetails = false;
+            bcn::menu_character::Presentation::Get().SetTintFocus(false);
+        }
+
         bcn::menu_character::Presentation::Get().Apply(runtimeSettings.characterPosition, SelectedActor());
 
         ImGui::Separator();
-        const auto* selectedActor = SelectedActor();
-        const auto* player = RE::PlayerCharacter::GetSingleton();
-        const auto playerSelected = selectedActor && player &&
-            selectedActor->GetFormID() == player->GetFormID();
-        if (!playerSelected && g_activeTab == ActiveTab::tint) g_activeTab = ActiveTab::body;
         HandleTabNavigation(playerSelected);
         if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
                 g_activeTab == ActiveTab::body)) g_activeTab = ActiveTab::body;

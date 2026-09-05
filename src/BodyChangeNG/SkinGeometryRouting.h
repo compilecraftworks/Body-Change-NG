@@ -31,6 +31,17 @@ namespace bcn::skin_geometry
         return requestedHandsOrFeet && usableExactTargets == 0U;
     }
 
+    // UBE normally exposes its naked body on slot 53, but some valid UBE
+    // skin-armour/equipment states expose the live body geometry through the
+    // ordinary slot 32 instead. Only fall back when the UBE-specific target is
+    // genuinely absent; an apply failure on an existing target must not spill
+    // the profile onto a second body object.
+    [[nodiscard]] constexpr bool NeedsStandardBodyFallback(
+        const bool usesUbeBodySlot, const std::size_t usableUbeTargets) noexcept
+    {
+        return usesUbeBodySlot && usableUbeTargets == 0U;
+    }
+
     [[nodiscard]] constexpr char LowerAscii(const char value) noexcept
     {
         return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;

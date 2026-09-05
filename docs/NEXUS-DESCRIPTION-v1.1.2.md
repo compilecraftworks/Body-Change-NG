@@ -168,6 +168,8 @@ Create one folder per skin pack and preserve the skin mod's original Textures tr
 `TintMask\YourTintPack\textures\actors\character\character assets\tintmasks\*.dds`
 
 Create one folder per tint pack and preserve its RaceMenu tint-mask filenames and folder structure. Each folder directly under **TintMask** becomes one entry in the in-game catalog.
+
+Only tint-mask-based tints are supported; overlay-based tints are not supported.
 For a UBE-only tint-mask pack, include **UBE** in the top-level pack name. Packs marked **COtR** are treated as compatible with both UBE and conventional female heads.
 
 **Adding files while Skyrim is running**

@@ -339,31 +339,31 @@ namespace
         return {
             DistributionRule{
                 .id = "default-exclude-mod-follower-female",
-                .name = "커스텀 팔로워 바디 배포 제외 (여성)",
+                .name = "Exclude Body Distribution for Custom Followers (Female)",
                 .female = true,
                 .scope = DistributionScope::modInstalledFollower,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-mod-follower-male",
-                .name = "커스텀 팔로워 바디 배포 제외 (남성)",
+                .name = "Exclude Body Distribution for Custom Followers (Male)",
                 .female = false,
                 .scope = DistributionScope::modInstalledFollower,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-elder-female",
-                .name = "노인 NPC 바디 배포 제외 (여성)",
+                .name = "Exclude Body Distribution for Elder NPCs (Female)",
                 .female = true,
                 .scope = DistributionScope::elderNPC,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-elder-male",
-                .name = "노인 NPC 바디 배포 제외 (남성)",
+                .name = "Exclude Body Distribution for Elder NPCs (Male)",
                 .female = false,
                 .scope = DistributionScope::elderNPC,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-skin-argonian-female",
-                .name = "아르고니안 여성 스킨 배포 제외",
+                .name = "Exclude Skin Distribution for Argonians (Female)",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -372,7 +372,7 @@ namespace
                 .skinExcluded = true },
             DistributionRule{
                 .id = "default-exclude-skin-argonian-male",
-                .name = "아르고니안 남성 스킨 배포 제외",
+                .name = "Exclude Skin Distribution for Argonians (Male)",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -381,7 +381,7 @@ namespace
                 .skinExcluded = true },
             DistributionRule{
                 .id = "default-exclude-skin-khajiit-female",
-                .name = "카짓 여성 스킨 배포 제외",
+                .name = "Exclude Skin Distribution for Khajiit (Female)",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -390,7 +390,7 @@ namespace
                 .skinExcluded = true },
             DistributionRule{
                 .id = "default-exclude-skin-khajiit-male",
-                .name = "카짓 남성 스킨 배포 제외",
+                .name = "Exclude Skin Distribution for Khajiit (Male)",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
