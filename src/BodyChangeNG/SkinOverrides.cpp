@@ -4,6 +4,7 @@
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/AsyncWorkGuards.h"
+#include "BodyChangeNG/RaceMenuOverrideRouting.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinGeometryRouting.h"
@@ -160,7 +161,8 @@ namespace
     std::atomic_uint64_t g_nextFutanariApplyGeneration{ 1U };
     std::unordered_set<RE::FormID> g_legacyCleanupComplete;
     std::atomic<skee_override::IPluginInterface*> g_overrideInterface{};
-    std::atomic_uint32_t g_overrideVersion{};
+    std::atomic<bcn::racemenu_override::Route> g_overrideRoute{
+        bcn::racemenu_override::Route::unsupported };
     // UBE's naked body is authored on Skyrim biped slot 53. CommonLib names
     // the corresponding bit kModLegRight (bit 23).
     constexpr auto kUbeBodySlot = RE::BGSBipedObjectForm::BipedObjectSlot::kModLegRight;
@@ -196,32 +198,44 @@ namespace
             bcn::racemenu::QueryInterface("Override"));
         if (!candidate) return nullptr;
         const auto version = candidate->GetVersion();
-        // RaceMenu SE 0.4.14-0.4.16 exposes the internal Override v1 ABI.
-        // RaceMenu AE exposes the public wrapper ABI introduced as v2. A
-        // future ABI must be audited before it is called; fail closed instead
-        // of treating a changed vtable as v2.
-        if (version < 1U || version > 2U) {
+        const auto runtime = REL::Module::get().version();
+        const auto aeRuntime = runtime.compare(REL::Version{ 1, 6, 0, 0 }) !=
+            std::strong_ordering::less;
+        const auto route = bcn::racemenu_override::ResolveRoute(version, aeRuntime);
+        // v0 exists in both legacy SE and AE-backported RaceMenu builds. It
+        // must never be cast to the v2 wrapper ABI; the serialization-safe
+        // NiOverride Papyrus surface is common to v0/v1. A future interface
+        // remains fail-closed until its vtable is audited.
+        if (route == bcn::racemenu_override::Route::unsupported) {
             SKSE::log::error("Body Change NG rejected unsupported RaceMenu Override interface version {}", version);
             return nullptr;
         }
-        g_overrideVersion.store(version, std::memory_order_release);
+        g_overrideRoute.store(route, std::memory_order_release);
         g_overrideInterface.store(candidate, std::memory_order_release);
-        SKSE::log::info("Body Change NG received RaceMenu Override interface version {} path={}", version,
-            version == 1U ? "Papyrus-NiOverride-exact-persistent" : "native-v2-exact-persistent");
+        SKSE::log::info(
+            "Body Change NG received RaceMenu Override interface version {} runtime={} route={} path={}",
+            version, runtime.string(), bcn::racemenu_override::RouteLabel(route),
+            bcn::racemenu_override::UsesNativeV2(route) ?
+                "native-v2-exact-persistent" : "Papyrus-NiOverride-exact-persistent");
         return candidate;
     }
 
-    [[nodiscard]] std::uint32_t OverrideVersion() noexcept
+    [[nodiscard]] bcn::racemenu_override::Route OverrideRoute() noexcept
     {
-        if (!OverrideInterface()) return 0U;
-        return g_overrideVersion.load(std::memory_order_acquire);
+        if (!OverrideInterface()) return bcn::racemenu_override::Route::unsupported;
+        return g_overrideRoute.load(std::memory_order_acquire);
     }
 
     [[nodiscard]] skee_override::IOverrideInterfaceV2* OverrideInterfaceV2() noexcept
     {
         auto* overrideBase = OverrideInterface();
-        return overrideBase && OverrideVersion() == 2U ?
+        return overrideBase && bcn::racemenu_override::UsesNativeV2(OverrideRoute()) ?
             static_cast<skee_override::IOverrideInterfaceV2*>(overrideBase) : nullptr;
+    }
+
+    [[nodiscard]] bool UsesLegacyOverride() noexcept
+    {
+        return OverrideInterface() && bcn::racemenu_override::UsesPapyrus(OverrideRoute());
     }
 
     [[nodiscard]] std::uint64_t BeginSkinChange(const RE::FormID actorFormID)
@@ -1019,7 +1033,8 @@ namespace
         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
         const std::vector<bcn::SkinTextureLayer>& layers,
         const std::string_view cacheNamespace = "skin",
-        const std::string_view partName = {})
+        const std::string_view partName = {},
+        const bool updateLoaded = true)
     {
         if (!actor) return false;
         const auto mask = static_cast<std::uint32_t>(slot);
@@ -1056,20 +1071,24 @@ namespace
                 } else {
                     ++transient;
                 }
-                // SetSkinProperty updates the currently loaded race-skin part,
-                // including UBE hands/feet that are not exposed through the
-                // actor's BipedAnim object array. The one-bit mask keeps body,
-                // hands and feet strictly separated.
-                overrides.SetSkinProperty(actor, firstPerson, mask,
-                    static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value, true);
-                if (!firstPerson) thirdPersonApplied = true;
+                if (updateLoaded) {
+                    // Shared-atlas layouts can safely repaint the live Skin
+                    // Armor. Conventional layouts use store-only mode when a
+                    // hidden equipped item temporarily owns the biped slot;
+                    // the next actor rebuild applies this one-bit key to the
+                    // newly-created naked part without repainting other parts.
+                    overrides.SetSkinProperty(actor, firstPerson, mask,
+                        static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value, true);
+                    if (!firstPerson) thirdPersonApplied = true;
+                }
             }
         }
         SKSE::log::info(
-            "SkinAudit actor={:08X} part={} stored-keys={} transient-rsv-keys={} mode=RaceMenu-v2-single-skin-slot",
+            "SkinAudit actor={:08X} part={} stored-keys={} transient-rsv-keys={} mode={}",
             actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
-            stored, transient);
-        return thirdPersonApplied;
+            stored, transient, updateLoaded ? "RaceMenu-v2-single-skin-slot" :
+                "RaceMenu-v2-hidden-part-store-only");
+        return updateLoaded ? thirdPersonApplied : stored != 0U;
     }
 
     [[nodiscard]] bool ApplyPart(skee_override::IOverrideInterfaceV2& overrides, RE::Actor* actor,
@@ -1836,10 +1855,10 @@ namespace
         return removed;
     }
 
-    // Override v1 predates RaceMenu's public SetVariant wrapper. Constructing
+    // Override v0/v1 predates RaceMenu's public SetVariant wrapper. Constructing
     // its internal OverrideVariant in another DLL is not serialization-safe
     // because strings must be interned in RaceMenu's private StringTable.
-    // Use the stable NiOverride Papyrus natives for v1 strings instead. Skin
+    // Use the stable NiOverride Papyrus natives for v0/v1 strings instead. Skin
     // overrides below always receive exactly one biped bit; combined masks are
     // never used, so body, hands and feet cannot overwrite one another. Exact
     // Armor + ArmorAddon + node keys cover skin embedded by current outfits.
@@ -1887,7 +1906,7 @@ namespace
                 if (!batch->timedOut.exchange(true, std::memory_order_acq_rel)) {
                     if (batch->lease) batch->lease->cancelled.store(true, std::memory_order_release);
                     SKSE::log::error(
-                        "Body Change NG cancelled an unreturned RaceMenu v1 callback batch for actor {:08X}; pending={} accepted={}",
+                        "Body Change NG cancelled an unreturned RaceMenu v0/v1 callback batch for actor {:08X}; pending={} accepted={}",
                         batch->actorFormID, batch->pending.load(std::memory_order_acquire),
                         batch->accepted.load(std::memory_order_acquire));
                 }
@@ -2106,7 +2125,7 @@ namespace
                                 std::string{ node }, static_cast<std::uint32_t>(kShaderTextureProperty),
                                 static_cast<std::uint32_t>(textureIndex)), batch));
                             SKSE::log::info(
-                                "SkinOverride persistent-remove actor={:08X} armor={:08X} addon={:08X} node='{}' index={}({}) owner=BCNG mode=RaceMenu-v1",
+                                "SkinOverride persistent-remove actor={:08X} armor={:08X} addon={:08X} node='{}' index={}({}) owner=BCNG mode=RaceMenu-v0-v1-Papyrus",
                                 actor->GetFormID(), armor->GetFormID(), addon->GetFormID(), node,
                                 textureIndex, TextureIndexName(textureIndex));
                         });
@@ -2131,7 +2150,7 @@ namespace
                             static_cast<std::uint32_t>(mask), static_cast<std::uint32_t>(kShaderTextureProperty),
                             static_cast<std::uint32_t>(textureIndex)), batch));
                         SKSE::log::info(
-                            "SkinOverride persistent-remove actor={:08X} legacy=skin-slot view={} mask={:08X} index={} owner=BCNG mode=RaceMenu-v1",
+                            "SkinOverride persistent-remove actor={:08X} legacy=skin-slot view={} mask={:08X} index={} owner=BCNG mode=RaceMenu-v0-v1-Papyrus",
                             actor->GetFormID(), firstPerson ? "1p" : "3p", mask, textureIndex);
                     });
             }
@@ -2164,7 +2183,7 @@ namespace
                                 std::string{ node }, static_cast<std::uint32_t>(kShaderTextureProperty),
                                 static_cast<std::uint32_t>(textureIndex)), batch));
                             SKSE::log::info(
-                                "SkinOverride futanari-remove actor={:08X} armor={:08X} addon={:08X} node='{}' index={} owner=BCNG mode=RaceMenu-v1",
+                                "SkinOverride futanari-remove actor={:08X} armor={:08X} addon={:08X} node='{}' index={} owner=BCNG mode=RaceMenu-v0-v1-Papyrus",
                                 actor->GetFormID(), armor->GetFormID(), addon->GetFormID(), node,
                                 textureIndex);
                         });
@@ -2206,7 +2225,7 @@ namespace
                             const auto exists = !current.empty();
                             if (!bcn::skin_override::ownership::MayReplace(exists, current)) {
                                 SKSE::log::warn(
-                                    "SkinOverride persistent-register skipped actor={:08X} armor={:08X} addon={:08X} node='{}' index={} reason=foreign-owner mode=RaceMenu-v1 current='{}'",
+                                    "SkinOverride persistent-register skipped actor={:08X} armor={:08X} addon={:08X} node='{}' index={} reason=foreign-owner mode=RaceMenu-v0-v1-Papyrus current='{}'",
                                     actor->GetFormID(), armor->GetFormID(), addon->GetFormID(), node,
                                     textureIndex, current);
                                 return;
@@ -2218,7 +2237,7 @@ namespace
                                 static_cast<std::uint32_t>(textureIndex), std::string{ path }, true), batch);
                             if (dispatched) mutation->accepted.fetch_add(1U, std::memory_order_release);
                             SKSE::log::info(
-                                "SkinOverride persistent-register actor={:08X} armor={:08X} addon={:08X} node='{}' index={}({}) action={} value='{}' mode=RaceMenu-v1",
+                                "SkinOverride persistent-register actor={:08X} armor={:08X} addon={:08X} node='{}' index={}({}) action={} value='{}' mode=RaceMenu-v0-v1-Papyrus",
                                 actor->GetFormID(), armor->GetFormID(), addon->GetFormID(), node,
                                 textureIndex, TextureIndexName(textureIndex), exists ? "replace-owned" : "add", path);
                         });
@@ -2226,7 +2245,7 @@ namespace
                 }
             }
         }
-        SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} mode=RaceMenu-v1-exact",
+        SKSE::log::info("SkinAudit actor={:08X} part={} stored-keys={} mode=RaceMenu-v0-v1-Papyrus-exact",
             actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName, submitted);
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
     }
@@ -2237,7 +2256,8 @@ namespace
         const std::vector<bcn::SkinTextureLayer>& layers,
         const std::shared_ptr<LegacyOverrideBatch>& batch,
         const std::string_view cacheNamespace = "skin",
-        const std::string_view partName = {})
+        const std::string_view partName = {},
+        const bool requirePersistence = false)
     {
         if (!actor) return {};
         const auto mask = static_cast<std::uint32_t>(slot);
@@ -2263,7 +2283,7 @@ namespace
                     static_cast<std::uint32_t>(kShaderTextureProperty),
                     static_cast<std::uint32_t>(textureIndex)), batch,
                     [&vm, actor, female, firstPerson, mask, textureIndex, path, loggedPart,
-                        batch, mutation](std::string current) {
+                        batch, mutation, requirePersistence](std::string current) {
                         const auto exists = !current.empty();
                         const auto mayPersist =
                             bcn::skin_override::ownership::MayReplace(exists, current);
@@ -2271,7 +2291,14 @@ namespace
                             bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(current);
                         if (!mayPersist && !rsvTransient) {
                             SKSE::log::warn(
-                                "SkinOverride skin-slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=foreign-owner mode=RaceMenu-v1 current='{}'",
+                                "SkinOverride skin-slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=foreign-owner mode=RaceMenu-v0-v1-Papyrus current='{}'",
+                                actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p",
+                                mask, textureIndex, current);
+                            return;
+                        }
+                        if (requirePersistence && !mayPersist) {
+                            SKSE::log::info(
+                                "SkinOverride hidden-part slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=persistence-required current='{}' mode=RaceMenu-v0-v1-Papyrus",
                                 actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p",
                                 mask, textureIndex, current);
                             return;
@@ -2287,7 +2314,7 @@ namespace
                                 std::string{ path }, bool{ mayPersist }), batch);
                         if (dispatched) mutation->accepted.fetch_add(1U, std::memory_order_release);
                         SKSE::log::info(
-                            "SkinOverride skin-slot-register actor={:08X} part={} view={} mask={:08X} index={}({}) mode={} value='{}' RaceMenu-v1",
+                            "SkinOverride skin-slot-register actor={:08X} part={} view={} mask={:08X} index={}({}) mode={} value='{}' RaceMenu-v0-v1-Papyrus",
                             actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p", mask,
                             textureIndex, TextureIndexName(textureIndex),
                             mayPersist ? "persistent" : "transient-rsv", path);
@@ -2296,7 +2323,7 @@ namespace
             }
         }
         SKSE::log::info(
-            "SkinAudit actor={:08X} part={} queried-keys={} mode=RaceMenu-v1-single-skin-slot",
+            "SkinAudit actor={:08X} part={} queried-keys={} mode=RaceMenu-v0-v1-Papyrus-single-skin-slot",
             actor->GetFormID(), loggedPart, submitted);
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
     }
@@ -2344,7 +2371,7 @@ namespace
                             static_cast<std::uint32_t>(kShaderTextureProperty),
                             static_cast<std::uint32_t>(textureIndex)), batch));
                         SKSE::log::info(
-                            "SkinOverride persistent-remove actor={:08X} part=face node='{}' index={}({}) owner=BCNG mode=RaceMenu-v1",
+                            "SkinOverride persistent-remove actor={:08X} part=face node='{}' index={}({}) owner=BCNG mode=RaceMenu-v0-v1-Papyrus",
                             actor->GetFormID(), node, textureIndex, TextureIndexName(textureIndex));
                     });
             }
@@ -2363,7 +2390,7 @@ namespace
             auto path = bcn::runtime_assets::TexturePathFromGameRelative(layer.path, "skin-face");
             if (path.empty()) continue;
             SKSE::log::info(
-                "SkinAudit expected actor={:08X} part=face node='{}' index={}({}) source='{}' cache='{}' mode=RaceMenu-v1-exact",
+                "SkinAudit expected actor={:08X} part=face node='{}' index={}({}) source='{}' cache='{}' mode=RaceMenu-v0-v1-Papyrus-exact",
                 actor->GetFormID(), face.nodeName, static_cast<std::uint32_t>(layer.shaderTextureIndex),
                 TextureIndexName(layer.shaderTextureIndex), layer.path, path);
             const auto textureIndex = static_cast<std::uint32_t>(layer.shaderTextureIndex);
@@ -2375,7 +2402,7 @@ namespace
                     const auto exists = !current.empty();
                     if (!bcn::skin_override::ownership::MayReplace(exists, current)) {
                         if (bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(current)) {
-                            // RaceMenu v1's AddNodeOverrideString applies to
+                            // RaceMenu v0/v1 AddNodeOverrideString applies to
                             // the live node even when persistence is false.
                             // That lets RSV retain ownership of its serialized
                             // key while BCNG paints the selected skin now.
@@ -2392,12 +2419,12 @@ namespace
                                 g_rsvTransientFaces.insert(actor->GetFormID());
                             }
                             SKSE::log::debug(
-                                "SkinOverride live-apply actor={:08X} part=face node='{}' index={} provider=RSV mode=RaceMenu-v1 value='{}'",
+                                "SkinOverride live-apply actor={:08X} part=face node='{}' index={} provider=RSV mode=RaceMenu-v0-v1-Papyrus value='{}'",
                                 actor->GetFormID(), node, textureIndex, path);
                             return;
                         }
                         SKSE::log::warn(
-                            "SkinOverride persistent-register skipped actor={:08X} part=face node='{}' index={} reason=foreign-owner mode=RaceMenu-v1 current='{}'",
+                            "SkinOverride persistent-register skipped actor={:08X} part=face node='{}' index={} reason=foreign-owner mode=RaceMenu-v0-v1-Papyrus current='{}'",
                             actor->GetFormID(), node, textureIndex, current);
                         return;
                     }
@@ -2407,7 +2434,7 @@ namespace
                         static_cast<std::uint32_t>(textureIndex), std::string{ path }, true), batch);
                     if (dispatched) mutation->accepted.fetch_add(1U, std::memory_order_release);
                     SKSE::log::info(
-                        "SkinOverride persistent-register actor={:08X} part=face node='{}' index={}({}) action={} value='{}' mode=RaceMenu-v1",
+                        "SkinOverride persistent-register actor={:08X} part=face node='{}' index={}({}) action={} value='{}' mode=RaceMenu-v0-v1-Papyrus",
                         actor->GetFormID(), node, textureIndex, TextureIndexName(textureIndex),
                         exists ? "replace-owned" : "add", path);
                 });
@@ -2477,7 +2504,9 @@ namespace
             auto applyBatch = MakeLegacyBatch(currentActor.get(), generation);
             auto requiredParts = std::make_shared<
                 std::vector<std::shared_ptr<LegacyMutationTracker>>>();
-            applyBatch->completion = [actorHandle, profile, generation, requiredParts](const std::uint32_t) {
+            auto needsExactRepair = std::make_shared<std::atomic_bool>(false);
+            applyBatch->completion = [actorHandle, profile, generation, requiredParts,
+                needsExactRepair](const std::uint32_t) {
                 const auto settledActor = actorHandle.get();
                 if (!settledActor || !IsCurrentSkinChange(settledActor->GetFormID(), generation)) return;
                 const auto appliedParts = static_cast<std::size_t>(std::ranges::count_if(
@@ -2485,20 +2514,66 @@ namespace
                         return part && part->accepted.load(std::memory_order_acquire) != 0U;
                     }));
                 const auto complete = !requiredParts->empty() && appliedParts == requiredParts->size();
-                if (complete) {
-                    MarkCurrentSkinContent(settledActor.get(), profile, generation);
-                    SKSE::log::info(
-                        "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v1",
-                        profile.name, settledActor->GetFormID());
-                } else {
-                    SKSE::log::warn(
-                        "Body Change NG dispatched only {}/{} currently available parts from skin '{}' to actor {:08X} through RaceMenu Override v1; the desired selection remains pending",
-                        appliedParts, requiredParts->size(), profile.name, settledActor->GetFormID());
+                const auto finish = [actorHandle, profile, generation, complete,
+                    appliedParts, requestedParts = requiredParts->size()] {
+                    const auto finalActor = actorHandle.get();
+                    if (!finalActor || !IsCurrentSkinChange(finalActor->GetFormID(), generation)) return;
+                    if (complete) {
+                        MarkCurrentSkinContent(finalActor.get(), profile, generation);
+                        SKSE::log::info(
+                            "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v0/v1 Papyrus",
+                            profile.name, finalActor->GetFormID());
+                    } else {
+                        SKSE::log::warn(
+                            "Body Change NG dispatched only {}/{} currently available parts from skin '{}' to actor {:08X} through RaceMenu Override v0/v1 Papyrus; the desired selection remains pending",
+                            appliedParts, requestedParts, profile.name, finalActor->GetFormID());
+                    }
+                    auto* finalVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                    if (!finalVM || !QueueNiNodeUpdate(*finalVM, finalActor.get(), actorHandle, generation)) {
+                        QueueSettledSkinAudit(actorHandle, generation, 3U);
+                    }
+                };
+
+                if (!needsExactRepair->load(std::memory_order_acquire)) {
+                    finish();
+                    return;
                 }
-                auto* settledVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-                if (!settledVM || !QueueNiNodeUpdate(*settledVM, settledActor.get(), actorHandle, generation)) {
-                    QueueSettledSkinAudit(actorHandle, generation, 3U);
+
+                // NiOverride v0/v1 skin-slot native paints every addon on the
+                // selected Skin Armor while registering the durable key. A
+                // hidden shoe can require that key before the naked feet clone
+                // exists. Repaint every currently visible conventional part
+                // through its exact Armor+Addon+node key after those broad
+                // callbacks complete, then rebuild once so the hidden part
+                // receives its saved slot override without leaving body/hands
+                // on the feet atlas.
+                auto* repairVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                auto* repairBase = settledActor->GetActorBase();
+                if (!repairVM || !repairBase || !ProfileMatchesActor(settledActor.get(), profile)) {
+                    finish();
+                    return;
                 }
+                const auto repairFemale = repairBase->GetSex() == RE::SEX::kFemale;
+                const auto repairBodyLayers = EffectiveBodyLayers(profile, repairBase);
+                const auto repairHandsLayers = EffectiveHandsLayers(profile, repairBase);
+                const auto repairFeetLayers = EffectiveFeetLayers(profile, repairBase);
+                auto repairBatch = MakeLegacyBatch(settledActor.get(), generation);
+                repairBatch->completion = [finish](const std::uint32_t) { finish(); };
+                if (!repairBodyLayers.empty()) {
+                    static_cast<void>(DispatchLegacyProfileBodyApply(*repairVM,
+                        settledActor.get(), repairFemale, profile, repairBodyLayers, repairBatch));
+                }
+                if (!repairHandsLayers.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM, settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kHands,
+                        repairHandsLayers, repairBatch, bcn::skin_geometry::BodySelection::all, true));
+                }
+                if (!repairFeetLayers.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM, settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kFeet,
+                        repairFeetLayers, repairBatch, bcn::skin_geometry::BodySelection::all, true));
+                }
+                CompleteLegacyBatch(repairBatch);
             };
 
             const auto submitPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
@@ -2506,13 +2581,21 @@ namespace
                 const bcn::skin_geometry::BodySelection selection =
                     bcn::skin_geometry::BodySelection::all,
                 const bool allowExplicitLimbNode = false,
-                const bool usesSharedBodyAtlas = false) {
+                const bool usesSharedBodyAtlas = false,
+                const bool allowMissingPartFallback = false) {
                 if (layers.empty()) return;
                 auto exact = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                     slot, layers, applyBatch, selection, allowExplicitLimbNode);
                 if (bcn::skin_geometry::MayUseBroadSkinSlotFallback(usesSharedBodyAtlas)) {
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, slot, layers, applyBatch));
+                } else if (allowMissingPartFallback &&
+                    bcn::skin_geometry::NeedsMissingPartSlotFallback(
+                        usesSharedBodyAtlas, exact ? 1U : 0U)) {
+                    needsExactRepair->store(true, std::memory_order_release);
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale, slot, layers, applyBatch,
+                        "skin", SkinPartName(slot), true));
                 } else {
                     requiredParts->push_back(std::move(exact));
                 }
@@ -2531,6 +2614,13 @@ namespace
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, kUbeBodySlot,
                         currentBodyLayers, applyBatch, "skin", "ube-body-slot-53"));
+                } else if (bcn::skin_geometry::NeedsMissingPartSlotFallback(
+                        sharedBodyAtlas, exact ? 1U : 0U)) {
+                    needsExactRepair->store(true, std::memory_order_release);
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        currentBodyLayers, applyBatch, "skin", "body-hidden-slot", true));
                 } else {
                     requiredParts->push_back(std::move(exact));
                 }
@@ -2568,9 +2658,9 @@ namespace
                     bcn::skin_geometry::BodySelection::all, true, true);
             } else {
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
+                    bcn::skin_geometry::BodySelection::all, true, false, true);
                 submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentFeetLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
+                    bcn::skin_geometry::BodySelection::all, true, false, true);
             }
             if (!currentFaceLayers.empty()) {
                 requiredParts->push_back(currentFace ?
@@ -2579,7 +2669,7 @@ namespace
                     std::shared_ptr<LegacyMutationTracker>{});
             }
             if (std::ranges::none_of(*requiredParts, [](const auto& part) { return part != nullptr; })) {
-                SKSE::log::warn("Body Change NG found no RaceMenu v1 skin targets for '{}'", profile.name);
+                SKSE::log::warn("Body Change NG found no RaceMenu v0/v1 skin targets for '{}'", profile.name);
             }
             CompleteLegacyBatch(applyBatch);
         };
@@ -2619,7 +2709,7 @@ namespace
             auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
             if (!currentActor || !currentVM ||
                 !IsCurrentSkinChange(currentActor->GetFormID(), generation)) return;
-            // RaceMenu v1 can remove every serialized key yet leave an
+            // RaceMenu v0/v1 can remove every serialized key yet leave an
             // already-loaded armor clone painted. Inspect this actor once at
             // completion so an idempotent second Default click can repair the
             // live body/hands/feet as well as the face.
@@ -2628,7 +2718,7 @@ namespace
                 bcn::skin_override::LiveCheckScope::fullProfile);
             const auto staleLiveClone = liveDefault.has_value() && !*liveDefault;
             if (accepted == 0U && !staleLiveClone) {
-                SKSE::log::info("Body Change NG found no remaining RaceMenu v1 skin texture overrides for actor {:08X}",
+                SKSE::log::info("Body Change NG found no remaining RaceMenu v0/v1 skin texture overrides for actor {:08X}",
                     currentActor->GetFormID());
                 const auto useDefault = unavailableProfileId.empty();
                 bcn::ActorRegistry::Get().MarkSkinApplied(
@@ -2639,7 +2729,7 @@ namespace
                 if (staleLiveClone) currentActor->DoReset3D(false);
                 QueueSettledSkinAudit(actorHandle, generation, 2U);
             }
-            SKSE::log::info("Body Change NG removed its RaceMenu v1 skin texture overrides for actor {:08X}",
+            SKSE::log::info("Body Change NG removed its RaceMenu v0/v1 skin texture overrides for actor {:08X}",
                 currentActor->GetFormID());
             const auto useDefault = unavailableProfileId.empty();
             bcn::ActorRegistry::Get().MarkSkinApplied(
@@ -2758,6 +2848,7 @@ namespace
 
         std::size_t requestedParts{};
         std::size_t appliedParts{};
+        bool storedMissingPart{};
         const auto applyPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
             const std::vector<bcn::SkinTextureLayer>& layers,
             const std::vector<LoadedPartTarget>& targets,
@@ -2766,10 +2857,16 @@ namespace
             ++requestedParts;
             const auto exactApplied = ApplyLoadedPart(
                 *overrides, actor.get(), female, slot, layers, targets);
-            const auto durableApplied = bcn::skin_geometry::MayUseBroadSkinSlotFallback(
-                usesSharedBodyAtlas) ?
-                ApplySkinSlotPart(*overrides, actor.get(), female, slot, layers) :
-                exactApplied;
+            auto durableApplied = exactApplied;
+            if (bcn::skin_geometry::MayUseBroadSkinSlotFallback(usesSharedBodyAtlas)) {
+                durableApplied = ApplySkinSlotPart(
+                    *overrides, actor.get(), female, slot, layers);
+            } else if (bcn::skin_geometry::NeedsMissingPartSlotFallback(
+                    usesSharedBodyAtlas, targets.size())) {
+                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                    slot, layers, "skin", SkinPartName(slot), false);
+                storedMissingPart = durableApplied || storedMissingPart;
+            }
             if (durableApplied) ++appliedParts;
         };
         const auto hasPrimaryParts = !bodyLayers.empty() || !handsLayers.empty() ||
@@ -2784,6 +2881,11 @@ namespace
                     bodyLayers, "skin", "body-slot-32");
                 durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
                     kUbeBodySlot, bodyLayers, "skin", "ube-body-slot-53") && durableApplied;
+            } else if (bcn::skin_geometry::NeedsMissingPartSlotFallback(
+                    ubeBody, bodyRoute.targets.size())) {
+                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                    bodyRoute.slot, bodyLayers, "skin", "body-hidden-slot", false);
+                storedMissingPart = durableApplied || storedMissingPart;
             }
             if (durableApplied) {
                 ++appliedParts;
@@ -2831,7 +2933,7 @@ namespace
                 "Body Change NG applied only {}/{} currently available parts from skin '{}' to actor {:08X}; the desired selection remains pending for a later 3D/equipment refresh",
                 appliedParts, requestedParts, profile.name, actor->GetFormID());
         }
-        if (removed) {
+        if (removed || storedMissingPart) {
             if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
                 vm && QueueNiNodeUpdate(*vm, actor.get(), actorHandle, generation)) return;
             QueueSettledSkinAudit(actorHandle, generation, 2U);
@@ -2894,8 +2996,10 @@ namespace
         if (!bcn::frame_tasks::Active()) return bcn::skin_override::ApplyResult::noTaskInterface;
         if (!actor) return bcn::skin_override::ApplyResult::invalidActor;
         if (!actor->Is3DLoaded()) return bcn::skin_override::ApplyResult::actor3DUnavailable;
-        const auto overrideVersion = OverrideVersion();
-        if (overrideVersion == 0U || !RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
+        const auto* overrideInterface = OverrideInterface();
+        const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
+        if (!overrideInterface ||
+            (legacyOverride && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
             return bcn::skin_override::ApplyResult::unavailable;
         }
         const auto* tasks = SKSE::GetTaskInterface();
@@ -2910,9 +3014,9 @@ namespace
             g_currentProfileIds[actor->GetFormID()] = {};
         }
         bcn::frame_tasks::Queue(actor->GetFormID(),
-            [handle, generation, overrideVersion,
+            [handle, generation, legacyOverride,
                 unavailableProfileId = std::move(unavailableProfileId)]() mutable {
-                if (overrideVersion == 1U) {
+                if (legacyOverride) {
                     ClearLegacyNow(handle, generation, std::move(unavailableProfileId));
                 } else {
                     ClearNow(handle, generation, std::move(unavailableProfileId));
@@ -2963,8 +3067,7 @@ namespace
                 const auto layers = EffectiveFaceLayers(*profile, base, face->detailFilename);
                 if (layers.empty()) return;
                 const auto female = base->GetSex() == RE::SEX::kFemale;
-                const auto overrideVersion = OverrideVersion();
-                if (overrideVersion == 1U) {
+                if (UsesLegacyOverride()) {
                     auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
                     const auto skinGeneration = CurrentSkinGeneration(actorFormID);
                     if (!vm || !skinGeneration) return;
@@ -3041,7 +3144,7 @@ namespace
                         settledActor->GetFormID(), generation)) return;
                 if (accepted != 0U) {
                     SKSE::log::info(
-                        "Body Change NG applied futanari skin '{}' ({}) to actor {:08X} through RaceMenu Override v1",
+                        "Body Change NG applied futanari skin '{}' ({}) to actor {:08X} through RaceMenu Override v0/v1 Papyrus",
                         profile.name, bcn::FutanariSkinTypeLabel(profile.type),
                         settledActor->GetFormID());
                 }
@@ -3072,7 +3175,7 @@ namespace
             static_cast<void>(QueueNiNodeUpdate(
                 *currentVM, currentActor.get(), actorHandle, generation, false));
             SKSE::log::info(
-                "Body Change NG restored the default futanari skin for actor {:08X} through RaceMenu Override v1",
+                "Body Change NG restored the default futanari skin for actor {:08X} through RaceMenu Override v0/v1 Papyrus",
                 currentActor->GetFormID());
         };
         DispatchLegacyTargetsClear(*vm, actor.get(), true, route.targets, clearBatch);
@@ -3125,12 +3228,12 @@ namespace bcn::skin_override
         if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         if (!actor) return ApplyResult::invalidActor;
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
-        // RaceMenu SE exposes Override v1; AE exposes the public v2 wrapper.
-        // Accept only those audited versions and require Papyrus for v1's
-        // serialization-safe string path.
-        const auto overrideVersion = OverrideVersion();
-        if (overrideVersion == 0U ||
-            (overrideVersion == 1U && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
+        // RaceMenu Override v0/v1 use the serialization-safe Papyrus string
+        // route. Only the audited public v2 wrapper is called natively.
+        const auto* overrideInterface = OverrideInterface();
+        const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
+        if (!overrideInterface ||
+            (legacyOverride && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
             return ApplyResult::unavailable;
         }
         const auto profile = SkinProfiles::Get().Find(profileId);
@@ -3168,7 +3271,7 @@ namespace bcn::skin_override
             std::scoped_lock lock(g_selectionLock);
             g_currentProfileIds[actor->GetFormID()] = profile->id;
         }
-        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, profile = *profile, generation, overrideVersion] {
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, profile = *profile, generation, legacyOverride] {
             const auto resolved = handle.get();
             if (!resolved || !IsCurrentSkinChange(resolved->GetFormID(), generation)) return;
             if (profile.contentHash != SkinProfiles::Get().ContentHash(profile.id)) {
@@ -3179,21 +3282,21 @@ namespace bcn::skin_override
             if (!currentBase || !ProfileMatchesActor(resolved.get(), profile)) return;
             auto paths = EffectiveTexturePreparations(profile, resolved.get(), currentBase);
             const auto lease = bcn::frame_tasks::CurrentLease();
-            const auto continueApply = [lease, handle, profile, generation, overrideVersion](const bool prepared) {
+            const auto continueApply = [lease, handle, profile, generation, legacyOverride](const bool prepared) {
                 if (!prepared) {
                     SKSE::log::warn(
                         "Body Change NG could not prepare every runtime texture alias for '{}' outside actor application; unavailable files will remain untouched",
                         profile.name);
                 }
                 static_cast<void>(bcn::frame_tasks::Continue(lease,
-                    [handle, profile, generation, overrideVersion] {
+                    [handle, profile, generation, legacyOverride] {
                         const auto current = handle.get();
                         if (!current || !IsCurrentSkinChange(current->GetFormID(), generation)) return;
                         if (profile.contentHash != SkinProfiles::Get().ContentHash(profile.id)) {
                             [[maybe_unused]] const auto refreshed = QueueApply(current.get(), profile.id);
                             return;
                         }
-                        if (overrideVersion == 1U) ApplyLegacyNow(handle, profile, generation);
+                        if (legacyOverride) ApplyLegacyNow(handle, profile, generation);
                         else ApplyNow(handle, profile, generation);
                     }));
             };
@@ -3261,9 +3364,10 @@ namespace bcn::skin_override
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         auto* base = actor->GetActorBase();
         if (!base || base->GetSex() != RE::SEX::kFemale) return ApplyResult::incompatibleSex;
-        const auto overrideVersion = OverrideVersion();
-        if (overrideVersion == 0U ||
-            (overrideVersion == 1U && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
+        const auto* overrideInterface = OverrideInterface();
+        const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
+        if (!overrideInterface ||
+            (legacyOverride && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
             return ApplyResult::unavailable;
         }
         const auto profile = bcn::FutanariSkinProfiles::Get().Find(profileId);
@@ -3277,7 +3381,7 @@ namespace bcn::skin_override
         const auto handle = actor->GetHandle();
         const auto generation = BeginFutanariChange(actor->GetFormID());
         bcn::frame_tasks::Queue(actor->GetFormID(),
-            [handle, profile = *profile, generation, overrideVersion] {
+            [handle, profile = *profile, generation, legacyOverride] {
                 const auto current = handle.get();
                 if (!current || !IsCurrentFutanariChange(current->GetFormID(), generation)) return;
                 if (profile.contentHash != bcn::FutanariSkinProfiles::Get().ContentHash(profile.id)) {
@@ -3290,18 +3394,18 @@ namespace bcn::skin_override
                     paths.push_back({ layer.path, "futanari" });
                 }
                 const auto lease = bcn::frame_tasks::CurrentLease();
-                const auto continueApply = [lease, handle, profile, generation, overrideVersion](const bool prepared) {
+                const auto continueApply = [lease, handle, profile, generation, legacyOverride](const bool prepared) {
                     if (!prepared) {
                         SKSE::log::warn(
                             "Body Change NG could not prepare every futanari texture for '{}'; unavailable channels remain unchanged",
                             profile.name);
                     }
                     static_cast<void>(bcn::frame_tasks::Continue(lease,
-                        [handle, profile, generation, overrideVersion] {
+                        [handle, profile, generation, legacyOverride] {
                             const auto resolved = handle.get();
                             if (!resolved || !IsCurrentFutanariChange(
                                     resolved->GetFormID(), generation)) return;
-                            if (overrideVersion == 1U) {
+                            if (legacyOverride) {
                                 ApplyFutanariLegacyNow(handle, profile, generation);
                             } else {
                                 ApplyFutanariV2Now(handle, profile, generation);
@@ -3324,17 +3428,18 @@ namespace bcn::skin_override
         if (!actor) return ApplyResult::invalidActor;
         bcn::ActorRegistry::Get().ClearFutanariSkin(actor);
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
-        const auto overrideVersion = OverrideVersion();
-        if (overrideVersion == 0U ||
-            (overrideVersion == 1U && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
+        const auto* overrideInterface = OverrideInterface();
+        const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
+        if (!overrideInterface ||
+            (legacyOverride && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
             return ApplyResult::unavailable;
         }
         if (!CurrentFutanariType(actor, true)) return ApplyResult::futanariGeometryUnavailable;
         if (!SKSE::GetTaskInterface()) return ApplyResult::noTaskInterface;
         const auto handle = actor->GetHandle();
         const auto generation = BeginFutanariChange(actor->GetFormID());
-        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, overrideVersion] {
-            if (overrideVersion == 1U) ClearFutanariLegacyNow(handle, generation);
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, legacyOverride] {
+            if (legacyOverride) ClearFutanariLegacyNow(handle, generation);
             else ClearFutanariV2Now(handle, generation);
         }, 1U, 205U);
         return ApplyResult::queued;

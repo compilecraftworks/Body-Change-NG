@@ -6,25 +6,28 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.1.2 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.1.3 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The project is built for Skyrim SE/AE only.
 
-## Current release: 1.1.2
+## Current release: 1.1.3
 
-This update gives the native interface a black, charcoal, and grayscale
-foundation while retaining the existing state and content highlight colors.
-It also limits clothed breast/nipple correction and NPC nipple/genital
-randomization to their verified CBBE 3BA target. UBE body presets, BodySkin,
-and player TintMask support remain available; incompatible UBE anatomy sliders
-are skipped.
+This update fixes CBBE 3BA, BHUNP, and vanilla BodySkin routing so body, hand,
+and foot textures are applied only to their exact loaded ArmorAddon geometry.
+Manual selection, rule-based NPC distribution, and equipment rebuild recovery
+all use the same corrected path. If SFS visually hides equipped footwear while
+the feet slot remains occupied, a one-bit persistent fallback preserves that
+missing part without leaving a broad cross-part repaint. UBE retains its
+intentional shared-atlas path. RaceMenu Override compatibility is classified
+separately for legacy SE v0, UBE's AE-backported v0, official v1, and official
+v2; only the audited v2 interface is called natively.
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
-- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.2.md) · [한국어](docs/RELEASE-NOTES-v1.1.2-KO.md)
+- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.3.md) · [한국어](docs/RELEASE-NOTES-v1.1.3-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
 
-The MO2 installation ZIP contains the DLL, starter distribution JSON, three
+The MO2 installation ZIP contains the DLL, starter distribution JSON, four
 asset-folder placement guides, `LICENSE`, and `THIRD_PARTY_NOTICES.md` only.
 Release notes, changelogs, Nexus descriptions, and developer documentation stay
 on GitHub and in the source archive, not in the installed mod folder.
@@ -290,7 +293,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.1.2/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.1.3/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

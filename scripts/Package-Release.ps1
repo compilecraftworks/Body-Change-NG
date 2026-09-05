@@ -70,7 +70,7 @@ try {
         Copy-ReleaseFile (Join-Path 'package' $relative) $binary $relative
     }
     Copy-ReleaseFile "build\v$version\windows\x64\release\BodyChangeNG.dll" $binary 'SKSE\Plugins\BodyChangeNG.dll'
-    # MO2 needs runtime files and folder-placement guidance, not release/source docs.
+    # MO2 needs runtime files and four folder-placement guides, not release/source docs.
     # Required license terms are consolidated into these two files.
     foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-ReleaseFile $file $binary

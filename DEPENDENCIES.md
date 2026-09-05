@@ -1,6 +1,6 @@
 # Pinned build dependencies
 
-Body Change NG v1.1.2 is built with xmake 3.1.0 and the exact dependency
+Body Change NG v1.1.3 is built with xmake 3.1.0 and the exact dependency
 closure below. `xmake-requires.lock` remains authoritative for xmake packages
 and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
@@ -16,15 +16,16 @@ and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
 ## RaceMenu runtime interface compatibility
 
-- Skyrim SE 1.5.97 / RaceMenu 0.4.14-0.4.16: BodyMorph v4 and Override v1.
-  Texture strings are submitted through RaceMenu's own NiOverride Papyrus
-  natives so its private v1 string table remains serialization-safe; body,
-  hands and feet are keyed to their exact Skin Armor, ArmorAddon and node.
-- Skyrim AE 1.6.1170 / RaceMenu 0.4.20.0 / SKSE 2.2.6 or newer: BodyMorph v5
-  and Override v2. BodyMorph v5 appends one callback after the complete v4
-  surface, and Override v2 uses the official public wrapper interface.
+- Legacy Skyrim SE Override v0, UBE's newer AE-backported Override v0, and
+  official Override v1 are distinguished at runtime and submit texture strings
+  through RaceMenu's own NiOverride Papyrus natives. This avoids constructing
+  another DLL's private string variant while preserving exact persistent keys.
+- Official Override v2 uses the audited public native wrapper interface. It is
+  never selected for either v0 implementation or v1.
+- The loaded Skyrim runtime separates legacy SE v0 from the UBE AE-backport v0.
+  The resolved route and runtime are written to `BodyChangeNG.log`.
 - Unknown BodyMorph versions outside v4-v5 and Override versions outside
-  v1-v2 fail closed until their ABI is audited.
+  v0-v2 fail closed until their ABI is audited.
 
 CommonLibSSE-NG's locked transitive xmake closure is kept intact: DirectXMath
 2024.02, DirectXTK 24.2.0, rapidcsv v8.92, spdlog v1.16.0, Xbyak v7.06,

@@ -1,0 +1,10 @@
+Body Change NG 1.1.3 — 2026-09-06
+
+- Applies CBBE 3BA, BHUNP, and vanilla BodySkin body, hand, and foot textures to each part's exact ArmorAddon and loaded geometry.
+- Fixes a RaceMenu broad skin-slot call that allowed the final foot assignment to overwrite the hands. CBBE-family feet keep the intended body atlas while hands retain their dedicated hand textures.
+- Handles equipment that is visually hidden by SFS but still occupies its real biped slot: only the missing part receives a durable one-bit fallback, and visible exact parts are protected from cross-part repainting.
+- Uses the same corrected path for player/NPC manual selection, direct NPC assignment, rule-based distribution, and recovery after equipment changes or looting a dead NPC.
+- Rechecks previously distributed NPCs once after loading and reapplies the selected skin when the live body, hand, or foot result is incomplete.
+- Separates legacy SE Override v0, UBE's AE-backported Override v0, official v1, and official v2. v0/v1 use the serialization-safe Papyrus route; only audited v2 uses the native interface.
+- Preserves UBE shared-atlas routing and existing rules, settings, JSON, co-save data, partial skins, and Default Skin restoration.
+- Adds no recurring filesystem scan or all-NPC polling. The missing-part fallback runs only during an actual skin application and performs at most one coalesced rebuild. The Release build and all 12 regression test executables passed.

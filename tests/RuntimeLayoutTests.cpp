@@ -1,4 +1,5 @@
 #include "BodyChangeNG/RuntimeLayout.h"
+#include "BodyChangeNG/RaceMenuOverrideRouting.h"
 #include "BodyChangeNG/MenuCameraProjection.h"
 
 #include <cmath>
@@ -18,6 +19,26 @@ namespace
 
 int main()
 {
+    using bcn::racemenu_override::Route;
+    Expect(bcn::racemenu_override::ResolveRoute(0U, false) == Route::legacySeV0Papyrus &&
+        bcn::racemenu_override::UsesPapyrus(Route::legacySeV0Papyrus),
+        "legacy SE RaceMenu Override v0 must use the Papyrus route");
+    Expect(bcn::racemenu_override::ResolveRoute(0U, true) == Route::aeBackportV0Papyrus &&
+        bcn::racemenu_override::UsesPapyrus(Route::aeBackportV0Papyrus),
+        "the AE backport Override v0 must stay separate from legacy SE v0");
+    Expect(bcn::racemenu_override::ResolveRoute(1U, false) == Route::officialV1Papyrus &&
+        bcn::racemenu_override::ResolveRoute(1U, true) == Route::officialV1Papyrus &&
+        bcn::racemenu_override::UsesPapyrus(Route::officialV1Papyrus),
+        "official Override v1 must use its serialization-safe Papyrus route");
+    Expect(bcn::racemenu_override::ResolveRoute(2U, false) == Route::officialV2Native &&
+        bcn::racemenu_override::ResolveRoute(2U, true) == Route::officialV2Native &&
+        bcn::racemenu_override::UsesNativeV2(Route::officialV2Native),
+        "official Override v2 must use the native wrapper route");
+    Expect(bcn::racemenu_override::ResolveRoute(3U, true) == Route::unsupported &&
+        !bcn::racemenu_override::UsesPapyrus(Route::unsupported) &&
+        !bcn::racemenu_override::UsesNativeV2(Route::unsupported),
+        "an unaudited future Override ABI must fail closed");
+
     const auto seRenderer = bcn::runtime::ResolveRendererHook(REL::Version{ 1, 5, 97, 0 });
     const auto seInput = bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 5, 97, 0 });
     Expect(seRenderer && seRenderer->relocationID == 75595 && seRenderer->callOffset == 0x50,

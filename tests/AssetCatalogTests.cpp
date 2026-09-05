@@ -102,6 +102,12 @@ int main(const int argc, char** argv)
             "part-specific CBBE/BHUNP atlases were routed through RaceMenu's broad skin-slot apply")) return 1;
     if (!Require(bcn::skin_geometry::MayUseBroadSkinSlotFallback(true),
             "UBE's shared body atlas lost its broad skin-slot fallback")) return 1;
+    if (!Require(bcn::skin_geometry::NeedsMissingPartSlotFallback(false, 0U),
+            "a hidden conventional skin part lost its durable slot fallback")) return 1;
+    if (!Require(!bcn::skin_geometry::NeedsMissingPartSlotFallback(false, 1U),
+            "a visible conventional skin part was routed through the broad slot fallback")) return 1;
+    if (!Require(!bcn::skin_geometry::NeedsMissingPartSlotFallback(true, 0U),
+            "UBE must stay on its existing shared-atlas route")) return 1;
 
     if (argc == 3 || argc == 4) {
         std::cout << "scanning real skin root\n" << std::flush;

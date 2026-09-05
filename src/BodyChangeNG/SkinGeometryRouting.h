@@ -19,6 +19,17 @@ namespace bcn::skin_geometry
         return usesSharedBodyAtlas;
     }
 
+    // A hidden equipped item can continue to own the runtime biped entry even
+    // after another plugin suppresses its geometry. In that state the naked
+    // skin ArmorAddon does not exist yet, so an exact override cannot be
+    // registered until the next actor rebuild. Preserve a one-bit skin-slot
+    // key only when a conventional part has no exact live target at all.
+    [[nodiscard]] constexpr bool NeedsMissingPartSlotFallback(
+        const bool usesSharedBodyAtlas, const std::size_t exactTargetCount) noexcept
+    {
+        return !usesSharedBodyAtlas && exactTargetCount == 0U;
+    }
+
     enum class BodySelection
     {
         all,
