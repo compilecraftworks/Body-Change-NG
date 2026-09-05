@@ -640,6 +640,29 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::MatchesRequestedPart(feetMask, bodyMask, handsMask, feetMask,
                 "FemaleBody", R"(textures\actors\character\female\femalebody_1.dds)"),
             "a multi-slot naked Skin Armor routed body, hands, or feet into the wrong part")) return 1;
+    if (!Require(
+            bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                handsMask, handsMask, feetMask, "Hands") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                feetMask, handsMask, feetMask, "Hands") &&
+            bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                feetMask, handsMask, feetMask, "Feet") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                handsMask, handsMask, feetMask, "Feet") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                handsMask, handsMask, feetMask, "glove") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                feetMask, handsMask, feetMask, "boota") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                feetMask, handsMask, feetMask, "stock") &&
+            !bcn::skin_geometry::MatchesExplicitRequestedLimbNode(
+                handsMask, handsMask, feetMask, "BaseShape"),
+            "shared-atlas limbs accepted an outfit or wrong-part node")) return 1;
+    if (!Require(
+            bcn::skin_geometry::NeedsBodyAtlasForFeet(0U) &&
+            !bcn::skin_geometry::NeedsBodyAtlasForFeet(1U) &&
+            !bcn::skin_geometry::NeedsBodyAtlasForFeet(4U),
+            "standard feet did not use body atlas fallback only when an explicit feet atlas was absent")) return 1;
     struct FakeNifGeometry final
     {
         std::string_view node;

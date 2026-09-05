@@ -42,6 +42,14 @@ namespace bcn::skin_geometry
         return usesUbeBodySlot && usableUbeTargets == 0U;
     }
 
+    // Standard humanoid feet use the body texture atlas. An explicit feet
+    // atlas supplied by a beast/custom-race profile takes precedence.
+    [[nodiscard]] constexpr bool NeedsBodyAtlasForFeet(
+        const std::size_t explicitFeetLayerCount) noexcept
+    {
+        return explicitFeetLayerCount == 0U;
+    }
+
     [[nodiscard]] constexpr char LowerAscii(const char value) noexcept
     {
         return value >= 'A' && value <= 'Z' ? static_cast<char>(value + ('a' - 'A')) : value;
@@ -86,6 +94,38 @@ namespace bcn::skin_geometry
         return ContainsIgnoreAsciiCase(nodeName, "feet") ||
             ContainsIgnoreAsciiCase(nodeName, "foot") ||
             ContainsIgnoreAsciiCase(texturePath, "feet");
+    }
+
+    // Shared-atlas limbs cannot always be identified by their texture path:
+    // UBE uses !UBE\Body for both hands and feet, while CBBE/BHUNP feet use
+    // the body atlas. Worn outfit NIFs still expose embedded skin as a
+    // dedicated Hands/Feet geometry beside glove/boot geometries. Keep this
+    // deliberately exact: a generic body or outfit node must never be routed
+    // into a hand or foot override.
+    [[nodiscard]] constexpr bool MatchesExplicitLimbNode(
+        const LimbSelection selection, const std::string_view nodeName) noexcept
+    {
+        if (selection == LimbSelection::hands) {
+            return EqualsIgnoreAsciiCase(nodeName, "hand") ||
+                EqualsIgnoreAsciiCase(nodeName, "hands") ||
+                EqualsIgnoreAsciiCase(nodeName, "femalehands");
+        }
+        return EqualsIgnoreAsciiCase(nodeName, "foot") ||
+            EqualsIgnoreAsciiCase(nodeName, "feet") ||
+            EqualsIgnoreAsciiCase(nodeName, "femalefeet");
+    }
+
+    [[nodiscard]] constexpr bool MatchesExplicitRequestedLimbNode(
+        const std::uint32_t requestedSlotMask, const std::uint32_t handsSlotMask,
+        const std::uint32_t feetSlotMask, const std::string_view nodeName) noexcept
+    {
+        if (requestedSlotMask == handsSlotMask) {
+            return MatchesExplicitLimbNode(LimbSelection::hands, nodeName);
+        }
+        if (requestedSlotMask == feetSlotMask) {
+            return MatchesExplicitLimbNode(LimbSelection::feet, nodeName);
+        }
+        return false;
     }
 
     [[nodiscard]] constexpr bool IsHandsOrFeetSlotPart(
