@@ -73,7 +73,7 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Select the player or a loaded NPC and apply compatible BodySlide presets immediately
 [*]Low/high-weight values are interpolated using the actor's current weight
 [*]Conservative BodyFamily detection filters the main list while retaining safe fallbacks for uncertain and multi-family presets
-[*]The editor preserves your selected rule pools; runtime distribution checks the matched actor's sex and known family before choosing a candidate
+[*]NPC body and skin rule pools use the female/male NPC body family selected in Mod Settings; runtime distribution enforces the same family before choosing a candidate
 [*]Repeated preview, confirmation, and NPC distribution target the selected preset's absolute compatible-family shape; omitted XML sliders target zero through BCNG-owned compensation, not a global morph clear
 [*]CBBE 3BA and UBE use the same SliderPresets folder; Preset set and Group metadata inside each XML identify its family
 [*]Body application uses RaceMenu BodyMorph; no body mesh is generated or replaced while the game is running
@@ -85,7 +85,8 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [*]Persistent RaceMenu/NiOverride keys support body, hands, feet, face, vampire face, diffuse, normal, subsurface, specular, and compatible detail textures
 [*]Partial skin packs are supported: only supplied parts and channels change, missing values retain the actor's underlying textures, and files are never substituted across body, hands, feet, or face
 [*]Selected skin parts are verified and repaired after equipment or 3D rebuilds, including looting a dead NPC; missing BCNG cache files are rebuilt from the original pack
-[*]UBE 2.0 Body/Head d-n-sk atlases are detected separately and applied to the live slot-53 body and face; known-incompatible conventional and UBE skins are never shown or distributed to the wrong detected family
+[*]UBE 2.0 Body/Head d-n-sk atlases are detected separately; the Body atlas follows every live UBE body, hand, and foot surface across slots 32/53 while the Head atlas targets the face
+[*]The Body Skins tab shows only the selected actor's detected body family; NPC rule pools use the female/male NPC body type selected in Mod Settings
 [*]Argonian and Khajiit female/male folders are detected separately and matched to each actor's race and sex for preview, reapply, and NPC distribution; their body atlas is also applied to the matching live tail geometry
 [*]CBBE 3BA and BHUNP/UNP genital/anal atlases are routed only to matching material geometry, separately from regular body maps
 [*]Optional SOS Smurf Average, VectorPlexus Regular, and VectorPlexus Muscular textures match the actor's live addon, race, and elder variant
@@ -106,8 +107,8 @@ Body Change NG instead uses a native SKSE architecture without predefined ESP bo
 [list]
 [*]Rules are evaluated from top to bottom; the first matching rule owns Body and Skin
 [*]Body and Skin can independently distribute selected entries, be excluded from distribution, or be left unchanged
-[*]Targets include all NPCs, custom followers, elders, plugins, races, factions, keywords, classes, combat styles, names, and exact NPC base FormIDs
-[*]Faction, race, keyword, class, and combat-style targets use plugin plus local FormID; unnamed forms remain selectable
+[*]Targets include all NPCs, custom followers, elders, plugins, races, factions, keywords, classes, names, and exact NPC base FormIDs
+[*]Faction, race, keyword, and class targets use plugin plus local FormID; unnamed forms remain selectable
 [*]One selected preset or skin pack is fixed; multiple choices produce stable per-NPC random results
 [*]Eight editable starter exclusions remain: custom followers and elders of both sexes exclude Body only; Argonians and Khajiit of both sexes exclude Skin only
 [*]Edit every condition and pool in game, then distribute to loaded NPCs immediately or save the edits for the next launch

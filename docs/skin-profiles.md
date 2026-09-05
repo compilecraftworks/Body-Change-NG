@@ -68,8 +68,9 @@ The folder name is your skin's display name. With no JSON at all, Body Change
 NG scans the standard body/hands/feet names under `Textures` and creates a
 female and/or male profile automatically. It also recognizes the UBE Body and
 Head d/n/sk atlases as one UBE-only female profile. The UBE body atlas targets
-the live slot-53 Skin Armor geometry, and the head atlas targets the actor's
-live face geometry; it does not require conventional hand/foot files.
+every live UBE body, hand, and foot surface, including outfits that split the
+visible body between slots 32 and 53. The head atlas targets the actor's live
+face geometry; UBE does not require conventional hand/foot files.
 
 For CBBE 3BA, `femalebody_etc_v2_1` plus its `_msn`, `_sk`, and `_s`
 companions is a shared genital/anal atlas and is applied only to matching

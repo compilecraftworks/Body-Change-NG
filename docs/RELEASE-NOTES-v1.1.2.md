@@ -1,6 +1,6 @@
 # Body Change NG v1.1.2
 
-Black/gray interface refresh, verified CBBE 3BA anatomy safety, and corrected UBE BodySkin routing — 2026-09-05.
+Black/gray interface refresh, verified CBBE 3BA anatomy safety, and corrected UBE BodySkin routing — 2026-09-06.
 
 ### Interface theme
 
@@ -44,7 +44,10 @@ Black/gray interface refresh, verified CBBE 3BA anatomy safety, and corrected UB
 
 ### Catalog and release guidance
 
-- Falls back from UBE body slot 53 to standard body slot 32 only when no usable live slot-53 body target exists. This fixes UBE profiles that changed the face but not the body without spilling one profile across two body routes.
+- Updates both live geometries when an UBE outfit splits visible body skin across slots 32 and 53. The UBE Body atlas is applied consistently to UBE body, hand, and foot surfaces and the same routing is used for verification and recovery.
+- Default Skin restoration now detects BCNG textures left on loaded body, hand, or foot clones after RaceMenu keys are removed. Only the mismatched actor is rebuilt once; no polling or all-NPC scan was added.
+- The main Body Skins list shows only the selected actor's actual body family. NPC-rule skin and body pools show only the female/male NPC body type selected in Mod Settings, matching runtime distribution filtering.
+- Removes the per-rule body-family dropdown and displays the active Mod Settings family as text. Combat Style is not offered for new rules, while detailed race, faction, plugin, keyword, and class dropdowns open downward only. Legacy Combat Style JSON remains readable for schema compatibility.
 - Restores the full `Body Presets`, `Body Skins`, and `Tint Masks` tab names and keeps the player Tint Masks tab visible so its catalog and installation guidance remain accessible.
 - Adds Korean, English, and Simplified Chinese empty-list messages with exact BodySlide, BodySkin, UBE Body/Head, and TintMask placement paths plus the Refresh action.
 - States explicitly that tint-mask-based facial tints are supported while overlay-based tints are not.

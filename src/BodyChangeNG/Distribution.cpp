@@ -452,8 +452,7 @@ namespace
                 rule.excluded = false;
             }
             if (rule.target.size() > 512U) rule.target.clear();
-            if (rule.bodyFamily.size() > 256U) rule.bodyFamily.clear();
-            if (rule.bodyFamily == "CBBE") rule.bodyFamily = "CBBE 3BA";
+            rule.bodyFamily.clear();
             std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
             std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
         }
@@ -612,8 +611,8 @@ namespace bcn
                 if (rule.name.empty()) rule.name = rule.female ? "All female NPCs" : "All male NPCs";
                 if (!IsValidScope(rule.scope)) continue;
                 if (rule.target.size() > 512U) rule.target.clear();
-                if (rule.bodyFamily.size() > 256U) rule.bodyFamily.clear();
-                if (rule.bodyFamily == "CBBE") rule.bodyFamily = "CBBE 3BA";
+                // Read the legacy field above so old files remain valid, then
+                // NormalizeRules clears it in favor of Mod Settings.
                 std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
                 std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
                 loaded.push_back(std::move(rule));

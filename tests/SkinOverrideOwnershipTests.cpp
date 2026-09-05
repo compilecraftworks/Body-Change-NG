@@ -12,6 +12,9 @@ int main()
     static_assert(IsOwnedTexturePath("textures\\BodyChangerNG\\Cache\\Skin\\female.dds"));
     static_assert(IsOwnedTexturePath("Textures/BodyChangerNG/Cache/Skin-Face/head.dds"));
     static_assert(IsOwnedTexturePath("Textures/BodyChangerNG/Cache/Futanari/schlong.dds"));
+    static_assert(IsOwnedBodySkinTexturePath("textures\\BodyChangeNG\\Cache\\Skin\\female.dds"));
+    static_assert(IsOwnedBodySkinTexturePath("Textures/BodyChangeNG/Cache/Skin-Face/head.dds"));
+    static_assert(!IsOwnedBodySkinTexturePath("Textures/BodyChangeNG/Cache/Futanari/schlong.dds"));
     static_assert(!IsOwnedTexturePath("textures\\wetfunctionredux\\female_s.dds"));
     static_assert(!IsOwnedTexturePath("textures\\actors\\character\\female\\femalebody_1.dds"));
     static_assert(IsRacialSkinVarianceTexturePath(

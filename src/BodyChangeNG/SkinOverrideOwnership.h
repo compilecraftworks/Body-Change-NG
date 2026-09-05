@@ -31,13 +31,18 @@ namespace bcn::skin_override::ownership
     // RuntimeAssetCache gives every BCNG-owned texture a private namespace.
     // RaceMenu does not expose an owner field for override keys, so the value
     // namespace is the durable ownership marker that survives save/load.
-    [[nodiscard]] constexpr bool IsOwnedTexturePath(const std::string_view value) noexcept
+    [[nodiscard]] constexpr bool IsOwnedBodySkinTexturePath(const std::string_view value) noexcept
     {
         return ContainsNormalized(value, "bodychangeng\\cache\\skin\\") ||
             ContainsNormalized(value, "bodychangeng\\cache\\skin-face\\") ||
-            ContainsNormalized(value, "bodychangeng\\cache\\futanari\\") ||
             ContainsNormalized(value, "bodychangerng\\cache\\skin\\") ||
-            ContainsNormalized(value, "bodychangerng\\cache\\skin-face\\") ||
+            ContainsNormalized(value, "bodychangerng\\cache\\skin-face\\");
+    }
+
+    [[nodiscard]] constexpr bool IsOwnedTexturePath(const std::string_view value) noexcept
+    {
+        return IsOwnedBodySkinTexturePath(value) ||
+            ContainsNormalized(value, "bodychangeng\\cache\\futanari\\") ||
             ContainsNormalized(value, "bodychangerng\\cache\\futanari\\");
     }
 

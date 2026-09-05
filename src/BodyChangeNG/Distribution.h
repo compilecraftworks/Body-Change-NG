@@ -44,7 +44,7 @@ namespace bcn
         std::uint32_t npcBaseFormID{};
         std::string npcPlugin;
         std::uint32_t npcLocalFormID{};
-        // Faction, race, keyword, class and combat-style targets use the same
+        // Faction, race, keyword, class and legacy combat-style targets use the same
         // load-order-independent identity. targetFormID is resolved once when
         // rules are loaded/edited, so per-actor matching never scans forms.
         std::uint32_t targetFormID{};
@@ -54,9 +54,9 @@ namespace bcn
         // on scope. For form-backed scopes this remains a display/legacy
         // EditorID fallback while the stable fields above are authoritative.
         std::string target;
-        // This is an editor-side preset-pool filter. The actual preset IDs remain
-        // authoritative, because an NPC's installed mesh family cannot be proven
-        // safely from a generic actor handle.
+        // Legacy schema field. Since 1.1.2 the editor and runtime both use the
+        // female/male NPC body type selected in Mod Settings, so normalization
+        // clears this obsolete per-rule filter while retaining JSON compatibility.
         std::string bodyFamily;
         std::vector<std::string> presetIds;
         // Shared RaceMenu texture-profile pool.  A rule may contain body
@@ -90,7 +90,7 @@ namespace bcn
     // to a persistent plugin + local NPC BaseID rule target.
     [[nodiscard]] bool SetDistributionRuleNPC(DistributionRule& a_rule, RE::TESForm* a_form);
 
-    // Normalizes a faction/race/keyword/class/combat-style form into the
+    // Normalizes a faction/race/keyword/class/legacy-combat-style form into the
     // persistent plugin + local FormID representation used by distribution.
     [[nodiscard]] bool SetDistributionRuleTargetForm(DistributionRule& a_rule, RE::TESForm* a_form);
 

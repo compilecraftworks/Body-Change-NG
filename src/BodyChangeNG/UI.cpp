@@ -19,7 +19,6 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 #include <RE/T/TESClass.h>
-#include <RE/T/TESCombatStyle.h>
 
 #include <algorithm>
 #include <charconv>
@@ -94,7 +93,7 @@ namespace
 
     ActiveTab g_activeTab{ ActiveTab::body };
     DistributionPool g_distributionPool{ DistributionPool::body };
-    std::array<bool, 3> g_favoritesOnlyByTab{};
+    std::array<bool, 4> g_favoritesOnlyByTab{};
     bool g_showDistribution{};
     bool g_showOutfit{};
     bool g_orefitRulesRegistered{};
@@ -112,7 +111,6 @@ namespace
     std::vector<DistributionTargetOption> g_distributionRaceOptions;
     std::vector<DistributionTargetOption> g_distributionKeywordOptions;
     std::vector<DistributionTargetOption> g_distributionClassOptions;
-    std::vector<DistributionTargetOption> g_distributionCombatStyleOptions;
     std::uint32_t g_selectedActorFormID{};
     std::string g_actorSearch;
     std::string g_search;
@@ -125,7 +123,7 @@ namespace
     std::optional<PendingChoice> g_pendingBody;
     std::optional<PendingChoice> g_pendingSkin;
     std::optional<PendingChoice> g_pendingTint;
-    std::array<CatalogNavigationState, 3> g_catalogNavigation{};
+    std::array<CatalogNavigationState, 4> g_catalogNavigation{};
     std::string g_notification;
     std::chrono::steady_clock::time_point g_notificationUntil{};
     std::mutex g_notificationLock;
@@ -196,6 +194,26 @@ namespace
         ImGui::SetNextWindowSizeConstraints(
             ImVec2(popupWidth, minimumHeight), ImVec2(popupWidth, maximumHeight));
         ImGui::SetNextWindowSize(ImVec2(popupWidth, initialHeight), ImGuiCond_Appearing);
+    }
+
+    void PrepareDownwardResizableDropdown(const std::size_t itemCount)
+    {
+        const auto rowHeight = ImGui::GetTextLineHeightWithSpacing();
+        const auto padding = ImGui::GetStyle().WindowPadding.y * 2.0F;
+        const auto desiredRows = (std::max)(std::size_t{ 1 },
+            (std::min)(itemCount, std::size_t{ 14 }));
+        auto maximumHeight = padding + rowHeight * static_cast<float>(desiredRows);
+        if (const auto* viewport = ImGui::GetMainViewport()) {
+            const auto fieldBottom = ImGui::GetCursorScreenPos().y + ImGui::GetFrameHeight();
+            const auto workBottom = viewport->WorkPos.y + viewport->WorkSize.y;
+            const auto remaining = (std::max)(rowHeight + padding, workBottom - fieldBottom);
+            maximumHeight = (std::min)({ maximumHeight, Scaled(640.0F), remaining });
+        }
+        const auto minimumHeight = (std::min)(maximumHeight, padding + rowHeight);
+        const auto popupWidth = ImGui::CalcItemWidth();
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(popupWidth, minimumHeight), ImVec2(popupWidth, maximumHeight));
+        ImGui::SetNextWindowSize(ImVec2(popupWidth, maximumHeight), ImGuiCond_Appearing);
     }
 
     [[nodiscard]] bool& FavoritesOnly()
@@ -530,14 +548,26 @@ namespace
         }
     }
 
+    [[nodiscard]] bcn::body_family::Mask CatalogActorFamily(
+        RE::Actor* actor, const bcn::SettingsData& settings)
+    {
+        const auto detected = bcn::body_family::ResolveActor(actor);
+        if (detected != 0U || !actor || actor == RE::PlayerCharacter::GetSingleton()) return detected;
+        const auto* base = actor->GetActorBase();
+        if (!base) return 0U;
+        return base->GetSex() == RE::SEX::kFemale ?
+            bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
+            bcn::NpcDistributionFamily(settings.maleNpcBodyType);
+    }
+
     [[nodiscard]] std::vector<CatalogItem> BodyItems()
     {
         const auto presets = bcn::PresetCatalog::Get().Snapshot();
         const auto actor = bcn::ActorCatalog::Get().Resolve(g_selectedActorFormID);
         const auto actorBase = actor ? actor->GetActorBase() : nullptr;
         const auto selectedMale = actorBase && actorBase->GetSex() == RE::SEX::kMale;
-        const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto settings = bcn::Settings::Get().Snapshot();
+        const auto actorFamily = CatalogActorFamily(actor, settings);
         const auto currentPreset = bcn::racemenu::CurrentPresetId(actor);
         std::vector<CatalogItem> items;
         items.reserve(presets.size());
@@ -601,7 +631,6 @@ namespace
         g_distributionRaceOptions.clear();
         g_distributionKeywordOptions.clear();
         g_distributionClassOptions.clear();
-        g_distributionCombatStyleOptions.clear();
     }
 
     void AddUniqueTargetOption(std::vector<std::string>& options,
@@ -656,7 +685,6 @@ namespace
         g_distributionRaceOptions.clear();
         g_distributionKeywordOptions.clear();
         g_distributionClassOptions.clear();
-        g_distributionCombatStyleOptions.clear();
         auto* dataHandler = RE::TESDataHandler::GetSingleton();
         if (!dataHandler) return;
 
@@ -675,10 +703,6 @@ namespace
         std::unordered_set<std::string> knownClasses;
         for (auto* npcClass : dataHandler->GetFormArray<RE::TESClass>()) {
             AddFormTargetOption(g_distributionClassOptions, knownClasses, npcClass);
-        }
-        std::unordered_set<std::string> knownCombatStyles;
-        for (auto* combatStyle : dataHandler->GetFormArray<RE::TESCombatStyle>()) {
-            AddFormTargetOption(g_distributionCombatStyleOptions, knownCombatStyles, combatStyle);
         }
         std::unordered_set<std::string> knownPlugins;
         const auto appendPlugins = [&](const RE::TESFile* const* files, const std::size_t count) {
@@ -703,7 +727,6 @@ namespace
         sortFormOptions(g_distributionRaceOptions);
         sortFormOptions(g_distributionKeywordOptions);
         sortFormOptions(g_distributionClassOptions);
-        sortFormOptions(g_distributionCombatStyleOptions);
     }
 
     void EnsureDistributionEditor()
@@ -749,11 +772,6 @@ namespace
                 [[maybe_unused]] const auto normalized = bcn::SetDistributionRuleTargetForm(rule, race);
             }
             break;
-        case bcn::DistributionScope::combatStyle: {
-            [[maybe_unused]] const auto normalized =
-                bcn::SetDistributionRuleTargetForm(rule, base->GetCombatStyle());
-            break;
-        }
         default:
             break;
         }
@@ -821,7 +839,6 @@ namespace
             bcn::DistributionScope::factionEditorID,
             bcn::DistributionScope::keyword,
             bcn::DistributionScope::npcClass,
-            bcn::DistributionScope::combatStyle,
             bcn::DistributionScope::npcName,
             bcn::DistributionScope::npcBaseForm
         };
@@ -849,8 +866,8 @@ namespace
         const auto savedValueRow = !target.empty() && !std::ranges::any_of(options, [&target](const auto& option) {
             return Lower(option) == Lower(target);
         }) ? 1U : 0U;
-        PrepareResizableDropdown(options.size() + savedValueRow);
-        if (ImGui::BeginCombo(id, preview)) {
+        PrepareDownwardResizableDropdown(options.size() + savedValueRow);
+        if (ImGui::BeginCombo(id, preview, ImGuiComboFlags_PopupOnlyDown)) {
             const auto installed = std::ranges::any_of(options, [&target](const auto& option) {
                 return Lower(option) == Lower(target);
             });
@@ -894,8 +911,8 @@ namespace
         const auto* preview = selected != options.end() ? selected->display.c_str() :
             savedValue ? savedLabel.c_str() : Text("선택", "Select", "选择");
         auto changed = false;
-        PrepareResizableDropdown(options.size() + (savedValue ? 1U : 0U));
-        if (ImGui::BeginCombo(id, preview)) {
+        PrepareDownwardResizableDropdown(options.size() + (savedValue ? 1U : 0U));
+        if (ImGui::BeginCombo(id, preview, ImGuiComboFlags_PopupOnlyDown)) {
             if (savedValue) {
                 ImGui::Selectable(savedLabel.c_str(), true);
                 ImGui::Separator();
@@ -1289,7 +1306,6 @@ namespace
         }
         const auto* base = actor->GetActorBase();
         const bool female = !base || base->GetSex() == RE::SEX::kFemale;
-        const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto actorRace = bcn::ResolveActorSkinRace(actor);
 
         const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##skinCatalogRefresh";
@@ -1301,6 +1317,7 @@ namespace
 
         const auto skins = bcn::SkinProfiles::Get().Snapshot();
         const auto settings = bcn::Settings::Get().Snapshot();
+        const auto actorFamily = CatalogActorFamily(actor, settings);
         const auto backendCurrentSkin = bcn::skin_override::CurrentProfileId(actor);
         const auto confirmedSkinId = g_pendingSkin && g_pendingSkin->actorFormID == actor->GetFormID() ?
             g_pendingSkin->originalId : backendCurrentSkin.value_or(std::string{});
@@ -2086,12 +2103,6 @@ namespace
                         ImGui::SetNextItemWidth(-1.0F);
                         [[maybe_unused]] const auto changed =
                             DistributionFormTargetCombo("##ruleClass", rule, g_distributionClassOptions);
-                    } else if (rule.scope == bcn::DistributionScope::combatStyle) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionFormTargetCombo("##ruleCombatStyle", rule,
-                                g_distributionCombatStyleOptions);
                     }
 
                     if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
@@ -2124,6 +2135,10 @@ namespace
                                 Text("이 규칙에 맞는 NPC의 스킨은 배포하지 않습니다.", "Skin distribution is disabled for NPCs matching this rule.", "不向匹配此规则的 NPC 分发皮肤。"));
                     } else if (g_distributionPool == DistributionPool::skin) {
                     const auto skins = bcn::SkinProfiles::Get().Snapshot();
+                    const auto settings = bcn::Settings::Get().Snapshot();
+                    const auto distributionFamily = rule.female ?
+                        bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
+                        bcn::NpcDistributionFamily(settings.maleNpcBodyType);
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 스킨 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's skin pool — one skin pack is fixed; multiple skin packs are stably randomized per matching NPC.", "本规则专用皮肤池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
                     ImGui::SetNextItemWidth(-1.0F);
                     ImGui::InputTextWithHint("##skinPoolSearch",
@@ -2133,6 +2148,7 @@ namespace
                             ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
                         for (const auto& skin : skins) {
                             if ((skin.sex == bcn::SkinSex::female && !rule.female) || (skin.sex == bcn::SkinSex::male && rule.female)) continue;
+                            if (!bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily)) continue;
                             if (!g_distributionSkinSearch.empty() &&
                                 Lower(skin.name).find(Lower(g_distributionSkinSearch)) == std::string::npos) continue;
                             bool selected = ContainsSkinProfile(rule, skin.id);
@@ -2149,26 +2165,22 @@ namespace
                     ImGui::EndChild();
                     } else {
                     const auto presets = bcn::PresetCatalog::Get().Snapshot();
-                    std::vector<std::string> families;
-                    families.push_back(Text("전체 바디 계열", "All body families", "全部身体系列"));
-                    for (const auto& preset : presets) {
-                        if (preset.male != !rule.female || preset.family.empty() || std::ranges::find(families, preset.family) != families.end()) continue;
-                        families.push_back(preset.family);
-                    }
-                    auto familyIndex = 0;
-                    if (!rule.bodyFamily.empty()) {
-                        const auto found = std::ranges::find(families, rule.bodyFamily);
-                        if (found != families.end()) familyIndex = static_cast<int>(std::distance(families.begin(), found));
-                    }
-                    std::vector<const char*> familyLabels;
-                    familyLabels.reserve(families.size());
-                    for (const auto& family : families) familyLabels.push_back(family.c_str());
-                    ImGui::TextUnformatted(Text("바디 계열", "Body family", "身体系列"));
-                    ImGui::SetNextItemWidth(-1.0F);
-                    PrepareResizableDropdown(families.size());
-                    if (ImGui::Combo("##bodyFamily", &familyIndex, familyLabels.data(), static_cast<int>(familyLabels.size()))) {
-                        rule.bodyFamily = familyIndex == 0 ? std::string{} : families[static_cast<std::size_t>(familyIndex)];
-                    }
+                    const auto settings = bcn::Settings::Get().Snapshot();
+                    const auto distributionFamily = rule.female ?
+                        bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
+                        bcn::NpcDistributionFamily(settings.maleNpcBodyType);
+                    const auto useBodyPreset = rule.female ?
+                        bcn::UsesNpcBodyPreset(settings.femaleNpcBodyType) :
+                        bcn::UsesNpcBodyPreset(settings.maleNpcBodyType);
+                    const auto* familyLabel = rule.female ?
+                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba ? "CBBE 3BA" :
+                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::bhunpUnp ? "BHUNP / UNP" :
+                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::ube ? "UBE" :
+                        Text("바닐라", "Vanilla", "原版") :
+                        settings.maleNpcBodyType == bcn::MaleNpcBodyType::himbo ? "HIMBO" :
+                        settings.maleNpcBodyType == bcn::MaleNpcBodyType::sam ? "SAM" :
+                        Text("바닐라", "Vanilla", "原版");
+                    ImGui::Text("%s · %s", Text("바디 계열", "Body family", "身体系列"), familyLabel);
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 바디 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's body pool — one preset is fixed; multiple presets are stably randomized per matching NPC.", "本规则专用身体池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
                     ImGui::SetNextItemWidth(-1.0F);
                     ImGui::InputTextWithHint("##bodyPoolSearch",
@@ -2177,7 +2189,10 @@ namespace
                     if (ImGui::BeginChild("PresetPool", ImVec2(0.0F, poolHeight), true,
                             ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
                         for (const auto& preset : presets) {
-                            if (preset.male != !rule.female || (!rule.bodyFamily.empty() && preset.family != rule.bodyFamily)) continue;
+                            if (!useBodyPreset || preset.male != !rule.female ||
+                                !bcn::body_family::Matches(
+                                    bcn::body_family::PresetMask(preset.family, preset.male),
+                                    distributionFamily)) continue;
                             if (!g_distributionBodySearch.empty()) {
                                 const auto needle = Lower(g_distributionBodySearch);
                                 if (Lower(preset.name).find(needle) == std::string::npos &&
@@ -2190,6 +2205,12 @@ namespace
                             ImGui::SameLine();
                             ImGui::TextDisabled("%s", preset.family.c_str());
                             ImGui::PopID();
+                        }
+                        if (!useBodyPreset) {
+                            ImGui::TextDisabled("%s", Text(
+                                "모드 설정에서 이 성별의 NPC 바디 타입이 바닐라로 지정되어 바디 프리셋을 배포하지 않습니다.",
+                                "This sex uses the Vanilla NPC body type in Mod Settings, so body presets are not distributed.",
+                                "模组设置中该性别的 NPC 身体类型为原版，因此不会分发身体预设。"));
                         }
                     }
                     ImGui::EndChild();
