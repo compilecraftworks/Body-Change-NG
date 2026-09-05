@@ -2,6 +2,7 @@
 ### Change BodySlide presets, actor skins, and player tint masks in real time
 
 **NATIVE IN-GAME GUI  •  GAMEPAD SUPPORT  •  LIVE NPC DISTRIBUTION**
+**SUPPORTED BODY TYPES: CBBE 3BA  •  BHUNP / UNP  •  UBE  •  HIMBO  •  SAM  •  VANILLA FEMALE / MALE**
 
 ---
 
