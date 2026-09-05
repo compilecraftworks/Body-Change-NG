@@ -70,6 +70,11 @@ malegenitals_khajiit_1*, malegenitals_old_1*도 존재하는 파일만 등록됩
 VectorPlexus Muscular ArmorAddon 경로와 종족·노인 상태에 맞는 채널만
 성기 지오메트리에 적용합니다. 빠진 채널은 현재 텍스처를 유지하며 몸·손·
 발 텍스처를 대신 복제하지 않습니다.
+남성 몸·손·발·얼굴의 male 폴더와 SOS 폴더는 반드시 같은
+BodySkin\<스킨팩 이름> 안에 두어 하나의 스킨 항목으로 묶습니다. 서로 다른
+스킨팩 폴더의 남성 몸과 SOS 파일은 합치지 않습니다. 최상위 스킨팩 이름에
+HIMBO 또는 SAM을 명시하면 해당 바디 계열에만 표시·배포하며, 계열명이 없는
+일반 남성 스킨은 기존 호환 남성 계열에서 사용할 수 있습니다.
 
 아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
 표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
@@ -113,3 +118,7 @@ malegenitals_argonian_1*, malegenitals_khajiit_1*, or malegenitals_old_1*
 files. The live slot-52 ArmorAddon selects the matching Smurf Average or
 VectorPlexus Regular/Muscular material. Missing variants and channels retain
 the currently loaded texture and never borrow a body, hand, or foot map.
+Keep the male body/hand/foot/face files and SOS folders under the same
+BodySkin\<pack name>; BCNG never combines them across pack folders. An explicit
+HIMBO or SAM token in the top-level pack name restricts that pack to the named
+family. Unlabelled general male skins retain the compatible male fallback.

@@ -6,8 +6,9 @@ Body Change NG - 틴트팩 설치 안내
 TintMask\<틴트팩 이름>\textures\actors\character\character assets\tintmasks\*.dds
 
 RaceMenu에서 사용하는 틴트마스크 DDS와 같은 파일명·폴더 구조를
-유지하세요. 현재 액터의 종족과 실제 DDS가 확인되는 틴트만 목록에
-표시됩니다.
+유지하세요. 플레이어의 종족과 실제 DDS가 확인되는 틴트만 목록에
+표시됩니다. 이 기능은 플레이어의 기존 스킨 틴트 레이어를 바꾸며
+RaceMenu 오버레이 슬롯을 만들지 않습니다.
 
 틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.
 
@@ -24,5 +25,7 @@ Create one folder per tint pack and keep RaceMenu tint DDS files under
 TintMask\<pack name>\textures\actors\character\character assets\tintmasks.
 Press Refresh on the Tint tab after adding a pack while the game is running.
 Include UBE in the top-level pack name for UBE-only tint masks. Packs marked
-COtR remain available to both conventional female and UBE actors.
+COtR remain available to both conventional female and UBE players.
 Only tint-mask-based tints are supported; overlay-based tints are not supported.
+The feature edits the player's existing RaceMenu skin-tint layers and does not
+create RaceMenu overlay slots.

@@ -10,6 +10,7 @@ Includes all changes from 1.1.2.
 - Removed the per-rule body-family dropdown. NPC rule body/skin pools now use the female and male NPC body types selected in Mod Settings and display that effective family in the editor.
 - Removed Combat Style from newly created rule targets and made race, faction, keyword, class, and other detailed selectors open downward.
 - Filters the Body Skin list to the selected actor's detected body family and filters NPC distribution skin pools to the configured female or male NPC body type.
+- Male BodySkin packs explicitly named HIMBO or SAM are shown and distributed only to that family; unlabelled general male skins retain the compatible fallback. SOS Regular, Muscular, and Smurf textures are combined only with body, hand, foot, and face files from the same BodySkin pack.
 - Limits clothed breast/nipple correction and stable NPC nipple/genital randomization to verified CBBE 3BA actors. UBE and uncertain female families are skipped with localized guidance, while mixed UBE-player/CBBE-NPC setups retain their NPC settings.
 - Updates both UBE slot-32 and slot-53 skin geometry when present and keeps the UBE Body atlas consistent across body, hands, and feet.
 - Applies CBBE 3BA, BHUNP, vanilla, and UBE BodySkin channels to each part's exact ArmorAddon and loaded geometry.
@@ -22,6 +23,7 @@ Includes all changes from 1.1.2.
 - Rechecks previously distributed NPCs once after loading and reapplies the saved body or skin only when the live result is missing or incomplete.
 - Repeated BodyMorph preview, confirmation, and distribution now converge on the selected XML preset's absolute target without globally clearing morph keys owned by other mods.
 - Keeps genital and anal atlases, race/elder face variants, Argonian/Khajiit male and female assets, SOS textures, and partial-channel behavior separated by the correct actor, part, and material.
+- Separates ownership of the female futanari slot from the male SOS slot. A normal BodySkin recheck no longer removes a selected futanari skin or hides its tab, and UBE genital geometry remains detectable after its live texture has moved to BCNG's cache.
 - Separates legacy SE Override v0, UBE's AE-backported Override v0, official v1, and official v2. v0/v1 use the serialization-safe Papyrus path; only audited v2 uses the native interface.
 - Improves coexistence with Racial Skin Variance, Mu Dynamic NormalMap, and OverlayFix while retaining ownership-aware cleanup.
 - Prioritizes direct selections, prepares required skin files off the game thread, cancels stale work, and keeps automatic distribution frame-budgeted.

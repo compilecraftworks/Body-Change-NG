@@ -292,6 +292,15 @@ int main(const int argc, char** argv)
         "Textures" / "actors" / "character" / "male";
     Touch(handsOnly / "malehands_1_msn.dds");
 
+    for (const auto* packName : { "HIMBO Skin SOS", "SAM Skin SOS" }) {
+        const auto male = sandbox / "BodySkin" / packName /
+            "Textures" / "actors" / "character" / "male";
+        Touch(male / "malebody_1.dds");
+        const auto sos = male.parent_path() / "SOS" / "VectorPlexus Regular";
+        Touch(sos / "malegenitals_1.dds");
+        Touch(sos / "malegenitals_1_msn.dds");
+    }
+
     const auto ubeHeadOnly = sandbox / "BodySkin" / "UBE Head Only" /
         "Textures" / "!UBE" / "Head";
     Touch(ubeHeadOnly / "femalehead_d.dds");
@@ -326,7 +335,7 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 10U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
+    if (!Require(skins.size() == 12U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
     std::size_t argonianRows{};
     std::size_t khajiitRows{};
     for (const auto& skin : skins) {
@@ -428,6 +437,17 @@ int main(const int argc, char** argv)
                     "hands-only pack was rejected or copied into body, feet, or face")) return 1;
             if (!Require(skin.hands.front().shaderTextureIndex == 1U,
                     "hands normal map was not kept on the hands normal channel")) return 1;
+            continue;
+        }
+        if (skin.name == "HIMBO Skin SOS" || skin.name == "SAM Skin SOS") {
+            const auto expectedFamily = bcn::body_family::Bit(skin.name.starts_with("HIMBO") ?
+                bcn::body_family::Family::himbo : bcn::body_family::Family::sam);
+            if (!Require(skin.sex == bcn::SkinSex::male &&
+                    skin.bodyFamilies == expectedFamily && skin.body.size() == 1U &&
+                    skin.maleGenitals.size() == 1U &&
+                    skin.maleGenitals.front().addonDirectory == "VectorPlexus Regular" &&
+                    skin.maleGenitals.front().humanoid.size() == 2U,
+                    "HIMBO/SAM skin and its same-pack SOS atlas were not kept together")) return 1;
             continue;
         }
         if (!Require(skin.sex == bcn::SkinSex::female && !skin.body.empty() &&
@@ -545,6 +565,8 @@ int main(const int argc, char** argv)
             requireFutanari(bcn::FutanariSkinType::erf, 4U, "futanari_schlong"),
             "futanari skin files crossed addon/body types or material channels")) return 1;
     if (!Require(
+            !bcn::futanari::BodySkinOwnsSosSlot(true) &&
+            bcn::futanari::BodySkinOwnsSosSlot(false) &&
             bcn::futanari::ClassifyEvidence(
                 R"(meshes\[TRX] Futa addon\Regular\trx_schlong_1.nif)", {}, {}) ==
                 bcn::futanari::AddonKind::trx &&
@@ -554,6 +576,13 @@ int main(const int argc, char** argv)
             bcn::futanari::ClassifyEvidence({}, "Penis",
                 R"(Textures\!UBE\Body\malebody_1_d.dds)") ==
                 bcn::futanari::AddonKind::ube &&
+            bcn::futanari::ClassifyEvidence({}, "penis",
+                R"(textures\BodyChangeNG\Cache\futanari\1234\malebody_1_d.dds)") ==
+                bcn::futanari::AddonKind::ube &&
+            bcn::futanari::ClassifyEvidence(
+                R"(meshes\[TRX] Futa addon\trx.nif)", "penis",
+                R"(textures\BodyChangeNG\Cache\futanari\1234\schlong.dds)") ==
+                bcn::futanari::AddonKind::trx &&
             bcn::futanari::ClassifyEvidence({}, "CBBE_Shlong", {}) ==
                 bcn::futanari::AddonKind::trx &&
             bcn::futanari::ClassifyEvidence(
@@ -563,7 +592,24 @@ int main(const int argc, char** argv)
                 bcn::futanari::AddonKind::erf &&
             bcn::futanari::ClassifyEvidence({}, "FemaleBody", {}) ==
                 bcn::futanari::AddonKind::none,
-            "futanari geometry evidence confused normal body nodes or addon families")) return 1;
+            "futanari geometry evidence confused normal body nodes, addon families, or slot ownership")) return 1;
+
+    const auto maleSkin = std::ranges::find(skins, "Male Partial", &bcn::SkinProfile::name);
+    const auto himboFamily = bcn::body_family::Bit(bcn::body_family::Family::himbo);
+    const auto samFamily = bcn::body_family::Bit(bcn::body_family::Family::sam);
+    if (!Require(maleSkin != skins.end() &&
+            bcn::SkinMatchesActor(maleSkin->bodyFamilies, himboFamily) &&
+            bcn::SkinMatchesActor(maleSkin->bodyFamilies, samFamily) &&
+            maleSkin->maleGenitals.size() == 3U,
+            "male BodySkin plus SOS variants did not remain compatible with both HIMBO and SAM")) return 1;
+    const auto himboSkin = std::ranges::find(skins, "HIMBO Skin SOS", &bcn::SkinProfile::name);
+    const auto samSkin = std::ranges::find(skins, "SAM Skin SOS", &bcn::SkinProfile::name);
+    if (!Require(himboSkin != skins.end() && samSkin != skins.end() &&
+            bcn::SkinMatchesActor(himboSkin->bodyFamilies, himboFamily) &&
+            !bcn::SkinMatchesActor(himboSkin->bodyFamilies, samFamily) &&
+            bcn::SkinMatchesActor(samSkin->bodyFamilies, samFamily) &&
+            !bcn::SkinMatchesActor(samSkin->bodyFamilies, himboFamily),
+            "explicit HIMBO and SAM skin packs leaked into the other male body family")) return 1;
     if (!Require(bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Anus") &&

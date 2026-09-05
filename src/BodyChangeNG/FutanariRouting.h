@@ -5,6 +5,15 @@
 
 namespace bcn::futanari
 {
+    // Slot 52 has two independent owners: ordinary male BodySkin profiles use
+    // it for SOS, while female actors use it for the optional Futanari tab.
+    // Keeping the ownership decision shared makes every RaceMenu ABI route
+    // preserve the same boundary.
+    [[nodiscard]] constexpr bool BodySkinOwnsSosSlot(const bool female) noexcept
+    {
+        return !female;
+    }
+
     enum class AddonKind
     {
         none,
@@ -53,20 +62,28 @@ namespace bcn::futanari
         const std::string_view modelPath, const std::string_view nodeName = {},
         const std::string_view texturePath = {}) noexcept
     {
-        if (ContainsIgnoreAsciiCase(modelPath, "!ube\\sos_addon\\ube_penis") ||
-            (EqualsIgnoreAsciiCase(nodeName, "Penis") &&
-                ContainsIgnoreAsciiCase(texturePath, "!ube\\body\\malebody_1"))) {
+        // Prefer the addon model whenever it names a concrete family. The
+        // live diffuse path is replaced with BCNG's private cache after a
+        // selection, so it can only be a fallback and must not override a
+        // model path that already identifies TRX or ERF.
+        if (ContainsIgnoreAsciiCase(modelPath, "!ube\\sos_addon\\ube_penis")) {
             return AddonKind::ube;
         }
-        if (ContainsIgnoreAsciiCase(modelPath, "[trx] futa addon") ||
-            ContainsIgnoreAsciiCase(texturePath, "[trx] futa addon") ||
-            EqualsIgnoreAsciiCase(nodeName, "CBBE_Shlong")) {
+        if (ContainsIgnoreAsciiCase(modelPath, "[trx] futa addon")) {
             return AddonKind::trx;
         }
-        if (ContainsIgnoreAsciiCase(modelPath, "erf_futanari") ||
-            ContainsIgnoreAsciiCase(texturePath, "erf_futanari") ||
-            EqualsIgnoreAsciiCase(nodeName, "CBBE Schlong")) {
+        if (ContainsIgnoreAsciiCase(modelPath, "erf_futanari")) {
             return AddonKind::erf;
+        }
+        if (ContainsIgnoreAsciiCase(texturePath, "[trx] futa addon") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE_Shlong")) return AddonKind::trx;
+        if (ContainsIgnoreAsciiCase(texturePath, "erf_futanari") ||
+            EqualsIgnoreAsciiCase(nodeName, "CBBE Schlong")) return AddonKind::erf;
+        if (EqualsIgnoreAsciiCase(nodeName, "Penis") &&
+            (ContainsIgnoreAsciiCase(texturePath, "!ube\\body\\malebody_1") ||
+                ContainsIgnoreAsciiCase(texturePath, "bodychangeng\\cache\\futanari\\") ||
+                ContainsIgnoreAsciiCase(texturePath, "bodychangerng\\cache\\futanari\\"))) {
+            return AddonKind::ube;
         }
         return AddonKind::none;
     }

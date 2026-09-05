@@ -37,12 +37,14 @@
       <li><strong>블랙·그레이 인터페이스</strong> — 창·패널·카드·입력칸·평상시 컨트롤은 검정·차콜·회색 바탕으로 통일하고, 선택·마우스 오버·경고·성공·진행 상태·즐겨찾기·틴트 미리보기의 기존 기능적 강조색은 유지합니다.</li>
       <li><strong>간결한 액터 갱신 명칭</strong> — 버튼을 한국어 <strong>액터 새로고침</strong>, 영어 <strong>Refresh actors</strong>, 중국어 <strong>刷新角色</strong>로 줄였으며 실제 로드 액터 갱신 동작은 그대로입니다.</li>
       <li><strong>명확해진 목록과 규칙 편집기</strong> — 바디스킨 목록은 선택 액터의 감지 계열을 따르고 NPC 규칙 풀은 모드 설정의 여성·남성 바디 타입을 따릅니다. 중복된 규칙별 바디 계열 드롭다운과 전투 스타일 대상을 제거하고 상세 대상 목록은 아래쪽으로 엽니다.</li>
+      <li><strong>남성 스킨 계열과 SOS 세트 분리</strong> — 이름에 HIMBO 또는 SAM이 명시된 스킨팩은 해당 계열에만 표시하며, 각 팩의 SOS Regular·Muscular·Smurf 텍스처는 같은 팩의 몸·손·발·얼굴과만 결합합니다.</li>
       <li><strong>현지화된 자산 안내</strong> — 탭을 <strong>바디프리셋</strong>·<strong>바디스킨</strong>·<strong>틴트마스크</strong>로 통일하고, 정확한 경로와 게임 중 새로고침 방법을 한국어·영어·중국어 빈 목록에 표시합니다. 지원하는 틴트마스크와 지원하지 않는 오버레이도 구분해 안내합니다.</li>
       <li><strong>안정적인 기본 스킨 복원</strong> — BCNG 스킨을 해제할 때 소유 키와 이미 로드된 BCNG 텍스처 클론을 함께 정리하고, 장비 변경 시 구버전 의상 키는 영향받은 액터에서만 제거합니다.</li>
       <li><strong>이식 가능한 기본 규칙</strong> — 동봉된 편집 가능 기본 제외 규칙 8개는 영어 이름을 사용하며 사용자가 이미 만든 규칙 이름은 바꾸지 않습니다.</li>
       <li><strong>저장된 NPC 결과 복구</strong> — 로드 후 저장된 바디·스킨을 액터마다 한 번 확인하고 없거나 깨진 결과만 다시 적용합니다.</li>
       <li><strong>바디모프 중첩 방지</strong> — 다른 모드의 모프 키를 삭제하지 않으면서 반복 미리보기와 배포가 프리셋의 절대 목표 체형에 도달합니다.</li>
       <li><strong>다중 부위 스킨 연결 강화</strong> — 몸·손·발·얼굴·성기와 종족·노인 조건부 부위를 올바른 채널에 연결하고, 의상 재구성과 부분 스킨팩에서도 유지합니다.</li>
+      <li><strong>후타나리 선택 유지</strong> — 여성 후타나리 슬롯과 남성 SOS 슬롯을 분리해 일반 바디스킨 재확인이 후타나리 선택을 지우거나 탭을 숨기지 않으며, 캐시 적용 뒤의 UBE 생식기도 계속 감지합니다.</li>
       <li><strong>착의·탈의 스킨 일관성</strong> — 몸·손·발 대상이 일시적으로 없어도 부위별 단일 RaceMenu 슬롯 키로 상태를 유지하며, 현재 로드된 스킨과 의상 노드는 정확 경로로 갱신합니다.</li>
       <li><strong>호환성 확대</strong> — 액터별 CBBE 3BA·UBE 2.0, 일반 남녀·SOS 스킨, 아르고니안·카짓, Racial Skin Variance, Mu Dynamic NormalMap과 OverlayFix 동시 사용 호환성을 강화했습니다.</li>
       <li><strong>빠른 직접 적용</strong> — 수동 선택을 우선하고 필요한 스킨 파일은 게임 스레드 밖에서 준비하며, 오래된 작업은 취소하고 자동 배포는 프레임 예산 안에서 처리합니다.</li>
@@ -165,15 +167,29 @@
       <li>SKSE로 게임을 실행하고 F7을 누릅니다.</li>
     </ol>
 
-    <h2>바디 프리셋·스킨팩·틴트팩 추가</h2>
+    <h2>사용법</h2>
+    <ol>
+      <li><strong>F7</strong>을 누릅니다. 액터 상자에서 플레이어를 선택하거나 <strong>액터 새로고침</strong>을 누르고 현재 로드된 NPC를 선택합니다.</li>
+      <li><strong>바디프리셋</strong> 또는 <strong>바디스킨</strong>을 엽니다. 한 번 클릭하면 실시간 미리보기가 적용됩니다. 창을 유지한 채 확정하려면 더블클릭하고, 선택창을 닫으면 마지막으로 미리 본 항목이 확정됩니다. 맨 위 기본 항목은 해당 분류의 BCNG 선택을 해제합니다.</li>
+      <li><strong>틴트마스크</strong>는 플레이어의 기존 RaceMenu 틴트 레이어만 변경합니다. 팩과 레이어를 고른 뒤 <strong>틴트 값 상세 조절</strong>로 색과 강도를 바꿉니다. <strong>틴트 값 복원</strong>은 BCNG가 그 레이어를 처음 바꾸기 직전 값을 복원합니다.</li>
+      <li>선택 액터에게 지원하는 여성 생식기 지오메트리가 있으면 <strong>후타나리</strong> 탭이 자동 표시됩니다. 감지된 UBE SOS/TNG, CBBE 3BA TRX 또는 CBBE 3BA ERF 유형과 맞는 팩만 선택합니다. 후타나리 선택은 바디스킨과 독립적이며 생식기를 잠시 제거해도 저장됩니다.</li>
+      <li>NPC 자동 배포 전 <strong>모드 설정</strong>에서 여성·남성 NPC 바디 타입을 고릅니다. <strong>NPC 배포</strong>에서 조건과 정확한 바디·스킨 후보를 편집한 뒤 <strong>로드된 NPC 즉시 배포</strong> 또는 다음 실행용 저장을 선택합니다.</li>
+      <li><strong>의상·랜덤화</strong>의 가슴·유두 보정과 NPC 유두·생식기 무작위화는 확인된 CBBE 3BA 액터에게만 사용합니다. UBE 또는 계열이 불확실한 여성 액터에는 실행하지 않습니다.</li>
+      <li>게임 실행 중 파일을 추가했다면 해당 탭의 <strong>새로고침</strong>을 누릅니다.</li>
+    </ol>
+    <p><strong>저장 범위:</strong> 액터 직접 선택과 평가된 NPC 결과는 현재 SKSE 코세이브에 속하며 같은 세이브를 불러올 때 복원됩니다. 완전히 새 게임을 시작하면 다른 세이브의 직접 선택은 이어받지 않습니다. 배포 규칙은 별도 <code>BodyChangeNGdistribution.json</code>에 저장됩니다.</p>
+
+    <h2>바디 프리셋·스킨팩·후타나리 스킨·틴트팩 추가</h2>
     <ol>
       <li><strong>바디 프리셋 XML</strong> — MO2 모드 루트의 <code>CalienteTools\BodySlide\SliderPresets\*.xml</code>에 표준 BodySlide 프리셋 XML 파일을 넣습니다.</li>
-      <li><strong>스킨팩</strong> — 일반 CBBE 3BA/BHUNP/UNP 스킨은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\actors\character\...</code> 구조를 사용합니다. CBBE 3BA 여성 팩의 <code>femalebody_etc_v2_1.dds</code> 및 <code>_msn</code>, <code>_sk</code>, <code>_s</code> 파일은 같은 아틀라스를 쓰는 3BA/3BBB의 성기·항문 지오메트리에만 적용합니다. BHUNP/UNP 팩은 원본 <code>BakaUNP\VaginalAnalCanal2.dds</code>와 같은 네 채널을 성기·항문·내부 지오메트리에만 적용합니다. 아르고니안·카짓은 같은 스킨팩 안에 원본의 <code>argonianfemale</code>, <code>argonianmale</code>, <code>khajiitfemale</code>, <code>khajiitmale</code> 폴더를 그대로 둡니다. UBE 2.0 스킨은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds</code>와 <code>...\!UBE\Head\femalehead_[d/n/sk].dds</code> 구조를 유지합니다. 각 종족·성별 조합은 별도로 감지되어 맞는 액터에게만 표시됩니다.</li>
-      <li><strong>틴트팩</strong> — 틴트팩마다 <code>TintMask\&lt;틴트팩 이름&gt;\textures\actors\character\character assets\tintmasks\*.dds</code> 구조로 RaceMenu 틴트마스크 DDS를 넣습니다. <strong>틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.</strong> UBE 전용 팩은 최상위 틴트팩 이름에 UBE를 포함하고, COtR 표기 팩은 일반 여성·UBE 양쪽 호환으로 처리합니다.</li>
+      <li><strong>스킨팩</strong> — 한 항목에 들어갈 몸·손·발·얼굴·종족/노인·SOS 파일을 모두 같은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\...</code> 안에 둡니다. 일반 여성은 <code>actors\character\female</code>, 남성은 <code>actors\character\male</code>, 아르고니안·카짓은 원본의 <code>argonianfemale</code>, <code>argonianmale</code>, <code>khajiitfemale</code>, <code>khajiitmale</code>를 사용합니다. CBBE 3BA의 <code>femalebody_etc_v2_1</code> 네 채널은 3BA/3BBB 성기·항문에만, BHUNP/UNP의 <code>BakaUNP\VaginalAnalCanal2</code> 네 채널은 성기·항문·내부 지오메트리에만 적용합니다. UBE는 <code>Textures\!UBE\Body\femalebody_1_[d/n/sk].dds</code>와 <code>Textures\!UBE\Head\femalehead_[d/n/sk].dds</code>를 유지합니다.</li>
+      <li><strong>남성+SOS</strong> — 같은 팩 안의 <code>Textures\actors\character\male\...</code>와 <code>Textures\actors\character\SOS\VectorPlexus Regular|Muscular|Smurf Average\...</code>를 함께 읽습니다. 현재 슬롯 52 애드온·종족·노인 여부에 맞는 SOS 아틀라스만 사용합니다. 최상위 스킨팩 이름에 HIMBO 또는 SAM을 명시하면 해당 계열에만 표시·배포하고, 계열명이 없는 일반 남성 스킨은 기존 호환 범위를 유지합니다. 서로 다른 스킨팩 폴더의 몸과 SOS 파일은 섞지 않습니다.</li>
+      <li><strong>후타나리 스킨</strong> — UBE SOS/TNG는 <code>Futanari\&lt;팩 이름&gt;\Textures\!UBE\Body\malebody_1_[d/n/sk].dds</code>, CBBE 3BA TRX는 <code>...\[TRX] Futa addon\Regular\Default\schlong</code> 네 채널, ERF는 <code>...\ERF_Futanari\FairSkinCBBE\futanari_schlong</code> 네 채널을 사용합니다. 이는 전체 바디스킨이 아닌 생식기 전용 독립 목록이며 감지된 유형만 표시합니다. 기본 항목은 애드온 원본 재질로 복원합니다.</li>
+      <li><strong>틴트팩</strong> — 틴트팩마다 <code>TintMask\&lt;틴트팩 이름&gt;\textures\actors\character\character assets\tintmasks\*.dds</code> 구조로 RaceMenu 틴트마스크 DDS를 넣습니다. 플레이어의 기존 스킨 틴트 레이어만 바꾸며 오버레이 슬롯은 만들지 않습니다. <strong>틴트마스크 방식만 호환되고 오버레이 방식은 호환되지 않습니다.</strong> UBE 전용 팩은 최상위 이름에 UBE를 포함해야 UBE 플레이어에게 표시되고, COtR 표기 팩은 일반 여성·UBE 양쪽 호환으로 처리합니다. 표기 없는 일반 여성 팩은 CBBE 3BA/BHUNP/UNP용입니다.</li>
     </ol>
     <p>위 경로는 모두 MO2 모드 루트 기준입니다. Body Change NG 메인 모드 안에 넣어도 되고, 같은 경로를 가진 별도 MO2 모드로 만들어 활성화해도 됩니다.</p>
     <p>게임 실행 중에도 BodySlide 프리셋 XML 파일, 스킨팩 폴더, 틴트팩 폴더를 추가하거나 교체할 수 있습니다. 해당 바디프리셋·바디스킨·틴트마스크 탭을 열고 <strong>새로고침</strong>을 누르면 게임을 재시작하지 않고 파일을 다시 검색해 목록에 반영합니다.</p>
-    <p>남성 스킨은 <code>BodySkin\&lt;스킨팩 이름&gt;\Textures\actors\character\male\...</code>를 사용합니다. SOS 텍스처는 같은 팩의 <code>Textures\actors\character\SOS\...</code> 아래 원본 Smurf Average·VectorPlexus Regular·Muscular 폴더와 DDS 이름을 유지하고 해당 애드온을 별도로 설치합니다. 노인·종족 변형은 <code>femaleold</code>와 종족 폴더를 그대로 두면 되며, 누락된 부위나 채널은 원본을 유지합니다.</p>
+    <p>노인·종족 변형은 원본 <code>femaleold</code>와 종족 폴더를 같은 팩 안에 그대로 둡니다. 누락된 부위나 Diffuse·Normal·Subsurface·Specular 채널은 액터의 기존 값을 유지하며 다른 부위의 파일로 대신 채우지 않습니다.</p>
     <p>개인 프리셋·스킨·틴트는 메인 모드와 별도 MO2 모드로 관리하면 업데이트할 때 안전합니다. 각 에셋 폴더에는 설치 안내 README가 들어 있으며, 기본 배포 JSON은 schema 4이며 편집 가능한 샘플 제외 조건 8개가 포함됩니다. 기존 schema 3 파일도 읽을 수 있고 저장 시 새 형식으로 전환합니다.</p>
 
     <h2>선택적 OBody NG JSON 호환</h2>

@@ -9,7 +9,7 @@ Body Change NG - 후타나리 스킨팩 설치 안내
 1. UBE + UBE SOS/TNG 성기
 Futanari\<스킨팩 이름>\Textures\!UBE\Body\malebody_1_d.dds
 Futanari\<스킨팩 이름>\Textures\!UBE\Body\malebody_1_n.dds
-Futanari\<스킨팩 이름>\Textures\!UBE\Body\femalebody_1_sk.dds
+Futanari\<스킨팩 이름>\Textures\!UBE\Body\malebody_1_sk.dds
 
 2. CBBE 3BA + TRX Futa Addon
 Futanari\<스킨팩 이름>\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
@@ -42,15 +42,18 @@ Create one folder per futanari skin pack and keep the original texture names
 under one of the supported paths below:
 
 UBE with the UBE SOS/TNG genital mesh:
-Futanari\<pack name>\Textures\!UBE\Body
+Futanari\<pack name>\Textures\!UBE\Body\malebody_1_[d/n/sk].dds
 
 CBBE 3BA with TRX Futa Addon:
-Futanari\<pack name>\Textures\[TRX] Futa addon\Regular\Default
+Futanari\<pack name>\Textures\[TRX] Futa addon\Regular\Default\schlong*
 
 CBBE 3BA with ERF Futanari:
-Futanari\<pack name>\Textures\ERF_Futanari\FairSkinCBBE
+Futanari\<pack name>\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong*
 
 Wet companions such as wetschlong_110_s.dds are kept beside the selected TRX
 schlong_s.dds in the private runtime cache. Missing channels are never copied
 from another body part or texture channel. Press Refresh on the Futanari tab
 after adding a pack while the game is running.
+This is a genital-only catalog independent from BodySkin. The tab appears only
+for a selected actor with a supported live addon, and only its matching type is
+listed. The saved selection survives temporary genital-addon removal.

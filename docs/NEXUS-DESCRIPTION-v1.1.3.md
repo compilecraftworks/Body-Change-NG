@@ -21,6 +21,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 - **Black and gray interface** — window, panel, card, input, and idle-control surfaces now use a consistent black/charcoal/grayscale foundation, while existing selection, hover, warning, success, progress, favorite, and tint-preview colors remain visible as functional highlights
 - **Shorter actor refresh label** — the button now reads **Refresh actors**, with matching Korean and Simplified Chinese labels; its loaded-actor refresh behavior is unchanged
 - **Clearer catalogs and rule editor** — Body Skin entries follow the selected actor's detected family, NPC rule pools follow the female/male body types selected in Mod Settings, the redundant per-rule family dropdown and Combat Style target are removed, and detailed target lists open downward
+- **Separated male skin families and SOS sets** — explicitly named HIMBO and SAM skin packs stay in their matching family, while each pack's SOS Regular, Muscular, or Smurf textures remain paired with that same pack
 - **Localized asset guidance** — the tabs are named **Body Presets**, **Body Skins**, and **Tint Masks**, with Korean, English, and Simplified Chinese empty-list instructions for exact paths and live refresh; tint masks and unsupported overlays are clearly distinguished
 - **Stable Default Skin restoration** — clearing a BCNG skin now removes owned keys and already loaded BCNG texture clones, while equipment changes clean stale legacy outfit keys only on the affected actor
 - **Portable starter rules** — the eight bundled editable starter exclusions now use English names without renaming rules already created by the user
@@ -29,7 +30,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 - **Complete multipart skin routing** — body, hands, feet, face, genital, and conditional race/elder parts keep their correct channels through equipment rebuilds and partial packs
 - **Clothed and naked skin consistency** — durable one-slot RaceMenu keys preserve a temporarily absent body, hand, or foot target while exact loaded skin and outfit nodes are updated as the primary route
 - **Correct UBE and conventional limb atlases** — UBE body, hand, and foot surfaces use the UBE Body atlas; CBBE 3BA/BHUNP hands use their hand atlas while feet use the body atlas unless the pack supplies a dedicated feet set
-- **Actor-aware futanari skins** — a conditional catalog supports the active UBE SOS/TNG, CBBE 3BA TRX, or CBBE 3BA ERF genital type, including optional wet companion textures
+- **Actor-aware futanari skins** — a conditional catalog supports the active UBE SOS/TNG, CBBE 3BA TRX, or CBBE 3BA ERF genital type, including optional wet companion textures; selections remain visible and applied through later BodySkin refreshes
 - **Expanded compatibility** — actor-matched CBBE 3BA and UBE 2.0, standard female/male and SOS skins, Argonian/Khajiit, Racial Skin Variance, Mu Dynamic NormalMap, and improved OverlayFix coexistence
 - **More responsive processing** — direct selections are prioritized, required skin files are prepared off the game thread, stale work is cancelled, and automatic distribution remains frame-budgeted
 - **Faster MO2 skin catalogs** — one backing DDS exposed through physical and virtual Data paths is hashed only once; full DDS reads do not run per NPC event
@@ -164,6 +165,20 @@ The in-game editor writes this file, so manual JSON editing is not required. To 
 
 ---
 
+## **HOW TO USE**
+
+1. Press **F7**. Choose the player from the actor box, or press **Refresh actors** and select a currently loaded NPC.
+2. Open **Body Presets** or **Body Skins**. A single click applies a live preview. Double-click to confirm while keeping the picker open; closing the picker confirms the last live selection. The Default row removes BCNG's selection for that category.
+3. Open **Tint Masks** to change the player's existing RaceMenu tint layers. Choose a pack and layer, then use **Adjust tint values** for color and opacity. **Restore tint values** restores the value captured before BCNG first changed that layer. Tint editing is player-only.
+4. When the selected actor has supported female genital geometry, the **Futanari** tab appears automatically. Choose only a UBE SOS/TNG, CBBE 3BA TRX, or CBBE 3BA ERF skin matching the detected addon. This choice is independent from Body Skin and remains saved if the addon is temporarily removed.
+5. For automatic NPC assignment, first choose the female and male NPC body types in **Mod Settings**. Open **NPC Distribution**, edit conditions and exact Body/Skin pools, then distribute to loaded NPCs now or save the rules for the next launch.
+6. Use **Outfit · randomization** only for verified CBBE 3BA actors. Breast/nipple correction and NPC nipple/genital randomization do not run on UBE or an uncertain female body family.
+7. Files added while Skyrim is running become available after pressing **Refresh** on the matching tab.
+
+**Save scope:** Direct actor choices and evaluated NPC results belong to the current SKSE co-save and return when that same save is loaded. A completely new game does not inherit direct actor choices from another save. Distribution rules are stored separately in `BodyChangeNGdistribution.json`.
+
+---
+
 ## **ADDING BODY PRESETS, SKIN PACKS, FUTANARI SKINS, AND TINT PACKS**
 
 All paths below are relative to an MO2 mod root. You may place these assets inside Body Change NG or in separate enabled MO2 mods that provide the same virtual paths.
@@ -174,33 +189,46 @@ All paths below are relative to an MO2 mod root. You may place these assets insi
 Place standard BodySlide preset XML files in this folder.
 
 ### **Skin Packs**
-**Conventional:** BodySkin\YourSkinPack\Textures\actors\character\...
-**CBBE 3BA female genital/anal atlas:** femalebody_etc_v2_1.dds plus _msn, _sk, and _s in the conventional female directory. These files target the matching 3BA/3BBB vagina and anus geometries that share the atlas, never another body part.
-**BHUNP/UNP female genital/anal atlas:** BakaUNP\VaginalAnalCanal2.dds plus _msn, _sk, and _s under the conventional female directory. These files target the matching vagina, anus, and canal geometries only.
-**Argonian:** BodySkin\YourSkinPack\Textures\actors\character\argonianfemale\... and argonianmale\...
-**Khajiit:** BodySkin\YourSkinPack\Textures\actors\character\khajiitfemale\... and khajiitmale\...
-**Male:** BodySkin\YourSkinPack\Textures\actors\character\male\...
-**SOS addons:** BodySkin\YourSkinPack\Textures\actors\character\SOS\... — preserve the original Smurf Average, VectorPlexus Regular, or VectorPlexus Muscular folder and DDS names; install the corresponding addon separately
-**Elder/race variants:** preserve femaleold and humanoid race folders inside the same pack; missing variant files keep the actor's underlying texture
-**UBE 2.0:** BodySkin\YourSkinPack\Textures\!UBE\Body\femalebody_1_[d/n/sk].dds
-BodySkin\YourSkinPack\Textures\!UBE\Head\femalehead_[d/n/sk].dds
 
-Create one folder per skin pack and preserve the skin mod's original Textures tree and DDS files. One pack may contain all four Argonian/Khajiit race-sex folders; each populated combination is detected separately. Do not move UBE atlases into the conventional female folder. Catalog rows are matched to the selected actor's race, sex, and detected body family.
+```text
+BodySkin\Your Skin Pack\
+└─ Textures\
+   ├─ actors\character\female\...                 CBBE 3BA / BHUNP / UNP
+   ├─ actors\character\male\...                   Vanilla / HIMBO / SAM
+   ├─ actors\character\SOS\VectorPlexus Regular\...
+   ├─ actors\character\SOS\VectorPlexus Muscular\...
+   ├─ actors\character\SOS\Smurf Average\...
+   ├─ actors\character\femaleold\...              optional elder variant
+   ├─ actors\character\<race and sex folder>\... optional race variant
+   ├─ !UBE\Body\femalebody_1_[d/n/sk].dds         UBE body atlas
+   └─ !UBE\Head\femalehead_[d/n/sk].dds           UBE head atlas
+```
+
+Create exactly one top-level folder for each selectable skin. Every body, hand, foot, face, race/elder, and SOS file inside `BodySkin\Your Skin Pack` belongs to that one catalog entry; BCNG never combines SOS files from another skin-pack folder. Preserve the source mod's Textures tree and DDS names.
+
+- **CBBE 3BA genital/anal atlas:** keep `femalebody_etc_v2_1.dds` plus `_msn`, `_sk`, and `_s` in the conventional female directory. They target only matching 3BA/3BBB vagina and anus geometry.
+- **BHUNP/UNP genital/anal atlas:** keep `BakaUNP\VaginalAnalCanal2.dds` plus `_msn`, `_sk`, and `_s` under the conventional female directory. They target only matching vagina, anus, and canal geometry.
+- **Argonian/Khajiit:** preserve `argonianfemale`, `argonianmale`, `khajiitfemale`, and `khajiitmale` inside the same pack. Each populated race/sex combination is detected separately.
+- **Male plus SOS:** place male body/hand/foot/face files and SOS addon folders under the same `BodySkin\Your Skin Pack`. The live slot-52 addon chooses Regular, Muscular, or Smurf and the actor's humanoid, Argonian, Khajiit, or elder atlas. If the top-level pack name explicitly contains **HIMBO** or **SAM**, it is restricted to that family; an unlabelled general male skin keeps the compatible fallback.
+- **UBE 2.0:** keep Body and Head in the `!UBE` namespace. Do not move UBE atlases into `actors\character\female`. The UBE Body atlas supplies live body, hand, and foot surfaces; the Head atlas supplies the face.
+- **Partial packs:** missing parts or material channels keep the actor's underlying texture. A body file is never copied into hands, feet, face, or genital geometry.
+
+Catalog rows are matched to the selected actor's body family, race, and sex. NPC distribution uses the female/male body type chosen in Mod Settings.
 
 ### **Futanari Skin Packs**
-**UBE with UBE SOS/TNG:** `Futanari\YourSkinPack\Textures\!UBE\Body\...`
-**CBBE 3BA with TRX:** `Futanari\YourSkinPack\Textures\[TRX] Futa addon\Regular\Default\...`
-**CBBE 3BA with ERF:** `Futanari\YourSkinPack\Textures\ERF_Futanari\FairSkinCBBE\...`
+**UBE with UBE SOS/TNG:** `Futanari\YourSkinPack\Textures\!UBE\Body\malebody_1_[d/n/sk].dds`
+**CBBE 3BA with TRX:** `Futanari\YourSkinPack\Textures\[TRX] Futa addon\Regular\Default\schlong.dds` plus `_msn`, `_sk`, and `_s`
+**CBBE 3BA with ERF:** `Futanari\YourSkinPack\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong.dds` plus `_msn`, `_sk`, and `_s`
 
-Create one folder per pack and preserve the original DDS names. The catalog appears only while the selected actor has supported genital geometry and shows only the matching type. Press **Refresh** on the Futanari tab after adding or replacing a pack while Skyrim is running.
+Create one folder per pack and preserve the original DDS names. This is an independent genital-only catalog, not a full BodySkin pack. The tab appears only while the selected actor has supported genital geometry and shows only the detected UBE/TRX/ERF type. Applying a pack does not replace body, hand, foot, or face textures. Default restores the addon's original material. Press **Refresh** after adding or replacing a pack while Skyrim is running.
 
 ### **Tint Packs**
 `TintMask\YourTintPack\textures\actors\character\character assets\tintmasks\*.dds`
 
-Create one folder per tint pack and preserve its RaceMenu tint-mask filenames and folder structure. Each folder directly under **TintMask** becomes one entry in the in-game catalog.
+Create one folder per tint pack and preserve its RaceMenu tint-mask filenames and folder structure. Each folder directly under **TintMask** becomes one entry in the player-only catalog. BCNG changes existing RaceMenu skin-tint layers; it does not create RaceMenu overlay slots.
 
 Only tint-mask-based tints are supported; overlay-based tints are not supported.
-For a UBE-only tint-mask pack, include **UBE** in the top-level pack name. Packs marked **COtR** are treated as compatible with both UBE and conventional female heads.
+For a UBE-only tint-mask pack, include **UBE** in the top-level pack name so it is shown to a detected UBE player. Packs marked **COtR** are treated as compatible with both UBE and conventional female heads. Ordinary unmarked female tint packs remain conventional CBBE 3BA/BHUNP/UNP entries.
 
 **Adding files while Skyrim is running**
 

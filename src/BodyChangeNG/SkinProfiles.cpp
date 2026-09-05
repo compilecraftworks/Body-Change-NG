@@ -746,22 +746,37 @@ namespace
         const std::vector<bcn::SkinTextureLayer>& cbbeGenitalAnal,
         const std::vector<bcn::SkinTextureLayer>& unpGenitalAnal)
     {
-        if (sex != bcn::SkinSex::female || race != bcn::SkinRace::humanoid) {
-            return bcn::StandardSkinFamilies(sex);
-        }
+        if (race != bcn::SkinRace::humanoid) return bcn::StandardSkinFamilies(sex);
         bcn::body_family::Mask families{};
-        if (!cbbeGenitalAnal.empty() ||
-            HasAsciiToken(skinDirectory, { "cbbe", "3ba", "3bbb" })) {
-            families |= bcn::body_family::Bit(bcn::body_family::Family::cbbe);
-        }
-        if (!unpGenitalAnal.empty() ||
-            HasAsciiToken(skinDirectory, { "unp", "uunp", "bhunp" })) {
-            families |= bcn::body_family::Bit(bcn::body_family::Family::unp);
+        if (sex == bcn::SkinSex::female) {
+            if (!cbbeGenitalAnal.empty() ||
+                HasAsciiToken(skinDirectory, { "cbbe", "3ba", "3bbb" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+            }
+            if (!unpGenitalAnal.empty() ||
+                HasAsciiToken(skinDirectory, { "unp", "uunp", "bhunp" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::unp);
+            }
+        } else {
+            // HIMBO and SAM can share the conventional `male` namespace, but
+            // body-specific texture releases are not necessarily UV
+            // interchangeable. Narrow only when the pack folder explicitly
+            // identifies a family; unlabelled male packs retain the historical
+            // permissive fallback for vanilla/SOS-compatible sets.
+            if (HasAsciiToken(skinDirectory, { "himbo" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::himbo);
+            }
+            if (HasAsciiToken(skinDirectory, { "sam" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::sam);
+            }
+            if (HasAsciiToken(skinDirectory, { "vanilla" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::maleVanilla);
+            }
         }
         // Unlabelled conventional skin packs retain the permissive historical
         // fallback. Exact texture-layout evidence and explicit pack tokens are
-        // narrow so CBBE and UNP UVs cannot cross when the author identifies
-        // the intended body family.
+        // narrow so incompatible UV families cannot cross when the author
+        // identifies the intended body family.
         return families != 0U ? families : bcn::StandardSkinFamilies(sex);
     }
 

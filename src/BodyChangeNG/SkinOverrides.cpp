@@ -2677,7 +2677,11 @@ namespace
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
-        DispatchLegacyPartClear(*vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
+        // Female SOS/TNG/TRX/ERF geometry is owned by the independent
+        // Futanari tab. A normal BodySkin reapply must not erase that choice.
+        // Male actors continue to use BodySkin's SOS addon textures.
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) DispatchLegacyPartClear(
+            *vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -2738,7 +2742,9 @@ namespace
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, clearBatch);
-        DispatchLegacyPartClear(*vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
+        // Default BodySkin and Default Futanari Skin are independent choices.
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) DispatchLegacyPartClear(
+            *vm, actor.get(), female, kSosMaleGenitalSlot, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, clearBatch);
         DispatchLegacyPartClear(*vm, actor.get(), female,
@@ -2787,8 +2793,12 @@ namespace
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody, includeLegacyTargetMasks) || removed;
         removed = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot,
             includeLegacyTargetMasks) || removed;
-        removed = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot,
-            includeLegacyTargetMasks) || removed;
+        // Never let a female BodySkin selection clear the independently owned
+        // futanari material on slot 52. Male SOS skins remain BodySkin-owned.
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
+            removed = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot,
+                includeLegacyTargetMasks) || removed;
+        }
         removed = ClearTexturePart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands, includeLegacyTargetMasks) || removed;
         removed = ClearTexturePart(*overrides, actor.get(), female,
@@ -2801,7 +2811,10 @@ namespace
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || removed;
-        removed = ClearArmorAddonPart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
+            removed = ClearArmorAddonPart(
+                *overrides, actor.get(), female, kSosMaleGenitalSlot) || removed;
+        }
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
             RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || removed;
         removed = ClearArmorAddonPart(*overrides, actor.get(), female,
@@ -2959,13 +2972,19 @@ namespace
         cleared = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
-        cleared = ClearTexturePart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
+            cleared = ClearTexturePart(
+                *overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
+        }
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearTexturePart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kBody) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kUbeBodySlot) || cleared;
-        cleared = ClearArmorAddonPart(*overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
+        if (bcn::futanari::BodySkinOwnsSosSlot(female)) {
+            cleared = ClearArmorAddonPart(
+                *overrides, actor.get(), female, kSosMaleGenitalSlot) || cleared;
+        }
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kHands) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kFeet) || cleared;
         cleared = ClearArmorAddonPart(*overrides, actor.get(), female, RE::BGSBipedObjectForm::BipedObjectSlot::kTail) || cleared;
