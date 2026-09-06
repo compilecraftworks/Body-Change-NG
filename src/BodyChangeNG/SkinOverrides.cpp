@@ -360,10 +360,9 @@ namespace
                 }
                 if (updateLoaded) {
                     // Shared-atlas layouts can safely repaint the live Skin
-                    // Armor. Conventional layouts use store-only mode when a
-                    // hidden equipped item temporarily owns the biped slot;
-                    // the next actor rebuild applies this one-bit key to the
-                    // newly-created naked part without repainting other parts.
+                    // Armor. Conventional hands and feet use store-only mode
+                    // regardless of equipment; exact targets paint whatever
+                    // skin is currently visible without repainting other parts.
                     overrides.SetSkinProperty(actor, firstPerson, mask,
                         static_cast<std::uint16_t>(kShaderTextureProperty), textureIndex, value, true);
                     if (!firstPerson) thirdPersonApplied = true;
@@ -374,7 +373,7 @@ namespace
             "SkinAudit actor={:08X} part={} stored-keys={} transient-rsv-keys={} mode={}",
             actor->GetFormID(), partName.empty() ? SkinPartName(slot) : partName,
             stored, transient, updateLoaded ? "RaceMenu-v2-single-skin-slot" :
-                "RaceMenu-v2-hidden-part-store-only");
+                "RaceMenu-v2-conventional-limb-store-only");
         return updateLoaded ? thirdPersonApplied : stored != 0U;
     }
 
@@ -1470,7 +1469,7 @@ namespace
                         }
                         if (requirePersistence && !mayPersist) {
                             SKSE::log::info(
-                                "SkinOverride hidden-part slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=persistence-required current='{}' mode=RaceMenu-v0-v1-Papyrus",
+                                "SkinOverride conventional-limb slot skipped actor={:08X} part={} view={} mask={:08X} index={} reason=persistence-required current='{}' mode=RaceMenu-v0-v1-Papyrus",
                                 actor->GetFormID(), loggedPart, firstPerson ? "1p" : "3p",
                                 mask, textureIndex, current);
                             return;
@@ -1791,7 +1790,8 @@ namespace
                 if (slotRoute == bcn::LimbSkinSlotRoute::broadLive) {
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, slot, layers, applyBatch));
-                } else if (slotRoute == bcn::LimbSkinSlotRoute::hiddenStoreOnly) {
+                } else if (slotRoute == bcn::LimbSkinSlotRoute::persistentOnly ||
+                    slotRoute == bcn::LimbSkinSlotRoute::persistentAndExact) {
                     needsExactRepair->store(true, std::memory_order_release);
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, slot, layers, applyBatch,
@@ -2067,9 +2067,15 @@ namespace
             if (slotRoute == bcn::LimbSkinSlotRoute::broadLive) {
                 durableApplied = ApplySkinSlotPart(
                     *overrides, actor.get(), female, slot, layers);
-            } else if (slotRoute == bcn::LimbSkinSlotRoute::hiddenStoreOnly) {
-                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+            } else if (slotRoute == bcn::LimbSkinSlotRoute::persistentOnly ||
+                slotRoute == bcn::LimbSkinSlotRoute::persistentAndExact) {
+                // The actor Skin Armor slot is authoritative. Exact worn-addon
+                // targets only mirror that value onto verified visible skin;
+                // they never replace the actor's durable hand/foot record.
+                const auto stored = ApplySkinSlotPart(*overrides, actor.get(), female,
                     slot, layers, "skin", SkinPartName(slot), false);
+                durableApplied = stored &&
+                    (slotRoute == bcn::LimbSkinSlotRoute::persistentOnly || exactApplied);
             }
             if (durableApplied) ++appliedParts;
         };

@@ -164,11 +164,13 @@ namespace bcn
     {
         none,
         broadLive,
-        hiddenStoreOnly
+        persistentOnly,
+        persistentAndExact
     };
 
-    // A conventional hand or foot can be absent from the loaded Biped while
-    // gloves or shoes own its slot. Reserve that one-bit key immediately, but
+    // Conventional hands and feet always receive a persistent one-bit key,
+    // independently of equipment. Any exposed skin geometry is also painted
+    // through exact Armor+Addon+node targets. The persistent write itself must
     // never repaint the loaded Skin Armor through the broad slot API. Unknown
     // layouts remain fail-closed; UBE keeps its intentional live shared-atlas
     // route. Callers must use this policy only for hand and foot slots.
@@ -178,7 +180,7 @@ namespace bcn
         if (layout == SkinUvLayout::unknown) return LimbSkinSlotRoute::none;
         if (AllowsBroadSkinSlotFallback(layout)) return LimbSkinSlotRoute::broadLive;
         return exactTargetCount == 0U ?
-            LimbSkinSlotRoute::hiddenStoreOnly : LimbSkinSlotRoute::none;
+            LimbSkinSlotRoute::persistentOnly : LimbSkinSlotRoute::persistentAndExact;
     }
 
     [[nodiscard]] constexpr std::string_view SkinUvLayoutName(

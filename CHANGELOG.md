@@ -8,7 +8,7 @@ All notable public changes to Body Change NG are documented here.
 
 - Models skin UV layouts independently from BodySlide morph presets: female Vanilla, CBBE, UNP, UBE, male Vanilla, HIMBO, SAM, Argonian, and Khajiit.
 - Requires one exact profile and actor layout before applying a humanoid skin. Ambiguous profiles and conflicting actor evidence fail closed instead of treating an unknown family as compatible with every DDS set.
-- Applies body, hands, feet, and face as one profile plan regardless of equipped items. RaceMenu's live broad skin-slot route remains limited to UBE's explicit shared body atlas; conventional visible surfaces use exact Armor+ArmorAddon+geometry targets, while fully covered hands or feet receive an immediate persistent one-bit value without repainting the equipment.
+- Applies body, hands, feet, and face as one profile plan regardless of equipped items. RaceMenu's live broad skin-slot route remains limited to UBE's explicit shared body atlas; conventional hands and feet always receive an immediate persistent one-bit value whether fully covered, partly exposed, or uncovered, while visible skin also receives exact Armor+ArmorAddon+geometry writes.
 - Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
 - Adds `uvLayout` to explicit skin manifests and keeps unsupported or contradictory manifests out of the catalog.
 

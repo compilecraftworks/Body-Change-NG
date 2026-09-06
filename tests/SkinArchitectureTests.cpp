@@ -64,14 +64,14 @@ int main()
             !bcn::AllowsBroadSkinSlotFallback(SkinUvLayout::unknown),
             "broad skin-slot routing escaped the UBE shared-atlas boundary")) return 1;
     if (!Require(bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::cbbe, 0U) ==
-                LimbSkinSlotRoute::hiddenStoreOnly &&
+                LimbSkinSlotRoute::persistentOnly &&
             bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::unp, 1U) ==
-                LimbSkinSlotRoute::none &&
+                LimbSkinSlotRoute::persistentAndExact &&
             bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::ube, 0U) ==
                 LimbSkinSlotRoute::broadLive &&
             bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::unknown, 0U) ==
                 LimbSkinSlotRoute::none,
-            "hidden limb reservation escaped its exact-layout and no-target boundary")) return 1;
+            "equipment-independent limb persistence escaped its layout boundary")) return 1;
 
     constexpr std::array channels{
         WorkChannel::actorReconcile,
