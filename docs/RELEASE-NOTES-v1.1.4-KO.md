@@ -30,6 +30,6 @@
 ## 검증 및 파일
 
 - 릴리즈 빌드에 성공했고 자동 회귀 테스트 12개를 모두 통과했습니다.
-- `Body-Change-NG-v1.1.4.zip` — MO2 설치용 배포본.
-- `Body-Change-NG-v1.1.4-Source.zip` — `v1.1.4` 태그와 일치하는 소스 압축 파일.
-- `SHA256SUMS-v1.1.4.txt` — 압축 파일 체크섬.
+- `Body Change NG v1.1.4.zip` — MO2 설치용 배포본.
+- `Body Change NG v1.1.4 Source.zip` — `v1.1.4` 태그와 일치하는 소스 압축 파일.
+- `SHA256SUMS v1.1.4.txt` — 압축 파일 체크섬.

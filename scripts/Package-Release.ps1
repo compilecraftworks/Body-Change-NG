@@ -122,14 +122,14 @@ try {
     }
     if ($prohibited) { throw 'Generated/private files found in source staging.' }
     [IO.File]::WriteAllLines((Join-Path $source 'SOURCE-REVISION.txt'), @("Body Change NG $version", "Git revision: $revision", 'Dependency pins: DEPENDENCIES.md and xmake-requires.lock'), [Text.UTF8Encoding]::new($false))
-    $binaryZip = Join-Path $output "Body-Change-NG-v$version.zip"
-    $sourceZip = Join-Path $output "Body-Change-NG-v$version-Source.zip"
+    $binaryZip = Join-Path $output "Body Change NG v$version.zip"
+    $sourceZip = Join-Path $output "Body Change NG v$version Source.zip"
     New-VerifiedArchive $binary $binaryZip
     New-VerifiedArchive $source $sourceZip
     $sums = foreach ($path in @($binaryZip, $sourceZip)) {
         '{0}  {1}' -f (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash, [IO.Path]::GetFileName($path)
     }
-    [IO.File]::WriteAllLines((Join-Path $output "SHA256SUMS-v$version.txt"), $sums, [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllLines((Join-Path $output "SHA256SUMS v$version.txt"), $sums, [Text.UTF8Encoding]::new($false))
     Get-Item -LiteralPath $binaryZip, $sourceZip | Select-Object Name, Length
     $sums
 } finally {

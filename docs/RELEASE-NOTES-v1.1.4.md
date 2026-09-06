@@ -30,6 +30,6 @@ Previous public release: 1.1.3
 ## Validation and files
 
 - Release build completed successfully and all 12 automated regression tests passed.
-- `Body-Change-NG-v1.1.4.zip` — MO2-ready release package.
-- `Body-Change-NG-v1.1.4-Source.zip` — source archive matching tag `v1.1.4`.
-- `SHA256SUMS-v1.1.4.txt` — archive checksums.
+- `Body Change NG v1.1.4.zip` — MO2-ready release package.
+- `Body Change NG v1.1.4 Source.zip` — source archive matching tag `v1.1.4`.
+- `SHA256SUMS v1.1.4.txt` — archive checksums.
