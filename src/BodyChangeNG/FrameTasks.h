@@ -21,6 +21,10 @@ namespace bcn::frame_tasks
     std::uint64_t Epoch();
     bool IsCurrent(std::uint64_t epoch);
     void CancelActor(std::uint32_t actor);
+    // Supersedes only direct UI/native channels (200+). Automatic actor,
+    // equipment and verification jobs remain queued.
+    void CancelActorInteractive(std::uint32_t actor);
     bool HasActorWork(std::uint32_t actor);
+    bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel);
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor);
 }

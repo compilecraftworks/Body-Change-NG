@@ -113,7 +113,17 @@ namespace bcn::frame_tasks
         return g_queue.Active() && epoch == g_queue.Epoch();
     }
     void CancelActor(std::uint32_t actor) { std::scoped_lock lock(g_lock); g_queue.CancelActor(actor); }
+    void CancelActorInteractive(std::uint32_t actor)
+    {
+        std::scoped_lock lock(g_lock);
+        g_queue.CancelActorInteractive(actor);
+    }
     bool HasActorWork(std::uint32_t actor) { std::scoped_lock lock(g_lock); return g_queue.HasActorWork(actor); }
+    bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel)
+    {
+        std::scoped_lock lock(g_lock);
+        return g_queue.HasActorChannelWork(actor, channel);
+    }
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor)
     {
         std::scoped_lock lock(g_lock);

@@ -138,6 +138,8 @@ namespace
     constexpr ImU32 kCardText = IM_COL32(238, 238, 238, 255);
     constexpr ImU32 kCardSubtext = IM_COL32(170, 170, 170, 255);
     constexpr ImU32 kCardIncompatible = IM_COL32(192, 145, 120, 255);
+    constexpr std::uint32_t kSkinApplyChannel = 204U;
+    constexpr std::uint32_t kFutanariApplyChannel = 205U;
 
     [[nodiscard]] bcn::UiLanguage WindowsLanguage()
     {
@@ -1026,9 +1028,61 @@ namespace
         }
     }
 
+    struct InterruptedTextureWork
+    {
+        bool skin{};
+        bool futanari{};
+        std::optional<std::string> skinProfileId;
+        std::optional<std::string> futanariProfileId;
+    };
+
+    [[nodiscard]] InterruptedTextureWork BeginDirectBodyInteraction(RE::Actor* actor)
+    {
+        InterruptedTextureWork interrupted;
+        if (!actor) return interrupted;
+
+        const auto actorFormID = actor->GetFormID();
+        interrupted.skin = bcn::frame_tasks::HasActorChannelWork(actorFormID, kSkinApplyChannel);
+        interrupted.futanari = bcn::frame_tasks::HasActorChannelWork(actorFormID, kFutanariApplyChannel);
+        if (interrupted.skin) {
+            interrupted.skinProfileId = bcn::skin_override::CurrentProfileId(actor);
+        }
+        if (interrupted.futanari) {
+            interrupted.futanariProfileId = bcn::skin_override::CurrentFutanariProfileId(actor);
+        }
+
+        // A direct body choice is latest-wins across the UI pipeline. Keep
+        // automatic distribution/equipment channels, but invalidate obsolete
+        // body, skin and futanari work before the replacement is queued.
+        bcn::frame_tasks::CancelActorInteractive(actorFormID);
+        return interrupted;
+    }
+
+    void RestoreInterruptedTextureWork(RE::Actor* actor, const InterruptedTextureWork& interrupted)
+    {
+        if (!actor) return;
+        if (interrupted.skin) {
+            if (interrupted.skinProfileId) {
+                [[maybe_unused]] const auto restored =
+                    bcn::skin_override::QueueApply(actor, *interrupted.skinProfileId);
+            } else {
+                [[maybe_unused]] const auto restored = bcn::skin_override::QueueClear(actor);
+            }
+        }
+        if (interrupted.futanari) {
+            if (interrupted.futanariProfileId) {
+                [[maybe_unused]] const auto restored =
+                    bcn::skin_override::QueueApplyFutanari(actor, *interrupted.futanariProfileId);
+            } else {
+                [[maybe_unused]] const auto restored = bcn::skin_override::QueueClearFutanari(actor);
+            }
+        }
+    }
+
     [[nodiscard]] bool QueuePreset(const CatalogItem& item, const bcn::racemenu::ApplyMode mode)
     {
         auto* actor = SelectedActor();
+        const auto interrupted = BeginDirectBodyInteraction(actor);
         const auto result = bcn::racemenu::QueueApply(actor, item.id, mode);
         if (result == bcn::racemenu::ApplyResult::queued && mode == bcn::racemenu::ApplyMode::commit) {
             auto* player = RE::PlayerCharacter::GetSingleton();
@@ -1037,6 +1091,7 @@ namespace
             }
             bcn::OutfitRefit::Get().ProcessActor(actor);
         }
+        RestoreInterruptedTextureWork(actor, interrupted);
         if (result != bcn::racemenu::ApplyResult::queued) {
             bcn::ui::Notify(std::string(item.name) + " · " + ApplyResultMessage(result));
         }
@@ -1083,7 +1138,9 @@ namespace
             bcn::ui::Notify(Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。"));
             return false;
         }
+        const auto interrupted = BeginDirectBodyInteraction(actor);
         bcn::racemenu::QueueClearBodyChangeMorphs(actor);
+        RestoreInterruptedTextureWork(actor, interrupted);
         if (persistSelection) SaveManualDefaultBodyIfNeeded(actor);
         return true;
     }

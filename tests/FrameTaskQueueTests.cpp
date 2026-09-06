@@ -198,6 +198,53 @@ int main()
         queue.Reset(false);
         Check(!queue.Status(60).busy && !queue.Status(60).queued && !FrameTaskQueue::ValidLease(detachedLease),
             "session reset leaked status or revived callback");
+
+        // A direct body selection may interrupt a long skin callback without
+        // deleting the actor's automatic distribution/equipment work. The
+        // cancelled skin continuation must not overlap the replacement body.
+        queue.Reset(true);
+        queue.Submit(70, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        auto interruptedSkinLease = job->lease; job.reset();
+        queue.Submit(70, 100, [&] { result = 700; });
+        queue.Submit(70, 201, [&] { result = 701; }, 1, true, true);
+        Check(queue.HasActorChannelWork(70, 204) && queue.HasActorChannelWork(70, 201),
+            "interactive skin/body channel status was not visible");
+        queue.CancelActorInteractive(70);
+        Check(!FrameTaskQueue::ValidLease(interruptedSkinLease) &&
+                !queue.HasActorChannelWork(70, 204) && !queue.HasActorChannelWork(70, 201),
+            "direct body supersede retained an old interactive skin/body job");
+        Check(queue.HasActorChannelWork(70, 100),
+            "direct body supersede deleted automatic actor work");
+        interruptedSkinLease.reset(); queue.Advance();
+        Check(!queue.Take(), "interactive cancellation skipped its quiet boundary");
+        queue.Advance(); job = queue.Take();
+        Check(job && job->actor == 70 && job->channel == 100,
+            "automatic actor work did not resume after interactive cancellation");
+        job->run();
+        Check(result == 700, "automatic actor work changed during interactive cancellation");
+
+        // Repeated body input while a skin callback is live must collapse to
+        // the final body followed by one final skin repaint.
+        queue.Reset(true);
+        queue.Submit(80, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
+        auto staleSkinLease = job->lease; job.reset();
+        queue.Submit(80, 200, [&] { result = 800; }, 1, true, true);
+        queue.Submit(80, 204, [&] { result = 804; }, 1, true, true);
+        queue.CancelActorInteractive(80);
+        queue.Submit(80, 200, [&] { result = 810; }, 1, true, true);
+        queue.Submit(80, 204, [&] { result = 814; }, 1, true, true);
+        Check(queue.HasActorChannelWork(80, 200) && queue.HasActorChannelWork(80, 204),
+            "final body/skin replacement was not queued");
+        staleSkinLease.reset(); queue.Advance();
+        Check(!queue.Take(true), "replacement body crossed the cancelled skin quiet boundary");
+        queue.Advance(); job = queue.Take(true);
+        Check(job && job->channel == 200, "final skin ran before the final body");
+        job->run(); Check(result == 810, "an obsolete body request survived rapid input");
+        job.reset(); queue.Advance();
+        Check(!queue.Take(true), "final skin crossed the body quiet boundary");
+        queue.Advance(); job = queue.Take(true);
+        Check(job && job->channel == 204, "final skin repaint was not retained");
+        job->run(); Check(result == 814, "an obsolete skin repaint survived rapid input");
         FrameTaskQueue::WorkStatus threshold{true, false, 1499};
         Check(!threshold.Delayed(), "delay indicator threshold too early");
         threshold.elapsedMs = 1500;

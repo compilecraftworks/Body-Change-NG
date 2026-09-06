@@ -16,6 +16,7 @@ Body Change NG manages BodySlide body morphs, actor skin textures, and player Ra
 
 ## **WHAT'S NEW IN 1.1.2–1.1.4**
 
+- **Non-stacking rapid body selection** — if Body presets are clicked while a legacy v0/v1 Papyrus skin update is pending, obsolete UI work is superseded; the latest body runs once and the selected BodySkin/futanari skin is repainted once afterward
 - **Stable NPC skin sequencing** — automatic NPC body and outfit rebuilds now settle before the selected skin is applied, fixing the NPC-only flash followed by an immediate return to the original skin
 - **Final-clone multipart repaint** — a skin is marked complete only after the final Biped clone has received the correct body, hand, foot, face, genital, and anal routes; this covers RaceMenu Override v0/v1 and v2
 - **Already-dead NPC distribution** — loaded corpses are no longer left on Zeroed Sliders merely because they were dead before BCNG evaluated the cell

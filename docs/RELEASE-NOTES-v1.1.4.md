@@ -7,6 +7,7 @@ Previous public release: 1.1.3
 
 ## Fixes
 
+- Fixed cumulative body growth when presets were clicked rapidly while a legacy v0/v1 Papyrus skin change was pending. Obsolete interactive work is superseded; the latest body runs once, followed by one repaint of the selected BodySkin and futanari skin.
 - Fixed NPC skins that briefly appeared and then reverted after body, outfit, or 3D rebuilds.
 - Automatic skin distribution now waits for the actor rebuild to settle and repaints the final Biped clone once.
 - Manual NPC Skin and Default Skin choices lock immediately and are not overwritten by automatic distribution.

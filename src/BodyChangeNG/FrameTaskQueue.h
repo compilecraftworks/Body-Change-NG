@@ -138,7 +138,7 @@ namespace bcn::async_work
                 if (--pending.count == 0) actorPending_.erase(job.actor);
                 job.lease = std::make_shared<FrameLeaseState>();
                 job.lease->interactive.store(job.interactive);
-                busy_[job.actor] = {job.lease, 0, job.requestedAt};
+                busy_[job.actor] = {job.lease, 0, job.requestedAt, job.channel};
             }
             return job;
         }
@@ -163,11 +163,39 @@ namespace bcn::async_work
             }
             // Keep an already executing lease: cancellation is NOT completion.
         }
+        void CancelActorInteractive(std::uint32_t actor)
+        {
+            // Direct catalog choices use channels 200+. Replace only that
+            // interactive pipeline; distribution/equipment reconciliation in
+            // channels below 200 must not disappear when a user clicks fast.
+            std::erase_if(jobs_, [actor](const Job& job) {
+                return job.actor == actor && job.channel >= 200;
+            });
+            RebuildPendingActor(actor);
+            if (const auto found = busy_.find(actor);
+                found != busy_.end() && found->second.channel >= 200) {
+                if (const auto lease = found->second.lease.lock()) lease->cancelled.store(true);
+            }
+            // A cancelled live lease remains busy through the ordinary quiet
+            // tick. Its actor-zero continuations see the cancelled lease and
+            // cannot mutate the replacement body/skin request.
+        }
         bool Active() const { return active_; }
         std::uint64_t Epoch() const { return epoch_; }
         std::size_t Pending() const { return jobs_.size(); }
         std::uint64_t Tick() const { return tick_; }
         bool HasActorWork(std::uint32_t actor) const { return actorPending_.contains(actor) || busy_.contains(actor); }
+        bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel) const
+        {
+            if (const auto found = busy_.find(actor);
+                found != busy_.end() && found->second.channel == channel) {
+                if (const auto lease = found->second.lease.lock();
+                    lease && !lease->cancelled.load()) return true;
+            }
+            return std::ranges::any_of(jobs_, [actor, channel](const Job& job) {
+                return job.actor == actor && job.channel == channel;
+            });
+        }
         WorkStatus Status(std::uint32_t actor, Clock::time_point now = Clock::now()) const
         {
             WorkStatus result;
@@ -184,7 +212,23 @@ namespace bcn::async_work
             return result;
         }
     private:
-        struct Busy { std::weak_ptr<FrameLeaseState> lease; std::uint64_t released{}; Clock::time_point since; };
+        void RebuildPendingActor(std::uint32_t actor)
+        {
+            actorPending_.erase(actor);
+            for (const auto& job : jobs_) {
+                if (job.actor != actor) continue;
+                auto& pending = actorPending_[actor];
+                if (pending.count++ == 0) pending.since = job.requestedAt;
+                else pending.since = std::min(pending.since, job.requestedAt);
+                if (job.interactive) ++pending.interactive;
+            }
+        }
+        struct Busy {
+            std::weak_ptr<FrameLeaseState> lease;
+            std::uint64_t released{};
+            Clock::time_point since;
+            std::uint32_t channel{};
+        };
         std::deque<Job> jobs_;
         std::unordered_map<std::uint32_t, Busy> busy_;
         struct PendingActorState { std::size_t count{}, interactive{}; std::uint64_t seen{}; Clock::time_point since; };

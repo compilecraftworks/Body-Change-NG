@@ -2,6 +2,7 @@ Body Change NG 1.1.4 — 6 September 2026
 
 Includes all changes from version 1.1.3.
 
+- Fixed body morphs growing cumulatively when Body presets were clicked rapidly while a legacy v0/v1 Papyrus skin change was still pending. Obsolete interactive work is now superseded, the latest body is applied once, and the selected BodySkin/futanari skin is repainted once afterward without dropping automatic actor work.
 - Fixed NPC skins that flashed briefly and immediately reverted after body, outfit, or 3D rebuilds.
 - Automatic skin application now waits for the actor's body/outfit rebuild to settle, then repaints the final Biped clone once.
 - Manual NPC skin and Default Skin selections now lock immediately, so automatic distribution cannot overwrite the user's direct choice.

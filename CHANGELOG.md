@@ -6,6 +6,7 @@ All notable public changes to Body Change NG are documented here.
 
 ### NPC skin sequencing and persistence
 
+- Rapid Body catalog input now supersedes obsolete interactive body/skin work while a legacy v0/v1 Papyrus skin change is pending. The latest body is applied once, then the selected BodySkin and futanari skin are repainted once; automatic distribution and equipment work are preserved.
 - Applies an automatically distributed NPC skin only after that actor's deferred body and outfit rebuild work has settled. This removes the NPC-only flash followed by an immediate return to the original skin.
 - Records a skin as complete only after `QueueNiNodeUpdate` finishes and the final Biped clone has been repainted. The final pass uses the same exact body, hand, foot, face, genital, and anal routes on RaceMenu Override v0/v1 and v2.
 - Locks an NPC's manual Skin or Default Skin choice as soon as its live preview is accepted, so an attach or initialization event cannot replace the visible selection with an automatic rule result.
