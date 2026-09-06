@@ -22,6 +22,7 @@ int main()
     using bcn::SkinRace;
     using bcn::SkinSex;
     using bcn::SkinUvLayout;
+    using bcn::LimbSkinSlotRoute;
     using bcn::appearance::WorkChannel;
     using bcn::body_family::Bit;
     using bcn::body_family::Family;
@@ -62,6 +63,15 @@ int main()
             !bcn::AllowsBroadSkinSlotFallback(SkinUvLayout::unp) &&
             !bcn::AllowsBroadSkinSlotFallback(SkinUvLayout::unknown),
             "broad skin-slot routing escaped the UBE shared-atlas boundary")) return 1;
+    if (!Require(bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::cbbe, 0U) ==
+                LimbSkinSlotRoute::hiddenStoreOnly &&
+            bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::unp, 1U) ==
+                LimbSkinSlotRoute::none &&
+            bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::ube, 0U) ==
+                LimbSkinSlotRoute::broadLive &&
+            bcn::ResolveLimbSkinSlotRoute(SkinUvLayout::unknown, 0U) ==
+                LimbSkinSlotRoute::none,
+            "hidden limb reservation escaped its exact-layout and no-target boundary")) return 1;
 
     constexpr std::array channels{
         WorkChannel::actorReconcile,
@@ -96,12 +106,15 @@ int main()
     cbbeProfile.uvLayout = SkinUvLayout::cbbe;
     cbbeProfile.race = SkinRace::humanoid;
     cbbeProfile.body = { { 0U, "base-body.dds" }, { 1U, "base-body_n.dds" } };
+    cbbeProfile.hands = { { 0U, "base-hands.dds" } };
+    cbbeProfile.face = { { 0U, "base-face.dds" } };
     cbbeProfile.elderBody = { { 1U, "elder-body_n.dds" } };
     const auto elderPlan = bcn::skin_plan::Build(cbbeProfile, { .elder = true });
     if (!Require(elderPlan.body.size() == 2U &&
             elderPlan.body[1].path == "elder-body_n.dds" &&
+            elderPlan.hands.size() == 1U && elderPlan.face.size() == 1U &&
             elderPlan.feet.size() == 2U && elderPlan.feet[1].path == "elder-body_n.dds",
-            "the planner lost elder overlay or CBBE shared-feet rules")) return 1;
+            "the equipment-independent plan lost a body, hand, foot, or face layer")) return 1;
 
     bcn::SkinProfile beastProfile;
     beastProfile.uvLayout = SkinUvLayout::argonian;
@@ -122,7 +135,6 @@ int main()
             ubePlan.feet.size() == 1U && ubePlan.feet.front().path == "ube-body.dds",
             "UBE did not remain one explicit shared-atlas plan")) return 1;
 
-    cbbeProfile.face = { { 0U, "base-face.dds" } };
     cbbeProfile.vampireFace = { { 0U, "vampire-face.dds" } };
     cbbeProfile.faceDetails = {
         { 3U, "femalehead_frek.dds" }, { 3U, "femalehead_rough.dds" }

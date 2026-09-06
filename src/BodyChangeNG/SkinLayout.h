@@ -160,6 +160,27 @@ namespace bcn
         return layout == SkinUvLayout::ube;
     }
 
+    enum class LimbSkinSlotRoute : std::uint8_t
+    {
+        none,
+        broadLive,
+        hiddenStoreOnly
+    };
+
+    // A conventional hand or foot can be absent from the loaded Biped while
+    // gloves or shoes own its slot. Reserve that one-bit key immediately, but
+    // never repaint the loaded Skin Armor through the broad slot API. Unknown
+    // layouts remain fail-closed; UBE keeps its intentional live shared-atlas
+    // route. Callers must use this policy only for hand and foot slots.
+    [[nodiscard]] constexpr LimbSkinSlotRoute ResolveLimbSkinSlotRoute(
+        const SkinUvLayout layout, const std::size_t exactTargetCount) noexcept
+    {
+        if (layout == SkinUvLayout::unknown) return LimbSkinSlotRoute::none;
+        if (AllowsBroadSkinSlotFallback(layout)) return LimbSkinSlotRoute::broadLive;
+        return exactTargetCount == 0U ?
+            LimbSkinSlotRoute::hiddenStoreOnly : LimbSkinSlotRoute::none;
+    }
+
     [[nodiscard]] constexpr std::string_view SkinUvLayoutName(
         const SkinUvLayout layout) noexcept
     {

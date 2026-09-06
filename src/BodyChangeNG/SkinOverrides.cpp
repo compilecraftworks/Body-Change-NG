@@ -1676,8 +1676,10 @@ namespace
             auto applyBatch = MakeLegacyBatch(currentActor.get(), generation);
             auto requiredParts = std::make_shared<
                 std::vector<std::shared_ptr<LegacyMutationTracker>>>();
+            auto needsExactRepair = std::make_shared<std::atomic_bool>(false);
             applyBatch->completion = [actorHandle, profile, generation, settledRepaint,
-                remainingVerificationRepairs, requiredParts](const std::uint32_t) {
+                remainingVerificationRepairs, requiredParts,
+                needsExactRepair](const std::uint32_t) {
                 const auto settledActor = actorHandle.get();
                 if (!settledActor || !IsCurrentSkinChange(settledActor->GetFormID(), generation)) return;
                 const auto appliedParts = static_cast<std::size_t>(std::ranges::count_if(
@@ -1710,7 +1712,69 @@ namespace
                     }
                 };
 
-                finish();
+                if (!needsExactRepair->load(std::memory_order_acquire)) {
+                    finish();
+                    return;
+                }
+
+                // NiOverride v0/v1 has no native store-only operation. Its
+                // persistent skin-slot call can repaint every addon on the
+                // selected Skin Armor while reserving a hidden hand or foot.
+                // Restore all currently visible conventional surfaces through
+                // exact Armor+Addon+node keys after those callbacks finish.
+                auto* repairVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                auto* repairBase = settledActor->GetActorBase();
+                if (!repairVM || !repairBase ||
+                    !ProfileMatchesActor(settledActor.get(), profile)) {
+                    finish();
+                    return;
+                }
+                const auto repairFemale = repairBase->GetSex() == RE::SEX::kFemale;
+                const auto repairFace = FaceNode(settledActor.get(), repairBase);
+                const auto repairPlan = EffectiveSkinPlan(profile, repairBase,
+                    repairFace ? repairFace->detailFilename : std::string_view{});
+                auto repairBatch = MakeLegacyBatch(settledActor.get(), generation);
+                repairBatch->completion = [finish](const std::uint32_t) { finish(); };
+                if (!repairPlan.body.empty()) {
+                    static_cast<void>(DispatchLegacyProfileBodyApply(*repairVM,
+                        settledActor.get(), repairFemale, profile,
+                        repairPlan.body, repairBatch));
+                }
+                if (!repairPlan.cbbeGenitalAnal.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM,
+                        settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        repairPlan.cbbeGenitalAnal, repairBatch,
+                        bcn::skin_geometry::BodySelection::cbbeGenitalAnal));
+                }
+                if (!repairPlan.unpGenitalAnal.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM,
+                        settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+                        repairPlan.unpGenitalAnal, repairBatch,
+                        bcn::skin_geometry::BodySelection::unpGenitalAnal));
+                }
+                if (!repairPlan.hands.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM,
+                        settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kHands,
+                        repairPlan.hands, repairBatch,
+                        bcn::skin_geometry::BodySelection::all, true));
+                }
+                if (!repairPlan.feet.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM,
+                        settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kFeet,
+                        repairPlan.feet, repairBatch,
+                        bcn::skin_geometry::BodySelection::all, true));
+                }
+                if (repairPlan.beastTail && !repairPlan.body.empty()) {
+                    static_cast<void>(DispatchLegacyPartApply(*repairVM,
+                        settledActor.get(), repairFemale,
+                        RE::BGSBipedObjectForm::BipedObjectSlot::kTail,
+                        repairPlan.body, repairBatch));
+                }
+                CompleteLegacyBatch(repairBatch);
             };
 
             const auto submitPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
@@ -1722,9 +1786,16 @@ namespace
                 if (layers.empty()) return;
                 auto exact = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                     slot, layers, applyBatch, selection, allowExplicitLimbNode);
-                if (bcn::AllowsBroadSkinSlotFallback(layout)) {
+                const auto slotRoute = bcn::ResolveLimbSkinSlotRoute(
+                    layout, exact ? 1U : 0U);
+                if (slotRoute == bcn::LimbSkinSlotRoute::broadLive) {
                     requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
                         currentActor.get(), currentFemale, slot, layers, applyBatch));
+                } else if (slotRoute == bcn::LimbSkinSlotRoute::hiddenStoreOnly) {
+                    needsExactRepair->store(true, std::memory_order_release);
+                    requiredParts->push_back(DispatchLegacySkinSlotApply(*currentVM,
+                        currentActor.get(), currentFemale, slot, layers, applyBatch,
+                        "skin", SkinPartName(slot), true));
                 } else {
                     requiredParts->push_back(std::move(exact));
                 }
@@ -1772,17 +1843,10 @@ namespace
                     static_cast<void>(DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                         RE::BGSBipedObjectForm::BipedObjectSlot::kTail, currentBodyLayers, applyBatch));
             }
-            if (currentPlan.broadSharedAtlas) {
-                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
-                    bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
-                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentFeetLayers,
-                    bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
-            } else {
-                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
-                submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentFeetLayers,
-                    bcn::skin_geometry::BodySelection::all, true);
-            }
+            submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
+                bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
+            submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentFeetLayers,
+                bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
             if (!currentFaceLayers.empty()) {
                 requiredParts->push_back(currentFace ?
                     DispatchLegacyFaceApply(*currentVM, currentActor.get(), currentFemale,
@@ -1998,9 +2062,14 @@ namespace
             const auto exactApplied = ApplyLoadedPart(
                 *overrides, actor.get(), female, slot, layers, targets);
             auto durableApplied = exactApplied;
-            if (bcn::AllowsBroadSkinSlotFallback(layout)) {
+            const auto slotRoute = bcn::ResolveLimbSkinSlotRoute(
+                layout, targets.size());
+            if (slotRoute == bcn::LimbSkinSlotRoute::broadLive) {
                 durableApplied = ApplySkinSlotPart(
                     *overrides, actor.get(), female, slot, layers);
+            } else if (slotRoute == bcn::LimbSkinSlotRoute::hiddenStoreOnly) {
+                durableApplied = ApplySkinSlotPart(*overrides, actor.get(), female,
+                    slot, layers, "skin", SkinPartName(slot), false);
             }
             if (durableApplied) ++appliedParts;
         };
