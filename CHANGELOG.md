@@ -2,6 +2,26 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.1.4 — 2026-09-06
+
+### NPC skin sequencing and persistence
+
+- Applies an automatically distributed NPC skin only after that actor's deferred body and outfit rebuild work has settled. This removes the NPC-only flash followed by an immediate return to the original skin.
+- Records a skin as complete only after `QueueNiNodeUpdate` finishes and the final Biped clone has been repainted. The final pass uses the same exact body, hand, foot, face, genital, and anal routes on RaceMenu Override v0/v1 and v2.
+- Locks an NPC's manual Skin or Default Skin choice as soon as its live preview is accepted, so an attach or initialization event cannot replace the visible selection with an automatic rule result.
+
+### Dead NPC distribution and rule editing
+
+- Includes already-dead, loaded NPCs in automatic distribution while preserving the player, disabled-actor, unloaded-3D, and non-NPC exclusions. Applied signatures and actor-work coalescing still suppress duplicate work.
+- Saves the current NPC Distribution editor draft when the popup closes by X or Escape and when the main menu closes. This updates the next-launch JSON without silently replacing the rules active in the current session.
+- Keeps the same-session draft in memory when the popup is reopened, but clears it at a save-load boundary so an old save's unfinished editor state cannot leak into a newly loaded save.
+- Adds localized `Select all` and `Clear all` controls to Body and Skin pools. Selection follows the rule sex and the NPC body family configured in Mod Settings; Zeroed Sliders remains selectable and can be unchecked afterward.
+
+### Performance and validation
+
+- Adds no polling, catalog rescan, or per-frame JSON write. Only actors that need both a body change and a skin change receive one bounded delayed skin evaluation, and only an actual Biped rebuild receives one final repaint.
+- The Release build and all 12 regression test executables passed. Existing settings, distribution schema, user rules, co-save identities, body morph ownership, partial skin packs, UBE routing, and futanari isolation remain compatible.
+
 ## 1.1.3 — 2026-09-06
 
 ### CBBE 3BA hand and foot BodySkin routing

@@ -938,6 +938,16 @@ namespace
         return bcn::Distribution::Get().Save();
     }
 
+    [[nodiscard]] bool SaveDistributionDraft()
+    {
+        if (!g_distributionEditorLoaded) return true;
+        // Closing the editor confirms the JSON draft for the next game, but
+        // deliberately does not replace the rules already active in this
+        // session.  The explicit immediate-distribution button remains the
+        // only action that changes both active rules and the saved file.
+        return bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules);
+    }
+
     [[nodiscard]] bool ContainsPreset(const bcn::DistributionRule& rule, const std::string_view presetId)
     {
         return std::ranges::find(rule.presetIds, presetId) != rule.presetIds.end();
@@ -1344,12 +1354,18 @@ namespace
         const auto navigation = HandleCatalogNavigation(visibleSkins.size() + 1U, preferredIndex);
         const auto previewRow = [&](const std::size_t row) {
             if (row == 0U) {
-                if (QueueDefaultSkin(false)) RememberPending(g_pendingSkin, actor, {}, true, confirmedSkinId);
+                if (QueueDefaultSkin(true)) RememberPending(g_pendingSkin, actor, {}, true, confirmedSkinId);
                 return;
             }
             const auto& skin = *visibleSkins[row - 1U];
             const auto result = bcn::skin_override::QueueApply(actor, skin.id);
             if (result == bcn::skin_override::ApplyResult::queued) {
+                // Unlike body previews, skin previews write the same durable
+                // NiOverride keys used by the confirmed result. Record the
+                // NPC's manual lock immediately so an attach/init
+                // distribution event cannot flash the preview and restore a
+                // rule-selected or default skin before the UI closes.
+                SaveManualSkinIfNeeded(actor, skin.id);
                 RememberPending(g_pendingSkin, actor, skin.id, false, confirmedSkinId);
             } else {
                 bcn::ui::Notify(skin.name + " · " + SkinApplyResultMessage(result));
@@ -1911,10 +1927,7 @@ namespace
 
     void DrawDistributionPopup()
     {
-        if (!g_showDistribution) {
-            ResetDistributionEditor();
-            return;
-        }
+        if (!g_showDistribution) return;
         EnsureDistributionEditor();
         const auto popupTitle = std::string{ Text("NPC 배포 규칙", "NPC distribution rules", "NPC 分发规则") } + "###DistributionPopup";
         ImGui::OpenPopup(popupTitle.c_str());
@@ -1949,10 +1962,14 @@ namespace
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
                 ImGuiWindowFlags_NoScrollWithMouse)) {
             if (EscapePressed()) {
+                if (!SaveDistributionDraft()) {
+                    bcn::ui::Notify(Text("NPC 배포 규칙 편집값을 저장하지 못했습니다.",
+                        "Could not save the edited NPC distribution rules.",
+                        "无法保存编辑后的 NPC 分发规则。"));
+                }
                 g_showDistribution = false;
                 ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
-                ResetDistributionEditor();
                 return;
             }
             ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
@@ -2140,6 +2157,19 @@ namespace
                         bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
                         bcn::NpcDistributionFamily(settings.maleNpcBodyType);
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 스킨 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's skin pool — one skin pack is fixed; multiple skin packs are stably randomized per matching NPC.", "本规则专用皮肤池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
+                    if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
+                        rule.skinProfileIds.clear();
+                        for (const auto& skin : skins) {
+                            if ((skin.sex == bcn::SkinSex::female && !rule.female) ||
+                                (skin.sex == bcn::SkinSex::male && rule.female) ||
+                                !bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily)) continue;
+                            rule.skinProfileIds.push_back(skin.id);
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button(Text("전체 해제", "Clear all", "全部清除"))) {
+                        rule.skinProfileIds.clear();
+                    }
                     ImGui::SetNextItemWidth(-1.0F);
                     ImGui::InputTextWithHint("##skinPoolSearch",
                         Text("스킨명 검색", "Search skin names", "搜索皮肤名称"), &g_distributionSkinSearch);
@@ -2182,6 +2212,22 @@ namespace
                         Text("바닐라", "Vanilla", "原版");
                     ImGui::Text("%s · %s", Text("바디 계열", "Body family", "身体系列"), familyLabel);
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 바디 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's body pool — one preset is fixed; multiple presets are stably randomized per matching NPC.", "本规则专用身体池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
+                    if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
+                        rule.presetIds.clear();
+                        if (useBodyPreset) {
+                            for (const auto& preset : presets) {
+                                if (preset.male != !rule.female ||
+                                    !bcn::body_family::Matches(
+                                        bcn::body_family::PresetMask(preset.family, preset.male),
+                                        distributionFamily)) continue;
+                                rule.presetIds.push_back(preset.PersistentId());
+                            }
+                        }
+                    }
+                    ImGui::SameLine();
+                    if (ImGui::Button(Text("전체 해제", "Clear all", "全部清除"))) {
+                        rule.presetIds.clear();
+                    }
                     ImGui::SetNextItemWidth(-1.0F);
                     ImGui::InputTextWithHint("##bodyPoolSearch",
                         Text("바디 프리셋명 검색", "Search body presets", "搜索身体预设"), &g_distributionBodySearch);
@@ -2273,6 +2319,11 @@ namespace
                 }
             }
             ImGui::EndPopup();
+        }
+        if (!g_showDistribution && !SaveDistributionDraft()) {
+            bcn::ui::Notify(Text("NPC 배포 규칙 편집값을 저장하지 못했습니다.",
+                "Could not save the edited NPC distribution rules.",
+                "无法保存编辑后的 NPC 分发规则。"));
         }
     }
 
@@ -2573,6 +2624,11 @@ namespace bcn::ui
         g_pendingBody.reset();
         g_pendingSkin.reset();
         g_pendingTint.reset();
+        g_showDistribution = false;
+        // Loading another save is not a confirmation of the previous save's
+        // in-memory editor draft.  OnClosed runs as part of the native close,
+        // so clear it first to prevent cross-save JSON leakage.
+        ResetDistributionEditor();
         bcn::menu_character::Presentation::Get().Restore();
         [[maybe_unused]] const auto closed = native_ui::Close();
     }
@@ -2587,6 +2643,10 @@ namespace bcn::ui
         g_pendingSkin.reset();
         g_pendingTint.reset();
         g_showTintDetails = false;
+        if (!SaveDistributionDraft()) {
+            SKSE::log::error("Body Change NG could not save the NPC distribution editor draft while closing the menu");
+        }
+        g_showDistribution = false;
         racemenu::QueueCancelPreview();
         InputSink::Get().ResetTransientState();
         [[maybe_unused]] const auto settingsSaved = Settings::Get().Save();

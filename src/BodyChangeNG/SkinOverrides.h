@@ -5,6 +5,11 @@
 #include <string>
 #include <string_view>
 
+namespace RE
+{
+    class Actor;
+}
+
 namespace bcn
 {
     enum class FutanariSkinType : std::uint8_t;
@@ -12,6 +17,14 @@ namespace bcn
 
 namespace bcn::skin_override
 {
+    [[nodiscard]] constexpr bool CanFinalizeSkinApply(
+        const bool complete, const bool rebuildQueued) noexcept
+    {
+        // QueueNiNodeUpdate may replace the live Biped clone. Do not cache a
+        // successful result until the final clone has been repainted.
+        return complete && !rebuildQueued;
+    }
+
     enum class ApplyResult : std::uint8_t
     {
         queued,

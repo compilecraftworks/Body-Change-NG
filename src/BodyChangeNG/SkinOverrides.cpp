@@ -895,8 +895,12 @@ namespace
         };
     }
 
+    void ApplyLegacyNow(RE::ActorHandle actorHandle, bcn::SkinProfile profile,
+        std::uint64_t generation, bool settledRepaint = false);
+    void ApplyNow(RE::ActorHandle actorHandle, bcn::SkinProfile profile,
+        std::uint64_t generation, bool settledRepaint = false);
     void QueueSettledSkinAudit(RE::ActorHandle actorHandle, std::uint64_t generation,
-        std::uint32_t remainingTaskHops);
+        std::uint32_t remainingTaskHops, bool repairAfterRebuild = false);
 
     class NodeUpdateCallback final : public RE::BSScript::IStackCallbackFunctor
     {
@@ -946,7 +950,7 @@ namespace
             if (payload->auditSkin) {
                 bcn::frame_tasks::Continue(std::move(payload->lease),
                     [handle = payload->actor, generation = payload->generation] {
-                        QueueSettledSkinAudit(handle, generation, 2U);
+                        QueueSettledSkinAudit(handle, generation, 2U, true);
                     });
             }
         }
@@ -1304,14 +1308,32 @@ namespace
     void AuditLiveSkinProfile(RE::Actor* actor, const bcn::SkinProfile& profile);
 
     void QueueSettledSkinAudit(RE::ActorHandle actorHandle, const std::uint64_t generation,
-        const std::uint32_t remainingTaskHops)
+        const std::uint32_t remainingTaskHops, const bool repairAfterRebuild)
     {
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks) return;
-        bcn::frame_tasks::Continue(bcn::frame_tasks::CurrentLease(), [actorHandle, generation] {
+        bcn::frame_tasks::Continue(bcn::frame_tasks::CurrentLease(),
+            [actorHandle, generation, repairAfterRebuild] {
             if (!bcn::frame_tasks::ValidLease(bcn::frame_tasks::CurrentLease())) return;
             const auto actor = actorHandle.get();
             if (!actor || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+            if (repairAfterRebuild) {
+                const auto profileID = bcn::skin_override::CurrentProfileId(actor.get());
+                const auto profile = profileID ? bcn::SkinProfiles::Get().Find(*profileID) :
+                    std::optional<bcn::SkinProfile>{};
+                if (!profile || !ProfileMatchesActor(actor.get(), *profile)) return;
+
+                // QueueNiNodeUpdate can replace the live NPC Biped clones
+                // after the first exact repaint. Repaint that final clone
+                // once, under the same generation, without requesting a
+                // second rebuild. This path performs no catalog scan or poll.
+                if (bcn::racemenu_override::UsesPapyrus(OverrideRoute())) {
+                    ApplyLegacyNow(actorHandle, *profile, generation, true);
+                } else {
+                    ApplyNow(actorHandle, *profile, generation, true);
+                }
+                return;
+            }
             // Keep the quiet interval, but expensive per-DDS scene traversal
             // and diagnostic texture resolution are opt-in, not shipping work.
             if (!spdlog::should_log(spdlog::level::debug)) return;
@@ -2475,7 +2497,7 @@ namespace
     }
 
     void ApplyLegacyNow(RE::ActorHandle actorHandle, const bcn::SkinProfile profile,
-        const std::uint64_t generation)
+        const std::uint64_t generation, const bool settledRepaint)
     {
         const auto actor = actorHandle.get();
         auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
@@ -2503,7 +2525,7 @@ namespace
             std::vector<bcn::SkinTextureLayer>{};
 
         auto clearBatch = MakeLegacyBatch(actor.get(), generation);
-        clearBatch->completion = [actorHandle, profile, generation](const std::uint32_t) {
+        clearBatch->completion = [actorHandle, profile, generation, settledRepaint](const std::uint32_t) {
             const auto currentActor = actorHandle.get();
             auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
             if (!currentActor || !currentActor->Is3DLoaded() || !currentVM ||
@@ -2526,8 +2548,8 @@ namespace
             auto requiredParts = std::make_shared<
                 std::vector<std::shared_ptr<LegacyMutationTracker>>>();
             auto needsExactRepair = std::make_shared<std::atomic_bool>(false);
-            applyBatch->completion = [actorHandle, profile, generation, requiredParts,
-                needsExactRepair](const std::uint32_t) {
+            applyBatch->completion = [actorHandle, profile, generation, settledRepaint,
+                requiredParts, needsExactRepair](const std::uint32_t) {
                 const auto settledActor = actorHandle.get();
                 if (!settledActor || !IsCurrentSkinChange(settledActor->GetFormID(), generation)) return;
                 const auto appliedParts = static_cast<std::size_t>(std::ranges::count_if(
@@ -2535,22 +2557,25 @@ namespace
                         return part && part->accepted.load(std::memory_order_acquire) != 0U;
                     }));
                 const auto complete = !requiredParts->empty() && appliedParts == requiredParts->size();
-                const auto finish = [actorHandle, profile, generation, complete,
-                    appliedParts, requestedParts = requiredParts->size()] {
+                const auto finish = [actorHandle, profile, generation, settledRepaint,
+                    complete, appliedParts, requestedParts = requiredParts->size()] {
                     const auto finalActor = actorHandle.get();
                     if (!finalActor || !IsCurrentSkinChange(finalActor->GetFormID(), generation)) return;
-                    if (complete) {
+                    auto* finalVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                    const auto rebuildQueued = !settledRepaint && finalVM &&
+                        QueueNiNodeUpdate(*finalVM, finalActor.get(), actorHandle, generation);
+                    if (bcn::skin_override::CanFinalizeSkinApply(complete, rebuildQueued)) {
                         MarkCurrentSkinContent(finalActor.get(), profile, generation);
                         SKSE::log::info(
-                            "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v0/v1 Papyrus",
-                            profile.name, finalActor->GetFormID());
-                    } else {
+                            "Body Change NG applied texture skin profile '{}' to actor {:08X} through RaceMenu Override v0/v1 Papyrus{}",
+                            profile.name, finalActor->GetFormID(),
+                            settledRepaint ? " after the final Biped rebuild" : "");
+                    } else if (!complete) {
                         SKSE::log::warn(
                             "Body Change NG dispatched only {}/{} currently available parts from skin '{}' to actor {:08X} through RaceMenu Override v0/v1 Papyrus; the desired selection remains pending",
                             appliedParts, requestedParts, profile.name, finalActor->GetFormID());
                     }
-                    auto* finalVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-                    if (!finalVM || !QueueNiNodeUpdate(*finalVM, finalActor.get(), actorHandle, generation)) {
+                    if (!rebuildQueued) {
                         QueueSettledSkinAudit(actorHandle, generation, 3U);
                     }
                 };
@@ -2781,7 +2806,7 @@ namespace
     }
 
     void ApplyNow(RE::ActorHandle actorHandle, const bcn::SkinProfile profile,
-        const std::uint64_t generation)
+        const std::uint64_t generation, const bool settledRepaint)
     {
         const auto actor = actorHandle.get();
         if (!actor || !actor->Is3DLoaded()) return;
@@ -2965,18 +2990,25 @@ namespace
             }
         }
         const auto complete = requestedParts != 0U && appliedParts == requestedParts;
-        if (complete) {
+        bool rebuildQueued{};
+        if (!settledRepaint && (removed || storedMissingPart)) {
+            if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
+                rebuildQueued = QueueNiNodeUpdate(*vm, actor.get(), actorHandle, generation);
+            }
+        }
+        if (bcn::skin_override::CanFinalizeSkinApply(complete, rebuildQueued)) {
             MarkCurrentSkinContent(actor.get(), profile, generation);
-            SKSE::log::info("Body Change NG applied texture skin profile '{}' to actor {:08X} synchronously",
-                profile.name, actor->GetFormID());
-        } else {
+            SKSE::log::info(
+                "Body Change NG applied texture skin profile '{}' to actor {:08X} synchronously{}",
+                profile.name, actor->GetFormID(),
+                settledRepaint ? " after the final Biped rebuild" : "");
+        } else if (!complete) {
             SKSE::log::warn(
                 "Body Change NG applied only {}/{} currently available parts from skin '{}' to actor {:08X}; the desired selection remains pending for a later 3D/equipment refresh",
                 appliedParts, requestedParts, profile.name, actor->GetFormID());
         }
-        if (removed || storedMissingPart) {
-            if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-                vm && QueueNiNodeUpdate(*vm, actor.get(), actorHandle, generation)) return;
+        if (rebuildQueued) return;
+        if (!settledRepaint && (removed || storedMissingPart)) {
             QueueSettledSkinAudit(actorHandle, generation, 2U);
         } else {
             QueueSettledSkinAudit(actorHandle, generation, 0U);

@@ -52,6 +52,19 @@ int main()
             "performance mode actor budget changed");
         Require(bcn::InitialDistributionDelayTicks() == 2U,
             "initial distribution no longer yields to save-load listeners");
+        Require(bcn::IsDistributionActorStateEligible(false, false, false, true, true) &&
+                bcn::IsDistributionActorStateEligible(false, false, true, true, true),
+            "loaded corpses were excluded from NPC distribution");
+        Require(!bcn::IsDistributionActorStateEligible(true, false, false, true, true) &&
+                !bcn::IsDistributionActorStateEligible(false, true, false, true, true) &&
+                !bcn::IsDistributionActorStateEligible(false, false, false, false, true) &&
+                !bcn::IsDistributionActorStateEligible(false, false, false, true, false),
+            "NPC distribution eligibility lost a player/disabled/3D/type safety boundary");
+        Require(bcn::ShouldDeferDistributedSkin(true, true) &&
+                !bcn::ShouldDeferDistributedSkin(false, true) &&
+                !bcn::ShouldDeferDistributedSkin(true, false) &&
+                bcn::DistributedSkinDelayTicks() >= 2U,
+            "automatic skin application no longer waits behind a queued body rebuild");
         Require(StableStateSignature("body", "same", false, 0, 1ULL) !=
             StableStateSignature("body", "same", false, 0, 0x100000001ULL), "upper content hash bits lost");
         const auto omittedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.0F, 0.4F);

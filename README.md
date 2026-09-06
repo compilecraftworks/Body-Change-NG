@@ -6,10 +6,10 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.1.3 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.1.4 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The project is built for Skyrim SE/AE only.
 
-## Current release: 1.1.3
+## Current release: 1.1.4
 
 This update fixes CBBE 3BA, BHUNP, and vanilla BodySkin routing so body, hand,
 and foot textures are applied only to their exact loaded ArmorAddon geometry.
@@ -22,7 +22,7 @@ separately for legacy SE v0, UBE's AE-backported v0, official v1, and official
 v2; only the audited v2 interface is called natively.
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
-- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.3.md) · [한국어](docs/RELEASE-NOTES-v1.1.3-KO.md)
+- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.4.md) · [한국어](docs/RELEASE-NOTES-v1.1.4-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
@@ -293,7 +293,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.1.3/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.1.4/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

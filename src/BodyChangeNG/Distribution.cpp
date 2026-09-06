@@ -3,6 +3,7 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/PathMigration.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
@@ -36,8 +37,13 @@ namespace
     }
     [[nodiscard]] bool IsEligibleNPC(RE::Actor* actor, RE::Actor* player)
     {
-        return actor && actor != player && !actor->IsDisabled() && !actor->IsDead() && actor->Is3DLoaded() &&
-            actor->HasKeywordString("ActorTypeNPC");
+        // Loaded corpses still own a live RaceMenu morph target.  Excluding
+        // them leaves actors that were already dead when a cell was scanned
+        // on the generated Zeroed Sliders mesh forever.  Keep every other
+        // safety boundary, and let ActorRegistry's applied signatures make
+        // repeated attach/init events idempotent.
+        return actor && bcn::IsDistributionActorStateEligible(actor == player, actor->IsDisabled(),
+            actor->IsDead(), actor->Is3DLoaded(), actor->HasKeywordString("ActorTypeNPC"));
     }
 
     [[nodiscard]] bool EqualIgnoreCase(const std::string_view left, const std::string_view right)
@@ -792,29 +798,52 @@ namespace bcn
             *rules, actor, previous, distributionFamily, useBodyPreset);
         ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
         bool queued{};
+        bool bodyQueued{};
 
         if (manual && manual->hasBody && manual->useDefaultBody && racemenu::IsReady() &&
             ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
             racemenu::QueueClearBodyChangeMorphs(actor);
-            queued = true;
+            bodyQueued = queued = true;
         } else if (manual && manual->hasBody && !manual->bodyId.empty() &&
             ActorRegistry::Get().NeedsBodyApply(actor, manual->bodyId, false)) {
-            queued = racemenu::QueueApply(actor, manual->bodyId,
+            bodyQueued = racemenu::QueueApply(actor, manual->bodyId,
                 racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
+            queued = bodyQueued;
         } else if ((!manual || !manual->hasBody) && selection.presetId &&
             ActorRegistry::Get().NeedsBodyApply(actor, *selection.presetId, false)) {
             // Automatic distribution has at most one accepted body result per
             // actor. Let RaceMenu defer its expensive partition rebuild just
             // like OBody NG, while manual UI changes retain the synchronous
             // ordering needed for rapid preview/commit input.
-            queued = racemenu::QueueApply(actor, *selection.presetId,
+            bodyQueued = racemenu::QueueApply(actor, *selection.presetId,
                 racemenu::ApplyMode::commit, 0U,
                 racemenu::UpdatePolicy::deferred) == racemenu::ApplyResult::queued;
+            queued = bodyQueued;
         } else if ((!manual || !manual->hasBody) && selection.matched &&
             selection.defaultBodyRequested &&
             ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
             racemenu::QueueClearBodyChangeMorphs(actor);
-            queued = true;
+            bodyQueued = queued = true;
+        }
+
+        const auto hasDesiredSkin = (manual && manual->hasSkin) ||
+            ((!manual || !manual->hasSkin) && selection.skinProfileId.has_value());
+        if (ShouldDeferDistributedSkin(bodyQueued, hasDesiredSkin)) {
+            // RaceMenu may finish a deferred body partition rebuild after the
+            // morph call returns. Applying the skin in parallel lets that
+            // rebuild replace the freshly painted NPC Biped clone, producing
+            // a visible flash back to the original skin. Re-evaluate the same
+            // actor once after the queued body/outfit work; signatures make
+            // the body branch a no-op and the latest rule/manual choice wins.
+            const auto handle = actor->GetHandle();
+            const auto session = ActorRegistry::Get().SessionGeneration();
+            const auto skinDeferred = frame_tasks::Queue(actor->GetFormID(), [handle, session] {
+                const auto current = handle.get();
+                if (!current || ActorRegistry::Get().SessionGeneration() != session) return;
+                [[maybe_unused]] const auto applied = Distribution::Get().ApplyActor(current.get());
+            }, DistributedSkinDelayTicks(), 206U);
+            queued = skinDeferred || queued;
+            if (skinDeferred) return queued;
         }
 
         if (manual && manual->hasSkin && manual->useDefaultSkin &&

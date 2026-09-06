@@ -16,6 +16,27 @@ namespace RE
 
 namespace bcn
 {
+    [[nodiscard]] constexpr bool IsDistributionActorStateEligible(const bool isPlayer,
+        const bool disabled, const bool dead, const bool loaded3D, const bool actorTypeNPC) noexcept
+    {
+        // A loaded corpse is still a valid RaceMenu morph/texture target. The
+        // dead parameter is intentionally accepted to make that policy
+        // explicit and regression-testable.
+        static_cast<void>(dead);
+        return !isPlayer && !disabled && loaded3D && actorTypeNPC;
+    }
+
+    [[nodiscard]] constexpr bool ShouldDeferDistributedSkin(
+        const bool bodyQueued, const bool hasDesiredSkin) noexcept
+    {
+        return bodyQueued && hasDesiredSkin;
+    }
+
+    [[nodiscard]] constexpr std::uint32_t DistributedSkinDelayTicks() noexcept
+    {
+        return 3U;
+    }
+
     enum class DistributionScope : std::uint8_t
     {
         allNPCs,

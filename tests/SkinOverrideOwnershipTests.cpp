@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinOverrideOwnership.h"
+#include "BodyChangeNG/SkinOverrides.h"
 
 #include <cassert>
 
@@ -32,4 +33,7 @@ int main()
     assert(MayRemove(true, "textures/bodychangeng/cache/skin-face/head.dds"));
     assert(!MayRemove(true, "textures\\othermod\\head.dds"));
     assert(!MayRemove(false, "textures\\bodychangeng\\cache\\skin\\body.dds"));
+    assert(!bcn::skin_override::CanFinalizeSkinApply(true, true));
+    assert(bcn::skin_override::CanFinalizeSkinApply(true, false));
+    assert(!bcn::skin_override::CanFinalizeSkinApply(false, false));
 }
