@@ -16,6 +16,32 @@ Vanilla, CBBE, UNP, UBE, 남성 Vanilla, HIMBO, SAM, Argonian, Khajiit이다.
 않으면 DDS 쓰기를 시작하지 않는다. 이는 잘못 적용한 뒤 복구하는 방식보다
 안전하며, UV가 다른 부위에 들어가 밀려 보이는 현상을 원천에서 막는다.
 
+## 모듈 경계
+
+1.1.x의 `SkinOverrides.cpp`는 레이아웃 판단, NIF 대상 탐색, RaceMenu ABI,
+액터별 비동기 상태, 실제 쓰기와 검증을 한 파일에서 처리했다. 1.2.0은 다음
+경계로 나눈다.
+
+- `SkinProfiles`: 디스크의 스킨 팩을 정확한 `SkinUvLayout` 계약으로 변환한다.
+- `SkinApplicationPlan`: Skyrim 객체를 만지지 않는 순수 계획 계층이다. 엘더,
+  뱀파이어, 인간 종족 얼굴, 얼굴 detail, 인간형/비스트 발, UBE 공유 atlas를
+  합성해 부위별 최종 레이어를 만든다.
+- `SkinTargetResolver`: 현재 로드된 Biped, ArmorAddon, NIF geometry와 shader만
+  검사해 몸·손·발·꼬리·얼굴·성기 대상의 정확한 목록을 만든다. 다른 부위로
+  대신 보내는 결정은 하지 않는다.
+- `SkinOverrideBackend`: RaceMenu Override ABI 버전 판정과 v2 인터페이스를
+  격리한다. v0/v1은 Papyrus, 검증한 v2만 네이티브 경로를 사용한다.
+- `SkinSessionState`: 액터별 선택, 작업 세대, RSV 임시 얼굴, 후타나리 탐지
+  캐시를 한곳에서 동기화한다. 오래된 비동기 작업은 현재 세대와 다르면
+  쓰기 전에 폐기된다.
+- `SkinOverrides`: 위 모듈을 조정하고 실제 적용·제거·최종 검증을 수행한다.
+  프로필 해석이나 NIF 탐색 규칙, 외부 ABI 선언, 세션 저장소는 더 이상
+  직접 소유하지 않는다.
+
+적용 흐름은 `프로필 검증 → 순수 적용 계획 → 정확한 현재 대상 탐색 →
+RaceMenu 기록/적용 → 최종 live geometry 검증`으로 고정된다. 각 단계의 출력이
+다음 단계의 입력이므로, 파일명 추측이 슬롯 선택으로 바로 이어지지 않는다.
+
 ## 부위 라우팅 규칙
 
 - CBBE, UNP, Vanilla, HIMBO, SAM은 현재 3D에서 확인된 정확한
@@ -49,7 +75,7 @@ Vanilla, CBBE, UNP, UBE, 남성 Vanilla, HIMBO, SAM, Argonian, Khajiit이다.
 ## 검증 범위
 
 순수 단위 테스트는 레이아웃 호환성, 모호성 fail-closed, 종족별 발 레이어,
-UBE 전용 광역 라우팅, 작업 채널 충돌 방지를 검사한다. 기존 자산 카탈로그
-테스트는 표준/UBE/비스트/SOS/부분 스킨 스캔과 정확한 부위 분류를 계속
-검증한다. 실제 Skyrim 안에서의 RaceMenu v0/v1/v2 동작은 별도의 게임 내
-회귀 검증이 필요하다.
+UBE 전용 광역 라우팅, 얼굴 레이어 우선순위, 작업 채널 충돌, 세션 세대와
+캐시 격리를 검사한다. 기존 자산 카탈로그 테스트는 표준/UBE/비스트/SOS/부분
+스킨 스캔과 정확한 부위 분류를 계속 검증한다. 실제 Skyrim 안에서의
+RaceMenu v0/v1/v2 동작은 별도의 게임 내 회귀 검증이 필요하다.

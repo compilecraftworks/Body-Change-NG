@@ -13,6 +13,11 @@
 #include <vector>
 #include <unordered_map>
 
+namespace RE
+{
+    class TESNPC;
+}
+
 namespace bcn
 {
     // Humanoid face normals can have race-specific variants inside one skin

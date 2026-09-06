@@ -1,4 +1,5 @@
 #include "BodyChangeNG/AppearanceWork.h"
+#include "BodyChangeNG/SkinApplicationPlan.h"
 #include "BodyChangeNG/SkinLayout.h"
 
 #include <array>
@@ -90,6 +91,50 @@ int main()
             bcn::appearance::IsInteractiveChannel(WorkChannel::tintApply) &&
             !bcn::appearance::IsInteractiveChannel(WorkChannel::equipmentVerify),
             "appearance channel semantics regressed")) return 1;
+
+    bcn::SkinProfile cbbeProfile;
+    cbbeProfile.uvLayout = SkinUvLayout::cbbe;
+    cbbeProfile.race = SkinRace::humanoid;
+    cbbeProfile.body = { { 0U, "base-body.dds" }, { 1U, "base-body_n.dds" } };
+    cbbeProfile.elderBody = { { 1U, "elder-body_n.dds" } };
+    const auto elderPlan = bcn::skin_plan::Build(cbbeProfile, { .elder = true });
+    if (!Require(elderPlan.body.size() == 2U &&
+            elderPlan.body[1].path == "elder-body_n.dds" &&
+            elderPlan.feet.size() == 2U && elderPlan.feet[1].path == "elder-body_n.dds",
+            "the planner lost elder overlay or CBBE shared-feet rules")) return 1;
+
+    bcn::SkinProfile beastProfile;
+    beastProfile.uvLayout = SkinUvLayout::argonian;
+    beastProfile.race = SkinRace::argonian;
+    beastProfile.body = { { 0U, "argonian-body.dds" } };
+    const auto beastPlan = bcn::skin_plan::Build(beastProfile, {});
+    if (!Require(beastPlan.beastTail && beastPlan.feet.empty(),
+            "the planner leaked an Argonian body DDS into feet")) return 1;
+
+    bcn::SkinProfile ubeProfile;
+    ubeProfile.uvLayout = SkinUvLayout::ube;
+    ubeProfile.race = SkinRace::humanoid;
+    ubeProfile.body = { { 0U, "ube-body.dds" } };
+    ubeProfile.hands = { { 0U, "wrong-hands.dds" } };
+    const auto ubePlan = bcn::skin_plan::Build(ubeProfile, {});
+    if (!Require(ubePlan.broadSharedAtlas && ubePlan.hands.size() == 1U &&
+            ubePlan.hands.front().path == "ube-body.dds" &&
+            ubePlan.feet.size() == 1U && ubePlan.feet.front().path == "ube-body.dds",
+            "UBE did not remain one explicit shared-atlas plan")) return 1;
+
+    cbbeProfile.face = { { 0U, "base-face.dds" } };
+    cbbeProfile.vampireFace = { { 0U, "vampire-face.dds" } };
+    cbbeProfile.faceDetails = {
+        { 3U, "femalehead_frek.dds" }, { 3U, "femalehead_rough.dds" }
+    };
+    const auto facePlan = bcn::skin_plan::Build(cbbeProfile, {
+        .vampire = true,
+        .faceDetailFilename = "textures\\actors\\character\\femalehead_rough.dds"
+    });
+    if (!Require(facePlan.requiresFaceGeometry && facePlan.face.size() == 2U &&
+            facePlan.face[0].path == "vampire-face.dds" &&
+            facePlan.face[1].path == "femalehead_rough.dds",
+            "face specificity or detail matching escaped the planner")) return 1;
 
     std::cout << "Skin architecture tests passed\n";
     return 0;
