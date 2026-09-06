@@ -112,7 +112,7 @@ namespace bcn
                         actorFormID, remainingRepairs, static_cast<std::uint32_t>(result));
                     VerifyEquipmentSkin(handle, actorFormID, generation, session,
                         remainingRepairs - 1U, remainingLoadRetries);
-                }, 4U, 104U, true);
+                }, 4U, appearance::WorkChannel::equipmentVerify, true);
         }
 
         void ReconcileEquipmentChange(const RE::ActorHandle& handle, const RE::FormID actorFormID,
@@ -171,7 +171,8 @@ namespace bcn
                     }
                 }
                 FinishEquipmentChange(actorFormID, generation);
-            }, std::max(1U, remainingHops), 102, true);
+            }, std::max(1U, remainingHops),
+                appearance::WorkChannel::equipmentReconcile, true);
         }
 
         void ReapplyPlayerSelectionsAfterRaceMenu(const RE::ActorHandle& handle,
@@ -222,7 +223,8 @@ namespace bcn
                     ReapplyPlayerSelectionsAfterRaceMenu(handle, 3U, 120U,
                         remainingVerificationPasses - 1U, generation);
                 }
-            }, std::max(1U, remainingHops), 103, true);
+            }, std::max(1U, remainingHops),
+                appearance::WorkChannel::raceMenuRestore, true);
         }
     }
 

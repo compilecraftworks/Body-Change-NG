@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.1.4"
+local version = "1.2.0"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -99,6 +99,14 @@ target("BodyChangeNGSkinOverrideOwnershipTests")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
     add_files("tests/SkinOverrideOwnershipTests.cpp")
+    add_includedirs("src")
+
+target("BodyChangeNGSkinArchitectureTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/SkinArchitectureTests.cpp")
     add_includedirs("src")
 
 target("BodyChangeNGBodyFamilyTests")

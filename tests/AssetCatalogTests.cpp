@@ -3,6 +3,7 @@
 #include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/FutanariRouting.h"
 #include "BodyChangeNG/CatalogRoots.h"
+#include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
 
@@ -28,6 +29,13 @@ namespace
     {
         std::filesystem::create_directories(path.parent_path());
         std::ofstream(path, std::ios::binary).put('\0');
+    }
+
+    void WriteText(const std::filesystem::path& path, const std::string_view text)
+    {
+        std::filesystem::create_directories(path.parent_path());
+        std::ofstream stream(path, std::ios::binary);
+        stream.write(text.data(), static_cast<std::streamsize>(text.size()));
     }
 
     std::string Lower(std::string value)
@@ -98,16 +106,11 @@ namespace
 
 int main(const int argc, char** argv)
 {
-    if (!Require(!bcn::skin_geometry::MayUseBroadSkinSlotFallback(false),
+    if (!Require(!bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::cbbe) &&
+            !bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::unp),
             "part-specific CBBE/BHUNP atlases were routed through RaceMenu's broad skin-slot apply")) return 1;
-    if (!Require(bcn::skin_geometry::MayUseBroadSkinSlotFallback(true),
+    if (!Require(bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::ube),
             "UBE's shared body atlas lost its broad skin-slot fallback")) return 1;
-    if (!Require(bcn::skin_geometry::NeedsMissingPartSlotFallback(false, 0U),
-            "a hidden conventional skin part lost its durable slot fallback")) return 1;
-    if (!Require(!bcn::skin_geometry::NeedsMissingPartSlotFallback(false, 1U),
-            "a visible conventional skin part was routed through the broad slot fallback")) return 1;
-    if (!Require(!bcn::skin_geometry::NeedsMissingPartSlotFallback(true, 0U),
-            "UBE must stay on its existing shared-atlas route")) return 1;
 
     if (argc == 3 || argc == 4) {
         std::cout << "scanning real skin root\n" << std::flush;
@@ -120,20 +123,16 @@ int main(const int argc, char** argv)
             if (!Require(!tint.pack.empty() && tint.pack != ".." && !tint.id.starts_with(".."),
                     "real tint root produced an escaped pack or id")) return 1;
         }
-        std::size_t verifiedSkinTextures{};
-        std::size_t unrelatedDdsFiles{};
+        std::unordered_set<std::string> mapped;
+        const auto normalizePath = [](std::string value) {
+            std::ranges::replace(value, '/', '\\');
+            return Lower(std::move(value));
+        };
+        const auto collect = [&mapped, &normalizePath](const auto& layers) {
+            for (const auto& layer : layers) mapped.insert(normalizePath(layer.path));
+        };
         for (const auto& skin : skins) {
             std::cout << "verifying " << skin.name << '\n' << std::flush;
-            std::unordered_set<std::string> mapped;
-            const auto collect = [&mapped](const auto& layers) {
-                for (const auto& layer : layers) {
-                    // layer.path is already UTF-8. Reconstructing a Windows
-                    // filesystem::path from it would run it through the
-                    // current ANSI code page and fails for Korean/Chinese pack
-                    // names even though the DDS filename itself is ASCII.
-                    mapped.insert(Lower(Filename(layer.path)));
-                }
-            };
             collect(skin.body);
             collect(skin.cbbeGenitalAnal);
             collect(skin.unpGenitalAnal);
@@ -146,25 +145,45 @@ int main(const int argc, char** argv)
             collect(skin.elderFace);
             for (const auto& raceFace : skin.raceFace) collect(raceFace);
             collect(skin.faceDetails);
-
-            std::error_code error;
-            for (std::filesystem::directory_iterator it(skin.source,
-                     std::filesystem::directory_options::skip_permission_denied, error), end;
-                 it != end; it.increment(error)) {
-                if (error) {
-                    error.clear();
-                    continue;
-                }
-                if (!it->is_regular_file(error) || error) continue;
-                const auto filename = Lower(it->path().filename().string());
-                if (!filename.ends_with(".dds")) continue;
-                if (!IsStandardSkinTexture(filename)) {
-                    ++unrelatedDdsFiles;
-                    continue;
-                }
-                if (!Require(mapped.contains(filename), "a standard skin DDS was omitted from the generated profile")) return 1;
-                ++verifiedSkinTextures;
+            for (const auto& variant : skin.maleGenitals) {
+                collect(variant.humanoid);
+                collect(variant.argonian);
+                collect(variant.khajiit);
+                collect(variant.elder);
             }
+        }
+        // Validate the complete real BodySkin tree by its full game-relative
+        // path. Filename-only checks miss nested race/elder directories and
+        // can accidentally accept a same-named DDS mapped from another pack.
+        std::size_t verifiedSkinTextures{};
+        std::size_t unrelatedDdsFiles{};
+        std::error_code error;
+        const auto skinRoot = std::filesystem::path{ argv[1] };
+        for (std::filesystem::recursive_directory_iterator it(skinRoot,
+                 std::filesystem::directory_options::skip_permission_denied, error), end;
+             it != end; it.increment(error)) {
+            if (error) {
+                error.clear();
+                continue;
+            }
+            std::error_code statusError;
+            if (!it->is_regular_file(statusError) || statusError) continue;
+            const auto filename = Lower(bcn::path_text::Utf8(it->path().filename()));
+            if (!filename.ends_with(".dds")) continue;
+            if (!IsStandardSkinTexture(filename)) {
+                ++unrelatedDdsFiles;
+                continue;
+            }
+            const auto relative = std::filesystem::relative(
+                it->path(), skinRoot.parent_path(), error);
+            if (error) {
+                error.clear();
+                return 1;
+            }
+            const auto gamePath = normalizePath(bcn::path_text::GenericUtf8(relative));
+            if (!Require(mapped.contains(gamePath),
+                    "a standard nested skin DDS was omitted from the generated profile")) return 1;
+            ++verifiedSkinTextures;
         }
         if (!Require(verifiedSkinTextures != 0U, "real skin packs exposed no standard DDS channels")) return 1;
         std::size_t futanariSkins{};
@@ -273,6 +292,32 @@ int main(const int argc, char** argv)
     Touch(malePartial / "malebody_1.dds");
     Touch(malePartial / "malebody_1_s.dds");
     Touch(malePartial / "malehead_msn.dds");
+
+    const auto explicitHimbo = sandbox / "BodySkin" / "Explicit HIMBO";
+    Touch(explicitHimbo / "Textures" / "actors" / "character" / "male" / "malebody_1.dds");
+    WriteText(explicitHimbo / "profile.json", R"json({
+  "schemaVersion": 1,
+  "id": "explicit-himbo",
+  "name": "Explicit HIMBO",
+  "sex": "male",
+  "race": "humanoid",
+  "uvLayout": "himbo",
+  "body": [
+    { "index": 0, "path": "Textures\\actors\\character\\male\\malebody_1.dds" }
+  ]
+})json");
+
+    const auto ambiguousExplicit = sandbox / "BodySkin" / "Ambiguous Explicit Male";
+    Touch(ambiguousExplicit / "Textures" / "actors" / "character" / "male" / "malebody_1.dds");
+    WriteText(ambiguousExplicit / "profile.json", R"json({
+  "schemaVersion": 1,
+  "id": "ambiguous-explicit-male",
+  "name": "Ambiguous Explicit Male",
+  "sex": "male",
+  "body": [
+    { "index": 0, "path": "Textures\\actors\\character\\male\\malebody_1.dds" }
+  ]
+})json");
     const auto sosRegular = malePartial.parent_path() / "SOS" / "VectorPlexus Regular";
     for (const auto* file : { "malegenitals_1.dds", "malegenitals_1_msn.dds",
              "malegenitals_1_sk.dds", "malegenitals_1_s.dds" }) {
@@ -335,10 +380,21 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 12U, "skin scanner did not preserve humanoid and beast-race skin rows")) return 1;
+    if (!Require(skins.size() == 13U, "skin scanner did not preserve valid humanoid and beast-race skin rows")) return 1;
+    const auto explicitHimboSkin = std::ranges::find(
+        skins, "explicit-himbo", &bcn::SkinProfile::id);
+    if (!Require(explicitHimboSkin != skins.end() &&
+            explicitHimboSkin->uvLayout == bcn::SkinUvLayout::himbo &&
+            explicitHimboSkin->bodyFamilies ==
+                bcn::body_family::Bit(bcn::body_family::Family::himbo),
+            "profile.json uvLayout did not establish one exact HIMBO contract")) return 1;
+    if (!Require(std::ranges::find(skins, "ambiguous-explicit-male",
+            &bcn::SkinProfile::id) == skins.end(),
+            "an ambiguous explicit profile was accepted without uvLayout")) return 1;
     std::size_t argonianRows{};
     std::size_t khajiitRows{};
     for (const auto& skin : skins) {
+        if (skin.id == "explicit-himbo") continue;
         if (skin.name == "Argonian Complete") {
             ++argonianRows;
             if (!Require(skin.race == bcn::SkinRace::argonian &&
@@ -601,10 +657,11 @@ int main(const int argc, char** argv)
     const auto himboFamily = bcn::body_family::Bit(bcn::body_family::Family::himbo);
     const auto samFamily = bcn::body_family::Bit(bcn::body_family::Family::sam);
     if (!Require(maleSkin != skins.end() &&
-            bcn::SkinMatchesActor(maleSkin->bodyFamilies, himboFamily) &&
-            bcn::SkinMatchesActor(maleSkin->bodyFamilies, samFamily) &&
+            maleSkin->uvLayout == bcn::SkinUvLayout::unknown &&
+            !bcn::SkinMatchesActor(maleSkin->bodyFamilies, himboFamily) &&
+            !bcn::SkinMatchesActor(maleSkin->bodyFamilies, samFamily) &&
             maleSkin->maleGenitals.size() == 3U,
-            "male BodySkin plus SOS variants did not remain compatible with both HIMBO and SAM")) return 1;
+            "an unlabeled male skin was not kept fail-closed between HIMBO and SAM")) return 1;
     const auto himboSkin = std::ranges::find(skins, "HIMBO Skin SOS", &bcn::SkinProfile::name);
     const auto samSkin = std::ranges::find(skins, "SAM Skin SOS", &bcn::SkinProfile::name);
     if (!Require(himboSkin != skins.end() && samSkin != skins.end() &&
@@ -661,10 +718,6 @@ int main(const int argc, char** argv)
             !bcn::skin_geometry::Matches("MaleBody", bcn::skin_geometry::BodySelection::maleGenitals,
                 R"(textures\actors\character\male\malebody_1.dds)"),
             "CBBE 3BA and BHUNP/UNP genital/anal geometry routing crossed body or family boundaries")) return 1;
-    if (!Require(bcn::skin_geometry::NeedsFixedBipedFallback(true, 0U) &&
-            !bcn::skin_geometry::NeedsFixedBipedFallback(true, 1U) &&
-            !bcn::skin_geometry::NeedsFixedBipedFallback(false, 0U),
-            "an unusable exact hands/feet slot did not preserve the bounded Skin Armor fallback")) return 1;
     if (!Require(bcn::skin_geometry::NeedsStandardBodyFallback(true, 0U) &&
             !bcn::skin_geometry::NeedsStandardBodyFallback(true, 1U) &&
             !bcn::skin_geometry::NeedsStandardBodyFallback(false, 0U),
@@ -733,10 +786,37 @@ int main(const int argc, char** argv)
                 handsMask, handsMask, feetMask, "BaseShape"),
             "shared-atlas limbs accepted an outfit or wrong-part node")) return 1;
     if (!Require(
-            bcn::skin_geometry::NeedsBodyAtlasForFeet(0U) &&
-            !bcn::skin_geometry::NeedsBodyAtlasForFeet(1U) &&
-            !bcn::skin_geometry::NeedsBodyAtlasForFeet(4U),
-            "standard feet did not use body atlas fallback only when an explicit feet atlas was absent")) return 1;
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                handsMask, handsMask, feetMask, "FemaleHands", {}, false) &&
+            bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                handsMask, handsMask, feetMask, "RenamedSkin",
+                R"(textures\actors\character\female\femalehands_1.dds)", true) &&
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                feetMask, handsMask, feetMask, "FemaleFeet", {}, false) &&
+            bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                feetMask, handsMask, feetMask, "RenamedSkin",
+                R"(textures\actors\character\female\femalefeet_1.dds)", true) &&
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                handsMask, handsMask, feetMask, "Glove",
+                R"(textures\armor\outfit\glove.dds)", false) &&
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                feetMask, handsMask, feetMask, "Boot",
+                R"(textures\armor\outfit\boot.dds)", false) &&
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                handsMask, handsMask, feetMask, "FemaleBody",
+                R"(textures\actors\character\female\femalebody_1.dds)", true) &&
+            !bcn::skin_geometry::IsSafeCrossSlotLimbCandidate(
+                feetMask, handsMask, feetMask, "FemaleHands",
+                R"(textures\actors\character\female\femalehands_1.dds)", true),
+            "cross-slot limb routing accepted a non-skin, outfit, body, or wrong-limb material")) return 1;
+    if (!Require(
+            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::cbbe,
+                bcn::SkinRace::humanoid, 4U, 0U) == bcn::FeetLayerSource::bodyAtlas &&
+            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::cbbe,
+                bcn::SkinRace::humanoid, 4U, 1U) == bcn::FeetLayerSource::explicitFeet &&
+            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::argonian,
+                bcn::SkinRace::argonian, 4U, 0U) == bcn::FeetLayerSource::none,
+            "feet layer planning crossed an explicit or beast-race atlas boundary")) return 1;
     struct FakeNifGeometry final
     {
         std::string_view node;

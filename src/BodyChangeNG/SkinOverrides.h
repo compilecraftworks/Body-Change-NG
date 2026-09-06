@@ -35,6 +35,8 @@ namespace bcn::skin_override
         incompatibleSex,
         incompatibleRace,
         incompatibleBodyFamily,
+        ambiguousProfileLayout,
+        ambiguousActorLayout,
         incompatibleFutanariType,
         futanariGeometryUnavailable,
         faceGeometryUnavailable,

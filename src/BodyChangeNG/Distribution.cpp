@@ -841,7 +841,8 @@ namespace bcn
                 const auto current = handle.get();
                 if (!current || ActorRegistry::Get().SessionGeneration() != session) return;
                 [[maybe_unused]] const auto applied = Distribution::Get().ApplyActor(current.get());
-            }, DistributedSkinDelayTicks(), 206U);
+            }, DistributedSkinDelayTicks(),
+                appearance::WorkChannel::distributedSkinApply);
             queued = skinDeferred || queued;
             if (skinDeferred) return queued;
         }

@@ -31,7 +31,7 @@ namespace
         bcn::frame_tasks::Queue(0, [session] {
             if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
             [[maybe_unused]] const auto applied = bcn::Distribution::Get().ApplyLoadedNPCs();
-        }, remainingHops, 101);
+        }, remainingHops, bcn::appearance::WorkChannel::initialDistribution);
     }
 
     void InitializeLogging()

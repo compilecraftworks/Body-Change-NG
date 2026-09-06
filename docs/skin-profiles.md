@@ -10,7 +10,9 @@ A profile changes RaceMenu skin-texture overrides only. Body, hands, and feet
 use their corresponding skin geometry overrides, while supplied face textures
 target the live face geometry. A pack may be partial: only its supplied parts
 and channels change, while absent ones retain the actor's underlying textures.
-Body, hands, feet, and face files are never substituted across parts. It does
+Body, hands, feet, and face files are never guessed across parts. A verified
+humanoid layout may intentionally use its body atlas for feet when no separate
+feet atlas exists; beast-race and unknown layouts never do. It does
 not replace a NIF, an
 ActorBase's Skin Armor, inventory, equipment slots, baked FaceGen files, or NPC
 tint masks.
@@ -105,7 +107,8 @@ are not assigned to guessed `BSTextureSet` indices. They remain controlled by
 the actor's active UBE material/Community Shaders setup, preventing a skin
 selection from overwriting an unrelated shader channel.
 
-`profile.json` is optional and is only needed for custom texture selection.
+`profile.json` is optional when the folder name and known texture structure
+identify one exact UV layout. It is required for custom or ambiguous packs.
 When it exists, it is placed directly beside `Textures` and overrides automatic
 detection for that skin folder. Its `id` is the stable value used by favorites
 and distribution rules, so do not change it after assigning the profile to NPC
@@ -118,6 +121,7 @@ rules.
   "name": "My Skin A",
   "sex": "female",
   "race": "humanoid",
+  "uvLayout": "cbbe",
   "body": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_1.dds" },
     { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_1_msn.dds" },
@@ -145,9 +149,12 @@ rules.
 }
 ```
 
-`sex` accepts `female` or `male`. The optional `race` accepts `humanoid`,
-`argonian`, or `khajiit`; when omitted it is inferred from standard beast-race
-texture folders. `Textures\\...` is relative to the
+`sex` accepts `female` or `male`. `uvLayout` accepts `female-vanilla`, `cbbe`,
+`unp`, `ube`, `male-vanilla`, `himbo`, `sam`, `argonian`, or `khajiit`.
+Aliases `3ba`, `bhunp`, and `cbbe-3ba`/`bhunp-unp` are also accepted. The
+optional `race` accepts `humanoid`, `argonian`, or `khajiit`; when omitted it is
+inferred from standard beast-race texture folders. The layout must agree with
+the profile's sex and race. `Textures\\...` is relative to the
 skin folder. Explicit paths may also start with `BodySkin\\` or `textures\\`.
 Every path must end in `.dds` and must not include `..` or a drive letter.
 The optional `cbbeGenitalAnal` and `unpGenitalAnal` arrays provide the two
@@ -161,12 +168,19 @@ feet, or face map. Missing parts and missing diffuse, normal, subsurface, detail
 or specular channels remain controlled by the actor's original skin/material.
 
 The main Skin list compares every profile with the selected actor's race, sex,
-and detected body family. Humanoid, Argonian, and Khajiit profiles never cross
-race boundaries; conventional CBBE 3BA/BHUNP/UNP profiles and UBE profiles are
-also not shown to the wrong known family. An NPC distribution rule can still
+and one exact detected body UV layout. Humanoid, Argonian, and Khajiit profiles
+never cross race boundaries; CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, and vanilla
+profiles never cross UV-layout boundaries. An NPC distribution rule can still
 contain a mixed skin pool; at runtime it stably samples only the compatible
-profiles for that NPC. Unknown body-family evidence keeps the safe fallback and
-does not hide profiles.
+profiles for that NPC. An ambiguous profile or conflicting/unknown humanoid
+actor layout fails closed and is not applied. Add `uvLayout` to `profile.json`
+or fix the actor's body-family detection instead of relying on a guess.
+
+RaceMenu's broad skin-slot call may traverse several ArmorAddons attached to
+one Skin Armor. Body Change NG 1.2 permits that route only for UBE's explicitly
+shared body atlas. Every other layout writes only to verified live
+Armor+ArmorAddon+geometry targets; a hidden or missing part remains pending for
+the next 3D/equipment refresh instead of painting another body part.
 
 RaceMenu skin overrides are shared by property slot rather than by mod owner.
 If another mod changes the same skin texture slot, the last applied override

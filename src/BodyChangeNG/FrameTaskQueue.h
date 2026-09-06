@@ -1,4 +1,6 @@
 #pragma once
+#include "BodyChangeNG/AppearanceWork.h"
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -111,7 +113,8 @@ namespace bcn::async_work
                     (job.actor && actorPending_.at(job.actor).interactive != 0);
                 if (reserve && helpsInput) return 5;
                 if (tick_ - job.born >= 60) return 4;
-                return (job.urgent ? 2 : 0) + (job.actor && job.channel >= 200 ? 1 : 0);
+                return (job.urgent ? 2 : 0) +
+                    (job.actor && bcn::appearance::IsInteractiveChannel(job.channel) ? 1 : 0);
             };
             ++scan_;
             for (auto it = jobs_.begin(); it != jobs_.end(); ++it) {
@@ -165,15 +168,18 @@ namespace bcn::async_work
         }
         void CancelActorInteractive(std::uint32_t actor)
         {
-            // Direct catalog choices use channels 200+. Replace only that
-            // interactive pipeline; distribution/equipment reconciliation in
-            // channels below 200 must not disappear when a user clicks fast.
+            // Replace only user-visible appearance pipelines. Automatic
+            // distribution/equipment reconciliation must survive rapid UI
+            // input, and typed channels prevent unrelated user operations
+            // from sharing a replacement key.
             std::erase_if(jobs_, [actor](const Job& job) {
-                return job.actor == actor && job.channel >= 200;
+                return job.actor == actor &&
+                    bcn::appearance::IsInteractiveChannel(job.channel);
             });
             RebuildPendingActor(actor);
             if (const auto found = busy_.find(actor);
-                found != busy_.end() && found->second.channel >= 200) {
+                found != busy_.end() &&
+                    bcn::appearance::IsInteractiveChannel(found->second.channel)) {
                 if (const auto lease = found->second.lease.lock()) lease->cancelled.store(true);
             }
             // A cancelled live lease remains busy through the ordinary quiet

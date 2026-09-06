@@ -2,13 +2,16 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include "BodyChangeNG/AppearanceWork.h"
 #include "BodyChangeNG/FrameTaskQueue.h"
 
 namespace bcn::frame_tasks
 {
     using Lease = async_work::FrameTaskQueue::Lease;
     bool Queue(std::uint32_t actor, std::function<void()> work,
-        std::uint32_t delay = 1, std::uint32_t channel = 0, bool urgent = false, bool interactive = false);
+        std::uint32_t delay = 1,
+        appearance::WorkChannel channel = appearance::WorkChannel::none,
+        bool urgent = false, bool interactive = false);
     // Continuations retain the ORIGINAL actor lease and must not acquire it
     // again. Used only by already-dispatched asynchronous skin callbacks.
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay = 1);
@@ -21,10 +24,10 @@ namespace bcn::frame_tasks
     std::uint64_t Epoch();
     bool IsCurrent(std::uint64_t epoch);
     void CancelActor(std::uint32_t actor);
-    // Supersedes only direct UI/native channels (200+). Automatic actor,
-    // equipment and verification jobs remain queued.
+    // Supersedes only channels explicitly classified as interactive.
+    // Automatic actor, equipment and verification jobs remain queued.
     void CancelActorInteractive(std::uint32_t actor);
     bool HasActorWork(std::uint32_t actor);
-    bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel);
+    bool HasActorChannelWork(std::uint32_t actor, appearance::WorkChannel channel);
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor);
 }

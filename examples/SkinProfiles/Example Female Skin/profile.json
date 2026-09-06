@@ -3,6 +3,8 @@
   "id": "example-female-skin",
   "name": "Example Female Skin",
   "sex": "female",
+  "race": "humanoid",
+  "uvLayout": "cbbe",
   "body": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_1.dds" },
     { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_1_msn.dds" },

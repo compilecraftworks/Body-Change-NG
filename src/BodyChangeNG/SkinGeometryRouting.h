@@ -6,30 +6,6 @@
 
 namespace bcn::skin_geometry
 {
-    // RaceMenu's SetSkinProperty/AddSkinOverrideString implementation chooses
-    // a Skin Armor from the requested slot, but then visits every ArmorAddon
-    // on that armor. A slot-33 request can therefore repaint the body and feet
-    // as well as the hands. This broad route is safe only for layouts such as
-    // UBE where all three parts intentionally use the same body atlas.
-    // Conventional CBBE/BHUNP/vanilla layouts must stay on exact
-    // Armor+ArmorAddon+geometry overrides.
-    [[nodiscard]] constexpr bool MayUseBroadSkinSlotFallback(
-        const bool usesSharedBodyAtlas) noexcept
-    {
-        return usesSharedBodyAtlas;
-    }
-
-    // A hidden equipped item can continue to own the runtime biped entry even
-    // after another plugin suppresses its geometry. In that state the naked
-    // skin ArmorAddon does not exist yet, so an exact override cannot be
-    // registered until the next actor rebuild. Preserve a one-bit skin-slot
-    // key only when a conventional part has no exact live target at all.
-    [[nodiscard]] constexpr bool NeedsMissingPartSlotFallback(
-        const bool usesSharedBodyAtlas, const std::size_t exactTargetCount) noexcept
-    {
-        return !usesSharedBodyAtlas && exactTargetCount == 0U;
-    }
-
     enum class BodySelection
     {
         all,
@@ -45,16 +21,6 @@ namespace bcn::skin_geometry
         feet
     };
 
-    // Hands and feet can live in a multi-slot naked Skin Armor clone instead
-    // of the exact biped-array entry.  An exact entry is useful only after at
-    // least one skin geometry has been identified; a sleeve/glove object with
-    // zero matching skin nodes must not suppress the bounded fallback scan.
-    [[nodiscard]] constexpr bool NeedsFixedBipedFallback(
-        const bool requestedHandsOrFeet, const std::size_t usableExactTargets) noexcept
-    {
-        return requestedHandsOrFeet && usableExactTargets == 0U;
-    }
-
     // UBE normally exposes its naked body on slot 53, but some valid UBE
     // skin-armour/equipment states expose the live body geometry through the
     // ordinary slot 32 instead. Only fall back when the UBE-specific target is
@@ -64,14 +30,6 @@ namespace bcn::skin_geometry
         const bool usesUbeBodySlot, const std::size_t usableUbeTargets) noexcept
     {
         return usesUbeBodySlot && usableUbeTargets == 0U;
-    }
-
-    // Standard humanoid feet use the body texture atlas. An explicit feet
-    // atlas supplied by a beast/custom-race profile takes precedence.
-    [[nodiscard]] constexpr bool NeedsBodyAtlasForFeet(
-        const std::size_t explicitFeetLayerCount) noexcept
-    {
-        return explicitFeetLayerCount == 0U;
     }
 
     [[nodiscard]] constexpr char LowerAscii(const char value) noexcept
@@ -148,6 +106,26 @@ namespace bcn::skin_geometry
         }
         if (requestedSlotMask == feetSlotMask) {
             return MatchesExplicitLimbNode(LimbSelection::feet, nodeName);
+        }
+        return false;
+    }
+
+    // Hidden-equipment and multi-slot NIFs can anchor an exposed hand or foot
+    // geometry under a biped entry other than slot 33/37. Cross-slot discovery
+    // is safe only with exact limb evidence on a verified skin material. This
+    // keeps fabric, glove, boot, body and genital materials out of limb
+    // texture overrides even when an outfit author reused a limb-like name.
+    [[nodiscard]] constexpr bool IsSafeCrossSlotLimbCandidate(
+        const std::uint32_t requestedSlotMask, const std::uint32_t handsSlotMask,
+        const std::uint32_t feetSlotMask, const std::string_view nodeName,
+        const std::string_view texturePath, const bool skinGeometry) noexcept
+    {
+        if (!skinGeometry) return false;
+        if (requestedSlotMask == handsSlotMask) {
+            return MatchesLimb(LimbSelection::hands, nodeName, texturePath);
+        }
+        if (requestedSlotMask == feetSlotMask) {
+            return MatchesLimb(LimbSelection::feet, nodeName, texturePath);
         }
         return false;
     }

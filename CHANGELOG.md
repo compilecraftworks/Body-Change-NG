@@ -2,6 +2,22 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.0 — development
+
+### Skin architecture
+
+- Models skin UV layouts independently from BodySlide morph presets: female Vanilla, CBBE, UNP, UBE, male Vanilla, HIMBO, SAM, Argonian, and Khajiit.
+- Requires one exact profile and actor layout before applying a humanoid skin. Ambiguous profiles and conflicting actor evidence fail closed instead of treating an unknown family as compatible with every DDS set.
+- Limits RaceMenu's broad skin-slot route to UBE's explicit shared body atlas. Conventional layouts write only to verified live Armor+ArmorAddon+geometry targets; missing parts wait for a later 3D/equipment reconciliation.
+- Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
+- Adds `uvLayout` to explicit skin manifests and keeps unsupported or contradictory manifests out of the catalog.
+
+### Appearance work coordination
+
+- Replaces numeric appearance-job channels at call sites with a typed operation model.
+- Assigns tint and futanari skin application distinct latest-wins channels, preventing either operation from cancelling the other.
+- Adds a dedicated skin architecture regression suite. The Release DLL and all 13 test executables pass.
+
 ## 1.1.4 — 2026-09-06
 
 ### NPC skin sequencing and persistence

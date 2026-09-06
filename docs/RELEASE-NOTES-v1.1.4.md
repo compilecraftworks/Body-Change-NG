@@ -12,6 +12,8 @@ Previous public release: 1.1.3
 - Automatic skin distribution now waits for the actor rebuild to settle and repaints the final Biped clone once.
 - Manual NPC Skin and Default Skin choices lock immediately and are not overwritten by automatic distribution.
 - Kept body, hands, feet, face, genital, and anal texture routes isolated. Missing files retain the actor's existing texture channel.
+- Fixed exposed hands and feet anchored under unexpected Biped entries by hidden equipment or multi-slot NIFs. Cross-slot discovery requires exact limb evidence and rejects body, glove, boot, and genital geometry.
+- RaceMenu call acceptance is no longer considered final success. BCNG verifies the affected actor's final loaded multipart skin once, performs at most one exact repair, and keeps an unresolved desired skin pending for the next actor/equipment refresh.
 - Already-dead loaded NPCs are now eligible for body and skin rules instead of remaining on Zeroed Sliders.
 
 ## NPC Distribution editor
@@ -25,11 +27,13 @@ Previous public release: 1.1.3
 
 - No per-frame JSON writes, directory rescans, or continuous NPC polling were added.
 - Skin repaint is bounded to the affected actor and its final rebuilt clone.
+- The final check uses the already-built in-memory profile and the actor's fixed Biped entries. It performs no catalog rescan, all-NPC polling, or unbounded retry.
 - Existing CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, Vanilla, SOS/TNG, RaceMenu version routing, RSV/Mu Dynamic NormalMap handling, and OverlayFix compatibility paths remain intact.
 
 ## Validation and files
 
 - Release build completed successfully and all 12 automated regression tests passed.
+- The real MO2 BodySkin test now validates complete normalized paths recursively, including nested race, elder, SOS, and anatomy folders.
 - `Body Change NG v1.1.4.zip` — MO2-ready release package.
 - `Body Change NG v1.1.4 Source.zip` — source archive matching tag `v1.1.4`.
 - `SHA256SUMS v1.1.4.txt` — archive checksums.

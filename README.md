@@ -6,23 +6,23 @@ in-game selection with rule-based NPC distribution in one scalable ImGui UI.
 The window opens with F7 by default; modifier chords are supported and the
 shortcut is configurable in-game.
 
-Version 1.1.4 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
+Version 1.2.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The project is built for Skyrim SE/AE only.
 
-## Current release: 1.1.4
+## Development line: 1.2.0
 
-This update fixes CBBE 3BA, BHUNP, and vanilla BodySkin routing so body, hand,
-and foot textures are applied only to their exact loaded ArmorAddon geometry.
-Manual selection, rule-based NPC distribution, and equipment rebuild recovery
-all use the same corrected path. If SFS visually hides equipped footwear while
-the feet slot remains occupied, a one-bit persistent fallback preserves that
-missing part without leaving a broad cross-part repaint. UBE retains its
-intentional shared-atlas path. RaceMenu Override compatibility is classified
-separately for legacy SE v0, UBE's AE-backported v0, official v1, and official
-v2; only the audited v2 interface is called natively.
+The `v1.2.0-rearchitecture` branch is isolated from the 1.1.x release line.
+It introduces an explicit UV-layout model for female vanilla, CBBE, UNP, UBE,
+male vanilla, HIMBO, SAM, Argonian, and Khajiit skins. Ambiguous profiles and
+actor layouts fail closed. Conventional layouts modify only verified live
+geometry; only UBE may use RaceMenu's broad shared-atlas route. Appearance
+queue operations now use distinct typed replacement channels, so tint and
+futanari work cannot cancel each other.
+
+- [1.2.0 architecture notes (한국어)](docs/ARCHITECTURE-v1.2.0-KO.md)
+- [1.1.4 release notes](docs/RELEASE-NOTES-v1.1.4.md) · [한국어](docs/RELEASE-NOTES-v1.1.4-KO.md)
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
-- [Release notes and update precautions](docs/RELEASE-NOTES-v1.1.4.md) · [한국어](docs/RELEASE-NOTES-v1.1.4-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)
 
 ## Requirements
@@ -293,7 +293,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.1.4/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.2.0/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

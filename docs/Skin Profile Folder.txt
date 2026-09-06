@@ -2,19 +2,25 @@ Each skin has one self-contained folder:
 
 BodySkin\<skin name>\
   Textures\              (copy the skin mod's textures folder here)
-  profile.json            (optional)
+  profile.json            (required when the exact UV layout is ambiguous)
 
 Without profile.json, Body Change NG automatically detects standard
 femalebody/femalehands/femalefeet and malebody/malehands/malefeet texture
 names plus their femalehead/malehead face textures. Argonian female/male and
 Khajiit female/male folders are also detected separately. Player selection and
 NPC distribution rules use the catalog separately and match race, sex, and
-body family before applying a skin.
+one exact body UV layout before applying a skin. Automatic folders should
+include CBBE/3BA, UNP/BHUNP, UBE, HIMBO, SAM, or Vanilla in the pack name when
+the texture namespace itself cannot distinguish the layout.
 
 A pack may contain only some parts or channels. Only the supplied body, hands,
 feet, or face channels are overridden; missing ones retain the actor's current
-textures. A file from one part is never reused for a different part.
+textures. Verified humanoid feet may share the body atlas; beast-race and
+unknown layouts never do. UBE intentionally shares its Body atlas across body,
+hands, and feet.
 
-Use profile.json only for an explicit custom selection. `Textures\...` paths in
-that file are relative to this skin folder. Its optional `race` value is
-`humanoid`, `argonian`, or `khajiit`.
+Use profile.json for an explicit custom or ambiguous selection. `Textures\...`
+paths in that file are relative to this skin folder. Its optional `race` value
+is `humanoid`, `argonian`, or `khajiit`. Set `uvLayout` to one of
+`female-vanilla`, `cbbe`, `unp`, `ube`, `male-vanilla`, `himbo`, `sam`,
+`argonian`, or `khajiit`.

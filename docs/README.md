@@ -2,6 +2,10 @@
 
 Current release: **Body Change NG 1.1.4**.
 
+The isolated 1.2.0 development architecture is documented in
+[ARCHITECTURE-v1.2.0-KO.md](ARCHITECTURE-v1.2.0-KO.md). It is not yet the
+public Nexus release line.
+
 1.1.1 engineering records: [load/lifecycle safety](LIFECYCLE-SAFETY-FOLLOWUP-2026-09-04-KO.md) · [direct-selection responsiveness](RESPONSIVENESS-SAFETY-FOLLOWUP-2026-09-05-KO.md). Historical records describe their own checkpoints; current public behavior and update precautions are in the 1.1.4 release notes.
 
 Engineering handover (2026-09-04): [한국어 전체 인수인계](HANDOVER-v1.1.0-KO.md) · [전체 Git 이력·파일·검증 증거](HANDOVER-EVIDENCE-v1.1.0-KO.md). These are source/development documents only; do not add them to the minimal MO2 installer.

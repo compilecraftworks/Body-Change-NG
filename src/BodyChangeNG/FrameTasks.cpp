@@ -62,13 +62,15 @@ namespace
 namespace bcn::frame_tasks
 {
     bool Queue(std::uint32_t actor, std::function<void()> work, std::uint32_t delay,
-        std::uint32_t channel, bool urgent, bool interactive)
+        const appearance::WorkChannel channel, bool urgent, bool interactive)
     {
         std::scoped_lock lock(g_lock);
         if (!g_available) return false;
-        return g_queue.Submit(actor, channel, std::move(work), delay,
-            urgent || g_urgent || (!g_inPump && channel >= 200),
-            interactive || g_interactive || (!g_inPump && channel >= 200));
+        const auto rawChannel = appearance::ChannelValue(channel);
+        const auto directInteraction = !g_inPump && appearance::IsInteractiveChannel(channel);
+        return g_queue.Submit(actor, rawChannel, std::move(work), delay,
+            urgent || g_urgent || directInteraction,
+            interactive || g_interactive || directInteraction);
     }
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay)
     {
@@ -119,10 +121,10 @@ namespace bcn::frame_tasks
         g_queue.CancelActorInteractive(actor);
     }
     bool HasActorWork(std::uint32_t actor) { std::scoped_lock lock(g_lock); return g_queue.HasActorWork(actor); }
-    bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel)
+    bool HasActorChannelWork(std::uint32_t actor, const appearance::WorkChannel channel)
     {
         std::scoped_lock lock(g_lock);
-        return g_queue.HasActorChannelWork(actor, channel);
+        return g_queue.HasActorChannelWork(actor, appearance::ChannelValue(channel));
     }
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor)
     {

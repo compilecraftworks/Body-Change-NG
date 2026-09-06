@@ -22,7 +22,8 @@ namespace
 {
     void QueueTintTask(std::uint32_t actor, std::function<void()> work)
     {
-        bcn::frame_tasks::Queue(actor, std::move(work), 1, 205, true);
+        bcn::frame_tasks::Queue(actor, std::move(work), 1,
+            bcn::appearance::WorkChannel::tintApply, true);
     }
     constexpr std::size_t kMaxAssets = 512;
     std::atomic_uint64_t g_tintGeneration{};

@@ -57,7 +57,8 @@ namespace
             std::scoped_lock lock(g_lock);
             const auto found = g_pending.find(id);
             if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
-        }, delay, 100, request.reason != bcn::ActorWorkReason::bulkLoad);
+        }, delay, bcn::appearance::WorkChannel::actorReconcile,
+            request.reason != bcn::ActorWorkReason::bulkLoad);
     }
 }
 namespace bcn

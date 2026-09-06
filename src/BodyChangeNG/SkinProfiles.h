@@ -1,8 +1,10 @@
 #pragma once
 
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/SkinLayout.h"
 
 #include <array>
+#include <bit>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -13,23 +15,6 @@
 
 namespace bcn
 {
-    enum class SkinSex : std::uint8_t
-    {
-        female,
-        male
-    };
-
-    // Beast-race textures use different UVs and file namespaces even when
-    // their body mesh belongs to the same broad CBBE/UNP or male family.
-    // Keep that compatibility axis independent from BodyFamily so a human,
-    // Argonian, and Khajiit skin can never be offered interchangeably.
-    enum class SkinRace : std::uint8_t
-    {
-        humanoid,
-        argonian,
-        khajiit
-    };
-
     // Humanoid face normals can have race-specific variants inside one skin
     // pack. This is deliberately separate from SkinRace: the latter protects
     // incompatible human/Argonian/Khajiit UV layouts, while this enum selects
@@ -75,6 +60,7 @@ namespace bcn
         std::string name;
         SkinSex sex{ SkinSex::female };
         SkinRace race{ SkinRace::humanoid };
+        SkinUvLayout uvLayout{ SkinUvLayout::unknown };
         // UBE uses its own body/head topology, UVs, texture namespace, and
         // naked-body slot. Keep compatibility on the catalog item so the UI,
         // distribution backend, and RaceMenu reapply path all make the same
@@ -148,10 +134,11 @@ namespace bcn
     [[nodiscard]] constexpr bool SkinMatchesActor(
         const body_family::Mask skinFamilies, const body_family::Mask actorFamily) noexcept
     {
-        // Unlike an unclassified BodySlide preset, a conventional skin cannot
-        // safely be treated as a generic female fallback for UBE's different
-        // UV topology. Unknown evidence still preserves the show-all fallback.
-        return skinFamilies == 0U || actorFamily == 0U ||
+        // Texture UV compatibility is stricter than morph compatibility. An
+        // unknown or multi-family result is ambiguous and must not be treated
+        // as a wildcard.
+        return std::popcount(skinFamilies) == 1 &&
+            std::popcount(actorFamily) == 1 &&
             (skinFamilies & actorFamily) != 0U;
     }
 
@@ -159,6 +146,14 @@ namespace bcn
         const SkinRace skinRace, const SkinRace actorRace) noexcept
     {
         return skinRace == actorRace;
+    }
+
+    [[nodiscard]] constexpr SkinCompatibility SkinProfileCompatibility(
+        const SkinProfile& profile, const SkinSex actorSex,
+        const SkinRace actorRace, const body_family::Mask actorFamilies) noexcept
+    {
+        return EvaluateSkinCompatibility(profile.uvLayout, profile.sex,
+            profile.race, actorSex, actorRace, actorFamilies);
     }
 
     [[nodiscard]] std::string SkinFamilyLabel(body_family::Mask a_families, SkinSex a_sex);

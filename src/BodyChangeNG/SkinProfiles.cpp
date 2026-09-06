@@ -131,6 +131,32 @@ namespace
         return std::nullopt;
     }
 
+    [[nodiscard]] std::optional<bcn::SkinUvLayout> ParseUvLayout(
+        const nlohmann::json& root)
+    {
+        const auto found = root.find("uvLayout");
+        if (found == root.end() || !found->is_string()) return std::nullopt;
+        const auto value = found->get<std::string>();
+        if (EqualsIgnoreCase(value, "female-vanilla") ||
+            EqualsIgnoreCase(value, "vanilla-female")) {
+            return bcn::SkinUvLayout::femaleVanilla;
+        }
+        if (EqualsIgnoreCase(value, "cbbe") || EqualsIgnoreCase(value, "3ba") ||
+            EqualsIgnoreCase(value, "cbbe-3ba")) return bcn::SkinUvLayout::cbbe;
+        if (EqualsIgnoreCase(value, "unp") || EqualsIgnoreCase(value, "bhunp") ||
+            EqualsIgnoreCase(value, "bhunp-unp")) return bcn::SkinUvLayout::unp;
+        if (EqualsIgnoreCase(value, "ube")) return bcn::SkinUvLayout::ube;
+        if (EqualsIgnoreCase(value, "male-vanilla") ||
+            EqualsIgnoreCase(value, "vanilla-male")) {
+            return bcn::SkinUvLayout::maleVanilla;
+        }
+        if (EqualsIgnoreCase(value, "himbo")) return bcn::SkinUvLayout::himbo;
+        if (EqualsIgnoreCase(value, "sam")) return bcn::SkinUvLayout::sam;
+        if (EqualsIgnoreCase(value, "argonian")) return bcn::SkinUvLayout::argonian;
+        if (EqualsIgnoreCase(value, "khajiit")) return bcn::SkinUvLayout::khajiit;
+        return std::nullopt;
+    }
+
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> ParsePart(const std::filesystem::path& dataRoot,
                                                                  const std::filesystem::path& profileDirectory,
                                                                  const nlohmann::json& root, const char* key)
@@ -160,7 +186,7 @@ namespace
         const std::vector<bcn::SkinTextureLayer>& cbbeGenitalAnal,
         const std::vector<bcn::SkinTextureLayer>& unpGenitalAnal)
     {
-        if (sex == bcn::SkinSex::male) return bcn::StandardSkinFamilies(sex);
+        if (sex == bcn::SkinSex::male) return 0U;
         bool ube{};
         bool standard{};
         for (const auto* part : parts) {
@@ -252,10 +278,9 @@ namespace
             auto face = ParsePart(dataRoot, path.parent_path(), json, "face");
             auto vampireFace = ParsePart(dataRoot, path.parent_path(), json, "vampireFace");
             auto faceDetails = ParsePart(dataRoot, path.parent_path(), json, "faceDetails");
-            const auto bodyFamilies = InferProfileFamilies(*sex,
+            const auto inferredFamilies = InferProfileFamilies(*sex,
                 { &body, &hands, &feet, &face, &vampireFace, &faceDetails },
                 cbbeGenitalAnal, unpGenitalAnal);
-            if (bodyFamilies == 0U) return std::nullopt;
             const auto inferredRace = InferProfileRace(
                 { &body, &cbbeGenitalAnal, &unpGenitalAnal, &hands, &feet, &face,
                     &vampireFace, &faceDetails });
@@ -279,6 +304,32 @@ namespace
                 }
                 race = *explicitRace;
             }
+            auto uvLayout = race == bcn::SkinRace::humanoid ?
+                bcn::SkinLayoutFromFamilyMask(inferredFamilies) :
+                bcn::BeastSkinLayout(race);
+            if (json.contains("uvLayout")) {
+                const auto explicitLayout = ParseUvLayout(json);
+                if (!explicitLayout) {
+                    SKSE::log::warn(
+                        "Body Change NG ignored skin profile {}: uvLayout is unsupported",
+                        bcn::path_text::Utf8(path));
+                    return std::nullopt;
+                }
+                uvLayout = *explicitLayout;
+            }
+            const auto bodyFamilies = bcn::SkinLayoutFamilyMask(uvLayout);
+            const auto expectedSexFamilies = *sex == bcn::SkinSex::female ?
+                bcn::body_family::kFemaleFamilies : bcn::body_family::kMaleFamilies;
+            const auto validHumanoidLayout = race == bcn::SkinRace::humanoid &&
+                bodyFamilies != 0U && (bodyFamilies & expectedSexFamilies) != 0U;
+            const auto validBeastLayout = race != bcn::SkinRace::humanoid &&
+                uvLayout == bcn::BeastSkinLayout(race);
+            if (!validHumanoidLayout && !validBeastLayout) {
+                SKSE::log::warn(
+                    "Body Change NG ignored skin profile {}: an exact uvLayout matching its sex and race is required",
+                    bcn::path_text::Utf8(path));
+                return std::nullopt;
+            }
             // Partial packs are intentional. Every absent body part and every
             // absent material channel keeps the actor's underlying texture;
             // only explicitly supplied DDS files become overrides.
@@ -291,6 +342,7 @@ namespace
                 .name = std::move(name),
                 .sex = *sex,
                 .race = race,
+                .uvLayout = uvLayout,
                 .bodyFamilies = bodyFamilies,
                 .body = std::move(body),
                 .cbbeGenitalAnal = std::move(cbbeGenitalAnal),
@@ -595,13 +647,16 @@ namespace
 
     void MergeAutoProfile(bcn::SkinProfile& destination, const bcn::SkinProfile& source)
     {
-        if (destination.sex == bcn::SkinSex::female) {
-            const auto permissive = bcn::StandardSkinFamilies(bcn::SkinSex::female);
-            if (destination.bodyFamilies == permissive) {
-                destination.bodyFamilies = source.bodyFamilies;
-            } else if (source.bodyFamilies != permissive) {
-                destination.bodyFamilies |= source.bodyFamilies;
-            }
+        if (destination.uvLayout == bcn::SkinUvLayout::unknown) {
+            destination.uvLayout = source.uvLayout;
+            destination.bodyFamilies = source.bodyFamilies;
+        } else if (source.uvLayout != bcn::SkinUvLayout::unknown &&
+            destination.uvLayout != source.uvLayout) {
+            // One catalog row must never combine DDS files from incompatible
+            // UV layouts. Keep its assets visible to diagnostics but make the
+            // row ineligible for application.
+            destination.uvLayout = bcn::SkinUvLayout::unknown;
+            destination.bodyFamilies = 0U;
         }
         AppendUniqueLayers(destination.body, source.body, true);
         AppendUniqueLayers(destination.cbbeGenitalAnal, source.cbbeGenitalAnal, true);
@@ -617,7 +672,7 @@ namespace
         const std::filesystem::path& skinDirectory, bcn::SkinProfile& profile)
     {
         if (profile.sex != bcn::SkinSex::female || profile.race != bcn::SkinRace::humanoid ||
-            profile.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube)) return;
+            profile.uvLayout == bcn::SkinUvLayout::ube) return;
 
         for (const auto& directory : FindConditionalHumanoidDirectories(skinDirectory)) {
             if (IsElderTextureDirectory(directory)) {
@@ -746,7 +801,7 @@ namespace
         const std::vector<bcn::SkinTextureLayer>& cbbeGenitalAnal,
         const std::vector<bcn::SkinTextureLayer>& unpGenitalAnal)
     {
-        if (race != bcn::SkinRace::humanoid) return bcn::StandardSkinFamilies(sex);
+        if (race != bcn::SkinRace::humanoid) return 0U;
         bcn::body_family::Mask families{};
         if (sex == bcn::SkinSex::female) {
             if (!cbbeGenitalAnal.empty() ||
@@ -757,12 +812,14 @@ namespace
                 HasAsciiToken(skinDirectory, { "unp", "uunp", "bhunp" })) {
                 families |= bcn::body_family::Bit(bcn::body_family::Family::unp);
             }
+            if (HasAsciiToken(skinDirectory, { "vanilla" })) {
+                families |= bcn::body_family::Bit(bcn::body_family::Family::femaleVanilla);
+            }
         } else {
             // HIMBO and SAM can share the conventional `male` namespace, but
             // body-specific texture releases are not necessarily UV
             // interchangeable. Narrow only when the pack folder explicitly
-            // identifies a family; unlabelled male packs retain the historical
-            // permissive fallback for vanilla/SOS-compatible sets.
+            // identifies a family; unlabelled male packs remain fail-closed.
             if (HasAsciiToken(skinDirectory, { "himbo" })) {
                 families |= bcn::body_family::Bit(bcn::body_family::Family::himbo);
             }
@@ -773,11 +830,10 @@ namespace
                 families |= bcn::body_family::Bit(bcn::body_family::Family::maleVanilla);
             }
         }
-        // Unlabelled conventional skin packs retain the permissive historical
-        // fallback. Exact texture-layout evidence and explicit pack tokens are
-        // narrow so incompatible UV families cannot cross when the author
-        // identifies the intended body family.
-        return families != 0U ? families : bcn::StandardSkinFamilies(sex);
+        // Filename conventions cannot distinguish CBBE from UNP or HIMBO
+        // from SAM. Ambiguous folders remain unknown until their name or an
+        // explicit profile manifest identifies one exact UV layout.
+        return std::popcount(families) == 1 ? families : 0U;
     }
 
     [[nodiscard]] std::vector<bcn::SkinTextureLayer> AutoFaceDetails(
@@ -848,6 +904,7 @@ namespace
                 .name = bcn::path_text::Utf8(skinDirectory.filename()),
                 .sex = bcn::SkinSex::female,
                 .race = bcn::SkinRace::humanoid,
+                .uvLayout = bcn::SkinUvLayout::ube,
                 .bodyFamilies = bcn::body_family::Bit(bcn::body_family::Family::ube),
                 .body = std::move(body),
                 .face = std::move(face),
@@ -950,13 +1007,18 @@ namespace
         if (raceLayout.race == bcn::SkinRace::argonian) baseID += ":argonian";
         else if (raceLayout.race == bcn::SkinRace::khajiit) baseID += ":khajiit";
         const auto baseName = bcn::path_text::Utf8(skinDirectory.filename());
+        const auto bodyFamilies = InferAutoConventionalFamilies(
+            sex, raceLayout.race, skinDirectory, cbbeGenitalAnal, unpGenitalAnal);
+        const auto uvLayout = raceLayout.race == bcn::SkinRace::humanoid ?
+            bcn::SkinLayoutFromFamilyMask(bodyFamilies) :
+            bcn::BeastSkinLayout(raceLayout.race);
         return { bcn::SkinProfile{
             .id = baseID,
             .name = baseName,
             .sex = sex,
             .race = raceLayout.race,
-            .bodyFamilies = InferAutoConventionalFamilies(sex, raceLayout.race,
-                skinDirectory, cbbeGenitalAnal, unpGenitalAnal),
+            .uvLayout = uvLayout,
+            .bodyFamilies = bodyFamilies,
             .body = std::move(body),
             .cbbeGenitalAnal = std::move(cbbeGenitalAnal),
             .unpGenitalAnal = std::move(unpGenitalAnal),
@@ -1244,6 +1306,11 @@ namespace bcn
                         profile.maleGenitals = AutoSosMaleGenitals(dataRoot, skinDirectory);
                     }
                     AttachConditionalHumanoidLayers(dataRoot, skinDirectory, profile);
+                    if (profile.uvLayout == SkinUvLayout::unknown) {
+                        SKSE::log::warn(
+                            "Body Change NG kept skin profile '{}' as diagnostic-only: its UV layout is ambiguous; add profile.json with an exact uvLayout",
+                            profile.name);
+                    }
                     if (std::ranges::find(loaded, profile.id, &SkinProfile::id) == loaded.end()) {
                         loaded.push_back(std::move(profile));
                     } else {
@@ -1257,6 +1324,7 @@ namespace bcn
             AuditProfileDds(dataRoot, root, profile);
             ContentSignature hash;
             hash.Number(static_cast<unsigned>(profile.sex)); hash.Number(static_cast<unsigned>(profile.race));
+            hash.Number(static_cast<unsigned>(profile.uvLayout));
             hash.Number(profile.bodyFamilies);
             const auto layers = [&](const auto& list) {
                 hash.Number(list.size());
@@ -1332,9 +1400,10 @@ namespace bcn
         compatible.reserve(ids.size());
         for (const auto& id : ids) {
             const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
-            if (found != profiles_.end() && found->sex == sex &&
-                SkinRaceMatchesActor(found->race, actorRace) &&
-                SkinMatchesActor(found->bodyFamilies, actorFamily)) compatible.push_back(id);
+            if (found != profiles_.end() &&
+                SkinProfileCompatibility(*found, sex, actorRace, actorFamily).Compatible()) {
+                compatible.push_back(id);
+            }
         }
         return compatible;
     }

@@ -14,9 +14,13 @@ BodySkin\<skin name>\Textures\actors\character\khajiitmale\...
 
 Every skin stays self-contained under its own BodySkin folder. Body Change NG
 shows separate compatible rows per detected race and sex, and filters them by
-the selected actor's race, sex, and body family. If you add a profile.json, use a relative path such as
-Textures\actors\character\female\femalebody_1.dds.
+the selected actor's race, sex, and exact UV layout. Put CBBE/3BA, UNP/BHUNP,
+UBE, HIMBO, SAM, or Vanilla in an automatically detected pack's folder name,
+or add profile.json with an exact uvLayout. In profile.json, use a relative
+path such as Textures\actors\character\female\femalebody_1.dds.
 
 Partial packs are valid. Only supplied body, hands, feet, and face channels are
-overridden; missing parts/channels retain the actor's current textures. A body
-texture is never reused for the hands or feet, and vice versa.
+overridden; missing parts/channels retain the actor's current textures. Only a
+verified humanoid layout may use its body atlas for feet when no separate feet
+atlas exists. Beast-race and unknown layouts never borrow it; hands always stay
+independent except for UBE's explicitly shared Body atlas.

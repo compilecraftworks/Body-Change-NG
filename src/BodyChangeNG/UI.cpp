@@ -138,8 +138,8 @@ namespace
     constexpr ImU32 kCardText = IM_COL32(238, 238, 238, 255);
     constexpr ImU32 kCardSubtext = IM_COL32(170, 170, 170, 255);
     constexpr ImU32 kCardIncompatible = IM_COL32(192, 145, 120, 255);
-    constexpr std::uint32_t kSkinApplyChannel = 204U;
-    constexpr std::uint32_t kFutanariApplyChannel = 205U;
+    constexpr auto kSkinApplyChannel = bcn::appearance::WorkChannel::skinApply;
+    constexpr auto kFutanariApplyChannel = bcn::appearance::WorkChannel::futanariSkinApply;
 
     [[nodiscard]] bcn::UiLanguage WindowsLanguage()
     {
@@ -1013,6 +1013,10 @@ namespace
             return Text("선택한 스킨팩은 이 액터의 종족과 맞지 않습니다.", "The selected skin pack does not match this actor's race.", "所选皮肤包与该角色的种族不匹配。");
         case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
+        case bcn::skin_override::ApplyResult::ambiguousProfileLayout:
+            return Text("스킨팩의 UV 레이아웃을 확정할 수 없습니다. profile.json에 uvLayout을 지정하세요.", "The skin pack's UV layout is ambiguous. Set uvLayout in profile.json.", "无法确定皮肤包的 UV 布局。请在 profile.json 中设置 uvLayout。");
+        case bcn::skin_override::ApplyResult::ambiguousActorLayout:
+            return Text("액터의 바디 UV 레이아웃을 안전하게 판별하지 못해 적용을 중단했습니다.", "The actor's body UV layout could not be identified safely, so the skin was not applied.", "无法安全识别角色的身体 UV 布局，因此未应用皮肤。");
         case bcn::skin_override::ApplyResult::incompatibleFutanariType:
             return Text("선택한 후타나리 스킨은 현재 성기 유형과 맞지 않습니다.", "The selected futanari skin does not match the active genital type.", "所选扶她皮肤与当前生殖器类型不匹配。");
         case bcn::skin_override::ApplyResult::futanariGeometryUnavailable:
@@ -1384,7 +1388,11 @@ namespace
 
         const auto skins = bcn::SkinProfiles::Get().Snapshot();
         const auto settings = bcn::Settings::Get().Snapshot();
-        const auto actorFamily = CatalogActorFamily(actor, settings);
+        // Skin UV compatibility must use the same live evidence as the
+        // executor. Distribution defaults are suitable for morph filtering,
+        // but must never make an unknown actor look safe for a DDS write.
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        const auto actorSex = female ? bcn::SkinSex::female : bcn::SkinSex::male;
         const auto backendCurrentSkin = bcn::skin_override::CurrentProfileId(actor);
         const auto confirmedSkinId = g_pendingSkin && g_pendingSkin->actorFormID == actor->GetFormID() ?
             g_pendingSkin->originalId : backendCurrentSkin.value_or(std::string{});
@@ -1392,9 +1400,7 @@ namespace
         std::vector<const bcn::SkinProfile*> visibleSkins;
         visibleSkins.reserve(skins.size());
         for (const auto& skin : skins) {
-            if ((female && skin.sex != bcn::SkinSex::female) || (!female && skin.sex != bcn::SkinSex::male)) continue;
-            if (!bcn::SkinRaceMatchesActor(skin.race, actorRace)) continue;
-            if (!bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily)) continue;
+            if (!bcn::SkinProfileCompatibility(skin, actorSex, actorRace, actorFamily).Compatible()) continue;
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(skin.id).find(Lower(g_search)) == std::string::npos) continue;
             const auto favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
@@ -1476,11 +1482,9 @@ namespace
             ImGui::Dummy(ImVec2(0.0F, Scaled(5.0F)));
             ImGui::PopID();
             ++row;
-            const auto hasMatchingSkin = std::ranges::any_of(skins, [female, actorFamily, actorRace](const auto& skin) {
-                return ((female && skin.sex == bcn::SkinSex::female) ||
-                    (!female && skin.sex == bcn::SkinSex::male)) &&
-                    bcn::SkinRaceMatchesActor(skin.race, actorRace) &&
-                    bcn::SkinMatchesActor(skin.bodyFamilies, actorFamily);
+            const auto hasMatchingSkin = std::ranges::any_of(skins, [actorSex, actorFamily, actorRace](const auto& skin) {
+                return bcn::SkinProfileCompatibility(
+                    skin, actorSex, actorRace, actorFamily).Compatible();
             });
             if (!hasMatchingSkin) {
                 ImGui::TextUnformatted(Text(
@@ -2213,13 +2217,17 @@ namespace
                     const auto distributionFamily = rule.female ?
                         bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
                         bcn::NpcDistributionFamily(settings.maleNpcBodyType);
+                    const auto matchesDistributionFamily = [distributionFamily](const bcn::SkinProfile& skin) {
+                        return skin.race != bcn::SkinRace::humanoid ||
+                            bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily);
+                    };
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 스킨 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's skin pool — one skin pack is fixed; multiple skin packs are stably randomized per matching NPC.", "本规则专用皮肤池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
                     if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
                         rule.skinProfileIds.clear();
                         for (const auto& skin : skins) {
                             if ((skin.sex == bcn::SkinSex::female && !rule.female) ||
                                 (skin.sex == bcn::SkinSex::male && rule.female) ||
-                                !bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily)) continue;
+                                !matchesDistributionFamily(skin)) continue;
                             rule.skinProfileIds.push_back(skin.id);
                         }
                     }
@@ -2235,7 +2243,7 @@ namespace
                             ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
                         for (const auto& skin : skins) {
                             if ((skin.sex == bcn::SkinSex::female && !rule.female) || (skin.sex == bcn::SkinSex::male && rule.female)) continue;
-                            if (!bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily)) continue;
+                            if (!matchesDistributionFamily(skin)) continue;
                             if (!g_distributionSkinSearch.empty() &&
                                 Lower(skin.name).find(Lower(g_distributionSkinSearch)) == std::string::npos) continue;
                             bool selected = ContainsSkinProfile(rule, skin.id);
