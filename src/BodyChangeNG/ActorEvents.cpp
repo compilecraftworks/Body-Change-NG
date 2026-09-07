@@ -1,6 +1,7 @@
 #include "BodyChangeNG/ActorEvents.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/AppearanceEventPolicy.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
@@ -50,75 +51,10 @@ namespace bcn
             }
         }
 
-        void VerifyEquipmentSkin(const RE::ActorHandle& handle, const RE::FormID actorFormID,
-            const std::uint64_t generation, const std::uint64_t session,
-            const unsigned remainingRepairs, const unsigned remainingLoadRetries = 60)
-        {
-            if (!SKSE::GetTaskInterface()) {
-                FinishEquipmentChange(actorFormID, generation);
-                return;
-            }
-            frame_tasks::Queue(actorFormID,
-                [handle, actorFormID, generation, session, remainingRepairs, remainingLoadRetries] {
-                    if (!IsCurrentEquipmentChange(actorFormID, generation, session)) return;
-                    const auto actor = handle.get();
-                    if (!actor || actor->GetFormID() != actorFormID) {
-                        FinishEquipmentChange(actorFormID, generation);
-                        return;
-                    }
-                    if (!actor->Is3DLoaded()) {
-                        if (remainingLoadRetries != 0U) {
-                            VerifyEquipmentSkin(handle, actorFormID, generation, session,
-                                remainingRepairs, remainingLoadRetries - 1U);
-                        } else {
-                            FinishEquipmentChange(actorFormID, generation);
-                        }
-                        return;
-                    }
-
-                    const auto skin = skin_override::CurrentProfileId(actor.get());
-                    if (!skin) {
-                        if (skin_override::HasTrackedSelection(actor.get())) {
-                            const auto liveMatches = skin_override::LiveSkinStateMatches(
-                                actor.get(), {}, true,
-                                skin_override::LiveCheckScope::equipmentParts);
-                            if (!liveMatches.value_or(false) && remainingRepairs != 0U) {
-                                static_cast<void>(skin_override::QueueClear(actor.get()));
-                                VerifyEquipmentSkin(handle, actorFormID, generation, session,
-                                    remainingRepairs - 1U, remainingLoadRetries);
-                                return;
-                            }
-                        }
-                        FinishEquipmentChange(actorFormID, generation);
-                        return;
-                    }
-                    const auto liveMatches = skin_override::LiveSkinStateMatches(
-                        actor.get(), *skin, false, skin_override::LiveCheckScope::equipmentParts);
-                    if (liveMatches.value_or(false)) {
-                        FinishEquipmentChange(actorFormID, generation);
-                        return;
-                    }
-                    if (remainingRepairs == 0U) {
-                        SKSE::log::warn(
-                            "Body Change NG could not verify skin '{}' after equipment rebuild for actor {:08X}; the desired selection remains pending",
-                            *skin, actorFormID);
-                        FinishEquipmentChange(actorFormID, generation);
-                        return;
-                    }
-
-                    const auto result = skin_override::QueueApply(actor.get(), *skin);
-                    SKSE::log::debug(
-                        "Body Change NG repaired skin after equipment rebuild actor={:08X} remaining-passes={} result={}",
-                        actorFormID, remainingRepairs, static_cast<std::uint32_t>(result));
-                    VerifyEquipmentSkin(handle, actorFormID, generation, session,
-                        remainingRepairs - 1U, remainingLoadRetries);
-                }, 4U, appearance::WorkChannel::equipmentVerify, true);
-        }
-
         void ReconcileEquipmentChange(const RE::ActorHandle& handle, const RE::FormID actorFormID,
             const std::uint32_t remainingHops,
             const std::uint64_t generation, const std::uint64_t session,
-            const bool verifyFinalSkin, const unsigned retries = 60)
+            const unsigned retries = 60)
         {
             const auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) {
@@ -126,7 +62,7 @@ namespace bcn
                 return;
             }
             frame_tasks::Queue(actorFormID,
-                [handle, actorFormID, generation, session, verifyFinalSkin, retries] {
+                [handle, actorFormID, generation, session, retries] {
                 if (!IsCurrentEquipmentChange(actorFormID, generation, session)) return;
                 const auto actor = handle.get();
                 if (!actor || actor->GetFormID() != actorFormID) {
@@ -136,40 +72,21 @@ namespace bcn
                 if (!actor->Is3DLoaded()) {
                     if (retries) {
                         ReconcileEquipmentChange(handle, actorFormID, 2, generation, session,
-                            verifyFinalSkin, retries - 1);
+                            retries - 1);
                         return;
                     }
                     FinishEquipmentChange(actorFormID, generation);
                     return;
                 }
-                // The Biped clone has had time to rebuild. Rebuild only the outfit key
-                // and repaint the already selected skin onto new embedded body
-                // geometry; body distribution is deliberately not rerun.
+                // Native BodySkin lives on ActorBase -> Skin Armor -> ARMA ->
+                // TXST and therefore survives equipment replacement without a
+                // repaint. Equipment events own only outfit morph correction
+                // and optional external genital addons.
                 ActorRegistry::Get().InvalidateOutfit(actor.get());
                 OutfitRefit::Get().ProcessActor(actor.get());
+                skin_override::QueueReapplyCurrentMaleGenitals(actor.get());
                 skin_override::InvalidateFutanariDetection(actorFormID);
                 skin_override::QueueReapplyCurrentFutanari(actor.get());
-                if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
-                    [[maybe_unused]] const auto result = skin_override::QueueApply(actor.get(), *skin);
-                    if (verifyFinalSkin) {
-                        // Corpse looting can replace the naked Biped clone after
-                        // TESEquipEvent. Verify that final clone rather than
-                        // assuming this first repaint survives.
-                        VerifyEquipmentSkin(handle, actorFormID, generation, session, 2U);
-                        return;
-                    }
-                } else if (skin_override::HasTrackedSelection(actor.get())) {
-                    const auto liveMatches = skin_override::LiveSkinStateMatches(
-                        actor.get(), {}, true,
-                        skin_override::LiveCheckScope::equipmentParts);
-                    if (!liveMatches.value_or(false)) {
-                        [[maybe_unused]] const auto result = skin_override::QueueClear(actor.get());
-                    }
-                    if (verifyFinalSkin && !liveMatches.value_or(false)) {
-                        VerifyEquipmentSkin(handle, actorFormID, generation, session, 2U);
-                        return;
-                    }
-                }
                 FinishEquipmentChange(actorFormID, generation);
             }, std::max(1U, remainingHops),
                 appearance::WorkChannel::equipmentReconcile, true);
@@ -199,10 +116,10 @@ namespace bcn
                     return;
                 }
 
-                // RaceMenu may recreate all three backing objects at close:
-                // the body geometry, NiOverride texture targets and player
-                // tint arrays. Reapply only the selections already owned by
-                // Body Change NG, after those replacements have settled.
+                // RaceMenu may recreate body geometry and player tint arrays
+                // at close. The native Skin Armor graph remains authoritative
+                // for every new body clone; QueueApply only verifies or
+                // reattaches the already-owned graph after the rebuild settles.
                 if (racemenu::CurrentPresetId(actor.get())) {
                     racemenu::QueueReapplyCurrent(actor.get());
                 }
@@ -311,11 +228,18 @@ namespace bcn
         if (auto* actor = event->actor->As<RE::Actor>()) {
             if (!frame_tasks::Active()) return RE::BSEventNotifyControl::kContinue;
             skin_override::InvalidateFutanariDetection(actor->GetFormID());
-            const auto hasSkin = skin_override::HasTrackedSelection(actor);
             const auto hasFutanariSkin = skin_override::CurrentFutanariProfileId(actor).has_value();
+            const auto hasMaleGenitalSkin = skin_override::HasCurrentMaleGenitalSkin(actor);
             const auto needsOutfit = Settings::Get().OutfitCorrectionEnabled() ||
                 racemenu::HasOutfitCorrection(actor);
-            if (!hasSkin && !hasFutanariSkin && !needsOutfit) {
+            const auto needsFutanariReconcile = hasFutanariSkin && appearance::NeedsReconcile(
+                appearance::Feature::futanariAddon, appearance::Event::equipmentChanged);
+            const auto needsMaleGenitalReconcile = hasMaleGenitalSkin && appearance::NeedsReconcile(
+                appearance::Feature::maleGenitalAddon, appearance::Event::equipmentChanged);
+            const auto needsOutfitReconcile = needsOutfit && appearance::NeedsReconcile(
+                appearance::Feature::outfitMorph, appearance::Event::equipmentChanged);
+            if (!needsMaleGenitalReconcile && !needsFutanariReconcile &&
+                !needsOutfitReconcile) {
                 return RE::BSEventNotifyControl::kContinue;
             }
             // TESEquipEvent is emitted before the replacement BipedAnim clone
@@ -323,7 +247,7 @@ namespace bcn
             // only the newest settled outfit is corrected and repainted.
             const auto generation = BeginEquipmentChange(actor->GetFormID());
             ReconcileEquipmentChange(actor->GetHandle(), actor->GetFormID(), 2U, generation,
-                ActorRegistry::Get().SessionGeneration(), actor->IsDead());
+                ActorRegistry::Get().SessionGeneration());
         }
         return RE::BSEventNotifyControl::kContinue;
     }
@@ -342,8 +266,11 @@ namespace bcn
         }
         auto* oldContainer = RE::TESForm::LookupByID(event->oldContainer);
         auto* actor = oldContainer ? oldContainer->As<RE::Actor>() : nullptr;
+        const auto needsOutfit = actor && (Settings::Get().OutfitCorrectionEnabled() ||
+            racemenu::HasOutfitCorrection(actor));
+        const auto needsMaleGenital = actor && skin_override::HasCurrentMaleGenitalSkin(actor);
         if (!actor || !actor->IsDead() ||
-            (!skin_override::HasTrackedSelection(actor) &&
+            (!needsOutfit && !needsMaleGenital &&
                 !skin_override::CurrentFutanariProfileId(actor))) {
             return RE::BSEventNotifyControl::kContinue;
         }
@@ -353,7 +280,7 @@ namespace bcn
         // reconcile only the final naked Biped state.
         const auto generation = BeginEquipmentChange(actor->GetFormID());
         ReconcileEquipmentChange(actor->GetHandle(), actor->GetFormID(), 3U, generation,
-            ActorRegistry::Get().SessionGeneration(), true);
+            ActorRegistry::Get().SessionGeneration());
         return RE::BSEventNotifyControl::kContinue;
     }
 
@@ -387,7 +314,13 @@ namespace bcn
         const SKSE::NiNodeUpdateEvent* event,
         RE::BSTEventSource<SKSE::NiNodeUpdateEvent>*)
     {
-        if (event && event->reference) {
+        // Native BodySkin is form-backed and needs no general NiNode repaint.
+        // The only consumer is the isolated RSV face bridge: RSV deliberately
+        // restores its serialized FaceGen keys after a rebuild, so that
+        // bridge merges the selected BCNG face once after RSV settles.
+        if (event && event->reference && appearance::NeedsReconcile(
+                appearance::Feature::rsvFaceBridge,
+                appearance::Event::niNodeUpdated)) {
             if (auto* actor = event->reference->As<RE::Actor>()) {
                 skin_override::NotifyNiNodeUpdated(actor);
             }

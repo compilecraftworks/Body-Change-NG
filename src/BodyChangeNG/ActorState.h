@@ -7,36 +7,55 @@
 
 namespace bcn
 {
+    struct FeatureSelectionState final
+    {
+        std::string selectedId;
+        bool manual{};
+        bool useDefault{};
+    };
+
+    struct FeatureApplicationState final
+    {
+        std::string appliedId;
+        bool appliedDefault{};
+        bool applied{};
+        // Serialized completion metadata is only a hint until the owning
+        // feature verifies its own live backend in the current session.
+        bool verifiedThisSession{};
+        std::uint64_t signature{};
+    };
+
+    struct BodyFeatureState final
+    {
+        FeatureSelectionState selection;
+        FeatureApplicationState application;
+        // Outfit correction is a RaceMenu morph layer, not skin state. Keep
+        // its invalidation boundary with the body feature that owns it.
+        std::uint64_t outfitSignature{};
+    };
+
+    struct SkinFeatureState final
+    {
+        FeatureSelectionState selection;
+        FeatureApplicationState application;
+    };
+
+    struct FutanariFeatureState final
+    {
+        // This is an optional, reference-scoped addon texture choice. It must
+        // not be cleared when either the body or base-skin feature resets.
+        std::string selectedSkinId;
+    };
+
     struct ActorState final
     {
         std::uint32_t actorFormID{};
         std::uint32_t baseLocalFormID{};
         std::string basePlugin;
 
-        std::string selectedBodyId;
-        std::string selectedSkinId;
-        // Manual futanari genital texture choice. It remains selected while
-        // the addon is unequipped so SOS Gender Bender/TNG can restore it on
-        // the next matching equipment rebuild.
-        std::string selectedFutanariSkinId;
-        bool manualBody{};
-        bool manualSkin{};
-        bool useDefaultBody{};
-        bool useDefaultSkin{};
-
-        std::string appliedBodyId;
-        std::string appliedSkinId;
-        bool appliedDefaultBody{};
-        bool appliedDefaultSkin{};
-        bool bodyApplied{};
-        bool skinApplied{};
-        // Runtime-only proof. Serialized completion metadata is only a hint
-        // until the new session verifies RaceMenu's live state once.
-        bool bodyVerifiedThisSession{};
-        bool skinVerifiedThisSession{};
-        std::uint64_t bodySignature{};
-        std::uint64_t skinSignature{};
-        std::uint64_t outfitSignature{};
+        BodyFeatureState body;
+        SkinFeatureState skin;
+        FutanariFeatureState futanari;
     };
 
     enum class RestoredApplicationDecision : std::uint8_t
@@ -58,8 +77,8 @@ namespace bcn
 
     inline void PrepareRestoredState(ActorState& state) noexcept
     {
-        state.bodyVerifiedThisSession = false;
-        state.skinVerifiedThisSession = false;
+        state.body.application.verifiedThisSession = false;
+        state.skin.application.verifiedThisSession = false;
     }
 
     [[nodiscard]] inline std::uint64_t StableStateSignature(const std::string_view channel,

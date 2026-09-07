@@ -66,12 +66,16 @@ namespace bcn::skin_plan
     ApplicationPlan Build(const SkinProfile& profile, const ActorContext& actor)
     {
         ApplicationPlan plan;
-        plan.layout = profile.uvLayout;
+        plan.layout = profile.layout;
+        plan.runtimeUvLayout = ResolveRuntimeSkinUvLayout(profile.layout, actor.bodyFamily);
         plan.body = profile.body;
         plan.hands = profile.hands;
+        // Optional genital/anal atlases are assets, not classification
+        // evidence. Keep both in the plan; exact runtime geometry/TXST role
+        // matching naturally consumes only the family that is installed.
         plan.cbbeGenitalAnal = profile.cbbeGenitalAnal;
         plan.unpGenitalAnal = profile.unpGenitalAnal;
-        plan.broadSharedAtlas = AllowsBroadSkinSlotFallback(profile.uvLayout);
+        plan.broadSharedAtlas = AllowsBroadSkinSlotFallback(profile.layout);
         plan.beastTail = profile.race == SkinRace::argonian ||
             profile.race == SkinRace::khajiit;
 
@@ -80,7 +84,7 @@ namespace bcn::skin_plan
             OverlayLayers(plan.hands, profile.elderHands);
         }
 
-        switch (ResolveFeetLayerSource(profile.uvLayout, profile.race,
+        switch (ResolveFeetLayerSource(profile.layout, profile.race,
                     profile.body.size(), profile.feet.size())) {
         case FeetLayerSource::explicitFeet:
             plan.feet = profile.feet;

@@ -156,27 +156,27 @@ namespace
             serialized.reserve(states.size());
             for (const auto& state : states) {
                 std::uint16_t flags{};
-                if (state.manualBody) flags |= kManualBody;
-                if (state.manualSkin) flags |= kManualSkin;
-                if (state.useDefaultBody) flags |= kDefaultBody;
-                if (state.useDefaultSkin) flags |= kDefaultSkin;
-                if (state.appliedDefaultBody) flags |= kAppliedDefaultBody;
-                if (state.appliedDefaultSkin) flags |= kAppliedDefaultSkin;
-                if (state.bodyApplied) flags |= kBodyApplied;
-                if (state.skinApplied) flags |= kSkinApplied;
+                if (state.body.selection.manual) flags |= kManualBody;
+                if (state.skin.selection.manual) flags |= kManualSkin;
+                if (state.body.selection.useDefault) flags |= kDefaultBody;
+                if (state.skin.selection.useDefault) flags |= kDefaultSkin;
+                if (state.body.application.appliedDefault) flags |= kAppliedDefaultBody;
+                if (state.skin.application.appliedDefault) flags |= kAppliedDefaultSkin;
+                if (state.body.application.applied) flags |= kBodyApplied;
+                if (state.skin.application.applied) flags |= kSkinApplied;
                 serialized.push_back(SerializedActorStateV2{
                     .actorFormID = state.actorFormID,
                     .baseLocalFormID = state.baseLocalFormID,
                     .basePluginIndex = indexFor(state.basePlugin),
-                    .selectedBodyIndex = indexFor(state.selectedBodyId),
-                    .selectedSkinIndex = indexFor(state.selectedSkinId),
-                    .selectedFutanariSkinIndex = indexFor(state.selectedFutanariSkinId),
-                    .appliedBodyIndex = indexFor(state.appliedBodyId),
-                    .appliedSkinIndex = indexFor(state.appliedSkinId),
+                    .selectedBodyIndex = indexFor(state.body.selection.selectedId),
+                    .selectedSkinIndex = indexFor(state.skin.selection.selectedId),
+                    .selectedFutanariSkinIndex = indexFor(state.futanari.selectedSkinId),
+                    .appliedBodyIndex = indexFor(state.body.application.appliedId),
+                    .appliedSkinIndex = indexFor(state.skin.application.appliedId),
                     .flags = flags,
-                    .bodySignature = state.bodySignature,
-                    .skinSignature = state.skinSignature,
-                    .outfitSignature = state.outfitSignature
+                    .bodySignature = state.body.application.signature,
+                    .skinSignature = state.skin.application.signature,
+                    .outfitSignature = state.body.outfitSignature
                 });
             }
             const auto stringCount = static_cast<std::uint32_t>(strings.size());
@@ -250,22 +250,34 @@ namespace
                 .actorFormID = source.actorFormID,
                 .baseLocalFormID = source.baseLocalFormID,
                 .basePlugin = strings[source.basePluginIndex],
-                .selectedBodyId = strings[source.selectedBodyIndex],
-                .selectedSkinId = strings[source.selectedSkinIndex],
-                .selectedFutanariSkinId = strings[source.selectedFutanariSkinIndex],
-                .manualBody = (source.flags & kManualBody) != 0U,
-                .manualSkin = (source.flags & kManualSkin) != 0U,
-                .useDefaultBody = (source.flags & kDefaultBody) != 0U,
-                .useDefaultSkin = (source.flags & kDefaultSkin) != 0U,
-                .appliedBodyId = strings[source.appliedBodyIndex],
-                .appliedSkinId = strings[source.appliedSkinIndex],
-                .appliedDefaultBody = (source.flags & kAppliedDefaultBody) != 0U,
-                .appliedDefaultSkin = (source.flags & kAppliedDefaultSkin) != 0U,
-                .bodyApplied = (source.flags & kBodyApplied) != 0U,
-                .skinApplied = (source.flags & kSkinApplied) != 0U,
-                .bodySignature = source.bodySignature,
-                .skinSignature = source.skinSignature,
-                .outfitSignature = source.outfitSignature
+                .body = {
+                    .selection = {
+                        .selectedId = strings[source.selectedBodyIndex],
+                        .manual = (source.flags & kManualBody) != 0U,
+                        .useDefault = (source.flags & kDefaultBody) != 0U
+                    },
+                    .application = {
+                        .appliedId = strings[source.appliedBodyIndex],
+                        .appliedDefault = (source.flags & kAppliedDefaultBody) != 0U,
+                        .applied = (source.flags & kBodyApplied) != 0U,
+                        .signature = source.bodySignature
+                    },
+                    .outfitSignature = source.outfitSignature
+                },
+                .skin = {
+                    .selection = {
+                        .selectedId = strings[source.selectedSkinIndex],
+                        .manual = (source.flags & kManualSkin) != 0U,
+                        .useDefault = (source.flags & kDefaultSkin) != 0U
+                    },
+                    .application = {
+                        .appliedId = strings[source.appliedSkinIndex],
+                        .appliedDefault = (source.flags & kAppliedDefaultSkin) != 0U,
+                        .applied = (source.flags & kSkinApplied) != 0U,
+                        .signature = source.skinSignature
+                    }
+                },
+                .futanari = { .selectedSkinId = strings[source.selectedFutanariSkinIndex] }
             });
         }
         for (auto& state : loaded) bcn::ActorRegistry::Get().RestoreSerialized(std::move(state));
@@ -402,14 +414,14 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        if (!state || (!state->manualBody && !state->manualSkin)) return std::nullopt;
+        if (!state || (!state->body.selection.manual && !state->skin.selection.manual)) return std::nullopt;
         return ManualActorSelection{
-            .bodyId = state->selectedBodyId,
-            .skinId = state->selectedSkinId,
-            .hasBody = state->manualBody,
-            .hasSkin = state->manualSkin,
-            .useDefaultBody = state->useDefaultBody,
-            .useDefaultSkin = state->useDefaultSkin
+            .bodyId = state->body.selection.selectedId,
+            .skinId = state->skin.selection.selectedId,
+            .hasBody = state->body.selection.manual,
+            .hasSkin = state->skin.selection.manual,
+            .useDefaultBody = state->body.selection.useDefault,
+            .useDefaultSkin = state->skin.selection.useDefault
         };
     }
 
@@ -417,32 +429,34 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return state && state->bodyApplied && !state->appliedDefaultBody && !state->appliedBodyId.empty() ?
-            std::optional{ state->appliedBodyId } : std::nullopt;
+        return state && state->body.application.applied && !state->body.application.appliedDefault &&
+            !state->body.application.appliedId.empty() ?
+            std::optional{ state->body.application.appliedId } : std::nullopt;
     }
 
     std::optional<std::string> ActorRegistry::SelectedSkinId(const RE::Actor* actor) const
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return state && !state->useDefaultSkin && !state->selectedSkinId.empty() ?
-            std::optional{ state->selectedSkinId } : std::nullopt;
+        return state && !state->skin.selection.useDefault && !state->skin.selection.selectedId.empty() ?
+            std::optional{ state->skin.selection.selectedId } : std::nullopt;
     }
 
     std::optional<std::string> ActorRegistry::AppliedSkinId(const RE::Actor* actor) const
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return state && state->skinApplied && !state->appliedDefaultSkin && !state->appliedSkinId.empty() ?
-            std::optional{ state->appliedSkinId } : std::nullopt;
+        return state && state->skin.application.applied && !state->skin.application.appliedDefault &&
+            !state->skin.application.appliedId.empty() ?
+            std::optional{ state->skin.application.appliedId } : std::nullopt;
     }
 
     std::optional<std::string> ActorRegistry::SelectedFutanariSkinId(const RE::Actor* actor) const
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return state && !state->selectedFutanariSkinId.empty() ?
-            std::optional{ state->selectedFutanariSkinId } : std::nullopt;
+        return state && !state->futanari.selectedSkinId.empty() ?
+            std::optional{ state->futanari.selectedSkinId } : std::nullopt;
     }
 
     void ActorRegistry::SetManualBody(RE::Actor* actor, std::string bodyId, const bool useDefault)
@@ -450,9 +464,9 @@ namespace bcn
         if (!actor || (!useDefault && bodyId.empty()) || bodyId.size() > kMaxStringLength) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.selectedBodyId = useDefault ? std::string{} : std::move(bodyId);
-        state.manualBody = true;
-        state.useDefaultBody = useDefault;
+        state.body.selection.selectedId = useDefault ? std::string{} : std::move(bodyId);
+        state.body.selection.manual = true;
+        state.body.selection.useDefault = useDefault;
     }
 
     void ActorRegistry::SetManualSkin(RE::Actor* actor, std::string skinId, const bool useDefault)
@@ -460,16 +474,16 @@ namespace bcn
         if (!actor || (!useDefault && skinId.empty()) || skinId.size() > kMaxStringLength) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.selectedSkinId = useDefault ? std::string{} : std::move(skinId);
-        state.manualSkin = true;
-        state.useDefaultSkin = useDefault;
+        state.skin.selection.selectedId = useDefault ? std::string{} : std::move(skinId);
+        state.skin.selection.manual = true;
+        state.skin.selection.useDefault = useDefault;
     }
 
     void ActorRegistry::SetFutanariSkin(RE::Actor* actor, std::string skinId)
     {
         if (!actor || skinId.empty() || skinId.size() > kMaxStringLength) return;
         std::scoped_lock lock(lock_);
-        EnsureLocked(actor).selectedFutanariSkinId = std::move(skinId);
+        EnsureLocked(actor).futanari.selectedSkinId = std::move(skinId);
     }
 
     void ActorRegistry::ClearFutanariSkin(RE::Actor* actor)
@@ -477,7 +491,7 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         if (auto* state = const_cast<ActorState*>(FindValidatedLocked(actor))) {
-            state->selectedFutanariSkinId.clear();
+            state->futanari.selectedSkinId.clear();
         }
     }
 
@@ -486,13 +500,9 @@ namespace bcn
         if (!actor) return false;
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
-        if (!state || (!state->manualBody && !state->manualSkin)) return false;
-        state->manualBody = false;
-        state->manualSkin = false;
-        state->useDefaultBody = false;
-        state->useDefaultSkin = false;
-        state->selectedBodyId.clear();
-        state->selectedSkinId.clear();
+        if (!state || (!state->body.selection.manual && !state->skin.selection.manual)) return false;
+        state->body.selection = {};
+        state->skin.selection = {};
         return true;
     }
 
@@ -501,10 +511,8 @@ namespace bcn
         if (!actor) return false;
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
-        if (!state || !state->manualBody) return false;
-        state->manualBody = false;
-        state->useDefaultBody = false;
-        state->selectedBodyId.clear();
+        if (!state || !state->body.selection.manual) return false;
+        state->body.selection = {};
         return true;
     }
 
@@ -512,10 +520,8 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         for (auto& [formID, state] : states_) {
-            state.manualBody = state.manualSkin = false;
-            state.useDefaultBody = state.useDefaultSkin = false;
-            state.selectedBodyId.clear();
-            state.selectedSkinId.clear();
+            state.body.selection = {};
+            state.skin.selection = {};
         }
     }
 
@@ -523,9 +529,7 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         for (auto& [formID, state] : states_) {
-            state.manualBody = false;
-            state.useDefaultBody = false;
-            state.selectedBodyId.clear();
+            state.body.selection = {};
         }
     }
 
@@ -540,13 +544,13 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        if (!state.manualBody) {
-            state.selectedBodyId = bodyId.value_or(std::string{});
-            state.useDefaultBody = false;
+        if (!state.body.selection.manual) {
+            state.body.selection.selectedId = bodyId.value_or(std::string{});
+            state.body.selection.useDefault = false;
         }
-        if (!state.manualSkin) {
-            state.selectedSkinId = skinId.value_or(std::string{});
-            state.useDefaultSkin = false;
+        if (!state.skin.selection.manual) {
+            state.skin.selection.selectedId = skinId.value_or(std::string{});
+            state.skin.selection.useDefault = false;
         }
     }
 
@@ -570,23 +574,25 @@ namespace bcn
         {
             std::scoped_lock lock(lock_);
             const auto* state = FindValidatedLocked(actor);
-            if (!state || !state->bodyApplied || state->bodySignature != expectedSignature) return true;
-            if (state->bodyVerifiedThisSession) return false;
+            if (!state || !state->body.application.applied ||
+                state->body.application.signature != expectedSignature) return true;
+            if (state->body.application.verifiedThisSession) return false;
         }
 
         const auto liveMatches = racemenu::LiveBodyChangeStateMatches(actor, useDefault);
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
         if (!state) return true;
-        const auto decision = EvaluateRestoredApplication(state->bodyApplied,
-            state->bodyVerifiedThisSession, state->bodySignature == expectedSignature, liveMatches);
+        const auto decision = EvaluateRestoredApplication(state->body.application.applied,
+            state->body.application.verifiedThisSession,
+            state->body.application.signature == expectedSignature, liveMatches);
         if (decision == RestoredApplicationDecision::acceptLive) {
-            state->bodyVerifiedThisSession = true;
+            state->body.application.verifiedThisSession = true;
             return false;
         }
         if (decision == RestoredApplicationDecision::skipVerified) return false;
-        state->bodyApplied = false;
-        state->bodyVerifiedThisSession = false;
+        state->body.application.applied = false;
+        state->body.application.verifiedThisSession = false;
         return true;
     }
 
@@ -597,23 +603,25 @@ namespace bcn
         {
             std::scoped_lock lock(lock_);
             const auto* state = FindValidatedLocked(actor);
-            if (!state || !state->skinApplied || state->skinSignature != expectedSignature) return true;
-            if (state->skinVerifiedThisSession) return false;
+            if (!state || !state->skin.application.applied ||
+                state->skin.application.signature != expectedSignature) return true;
+            if (state->skin.application.verifiedThisSession) return false;
         }
 
         const auto liveMatches = skin_override::LiveSkinStateMatches(actor, skinId, useDefault);
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
         if (!state) return true;
-        const auto decision = EvaluateRestoredApplication(state->skinApplied,
-            state->skinVerifiedThisSession, state->skinSignature == expectedSignature, liveMatches);
+        const auto decision = EvaluateRestoredApplication(state->skin.application.applied,
+            state->skin.application.verifiedThisSession,
+            state->skin.application.signature == expectedSignature, liveMatches);
         if (decision == RestoredApplicationDecision::acceptLive) {
-            state->skinVerifiedThisSession = true;
+            state->skin.application.verifiedThisSession = true;
             return false;
         }
         if (decision == RestoredApplicationDecision::skipVerified) return false;
-        state->skinApplied = false;
-        state->skinVerifiedThisSession = false;
+        state->skin.application.applied = false;
+        state->skin.application.verifiedThisSession = false;
         return true;
     }
 
@@ -622,11 +630,11 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.appliedBodyId = useDefault ? std::string{} : std::move(bodyId);
-        state.appliedDefaultBody = useDefault;
-        state.bodyApplied = true;
-        state.bodyVerifiedThisSession = true;
-        state.bodySignature = BodySignature(state.appliedBodyId, useDefault);
+        state.body.application.appliedId = useDefault ? std::string{} : std::move(bodyId);
+        state.body.application.appliedDefault = useDefault;
+        state.body.application.applied = true;
+        state.body.application.verifiedThisSession = true;
+        state.body.application.signature = BodySignature(state.body.application.appliedId, useDefault);
     }
 
     void ActorRegistry::MarkSkinApplied(RE::Actor* actor, std::string skinId, const bool useDefault)
@@ -634,25 +642,25 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.appliedSkinId = useDefault ? std::string{} : std::move(skinId);
-        state.appliedDefaultSkin = useDefault;
-        state.skinApplied = true;
-        state.skinVerifiedThisSession = true;
-        state.skinSignature = SkinSignature(state.appliedSkinId, useDefault);
+        state.skin.application.appliedId = useDefault ? std::string{} : std::move(skinId);
+        state.skin.application.appliedDefault = useDefault;
+        state.skin.application.applied = true;
+        state.skin.application.verifiedThisSession = true;
+        state.skin.application.signature = SkinSignature(state.skin.application.appliedId, useDefault);
     }
 
     void ActorRegistry::MarkOutfitApplied(RE::Actor* actor, const std::uint64_t signature)
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        EnsureLocked(actor).outfitSignature = signature;
+        EnsureLocked(actor).body.outfitSignature = signature;
     }
 
     bool ActorRegistry::NeedsOutfitApply(RE::Actor* actor, const std::uint64_t signature) const
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return !state || state->outfitSignature != signature;
+        return !state || state->body.outfitSignature != signature;
     }
 
     void ActorRegistry::InvalidateBody(RE::Actor* actor)
@@ -660,9 +668,9 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.bodyApplied = false;
-        state.bodyVerifiedThisSession = false;
-        state.bodySignature = 0U;
+        state.body.application.applied = false;
+        state.body.application.verifiedThisSession = false;
+        state.body.application.signature = 0U;
     }
 
     void ActorRegistry::InvalidateSkin(RE::Actor* actor)
@@ -670,25 +678,25 @@ namespace bcn
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        state.skinApplied = false;
-        state.skinVerifiedThisSession = false;
-        state.skinSignature = 0U;
+        state.skin.application.applied = false;
+        state.skin.application.verifiedThisSession = false;
+        state.skin.application.signature = 0U;
     }
 
     void ActorRegistry::InvalidateOutfit(RE::Actor* actor)
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        EnsureLocked(actor).outfitSignature = 0U;
+        EnsureLocked(actor).body.outfitSignature = 0U;
     }
 
     void ActorRegistry::InvalidateAllBodyResults()
     {
         std::scoped_lock lock(lock_);
         for (auto& [formID, state] : states_) {
-            state.bodyApplied = false;
-            state.bodyVerifiedThisSession = false;
-            state.bodySignature = 0U;
+            state.body.application.applied = false;
+            state.body.application.verifiedThisSession = false;
+            state.body.application.signature = 0U;
         }
     }
 

@@ -93,6 +93,21 @@ try {
     }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
     if ($starter.schemaVersion -ne 4 -or $starter.rules.Count -ne 8) { throw 'Unexpected starter rule schema/count.' }
+    $expectedRuleNameKeys = @(
+        'default-exclude-mod-follower-female',
+        'default-exclude-mod-follower-male',
+        'default-exclude-elder-female',
+        'default-exclude-elder-male',
+        'default-exclude-skin-argonian-female',
+        'default-exclude-skin-argonian-male',
+        'default-exclude-skin-khajiit-female',
+        'default-exclude-skin-khajiit-male'
+    )
+    $actualRuleNameKeys = @($starter.rules | ForEach-Object { $_.nameKey })
+    if ($actualRuleNameKeys.Count -ne 8 -or
+        (Compare-Object ($expectedRuleNameKeys | Sort-Object) ($actualRuleNameKeys | Sort-Object))) {
+        throw 'Starter rule localization keys are missing, duplicated, or unexpected.'
+    }
 
     $projectZip = Join-Path $stage 'project.zip'
     & git -c "safe.directory=$repo" -C $repo archive --format=zip "--output=$projectZip" HEAD

@@ -5,6 +5,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionRuleNames.h"
 #include "BodyChangeNG/InputSink.h"
 #include "BodyChangeNG/MenuCharacterPresentation.h"
 #include "BodyChangeNG/NativeImGuiHost.h"
@@ -104,6 +105,7 @@ namespace
     std::vector<bcn::DistributionRule> g_distributionRules;
     std::size_t g_selectedDistributionRule{};
     std::uint32_t g_nextDraftRuleID{ 1U };
+    std::optional<bcn::UiLanguage> g_distributionRuleNameLanguage;
     std::string g_distributionBodySearch;
     std::string g_distributionSkinSearch;
     std::vector<DistributionTargetOption> g_distributionFactionOptions;
@@ -740,15 +742,29 @@ namespace
         g_distributionEditorLoaded = true;
     }
 
+    void SynchronizeDistributionRuleNames()
+    {
+        const auto language = CurrentLanguage();
+        if (g_distributionRuleNameLanguage == language) return;
+        for (auto& rule : g_distributionRules) {
+            if (const auto localized = bcn::distribution_names::Localized(rule.nameKey, language);
+                !localized.empty()) {
+                rule.name = localized;
+            }
+        }
+        g_distributionRuleNameLanguage = language;
+    }
+
     [[nodiscard]] bcn::DistributionRule NewDistributionRule()
     {
         const auto actor = SelectedActor();
         const auto base = actor ? actor->GetActorBase() : nullptr;
         const auto female = !base || base->GetSex() == RE::SEX::kFemale;
         return {
-            .id = "user-rule-" + std::to_string(g_nextDraftRuleID++),
+            .id = bcn::GenerateUniqueUserRuleId(g_distributionRules, g_nextDraftRuleID),
             .name = female ? Text("새 여성 NPC 규칙", "New female NPC rule", "新的女性 NPC 规则") :
                 Text("새 남성 NPC 규칙", "New male NPC rule", "新的男性 NPC 规则"),
+            .nameKey = std::string{ bcn::distribution_names::NewRuleKey(female) },
             .female = female
         };
     }
@@ -1025,8 +1041,18 @@ namespace
             return Text("이 스킨팩의 얼굴 텍스처를 적용할 현재 얼굴 지오메트리를 찾지 못했습니다.", "The live face geometry required by this skin pack's face textures was not found.", "未找到应用此皮肤包脸部纹理所需的当前脸部几何体。");
         case bcn::skin_override::ApplyResult::noTaskInterface:
             return Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。");
+        case bcn::skin_override::ApplyResult::unsupportedRuntime:
+            return Text("검증되지 않은 Skyrim 버전이라 스킨 적용을 안전하게 중단했습니다.", "Skin application was stopped safely on an unaudited Skyrim runtime.", "由于 Skyrim 运行时版本未经验证，已安全停止皮肤应用。");
+        case bcn::skin_override::ApplyResult::actorBaseUnavailable:
+            return Text("이 액터의 기본 Skin Armor를 찾지 못했습니다.", "The actor's native Skin Armor is unavailable.", "找不到该角色的原生皮肤护甲。");
+        case bcn::skin_override::ApplyResult::nativeCloneFailed:
+            return Text("TXST·ARMA·Skin Armor 복제에 실패해 원본을 변경하지 않았습니다.", "TXST/ARMA/Skin Armor cloning failed; the originals were left unchanged.", "TXST、ARMA、皮肤护甲克隆失败；原始数据未更改。");
+        case bcn::skin_override::ApplyResult::sharedActorBaseConflict:
+            return Text("같은 ActorBase를 공유하는 다른 NPC가 이미 다른 스킨을 사용 중입니다.", "Another NPC sharing this ActorBase already owns a different skin selection.", "共享此 ActorBase 的另一个 NPC 已使用不同的皮肤选择。");
+        case bcn::skin_override::ApplyResult::ownershipConflict:
+            return Text("다른 모드가 Skin Armor 또는 얼굴 TXST를 교체해 덮어쓰지 않았습니다.", "Another mod replaced the Skin Armor or face TXST, so Body Change NG did not overwrite it.", "其他模组已替换皮肤护甲或脸部 TXST，因此 Body Change NG 未覆盖它。");
         case bcn::skin_override::ApplyResult::unavailable:
-            return Text("RaceMenu NiOverride 인터페이스를 사용할 수 없습니다.", "RaceMenu's NiOverride interface is unavailable.", "RaceMenu 的 NiOverride 接口不可用。");
+            return Text("필요한 외형 적용 백엔드를 사용할 수 없습니다.", "The required appearance backend is unavailable.", "所需的外观应用后端不可用。");
         default:
             return Text("적용할 액터가 없습니다.", "No actor is available.", "没有可应用的角色。");
         }
@@ -1423,8 +1449,8 @@ namespace
             const auto& skin = *visibleSkins[row - 1U];
             const auto result = bcn::skin_override::QueueApply(actor, skin.id);
             if (result == bcn::skin_override::ApplyResult::queued) {
-                // Unlike body previews, skin previews write the same durable
-                // NiOverride keys used by the confirmed result. Record the
+                // Unlike body previews, skin previews attach the same native
+                // Skin Armor graph used by the confirmed result. Record the
                 // NPC's manual lock immediately so an attach/init
                 // distribution event cannot flash the preview and restore a
                 // rule-selected or default skin before the UI closes.
@@ -1470,7 +1496,7 @@ namespace
             defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(7.0F)), kCardText,
                 Text("기본 스킨", "Default skin", "默认皮肤"));
             defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(27.0F)), kCardSubtext,
-                Text("몸 · 손 · 발 · 얼굴 텍스처 오버라이드 제거", "Remove body · hands · feet · face texture overrides", "移除身体 · 手 · 脚 · 脸部纹理覆盖"));
+                Text("몸 · 손 · 발 · 얼굴을 원래 TXST로 복원", "Restore the original body · hands · feet · face TXST", "恢复身体、手、脚和脸部的原始 TXST"));
             if (defaultDoubleClicked) {
                 FocusCatalogRow(row);
                 confirmRow(row);
@@ -1537,7 +1563,7 @@ namespace
                 const auto textureCount = texturePaths.size();
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
                     " · " + bcn::SkinRaceLabel(skin.race) +
-                    " · " + bcn::SkinFamilyLabel(skin.bodyFamilies, skin.sex) +
+                    " · " + bcn::SkinFamilyLabel(skin.layout, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
                     (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
@@ -1990,6 +2016,7 @@ namespace
     {
         if (!g_showDistribution) return;
         EnsureDistributionEditor();
+        SynchronizeDistributionRuleNames();
         const auto popupTitle = std::string{ Text("NPC 배포 규칙", "NPC distribution rules", "NPC 分发规则") } + "###DistributionPopup";
         ImGui::OpenPopup(popupTitle.c_str());
         const std::array footerLabels{
@@ -2107,14 +2134,23 @@ namespace
                     auto& rule = g_distributionRules[g_selectedDistributionRule];
                     ImGui::PushID(rule.id.c_str());
                     ImGui::SetNextItemWidth(-1.0F);
-                    ImGui::InputText("##ruleName", &rule.name);
+                    if (ImGui::InputText("##ruleName", &rule.name)) rule.nameKey.clear();
 
                     int sex = rule.female ? 0 : 1;
                     ImGui::TextUnformatted(Text("성별", "Sex", "性别"));
                     ImGui::SetNextItemWidth(Scaled(180.0F));
                     PrepareResizableDropdown(2U);
                     if (ImGui::Combo("##ruleSex", &sex, Text("여성\0남성\0", "Female\0Male\0", "女性\0男性\0"))) {
-                        static_cast<void>(bcn::SetDistributionRuleSex(rule, sex == 0));
+                        const auto oldNameKey = rule.nameKey;
+                        if (bcn::SetDistributionRuleSex(rule, sex == 0)) {
+                            if (const auto retargeted = bcn::distribution_names::RetargetGeneratedRuleKey(
+                                    oldNameKey, rule.female); !retargeted.empty()) {
+                                rule.nameKey = retargeted;
+                                rule.name = bcn::distribution_names::Localized(retargeted, CurrentLanguage());
+                            } else {
+                                rule.nameKey.clear();
+                            }
+                        }
                     }
                     ImGui::SameLine();
                     ImGui::TextUnformatted(Text("대상 범위", "Scope", "目标范围"));
@@ -2183,6 +2219,20 @@ namespace
                             DistributionFormTargetCombo("##ruleClass", rule, g_distributionClassOptions);
                     }
 
+                    if (const auto shadowing = bcn::EarlierCatchAllRule(
+                            g_distributionRules, g_selectedDistributionRule)) {
+                        ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s",
+                            (std::string{ Text(
+                                "이 규칙은 위의 전체 NPC 규칙 #",
+                                "This rule is unreachable because the earlier all-NPC rule #",
+                                "此规则无法生效，因为上方的全部 NPC 规则 #") } +
+                                std::to_string(*shadowing + 1U) + Text(
+                                    "에서 먼저 일치합니다. 이 규칙을 위로 옮기거나 앞 규칙의 범위를 좁히세요.",
+                                    " matches first. Move this rule above it or narrow the earlier rule.",
+                                    " 会先匹配。请将此规则上移，或缩小前一规则的范围。")
+                            ).c_str());
+                    }
+
                     if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
                             g_distributionPool == DistributionPool::body)) {
                         g_distributionPool = DistributionPool::body;
@@ -2219,7 +2269,7 @@ namespace
                         bcn::NpcDistributionFamily(settings.maleNpcBodyType);
                     const auto matchesDistributionFamily = [distributionFamily](const bcn::SkinProfile& skin) {
                         return skin.race != bcn::SkinRace::humanoid ||
-                            bcn::SkinMatchesActor(skin.bodyFamilies, distributionFamily);
+                            bcn::SkinLayoutMatchesActor(skin.layout, distributionFamily);
                     };
                     ImGui::TextDisabled("%s", Text("이 규칙 전용 스킨 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's skin pool — one skin pack is fixed; multiple skin packs are stably randomized per matching NPC.", "本规则专用皮肤池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
                     if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
@@ -2338,19 +2388,19 @@ namespace
                 g_selectedDistributionRule = g_distributionRules.size() - 1U;
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("- 규칙 삭제", "- Delete rule", "- 删除规则")) && g_selectedDistributionRule < g_distributionRules.size()) {
-                g_distributionRules.erase(g_distributionRules.begin() + static_cast<std::ptrdiff_t>(g_selectedDistributionRule));
-                if (g_selectedDistributionRule >= g_distributionRules.size() && !g_distributionRules.empty()) --g_selectedDistributionRule;
+            if (ImGui::Button(Text("- 규칙 삭제", "- Delete rule", "- 删除规则"))) {
+                [[maybe_unused]] const auto erased = bcn::EraseDistributionRule(
+                    g_distributionRules, g_selectedDistributionRule);
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("위 우선순위", "Move priority up", "提高优先级")) && g_selectedDistributionRule > 0 && g_selectedDistributionRule < g_distributionRules.size()) {
-                std::swap(g_distributionRules[g_selectedDistributionRule], g_distributionRules[g_selectedDistributionRule - 1U]);
-                --g_selectedDistributionRule;
+            if (ImGui::Button(Text("위 우선순위", "Move priority up", "提高优先级"))) {
+                [[maybe_unused]] const auto moved = bcn::MoveDistributionRule(
+                    g_distributionRules, g_selectedDistributionRule, -1);
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("아래 우선순위", "Move priority down", "降低优先级")) && g_selectedDistributionRule + 1U < g_distributionRules.size()) {
-                std::swap(g_distributionRules[g_selectedDistributionRule], g_distributionRules[g_selectedDistributionRule + 1U]);
-                ++g_selectedDistributionRule;
+            if (ImGui::Button(Text("아래 우선순위", "Move priority down", "降低优先级"))) {
+                [[maybe_unused]] const auto moved = bcn::MoveDistributionRule(
+                    g_distributionRules, g_selectedDistributionRule, 1);
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("저장 값 불러오기", "Load saved values", "加载保存值"))) {
@@ -2358,6 +2408,7 @@ namespace
                 const auto imported = bcn::Distribution::Get().ImportOBodyDefaults();
                 g_distributionRules = bcn::Distribution::Get().Snapshot();
                 g_selectedDistributionRule = 0;
+                g_distributionRuleNameLanguage.reset();
                 bcn::ui::Notify(loaded ?
                     (imported ?
                         Text("저장값과 OBody 호환 규칙을 함께 불러왔습니다.", "Loaded saved values and OBody-compatible rules.", "已加载保存值和 OBody 兼容规则。") :
@@ -2965,7 +3016,7 @@ namespace bcn::ui
                 Text("선택 액터에게 RaceMenu BodyMorph로 즉시 적용", "Applies immediately to the selected actor through RaceMenu BodyMorph", "通过 RaceMenu BodyMorph 立即应用于所选角色") :
                 Text("RaceMenu BodyMorph 인터페이스를 기다리는 중", "Waiting for RaceMenu's BodyMorph interface", "正在等待 RaceMenu 的 BodyMorph 接口"));
         } else if (g_activeTab == ActiveTab::skin) {
-            ImGui::TextDisabled("%s", Text("선택 액터에게 RaceMenu NiOverride로 즉시 적용", "Applies immediately to the selected actor through RaceMenu NiOverride", "通过 RaceMenu NiOverride 立即应用于所选角色"));
+            ImGui::TextDisabled("%s", Text("ActorBase의 TXST · ARMA · Skin Armor로 적용", "Applies through the ActorBase TXST · ARMA · Skin Armor chain", "通过 ActorBase 的 TXST、ARMA、皮肤护甲链应用"));
         } else if (g_activeTab == ActiveTab::futanari) {
             ImGui::TextDisabled("%s", Text(
                 "현재 장착된 후타나리 성기 메시의 텍스처에만 즉시 적용",

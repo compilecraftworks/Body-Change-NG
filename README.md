@@ -12,12 +12,14 @@ Version 1.2.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 ## Development line: 1.2.0
 
 The `v1.2.0-rearchitecture` branch is isolated from the 1.1.x release line.
-It introduces an explicit UV-layout model for female vanilla, CBBE, UNP, UBE,
-male vanilla, HIMBO, SAM, Argonian, and Khajiit skins. Ambiguous profiles and
-actor layouts fail closed. Conventional layouts modify only verified live
-geometry; only UBE may use RaceMenu's broad shared-atlas route. Appearance
-queue operations now use distinct typed replacement channels, so tint and
-futanari work cannot cancel each other.
+It separates catalog `SkinLayout` from runtime `BodyFamily`: conventional
+female packs are `Legacy`, explicit `!UBE` atlas trees are `UBE`, and CBBE/3BA
+versus UNP/BHUNP is resolved only from the actor's installed body at apply time.
+General BodySkin now deep-clones the actor's native
+TXST -> ARMA -> Skin Armor graph and changes only the part/channel pairs actually
+declared by the profile. Equipment state is not an input to that backend.
+Appearance state, events, and queue operations are separated by feature, so a
+skin change cannot cancel or reset body morph, tint, futanari, or outfit work.
 
 - [1.2.0 architecture notes (한국어)](docs/ARCHITECTURE-v1.2.0-KO.md)
 - [1.1.4 release notes](docs/RELEASE-NOTES-v1.1.4.md) · [한국어](docs/RELEASE-NOTES-v1.1.4-KO.md)
@@ -78,12 +80,14 @@ and its Papyrus effect calls `SetSkin`, `ChangeHeadPart`, and
 `SetFaceTextureSet` to switch the corresponding ESP records together. A skin
 choice is therefore coupled to a prepared mesh and record set.
 
-Body Change NG does not use that ESP/Papyrus replacement path. It keeps the
-actor's current Skin Armor, HeadPart, and NIFs; body shape is applied through
-RaceMenu BodyMorph, while Skin uses ownership-aware RaceMenu/NiOverride texture
-overrides against the actor's exact loaded body, hand, foot, and face parts.
-Body and Skin can consequently be mixed independently, for the player or NPCs,
-without building one mesh copy per skin slot.
+Body Change NG does not use fixed ESP skin slots or replace NIF files. Body
+shape is applied per reference through RaceMenu BodyMorph. Skin is applied by
+deep-cloning the actor's current native Skin Armor, ArmorAddons, and TextureSets,
+overlaying the selected DDS channels on those private forms, and attaching the
+result to the NPC ActorBase. Body and Skin can consequently be mixed without
+prebuilding one mesh copy per catalog row. Native skin is ActorBase-scoped, so
+multiple references that share one NPC base also share one skin; BodyMorph
+remains reference-scoped.
 
 There are no fixed `CustomSet1`-`CustomSet20` catalog slots. BodySlide preset
 XML files and top-level Skin/Tint pack folders are scanned into the UI. They can
@@ -224,43 +228,81 @@ and opacity adjusted or restored independently to its captured RaceMenu value.
 The direct body and skin lists work for both the player and a selected NPC.
 NPC skin packs can also be selected independently inside each NPC distribution
 rule. Body and skin pools are evaluated top-down; the first matching rule owns
-both pools, and an empty pool leaves that category unchanged. Body and skin
-state is isolated per actor. Distribution targets can use all NPCs, custom
+both pools, and an empty pool leaves that category unchanged. Body state is
+reference-scoped; native skin selection is stable per NPC ActorBase so two
+references sharing one base cannot be assigned contradictory TXST graphs.
+The eight starter rows are editable, reorderable, and deletable examples rather
+than protected records. Their names and untouched generated names follow the
+selected Korean, English, or Simplified Chinese UI language; a custom name is
+never rewritten. The editor warns when an earlier same-sex all-NPC row shadows
+the selected row. Rule and settings saves validate a complete temporary JSON
+before atomically replacing the previous file.
+Distribution targets can use all NPCs, custom
 followers, elders, plugin files, races, factions, keywords, classes, combat
 styles, names, or an exact NPC base FormID. Form-backed targets are stored as
 plugin plus local FormID so load-order changes do not break them. The body- and skin-pool
 editors have independent name filters and vertical scrolling. Tint remains
 player-only, so only the Tint tab is hidden when an NPC is selected.
 
-Skin application uses the selected actor's live FaceGen subtree and RaceMenu's
-persistent texture overrides. Standard body, hands, feet, face, vampire-face,
-normal (`_msn`), subsurface (`_sk`), specular (`_s`), and compatible FaceGen
-detail DDS channels are handled without changing NIFs or Skin Armor records.
-Partial packs change only the supplied part/channel pairs; missing values retain
-the actor's underlying textures, and body, hands, feet, and face files are never
-substituted for one another.
+General skin application uses a private clone of the selected ActorBase's native
+TXST -> ARMA -> Skin Armor graph plus a private Face TXST when face layers exist.
+Standard body, hands, feet, face, vampire-face, normal (`_msn`), subsurface
+(`_sk`), specular (`_s`), and compatible FaceGen detail channels are supported.
+Partial packs do not need every DDS: only supplied part/channel pairs are
+required, missing values retain the current provider's TextureSet value, and
+body, hands, feet, and face files are never substituted for one another. A
+declared part with no exact TXST target aborts before the graph is attached.
 For male actors, conventional body/hand/foot/face files use the same rules.
 Optional SOS `malegenitals_*` files are applied only to the equipped slot-52
 genital geometry whose addon model directory matches the pack. VectorPlexus
 Muscular may inherit the source addon's Regular diffuse/subsurface/specular
 channels while overriding only its supplied Muscular normal, exactly matching
 the shipped SOS material layout.
-UBE 2.0 profiles are detected from `Textures\!UBE\Body` and `Head`, map their
-diffuse/normal/skin atlases to the actor's UBE slot-53 body and live face, and
-do not invent shader slots for optional PBR/RFAOS/wet maps owned by the active
-material setup. The Skin and player Tint catalogs hide known-incompatible
+UBE 2.0 profiles are detected from `Textures\!UBE\Body` and `Head`. The shipped
+UBE 2.0 naked graph uses slot 53 on its torso, separate slot-33/37 hand and foot
+addons, and one `!UBE\Body\femalebody_1_{d,n,sk}` atlas across all three. Because
+those canonical addons ship without a female NAM1 TXST, BCNG synthesizes a
+private TXST only on their cloned, verified `!UBE\Body`, `Hands`, and `Feet`
+models and only when the selected profile actually supplies body-atlas layers.
+A face-only UBE profile owns only the Face TXST. Existing provider TXSTs remain authoritative, unknown custom naked-model
+paths fail closed, and no optional PBR/RFAOS/wet shader slot is guessed. UBE's
+body NIF already contains its vagina and anus geometry; the optional penis
+remains an independent SOS/TNG addon handled by the Futanari tab. The Skin and
+player Tint catalogs hide known-incompatible
 families while preserving the existing show-all fallback when actor evidence
 is uncertain. NPC distribution rules may keep mixed body and skin pools; runtime
 selection checks each matched actor's sex and known body family while the
 editor preserves the user's selected pool. Uncertain body-family evidence
 retains the conservative fallback.
 
+General BodySkin does not inspect equipped armor or repaint clothing NIFs.
+Outfits that follow Skyrim's normal skin-texture contract resolve the current
+ActorBase Skin Armor through the game. A copied skin surface with a completely
+independent hard-coded outfit material remains owned by that outfit and needs
+an outfit-specific patch; BCNG does not guess that it is the actor's real body.
+This keeps virtual-outfit and appearance systems such as SFS, SVS, and Skyrim
+Outfit System outside BCNG's native skin ownership.
+
+When RSV supplies the NPC base Skin Armor, BCNG clones that current RSV graph
+instead of replacing its source identity. A later RSV body/far-skin/face source
+change triggers a safe rebase; arbitrary foreign pointer changes fail closed.
+RSV's persistent FaceGen NiOverride keys are retained. Only an actor with both
+verified RSV face ownership and a selected BCNG face layer receives one
+bounded face merge after RSV's delayed node update. UBE's own upstream loadout
+requirement to exclude its player race from RSV (the `PLAYER VANILLA` option)
+still applies; BCNG does not fabricate compatibility for an invalid UBE/RSV base
+graph. Default Skin then reveals RSV again. Male SOS/TNG and optional female
+SOS/ERF/TRX futanari meshes
+remain reference-scoped external-addon adapters and alone observe equipment
+replacement.
+
 When the player leaves RaceMenu, Body Change NG waits for RaceMenu's final
 geometry and tint-array rebuild, then restores the currently confirmed body,
-skin, and tint selections. Tint reconstruction applies the selected pack first,
-then its per-layer detail edits and original-value restores. A default selection
-leaves that category under RaceMenu's ownership instead of reintroducing an old
-override.
+verifies the native skin graph, and restores tint and external genital-addon
+selections. Tint reconstruction applies the selected pack first,
+then its per-layer detail edits and original-value restores. Default Tint leaves
+that category under RaceMenu's ownership instead of reintroducing an old
+override; Default Skin restores only the native provider pointers BCNG still owns.
 
 Actor results are stored in the SKSE co-save with resolvable actor references,
 so unchanged NPCs are not fully redistributed every time a save loads. Rules

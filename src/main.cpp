@@ -58,6 +58,10 @@ namespace
             bcn::ui::OnLoadStart();
             bcn::ActorWorkQueue::Get().ResetSession();
             bcn::ActorEvents::Get().ResetSessionState();
+            // Restore only still-owned runtime form pointers while the old
+            // game's ActorBase forms are unquestionably valid. Post-load runs
+            // the same idempotent reset for direct New Game transitions.
+            bcn::skin_override::ResetSessionState();
         }
         if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
             // Public SKSE messaging only: SmoothCam remains entirely

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/RuntimeCompatibility.h"
+
 #include <REL/Version.h>
 
 #include <cstdint>

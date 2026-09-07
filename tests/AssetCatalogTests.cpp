@@ -106,10 +106,9 @@ namespace
 
 int main(const int argc, char** argv)
 {
-    if (!Require(!bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::cbbe) &&
-            !bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::unp),
+    if (!Require(!bcn::AllowsBroadSkinSlotFallback(bcn::SkinLayout::legacy),
             "part-specific CBBE/BHUNP atlases were routed through RaceMenu's broad skin-slot apply")) return 1;
-    if (!Require(bcn::AllowsBroadSkinSlotFallback(bcn::SkinUvLayout::ube),
+    if (!Require(bcn::AllowsBroadSkinSlotFallback(bcn::SkinLayout::ube),
             "UBE's shared body atlas lost its broad skin-slot fallback")) return 1;
 
     if (argc == 3 || argc == 4) {
@@ -276,6 +275,26 @@ int main(const int argc, char** argv)
         Touch(unpFemale / "BakaUNP" / file);
     }
 
+    // Mirrors the seven conventional Toolred pack folder names which exposed
+    // the 1.2 regression: no profile.json and no CBBE/UNP token is required.
+    const std::array<std::string_view, 7> toolredLegacyPackNames{
+        "니블A",
+        "다이아 (뷰지스 기본)",
+        "다이아 보추",
+        "다이아 Ni 밝은톤",
+        "다이아+지젠+툴리소스+리얼걸+NI+다렌",
+        "린아 ver2",
+        "DiamondZhizhenGlass"
+    };
+    for (const auto packName : toolredLegacyPackNames) {
+        const auto directory = sandbox / "BodySkin" /
+            bcn::path_text::FromUtf8(packName) / "Textures" /
+            "actors" / "character" / "female";
+        Touch(directory / "femalebody_1.dds");
+        Touch(directory / "femalehands_1.dds");
+        Touch(directory / "femalehead.dds");
+    }
+
     const auto ubeBody = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
         "Textures" / "!UBE" / "Body";
     const auto ubeHead = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
@@ -380,13 +399,23 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 13U, "skin scanner did not preserve valid humanoid and beast-race skin rows")) return 1;
+    if (!Require(skins.size() == 20U, "skin scanner did not preserve valid humanoid and beast-race skin rows")) return 1;
+    const auto cbbeFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+    const auto unpFamilyForLegacy = bcn::body_family::Bit(bcn::body_family::Family::unp);
+    const auto ubeFamilyForLegacy = bcn::body_family::Bit(bcn::body_family::Family::ube);
+    for (const auto packName : toolredLegacyPackNames) {
+        const auto expectedId = "auto:" + std::string{ packName } + ":female";
+        const auto found = std::ranges::find(skins, expectedId, &bcn::SkinProfile::id);
+        if (!Require(found != skins.end() && found->layout == bcn::SkinLayout::legacy &&
+                bcn::SkinLayoutMatchesActor(found->layout, cbbeFamily) &&
+                bcn::SkinLayoutMatchesActor(found->layout, unpFamilyForLegacy) &&
+                !bcn::SkinLayoutMatchesActor(found->layout, ubeFamilyForLegacy),
+                "a Toolred-style metadata-free female pack was not restored as a stable Legacy row")) return 1;
+    }
     const auto explicitHimboSkin = std::ranges::find(
         skins, "explicit-himbo", &bcn::SkinProfile::id);
     if (!Require(explicitHimboSkin != skins.end() &&
-            explicitHimboSkin->uvLayout == bcn::SkinUvLayout::himbo &&
-            explicitHimboSkin->bodyFamilies ==
-                bcn::body_family::Bit(bcn::body_family::Family::himbo),
+            explicitHimboSkin->layout == bcn::SkinLayout::himbo,
             "profile.json uvLayout did not establish one exact HIMBO contract")) return 1;
     if (!Require(std::ranges::find(skins, "ambiguous-explicit-male",
             &bcn::SkinProfile::id) == skins.end(),
@@ -423,8 +452,8 @@ int main(const int argc, char** argv)
         }
         if (skin.name == unpSkinPackName) {
             if (!Require(skin.sex == bcn::SkinSex::female &&
-                    skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::unp),
-                    "BHUNP/UNP skin was not isolated to the UNP family")) return 1;
+                    skin.layout == bcn::SkinLayout::legacy,
+                    "BHUNP/UNP skin was not classified as Legacy")) return 1;
             if (!Require(HasExactMaterialChannels(skin.body, "femalebody_1") &&
                     HasExactMaterialChannels(skin.hands, "femalehands_1") &&
                     HasExactMaterialChannels(skin.feet, "femalefeet_1") &&
@@ -439,7 +468,7 @@ int main(const int argc, char** argv)
         }
         if (skin.name == "UBE 2.0 Momo Skin") {
             if (!Require(skin.sex == bcn::SkinSex::female, "UBE skin leaked into the wrong sex")) return 1;
-            if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
+            if (!Require(skin.layout == bcn::SkinLayout::ube,
                     "UBE texture namespace was not classified as UBE")) return 1;
             if (!Require(skin.body.size() == 3U && skin.face.size() == 3U &&
                     skin.hands.empty() && skin.feet.empty(),
@@ -451,6 +480,15 @@ int main(const int argc, char** argv)
             if (!Require(skin.sex == bcn::SkinSex::female && skin.body.empty() &&
                     skin.hands.empty() && skin.feet.empty() && skin.face.size() == 1U,
                     "partial UBE head pack borrowed or invented another body part")) return 1;
+            continue;
+        }
+        if (std::ranges::find(toolredLegacyPackNames, skin.name) !=
+            toolredLegacyPackNames.end()) {
+            if (!Require(skin.sex == bcn::SkinSex::female &&
+                    skin.layout == bcn::SkinLayout::legacy &&
+                    skin.body.size() == 1U && skin.hands.size() == 1U &&
+                    skin.face.size() == 1U,
+                    "a metadata-free Toolred-style pack lost its Legacy parts")) return 1;
             continue;
         }
         if (skin.name == "Male Partial") {
@@ -496,10 +534,10 @@ int main(const int argc, char** argv)
             continue;
         }
         if (skin.name == "HIMBO Skin SOS" || skin.name == "SAM Skin SOS") {
-            const auto expectedFamily = bcn::body_family::Bit(skin.name.starts_with("HIMBO") ?
-                bcn::body_family::Family::himbo : bcn::body_family::Family::sam);
+            const auto expectedLayout = skin.name.starts_with("HIMBO") ?
+                bcn::SkinLayout::himbo : bcn::SkinLayout::sam;
             if (!Require(skin.sex == bcn::SkinSex::male &&
-                    skin.bodyFamilies == expectedFamily && skin.body.size() == 1U &&
+                    skin.layout == expectedLayout && skin.body.size() == 1U &&
                     skin.maleGenitals.size() == 1U &&
                     skin.maleGenitals.front().addonDirectory == "VectorPlexus Regular" &&
                     skin.maleGenitals.front().humanoid.size() == 2U,
@@ -527,8 +565,8 @@ int main(const int argc, char** argv)
                     return layer.shaderTextureIndex == index && Filename(Lower(layer.path)) == filename;
                 }), "CBBE 3BA genital/anal diffuse/normal/subsurface/specular mapping is incorrect")) return 1;
         }
-        if (!Require(skin.bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::cbbe),
-                "CBBE 3BA genital atlas did not narrow the skin to the CBBE family")) return 1;
+        if (!Require(skin.layout == bcn::SkinLayout::legacy,
+                "a CBBE 3BA genital atlas incorrectly narrowed the Legacy skin")) return 1;
         if (!Require(skin.name.contains(skinPackName), "skin pack name was not preserved as UTF-8")) return 1;
         if (!Require(skin.body.front().path.starts_with("BodySkin\\" + skinPackName + "\\Textures\\"),
                 "skin path escaped the virtual Data root or lost UTF-8")) return 1;
@@ -657,18 +695,18 @@ int main(const int argc, char** argv)
     const auto himboFamily = bcn::body_family::Bit(bcn::body_family::Family::himbo);
     const auto samFamily = bcn::body_family::Bit(bcn::body_family::Family::sam);
     if (!Require(maleSkin != skins.end() &&
-            maleSkin->uvLayout == bcn::SkinUvLayout::unknown &&
-            !bcn::SkinMatchesActor(maleSkin->bodyFamilies, himboFamily) &&
-            !bcn::SkinMatchesActor(maleSkin->bodyFamilies, samFamily) &&
+            maleSkin->layout == bcn::SkinLayout::unknown &&
+            !bcn::SkinLayoutMatchesActor(maleSkin->layout, himboFamily) &&
+            !bcn::SkinLayoutMatchesActor(maleSkin->layout, samFamily) &&
             maleSkin->maleGenitals.size() == 3U,
             "an unlabeled male skin was not kept fail-closed between HIMBO and SAM")) return 1;
     const auto himboSkin = std::ranges::find(skins, "HIMBO Skin SOS", &bcn::SkinProfile::name);
     const auto samSkin = std::ranges::find(skins, "SAM Skin SOS", &bcn::SkinProfile::name);
     if (!Require(himboSkin != skins.end() && samSkin != skins.end() &&
-            bcn::SkinMatchesActor(himboSkin->bodyFamilies, himboFamily) &&
-            !bcn::SkinMatchesActor(himboSkin->bodyFamilies, samFamily) &&
-            bcn::SkinMatchesActor(samSkin->bodyFamilies, samFamily) &&
-            !bcn::SkinMatchesActor(samSkin->bodyFamilies, himboFamily),
+            bcn::SkinLayoutMatchesActor(himboSkin->layout, himboFamily) &&
+            !bcn::SkinLayoutMatchesActor(himboSkin->layout, samFamily) &&
+            bcn::SkinLayoutMatchesActor(samSkin->layout, samFamily) &&
+            !bcn::SkinLayoutMatchesActor(samSkin->layout, himboFamily),
             "explicit HIMBO and SAM skin packs leaked into the other male body family")) return 1;
     if (!Require(bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_vagina") &&
@@ -810,11 +848,11 @@ int main(const int argc, char** argv)
                 R"(textures\actors\character\female\femalehands_1.dds)", true),
             "cross-slot limb routing accepted a non-skin, outfit, body, or wrong-limb material")) return 1;
     if (!Require(
-            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::cbbe,
+            bcn::ResolveFeetLayerSource(bcn::SkinLayout::legacy,
                 bcn::SkinRace::humanoid, 4U, 0U) == bcn::FeetLayerSource::bodyAtlas &&
-            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::cbbe,
+            bcn::ResolveFeetLayerSource(bcn::SkinLayout::legacy,
                 bcn::SkinRace::humanoid, 4U, 1U) == bcn::FeetLayerSource::explicitFeet &&
-            bcn::ResolveFeetLayerSource(bcn::SkinUvLayout::argonian,
+            bcn::ResolveFeetLayerSource(bcn::SkinLayout::argonian,
                 bcn::SkinRace::argonian, 4U, 0U) == bcn::FeetLayerSource::none,
             "feet layer planning crossed an explicit or beast-race atlas boundary")) return 1;
     struct FakeNifGeometry final
@@ -845,17 +883,17 @@ int main(const int argc, char** argv)
     const auto unpSkin = std::ranges::find(skins, unpSkinPackName, &bcn::SkinProfile::name);
     if (!Require(ubeSkin != skins.end() && standardSkin != skins.end() && unpSkin != skins.end(),
             "expected skin rows are missing")) return 1;
-    if (!Require(bcn::SkinMatchesActor(ubeSkin->bodyFamilies, ubeFamily) &&
-            !bcn::SkinMatchesActor(ubeSkin->bodyFamilies, standardFamily),
+    if (!Require(bcn::SkinLayoutMatchesActor(ubeSkin->layout, ubeFamily) &&
+            !bcn::SkinLayoutMatchesActor(ubeSkin->layout, standardFamily),
             "UBE skin compatibility leaked into CBBE")) return 1;
-    if (!Require(bcn::SkinMatchesActor(standardSkin->bodyFamilies, standardFamily) &&
-            !bcn::SkinMatchesActor(standardSkin->bodyFamilies, unpFamily) &&
-            !bcn::SkinMatchesActor(standardSkin->bodyFamilies, ubeFamily),
-            "CBBE 3BA skin compatibility leaked into BHUNP/UNP or UBE")) return 1;
-    if (!Require(bcn::SkinMatchesActor(unpSkin->bodyFamilies, unpFamily) &&
-            !bcn::SkinMatchesActor(unpSkin->bodyFamilies, standardFamily) &&
-            !bcn::SkinMatchesActor(unpSkin->bodyFamilies, ubeFamily),
-            "BHUNP/UNP skin compatibility leaked into CBBE 3BA or UBE")) return 1;
+    if (!Require(bcn::SkinLayoutMatchesActor(standardSkin->layout, standardFamily) &&
+            bcn::SkinLayoutMatchesActor(standardSkin->layout, unpFamily) &&
+            !bcn::SkinLayoutMatchesActor(standardSkin->layout, ubeFamily),
+            "Legacy skin was not shared by CBBE/UNP or leaked into UBE")) return 1;
+    if (!Require(bcn::SkinLayoutMatchesActor(unpSkin->layout, unpFamily) &&
+            bcn::SkinLayoutMatchesActor(unpSkin->layout, standardFamily) &&
+            !bcn::SkinLayoutMatchesActor(unpSkin->layout, ubeFamily),
+            "Legacy UNP-labelled skin was not shared by CBBE/UNP or leaked into UBE")) return 1;
     if (!Require(bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::argonian) &&
             !bcn::SkinRaceMatchesActor(bcn::SkinRace::argonian, bcn::SkinRace::khajiit) &&
             !bcn::SkinRaceMatchesActor(bcn::SkinRace::khajiit, bcn::SkinRace::humanoid),

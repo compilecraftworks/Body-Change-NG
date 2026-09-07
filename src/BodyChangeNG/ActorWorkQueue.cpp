@@ -1,5 +1,6 @@
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/AppearanceEventPolicy.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OutfitRefit.h"
@@ -48,7 +49,21 @@ namespace
                 const auto started = std::chrono::steady_clock::now();
                 const auto changed = bcn::Distribution::Get().ApplyActor(actor.get());
                 bcn::OutfitRefit::Get().ProcessActor(actor.get());
-                bcn::skin_override::QueueReapplyCurrentFutanari(actor.get());
+                if (bcn::appearance::NeedsReconcile(
+                        bcn::appearance::Feature::maleGenitalAddon,
+                        bcn::appearance::Event::actor3DAttached)) {
+                    bcn::skin_override::QueueReapplyCurrentMaleGenitals(actor.get());
+                }
+                if (bcn::appearance::NeedsReconcile(
+                        bcn::appearance::Feature::futanariAddon,
+                        bcn::appearance::Event::actor3DAttached)) {
+                    bcn::skin_override::QueueReapplyCurrentFutanari(actor.get());
+                }
+                if (bcn::appearance::NeedsReconcile(
+                        bcn::appearance::Feature::rsvFaceBridge,
+                        bcn::appearance::Event::actor3DAttached)) {
+                    bcn::skin_override::NotifyNiNodeUpdated(actor.get());
+                }
                 g_processingMicros += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
                     std::chrono::steady_clock::now() - started).count());
                 ++g_processed;

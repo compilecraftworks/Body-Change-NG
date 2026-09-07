@@ -66,4 +66,10 @@ namespace bcn::skin_override::ownership
     {
         return exists && IsOwnedTexturePath(currentValue);
     }
+
+    [[nodiscard]] constexpr bool MayTransientlyPaintRsv(
+        const bool exists, const std::string_view currentValue) noexcept
+    {
+        return exists && IsRacialSkinVarianceTexturePath(currentValue);
+    }
 }

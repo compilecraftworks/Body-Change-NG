@@ -281,20 +281,29 @@ namespace bcn
                     { "y", copy.mainWindowPositionY }
                 };
             }
-            const auto temporary = path.string() + ".new";
+            auto temporary = path;
+            temporary += ".new";
             {
-                std::ofstream stream(temporary, std::ios::trunc);
+                std::ofstream stream(temporary, std::ios::trunc | std::ios::binary);
                 stream << root.dump(2) << '\n';
+                stream.flush();
                 if (!stream.good()) throw std::runtime_error("write failed");
             }
-            std::error_code error;
-            std::filesystem::rename(temporary, path, error);
-            if (error) {
-                std::filesystem::remove(path, error);
-                error.clear();
-                std::filesystem::rename(temporary, path, error);
+            {
+                std::ifstream verification(temporary, std::ios::binary);
+                const auto parsed = nlohmann::json::parse(verification);
+                if (!parsed.is_object() || parsed.value("schemaVersion", 0) != kSchemaVersion) {
+                    throw std::runtime_error("temporary settings verification failed");
+                }
             }
-            if (error) throw std::filesystem::filesystem_error("rename", path, error);
+            std::error_code error;
+            if (!MoveFileExW(temporary.c_str(), path.c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+                const auto code = GetLastError();
+                std::filesystem::remove(temporary, error);
+                throw std::system_error(static_cast<int>(code), std::system_category(),
+                    "atomic settings replace");
+            }
             SKSE::log::info("Body Change NG saved settings to {}", path.string());
             return true;
         } catch (const std::exception& exception) {

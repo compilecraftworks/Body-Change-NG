@@ -1,10 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -16,6 +18,31 @@ namespace RE
 
 namespace bcn
 {
+    enum class DistributionFeature : std::uint8_t
+    {
+        body,
+        skin
+    };
+
+    // BodyMorph is reference-scoped, while native TXST skin is ActorBase-
+    // scoped. Preserve the 1.1.4 rule conditions but choose a single stable
+    // skin for every live reference sharing one NPC base.
+    [[nodiscard]] constexpr std::uint32_t DistributionReferenceSeed(
+        const DistributionFeature feature, const std::uint32_t actorFormId) noexcept
+    {
+        return feature == DistributionFeature::skin ? 0U : actorFormId;
+    }
+
+    [[nodiscard]] constexpr bool MayRetainPreviousDistributionSelection(
+        const DistributionFeature feature) noexcept
+    {
+        // 1.1.x stored skin candidates per reference. Retaining one of those
+        // values could leave two references of the same ActorBase with
+        // conflicting native selections forever. BodyMorph remains reference-
+        // scoped and keeps its established per-save selection.
+        return feature == DistributionFeature::body;
+    }
+
     [[nodiscard]] constexpr bool IsDistributionActorStateEligible(const bool isPlayer,
         const bool disabled, const bool dead, const bool loaded3D, const bool actorTypeNPC) noexcept
     {
@@ -24,17 +51,6 @@ namespace bcn
         // explicit and regression-testable.
         static_cast<void>(dead);
         return !isPlayer && !disabled && loaded3D && actorTypeNPC;
-    }
-
-    [[nodiscard]] constexpr bool ShouldDeferDistributedSkin(
-        const bool bodyQueued, const bool hasDesiredSkin) noexcept
-    {
-        return bodyQueued && hasDesiredSkin;
-    }
-
-    [[nodiscard]] constexpr std::uint32_t DistributedSkinDelayTicks() noexcept
-    {
-        return 3U;
     }
 
     enum class DistributionScope : std::uint8_t
@@ -56,6 +72,10 @@ namespace bcn
     {
         std::string id;
         std::string name;
+        // Built-in/sample names and untouched generated names are localized
+        // at display time. A user edit clears this key and makes `name` an
+        // ordinary custom value that is never translated or overwritten.
+        std::string nameKey;
         bool enabled{ true };
         bool female{ true };
         DistributionScope scope{ DistributionScope::allNPCs };
@@ -80,7 +100,7 @@ namespace bcn
         // clears this obsolete per-rule filter while retaining JSON compatibility.
         std::string bodyFamily;
         std::vector<std::string> presetIds;
-        // Shared RaceMenu texture-profile pool.  A rule may contain body
+        // Shared native TXST texture-profile pool. A rule may contain body
         // presets, skin profiles, or both; each pool is sampled independently
         // but uses the same rule scope and priority.
         std::vector<std::string> skinProfileIds;
@@ -105,6 +125,58 @@ namespace bcn
         rule.presetIds.clear();
         rule.skinProfileIds.clear();
         return true;
+    }
+
+    // Editor operations intentionally do not distinguish built-in samples
+    // from user-created rows. Samples are examples, not protected defaults.
+    [[nodiscard]] inline bool EraseDistributionRule(
+        std::vector<DistributionRule>& rules, std::size_t& selected)
+    {
+        if (selected >= rules.size()) return false;
+        rules.erase(rules.begin() + static_cast<std::ptrdiff_t>(selected));
+        if (selected >= rules.size() && !rules.empty()) --selected;
+        if (rules.empty()) selected = 0U;
+        return true;
+    }
+
+    [[nodiscard]] inline bool MoveDistributionRule(
+        std::vector<DistributionRule>& rules, std::size_t& selected, const int direction)
+    {
+        if (selected >= rules.size() || (direction != -1 && direction != 1)) return false;
+        if ((direction < 0 && selected == 0U) ||
+            (direction > 0 && selected + 1U >= rules.size())) return false;
+        const auto destination = static_cast<std::size_t>(
+            static_cast<std::ptrdiff_t>(selected) + direction);
+        std::swap(rules[selected], rules[destination]);
+        selected = destination;
+        return true;
+    }
+
+    [[nodiscard]] inline std::string GenerateUniqueUserRuleId(
+        const std::vector<DistributionRule>& rules, std::uint32_t& nextId)
+    {
+        for (;;) {
+            auto candidate = "user-rule-" + std::to_string(nextId++);
+            if (std::ranges::none_of(rules, [&](const DistributionRule& rule) {
+                    return rule.id == candidate;
+                })) {
+                return candidate;
+            }
+        }
+    }
+
+    [[nodiscard]] inline std::optional<std::size_t> EarlierCatchAllRule(
+        const std::vector<DistributionRule>& rules, const std::size_t index)
+    {
+        if (index >= rules.size()) return std::nullopt;
+        for (std::size_t earlier{}; earlier < index; ++earlier) {
+            if (rules[earlier].enabled &&
+                rules[earlier].female == rules[index].female &&
+                rules[earlier].scope == DistributionScope::allNPCs) {
+                return earlier;
+            }
+        }
+        return std::nullopt;
     }
 
     // Accepts either an NPC base form or an actor reference and normalizes it

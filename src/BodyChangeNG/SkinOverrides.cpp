@@ -6,6 +6,7 @@
 #include "BodyChangeNG/AsyncWorkGuards.h"
 #include "BodyChangeNG/RaceMenuOverrideRouting.h"
 #include "BodyChangeNG/SkinApplicationPlan.h"
+#include "BodyChangeNG/NativeSkinBackend.h"
 #include "BodyChangeNG/SkinOverrideBackend.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinGeometryRouting.h"
@@ -495,6 +496,31 @@ namespace
         return stored || !transientLayers.empty();
     }
 
+    void ApplyRsvFaceTransientV2(skee_override::IOverrideInterfaceV2& overrides,
+        RE::Actor* actor, const bool female, const FaceNodeInfo& face,
+        const std::vector<bcn::SkinTextureLayer>& layers)
+    {
+        if (!actor || !face.object) return;
+        for (const auto& layer : layers) {
+            const auto path = bcn::runtime_assets::TexturePathFromGameRelative(
+                layer.path, "skin-face");
+            if (path.empty()) continue;
+            const auto index = static_cast<std::uint8_t>(layer.shaderTextureIndex);
+            skee_override::StringVisitor current;
+            const auto exists = overrides.GetNodeOverride(actor, female,
+                face.nodeName.c_str(), static_cast<std::uint16_t>(kShaderTextureProperty),
+                index, current);
+            if (!bcn::skin_override::ownership::MayTransientlyPaintRsv(
+                    exists, current.Value())) continue;
+            skee_override::StringVariant value{ path };
+            // This bridge never claims a serialized key. RSV remains the
+            // persistent owner and a native Face TXST/3D reset reveals it
+            // immediately when BCNG returns to Default.
+            overrides.SetNodeProperty(actor, false, face.nodeName.c_str(),
+                static_cast<std::uint16_t>(kShaderTextureProperty), index, value, true);
+        }
+    }
+
     [[nodiscard]] std::string LowerAscii(std::string value)
     {
         std::ranges::transform(value, value.begin(), [](const unsigned char character) {
@@ -727,14 +753,15 @@ namespace
     }
 
     [[nodiscard]] bcn::skin_plan::ApplicationPlan EffectiveSkinPlan(
-        const bcn::SkinProfile& profile, RE::TESNPC* base,
+        const bcn::SkinProfile& profile, RE::Actor* actor, RE::TESNPC* base,
         const std::string_view currentDetailFilename = {})
     {
         return bcn::skin_plan::Build(profile, {
             .elder = bcn::IsElderActor(base),
             .vampire = IsVampireRace(base),
             .humanoidRace = ActorHumanoidSkinRace(base),
-            .faceDetailFilename = currentDetailFilename
+            .faceDetailFilename = currentDetailFilename,
+            .bodyFamily = bcn::body_family::ResolveActor(actor)
         });
     }
 
@@ -805,7 +832,7 @@ namespace
         };
         const auto face = FaceNode(actor, base);
         const auto plan = EffectiveSkinPlan(
-            profile, base, face ? face->detailFilename : std::string_view{});
+            profile, actor, base, face ? face->detailFilename : std::string_view{});
         add(plan.body, "skin");
         add(plan.cbbeGenitalAnal, "skin");
         add(plan.unpGenitalAnal, "skin");
@@ -830,13 +857,69 @@ namespace
         return path;
     }
 
+    [[nodiscard]] bool HasPotentialFaceLayers(const bcn::SkinProfile& profile)
+    {
+        if (!profile.face.empty() || !profile.vampireFace.empty() ||
+            !profile.elderFace.empty() || !profile.faceDetails.empty()) return true;
+        return std::ranges::any_of(profile.raceFace,
+            [](const auto& layers) { return !layers.empty(); });
+    }
+
+    [[nodiscard]] bool ActorHasRsvFaceOwnership(RE::Actor* actor)
+    {
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        const auto face = FaceNode(actor, base);
+        if (!face || !face->object) return false;
+
+        // RaceMenu v2 exposes the persistent owner directly. This remains the
+        // authoritative probe even when the current live material has not yet
+        // caught up with RSV's deferred FaceGen update.
+        if (auto* overrides = OverrideInterfaceV2()) {
+            const auto female = base && base->GetSex() == RE::SEX::kFemale;
+            for (const auto textureIndex : kTextureIndices) {
+                skee_override::StringVisitor current;
+                if (overrides->GetNodeOverride(actor, female, face->nodeName.c_str(),
+                        static_cast<std::uint16_t>(kShaderTextureProperty),
+                        static_cast<std::uint8_t>(textureIndex), current) &&
+                    bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(
+                        current.Value())) return true;
+            }
+        }
+
+        // RaceMenu v0/v1 exposes the same query only through asynchronous
+        // Papyrus. The live FaceGen texture is a safe bounded fallback: no
+        // directory scan, equipment inspection, or arbitrary foreign-owner
+        // takeover is involved.
+        bool found{};
+        RE::BSVisit::TraverseScenegraphGeometries(face->object,
+            [&found](RE::BSGeometry* geometry) {
+                if (!geometry) return RE::BSVisit::BSVisitControl::kContinue;
+                auto* shader = geometry->lightingShaderProp_cast();
+                auto* material = shader ?
+                    static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+                const auto textureSet = StableTextureSet(material);
+                if (!textureSet) return RE::BSVisit::BSVisitControl::kContinue;
+                for (const auto textureIndex : kTextureIndices) {
+                    const auto* path = textureSet->GetTexturePath(
+                        static_cast<RE::BSTextureSet::Texture>(textureIndex));
+                    if (path && bcn::skin_override::ownership::
+                            IsRacialSkinVarianceTexturePath(path)) {
+                        found = true;
+                        return RE::BSVisit::BSVisitControl::kStop;
+                    }
+                }
+                return RE::BSVisit::BSVisitControl::kContinue;
+            });
+        return found;
+    }
+
     void AuditLiveSkinProfile(RE::Actor* actor, const bcn::SkinProfile& profile)
     {
         if (!actor) return;
         auto* base = actor->GetActorBase();
         const auto faceNode = FaceNode(actor, base);
         const auto plan = EffectiveSkinPlan(
-            profile, base, faceNode ? faceNode->detailFilename : std::string_view{});
+            profile, actor, base, faceNode ? faceNode->detailFilename : std::string_view{});
         const auto& bodyLayers = plan.body;
         const auto maleGenitalLayers = EffectiveMaleGenitalLayers(profile, actor, base);
         const auto& faceLayers = plan.face;
@@ -1028,6 +1111,7 @@ namespace
         std::uint64_t session{};
         bool female{};
         bool futanari{};
+        bool independentCleanup{};
         std::atomic_uint32_t pending{ 1U };  // submission sentinel
         std::atomic_uint32_t accepted{};
         std::atomic_bool timedOut{};
@@ -1112,7 +1196,7 @@ namespace
     };
 
     [[nodiscard]] auto MakeLegacyBatch(RE::Actor* actor, const std::uint64_t generation,
-        const bool futanari = false)
+        const bool futanari = false, const bool independentCleanup = false)
     {
         auto batch = std::make_shared<LegacyOverrideBatch>();
         batch->lease = bcn::frame_tasks::CurrentLease();
@@ -1123,6 +1207,7 @@ namespace
         batch->vmIdentity = RE::BSScript::Internal::VirtualMachine::GetSingleton();
         batch->generation = generation;
         batch->futanari = futanari;
+        batch->independentCleanup = independentCleanup;
         batch->session = bcn::ActorRegistry::Get().SessionGeneration();
         batch->female = actor->GetActorBase() && actor->GetActorBase()->GetSex() == RE::SEX::kFemale;
         batch->deadline = std::chrono::steady_clock::now() + kLegacyCallbackTimeout;
@@ -1132,6 +1217,7 @@ namespace
 
     [[nodiscard]] bool IsCurrentLegacyChange(const LegacyOverrideBatch& batch)
     {
+        if (batch.independentCleanup) return true;
         return batch.futanari ? IsCurrentFutanariChange(batch.actorFormID, batch.generation) :
             IsCurrentSkinChange(batch.actorFormID, batch.generation);
     }
@@ -1613,6 +1699,38 @@ namespace
         return submitted != 0U ? mutation : std::shared_ptr<LegacyMutationTracker>{};
     }
 
+    void DispatchLegacyRsvFaceTransient(
+        RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor,
+        const bool female, const FaceNodeInfo& face,
+        const std::vector<bcn::SkinTextureLayer>& layers,
+        const std::shared_ptr<LegacyOverrideBatch>& batch)
+    {
+        for (const auto& layer : layers) {
+            const auto path = bcn::runtime_assets::TexturePathFromGameRelative(
+                layer.path, "skin-face");
+            if (path.empty()) continue;
+            const auto textureIndex = static_cast<std::uint32_t>(layer.shaderTextureIndex);
+            DispatchLegacyOwnershipQuery(vm, "GetNodeOverrideString",
+                RE::MakeFunctionArguments(static_cast<RE::TESObjectREFR*>(actor),
+                    bool{ female }, std::string{ face.nodeName },
+                    static_cast<std::uint32_t>(kShaderTextureProperty),
+                    static_cast<std::uint32_t>(textureIndex)),
+                batch, [&vm, actor, female, node = face.nodeName,
+                           textureIndex, path, batch](std::string current) {
+                    if (!bcn::skin_override::ownership::MayTransientlyPaintRsv(
+                            !current.empty(), current)) return;
+                    // persist=false is the public v0/v1 live-only route. It
+                    // never replaces RSV's serialized owner.
+                    static_cast<void>(DispatchLegacy(vm, "AddNodeOverrideString",
+                        RE::MakeFunctionArguments(static_cast<RE::TESObjectREFR*>(actor),
+                            bool{ female }, std::string{ node },
+                            static_cast<std::uint32_t>(kShaderTextureProperty),
+                            static_cast<std::uint32_t>(textureIndex),
+                            std::string{ path }, false), batch));
+                });
+        }
+    }
+
     void MarkCurrentSkinContent(RE::Actor* actor, const bcn::SkinProfile& profile, std::uint64_t generation)
     {
         if (!actor || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
@@ -1643,7 +1761,7 @@ namespace
         static_cast<void>(ReleaseRsvTransientFace(actor->GetFormID()));
         const auto faceNode = FaceNode(actor.get(), base);
         const auto initialPlan = EffectiveSkinPlan(
-            profile, base, faceNode ? faceNode->detailFilename : std::string_view{});
+            profile, actor.get(), base, faceNode ? faceNode->detailFilename : std::string_view{});
         if (initialPlan.requiresFaceGeometry && !faceNode) {
             SKSE::log::warn(
                 "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
@@ -1661,7 +1779,7 @@ namespace
             auto* currentBase = currentActor->GetActorBase();
             if (!currentBase || !ProfileMatchesActor(currentActor.get(), profile)) return;
             const auto currentFace = FaceNode(currentActor.get(), currentBase);
-            const auto currentPlan = EffectiveSkinPlan(profile, currentBase,
+            const auto currentPlan = EffectiveSkinPlan(profile, currentActor.get(), currentBase,
                 currentFace ? currentFace->detailFilename : std::string_view{});
             if (currentPlan.requiresFaceGeometry && !currentFace) return;
             const auto currentFemale = currentBase->GetSex() == RE::SEX::kFemale;
@@ -1730,7 +1848,7 @@ namespace
                 }
                 const auto repairFemale = repairBase->GetSex() == RE::SEX::kFemale;
                 const auto repairFace = FaceNode(settledActor.get(), repairBase);
-                const auto repairPlan = EffectiveSkinPlan(profile, repairBase,
+                const auto repairPlan = EffectiveSkinPlan(profile, settledActor.get(), repairBase,
                     repairFace ? repairFace->detailFilename : std::string_view{});
                 auto repairBatch = MakeLegacyBatch(settledActor.get(), generation);
                 repairBatch->completion = [finish](const std::uint32_t) { finish(); };
@@ -1781,7 +1899,7 @@ namespace
                 const bcn::skin_geometry::BodySelection selection =
                     bcn::skin_geometry::BodySelection::all,
                 const bool allowExplicitLimbNode = false,
-                const bcn::SkinUvLayout layout = bcn::SkinUvLayout::unknown) {
+                const bcn::SkinLayout layout = bcn::SkinLayout::unknown) {
                 if (layers.empty()) return;
                 auto exact = DispatchLegacyPartApply(*currentVM, currentActor.get(), currentFemale,
                     slot, layers, applyBatch, selection, allowExplicitLimbNode);
@@ -1844,9 +1962,9 @@ namespace
                         RE::BGSBipedObjectForm::BipedObjectSlot::kTail, currentBodyLayers, applyBatch));
             }
             submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands, currentHandsLayers,
-                bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
+                bcn::skin_geometry::BodySelection::all, true, currentPlan.layout);
             submitPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, currentFeetLayers,
-                bcn::skin_geometry::BodySelection::all, true, profile.uvLayout);
+                bcn::skin_geometry::BodySelection::all, true, currentPlan.layout);
             if (!currentFaceLayers.empty()) {
                 requiredParts->push_back(currentFace ?
                     DispatchLegacyFaceApply(*currentVM, currentActor.get(), currentFemale,
@@ -1962,7 +2080,7 @@ namespace
 
         const auto faceNode = FaceNode(actor.get(), base);
         const auto plan = EffectiveSkinPlan(
-            profile, base, faceNode ? faceNode->detailFilename : std::string_view{});
+            profile, actor.get(), base, faceNode ? faceNode->detailFilename : std::string_view{});
         if (plan.requiresFaceGeometry && !faceNode) {
             SKSE::log::warn(
                 "Body Change NG skipped face layers from skin '{}' on actor {:08X}: no live FaceGen geometry was found",
@@ -2056,7 +2174,7 @@ namespace
         const auto applyPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
             const std::vector<bcn::SkinTextureLayer>& layers,
             const std::vector<LoadedPartTarget>& targets,
-            const bcn::SkinUvLayout layout = bcn::SkinUvLayout::unknown) {
+            const bcn::SkinLayout layout = bcn::SkinLayout::unknown) {
             if (layers.empty()) return;
             ++requestedParts;
             const auto exactApplied = ApplyLoadedPart(
@@ -2119,9 +2237,9 @@ namespace
                     RE::BGSBipedObjectForm::BipedObjectSlot::kTail, bodyLayers, tailTargets));
         }
         applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands,
-            selectedHandsLayers, handsTargets, profile.uvLayout);
+            selectedHandsLayers, handsTargets, plan.layout);
         applyPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet,
-            selectedFeetLayers, feetTargets, profile.uvLayout);
+            selectedFeetLayers, feetTargets, plan.layout);
         if (!faceLayers.empty()) {
             ++requestedParts;
             if (faceNode && ApplyFacePart(*overrides, actor.get(), female, *faceNode, faceLayers)) {
@@ -2248,11 +2366,6 @@ namespace
         return bcn::skin_override::ApplyResult::queued;
     }
 
-    [[nodiscard]] std::optional<std::string> RuntimeProfileId(const RE::FormID actorFormID)
-    {
-        return bcn::skin_session::RuntimeProfileId(actorFormID);
-    }
-
     [[nodiscard]] std::optional<std::uint64_t> CurrentSkinGeneration(
         const RE::FormID actorFormID)
     {
@@ -2272,17 +2385,17 @@ namespace
                         refreshGeneration, notBefore);
                     return;
                 }
-                const auto currentProfile = RuntimeProfileId(actorFormID);
-                if (!currentProfile || *currentProfile != profileId) return;
                 const auto actor = actorHandle.get();
                 if (!actor || !actor->Is3DLoaded() || actor->GetFormID() != actorFormID) return;
+                const auto currentProfile = bcn::skin_override::CurrentProfileId(actor.get());
+                if (!currentProfile || *currentProfile != profileId) return;
                 const auto profile = bcn::SkinProfiles::Get().Find(profileId);
                 auto* base = actor->GetActorBase();
                 if (!profile || !base || !ProfileMatchesActor(actor.get(), *profile)) return;
                 const auto face = FaceNode(actor.get(), base);
                 if (!face) return;
                 const auto layers = EffectiveSkinPlan(
-                    *profile, base, face->detailFilename).face;
+                    *profile, actor.get(), base, face->detailFilename).face;
                 if (layers.empty()) return;
                 const auto female = base->GetSex() == RE::SEX::kFemale;
                 if (UsesLegacyOverride()) {
@@ -2290,14 +2403,266 @@ namespace
                     const auto skinGeneration = CurrentSkinGeneration(actorFormID);
                     if (!vm || !skinGeneration) return;
                     auto batch = MakeLegacyBatch(actor.get(), *skinGeneration);
-                    static_cast<void>(DispatchLegacyFaceApply(
-                        *vm, actor.get(), female, *face, layers, batch));
+                    DispatchLegacyRsvFaceTransient(
+                        *vm, actor.get(), female, *face, layers, batch);
                     CompleteLegacyBatch(batch);
                 } else if (auto* overrides = OverrideInterfaceV2()) {
-                    static_cast<void>(ApplyFacePart(
-                        *overrides, actor.get(), female, *face, layers));
+                    ApplyRsvFaceTransientV2(
+                        *overrides, actor.get(), female, *face, layers);
                 }
             }, 8U, bcn::appearance::WorkChannel::rsvFaceReconcile);
+    }
+
+    void CleanupLegacyBodySkinV2Now(const RE::ActorHandle& actorHandle)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        auto* overrides = OverrideInterfaceV2();
+        if (!actor || !actor->Is3DLoaded() || !base || !overrides ||
+            !ClaimLegacyCleanup(actor->GetFormID())) return;
+
+        const auto female = base->GetSex() == RE::SEX::kFemale;
+        const auto faceNode = FaceNode(actor.get(), base);
+        bool removed = ClearLegacyMisdirectedFaceNodes(*overrides, actor.get(), female);
+        const auto clearPart = [&](const RE::BGSBipedObjectForm::BipedObjectSlot slot,
+                                   const bcn::skin_geometry::BodySelection selection =
+                                       bcn::skin_geometry::BodySelection::all) {
+            removed = ClearTexturePart(*overrides, actor.get(), female, slot, true, selection) || removed;
+            removed = ClearArmorAddonPart(*overrides, actor.get(), female, slot, selection) || removed;
+        };
+        clearPart(RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
+            bcn::skin_geometry::BodySelection::regular);
+        clearPart(kUbeBodySlot, bcn::skin_geometry::BodySelection::regular);
+        clearPart(RE::BGSBipedObjectForm::BipedObjectSlot::kHands);
+        clearPart(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet);
+        clearPart(RE::BGSBipedObjectForm::BipedObjectSlot::kTail);
+        // Slot 52 is deliberately excluded. Male SOS/TNG and female futanari
+        // are independent adapters with their own apply/clear ownership.
+        if (faceNode) {
+            removed = ClearFaceTextures(
+                *overrides, actor.get(), female, faceNode->nodeName, true) || removed;
+        }
+        if (removed) {
+            actor->DoReset3D(false);
+            SKSE::log::info(
+                "Body Change NG removed owned 1.1.x BodySkin NiOverride keys before native TXST migration for actor {:08X}",
+                actor->GetFormID());
+        }
+    }
+
+    void CleanupLegacyBodySkinPapyrusNow(const RE::ActorHandle& actorHandle)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !actor->Is3DLoaded() || !base || !vm ||
+            !ClaimLegacyCleanup(actor->GetFormID())) return;
+
+        const auto female = base->GetSex() == RE::SEX::kFemale;
+        const auto faceNode = FaceNode(actor.get(), base);
+        auto batch = MakeLegacyBatch(actor.get(), 0U, false, true);
+        batch->completion = [actorHandle](const std::uint32_t removed) {
+            const auto settledActor = actorHandle.get();
+            if (!settledActor || removed == 0U) return;
+            settledActor->DoReset3D(false);
+            SKSE::log::info(
+                "Body Change NG removed owned 1.1.x BodySkin NiOverride keys before native TXST migration for actor {:08X} through RaceMenu v0/v1",
+                settledActor->GetFormID());
+        };
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kBody, batch,
+            bcn::skin_geometry::BodySelection::regular);
+        DispatchLegacyPartClear(*vm, actor.get(), female, kUbeBodySlot, batch,
+            bcn::skin_geometry::BodySelection::regular);
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kHands, batch);
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kFeet, batch);
+        DispatchLegacyPartClear(*vm, actor.get(), female,
+            RE::BGSBipedObjectForm::BipedObjectSlot::kTail, batch);
+        if (faceNode) {
+            DispatchLegacyFaceClear(
+                *vm, actor.get(), female, faceNode->nodeName, true, batch);
+        }
+        CompleteLegacyBatch(batch);
+    }
+
+    void QueueLegacyBodySkinCleanup(RE::Actor* actor)
+    {
+        if (!actor || !actor->Is3DLoaded() || !bcn::frame_tasks::Active()) return;
+        const auto route = OverrideRoute();
+        if (route == bcn::racemenu_override::Route::unsupported) return;
+        const auto handle = actor->GetHandle();
+        const auto legacy = bcn::racemenu_override::UsesPapyrus(route);
+        // NativeSkinBackend invokes this admission hook before it submits form
+        // graph work. Actor serialization then keeps the old Armor/Addon
+        // identities stable until their owned exact keys have been inspected.
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, legacy] {
+            if (legacy) CleanupLegacyBodySkinPapyrusNow(handle);
+            else CleanupLegacyBodySkinV2Now(handle);
+        }, 0U, bcn::appearance::WorkChannel::legacyBodySkinCleanup, true);
+    }
+
+    void ApplyMaleGenitalsV2Now(RE::ActorHandle actorHandle,
+        const bcn::SkinProfile profile, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!actor || !actor->Is3DLoaded() || !base || base->GetSex() != RE::SEX::kMale ||
+            !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+        const auto layers = EffectiveMaleGenitalLayers(profile, actor.get(), base);
+        if (layers.empty()) return;
+        const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals);
+        auto* overrides = OverrideInterfaceV2();
+        if (!overrides || targets.empty()) return;
+        static_cast<void>(ClearArmorAddonTargets(*overrides, actor.get(), false, targets));
+        if (ApplyLoadedPart(*overrides, actor.get(), false, kSosMaleGenitalSlot,
+                layers, targets, "skin", "male-genitals")) {
+            SKSE::log::info(
+                "Body Change NG applied the selected male BodySkin to the active SOS/TNG addon for actor {:08X}",
+                actor->GetFormID());
+        }
+    }
+
+    void ClearMaleGenitalsV2Now(
+        RE::ActorHandle actorHandle, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!actor || !actor->Is3DLoaded() || !base || base->GetSex() != RE::SEX::kMale ||
+            !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+        const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals);
+        auto* overrides = OverrideInterfaceV2();
+        if (!overrides || targets.empty()) return;
+        const auto cleared = ClearArmorAddonTargets(*overrides, actor.get(), false, targets);
+        if (cleared) {
+            if (auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton()) {
+                static_cast<void>(QueueNiNodeUpdate(
+                    *vm, actor.get(), actorHandle, generation, false));
+            }
+        }
+    }
+
+    void ApplyMaleGenitalsLegacyNow(RE::ActorHandle actorHandle,
+        const bcn::SkinProfile profile, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !actor->Is3DLoaded() || !base || base->GetSex() != RE::SEX::kMale ||
+            !vm || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+        const auto layers = EffectiveMaleGenitalLayers(profile, actor.get(), base);
+        const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals);
+        if (layers.empty() || targets.empty()) return;
+
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation);
+        clearBatch->completion = [actorHandle, profile, generation](const std::uint32_t) {
+            const auto current = actorHandle.get();
+            auto* currentBase = current ? current->GetActorBase() : nullptr;
+            auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            if (!current || !current->Is3DLoaded() || !currentBase || !currentVM ||
+                currentBase->GetSex() != RE::SEX::kMale ||
+                !IsCurrentSkinChange(current->GetFormID(), generation)) return;
+            const auto currentLayers = EffectiveMaleGenitalLayers(
+                profile, current.get(), currentBase);
+            const auto currentTargets = FindLoadedPartTargets(current.get(),
+                kSosMaleGenitalSlot, bcn::skin_geometry::BodySelection::maleGenitals);
+            if (currentLayers.empty() || currentTargets.empty()) return;
+            auto applyBatch = MakeLegacyBatch(current.get(), generation);
+            applyBatch->completion = [actorHandle, generation](const std::uint32_t accepted) {
+                const auto settled = actorHandle.get();
+                auto* settledVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+                if (!settled || !settledVM || accepted == 0U ||
+                    !IsCurrentSkinChange(settled->GetFormID(), generation)) return;
+                static_cast<void>(QueueNiNodeUpdate(
+                    *settledVM, settled.get(), actorHandle, generation, false));
+            };
+            static_cast<void>(DispatchLegacyLoadedPartApply(*currentVM, current.get(), false,
+                kSosMaleGenitalSlot, currentLayers, applyBatch, currentTargets,
+                "skin", "male-genitals"));
+            CompleteLegacyBatch(applyBatch);
+        };
+        DispatchLegacyTargetsClear(*vm, actor.get(), false, targets, clearBatch);
+        CompleteLegacyBatch(clearBatch);
+    }
+
+    void ClearMaleGenitalsLegacyNow(
+        RE::ActorHandle actorHandle, const std::uint64_t generation)
+    {
+        const auto actor = actorHandle.get();
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+        if (!actor || !actor->Is3DLoaded() || !base || base->GetSex() != RE::SEX::kMale ||
+            !vm || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
+        const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals);
+        if (targets.empty()) return;
+        auto clearBatch = MakeLegacyBatch(actor.get(), generation);
+        clearBatch->completion = [actorHandle, generation](const std::uint32_t accepted) {
+            const auto current = actorHandle.get();
+            auto* currentVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
+            if (!current || !currentVM || accepted == 0U ||
+                !IsCurrentSkinChange(current->GetFormID(), generation)) return;
+            static_cast<void>(QueueNiNodeUpdate(
+                *currentVM, current.get(), actorHandle, generation, false));
+        };
+        DispatchLegacyTargetsClear(*vm, actor.get(), false, targets, clearBatch);
+        CompleteLegacyBatch(clearBatch);
+    }
+
+    void QueueMaleGenitalApply(RE::Actor* actor, const bcn::SkinProfile& profile,
+        const std::uint64_t generation)
+    {
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!actor || !base || base->GetSex() != RE::SEX::kMale ||
+            profile.maleGenitals.empty()) return;
+        const auto layers = EffectiveMaleGenitalLayers(profile, actor, base);
+        if (layers.empty()) return;
+        std::vector<bcn::runtime_assets::TexturePreparation> paths;
+        paths.reserve(layers.size());
+        for (const auto& layer : layers) paths.push_back({ layer.path, "skin" });
+        const auto handle = actor->GetHandle();
+        const auto legacy = UsesLegacyOverride();
+        bcn::frame_tasks::Queue(actor->GetFormID(),
+            [handle, profile, paths = std::move(paths), generation, legacy]() mutable {
+                const auto current = handle.get();
+                if (!current || !IsCurrentSkinChange(
+                        current->GetFormID(), generation)) return;
+                const auto lease = bcn::frame_tasks::CurrentLease();
+                auto continueApply =
+                    [lease, handle, profile, generation, legacy](const bool prepared) mutable {
+                        if (!prepared) return;
+                        static_cast<void>(bcn::frame_tasks::Continue(lease,
+                            [handle, profile, generation, legacy] {
+                                if (legacy) {
+                                    ApplyMaleGenitalsLegacyNow(handle, profile, generation);
+                                } else {
+                                    ApplyMaleGenitalsV2Now(handle, profile, generation);
+                                }
+                            }));
+                    };
+                if (!bcn::runtime_assets::PrepareTexturePathsAsync(
+                        (static_cast<std::uint64_t>(current->GetFormID()) << 2U) | 2U,
+                        std::move(paths), continueApply,
+                        bcn::async_work::FrameTaskQueue::InteractiveLease(lease))) {
+                    continueApply(false);
+                }
+            }, 1U, bcn::appearance::WorkChannel::maleGenitalSkinApply);
+    }
+
+    void QueueMaleGenitalClear(RE::Actor* actor, const std::uint64_t generation)
+    {
+        auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!actor || !base || base->GetSex() != RE::SEX::kMale) return;
+        const auto handle = actor->GetHandle();
+        const auto legacy = UsesLegacyOverride();
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, legacy] {
+            if (legacy) ClearMaleGenitalsLegacyNow(handle, generation);
+            else ClearMaleGenitalsV2Now(handle, generation);
+        }, 1U, bcn::appearance::WorkChannel::maleGenitalSkinApply);
     }
 
     void ApplyFutanariV2Now(RE::ActorHandle actorHandle,
@@ -2413,6 +2778,7 @@ namespace bcn::skin_override
 {
     void ResetSessionState()
     {
+        bcn::native_skin::ResetSessionState();
         bcn::runtime_assets::CancelTexturePreparations();
         {
             std::scoped_lock lock(g_legacyWatchdogLock);
@@ -2430,119 +2796,86 @@ namespace bcn::skin_override
 
     ApplyResult QueueApply(RE::Actor* actor, std::string profileId)
     {
-        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
-        if (!actor) return ApplyResult::invalidActor;
-        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
-        // RaceMenu Override v0/v1 use the serialization-safe Papyrus string
-        // route. Only the audited public v2 wrapper is called natively.
-        const auto* overrideInterface = OverrideInterface();
-        const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
-        if (!overrideInterface ||
-            (legacyOverride && !RE::BSScript::Internal::VirtualMachine::GetSingleton())) {
-            return ApplyResult::unavailable;
-        }
-        const auto profile = SkinProfiles::Get().Find(profileId);
-        if (!profile) {
-            SKSE::log::warn(
-                "Body Change NG skin profile '{}' is unavailable; removing only stale BCNG texture overrides",
-                profileId);
-            static_cast<void>(QueueClearInternal(actor, std::move(profileId)));
-            return ApplyResult::missingProfile;
-        }
-        auto* base = actor->GetActorBase();
-        if (!base) return ApplyResult::invalidActor;
-        const auto female = base->GetSex() == RE::SEX::kFemale;
-        if ((female && profile->sex != SkinSex::female) || (!female && profile->sex != SkinSex::male)) {
-            return ApplyResult::incompatibleSex;
-        }
-        if (!SkinRaceMatchesActor(profile->race, ResolveActorSkinRace(actor))) {
-            return ApplyResult::incompatibleRace;
-        }
-        const auto compatibility = SkinProfileCompatibility(*profile,
-            female ? SkinSex::female : SkinSex::male,
-            ResolveActorSkinRace(actor), body_family::ResolveActor(actor));
-        if (!compatibility.Compatible()) {
-            if (compatibility.status == SkinCompatibilityStatus::unknownProfileLayout) {
-                return ApplyResult::ambiguousProfileLayout;
+        const auto actorFormID = actor ? actor->GetFormID() : 0U;
+        const auto profile = bcn::SkinProfiles::Get().Find(profileId);
+        const auto needsRsvFaceBridge = actor && profile && HasPotentialFaceLayers(*profile) &&
+            ActorHasRsvFaceOwnership(actor);
+        const auto result = bcn::native_skin::QueueApply(actor, profileId,
+            [actor] { QueueLegacyBodySkinCleanup(actor); });
+        if (result == ApplyResult::queued && actor) {
+            const auto generation = BeginSkinChange(actorFormID);
+            bcn::skin_session::TrackSkinSelection(actorFormID, std::move(profileId));
+            if (needsRsvFaceBridge) {
+                bcn::skin_session::MarkTransientFace(actorFormID);
+                SKSE::log::info(
+                    "Body Change NG enabled the isolated RSV face bridge for actor {:08X}",
+                    actorFormID);
             }
-            if (compatibility.status == SkinCompatibilityStatus::unknownActorLayout) {
-                return ApplyResult::ambiguousActorLayout;
+            if (profile) {
+                if (profile->maleGenitals.empty()) QueueMaleGenitalClear(actor, generation);
+                else QueueMaleGenitalApply(actor, *profile, generation);
             }
-            return ApplyResult::incompatibleBodyFamily;
         }
-        // Partial body/hands/feet packs do not need a face target. Require
-        // live FaceGen geometry only when this profile supplies face layers.
-        if (EffectiveSkinPlan(*profile, base).requiresFaceGeometry && !FaceNode(actor, base)) {
-            return ApplyResult::faceGeometryUnavailable;
+        if (result == ApplyResult::missingProfile && actor) {
+            [[maybe_unused]] const auto cleared = bcn::native_skin::QueueClear(actor,
+                [actor] { QueueLegacyBodySkinCleanup(actor); });
+            const auto generation = BeginSkinChange(actorFormID);
+            bcn::skin_session::TrackSkinSelection(actorFormID, {});
+            static_cast<void>(ReleaseRsvTransientFace(actorFormID));
+            QueueMaleGenitalClear(actor, generation);
         }
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks) return ApplyResult::noTaskInterface;
-        const auto handle = actor->GetHandle();
-        const auto generation = BeginSkinChange(actor->GetFormID());
-        // Preserve the desired selection even when a covered body part is not
-        // repaintable until a later equipment event.
-        bcn::skin_session::TrackSkinSelection(actor->GetFormID(), profile->id);
-        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, profile = *profile, generation, legacyOverride] {
-            const auto resolved = handle.get();
-            if (!resolved || !IsCurrentSkinChange(resolved->GetFormID(), generation)) return;
-            if (profile.contentHash != SkinProfiles::Get().ContentHash(profile.id)) {
-                [[maybe_unused]] const auto refreshed = QueueApply(resolved.get(), profile.id);
-                return;
-            }
-            auto* currentBase = resolved->GetActorBase();
-            if (!currentBase || !ProfileMatchesActor(resolved.get(), profile)) return;
-            auto paths = EffectiveTexturePreparations(profile, resolved.get(), currentBase);
-            const auto lease = bcn::frame_tasks::CurrentLease();
-            const auto continueApply = [lease, handle, profile, generation, legacyOverride](const bool prepared) {
-                if (!prepared) {
-                    SKSE::log::warn(
-                        "Body Change NG could not prepare every runtime texture alias for '{}' outside actor application; unavailable files will remain untouched",
-                        profile.name);
-                }
-                static_cast<void>(bcn::frame_tasks::Continue(lease,
-                    [handle, profile, generation, legacyOverride] {
-                        const auto current = handle.get();
-                        if (!current || !IsCurrentSkinChange(current->GetFormID(), generation)) return;
-                        if (profile.contentHash != SkinProfiles::Get().ContentHash(profile.id)) {
-                            [[maybe_unused]] const auto refreshed = QueueApply(current.get(), profile.id);
-                            return;
-                        }
-                        if (legacyOverride) ApplyLegacyNow(handle, profile, generation);
-                        else ApplyNow(handle, profile, generation);
-                    }));
-            };
-            if (!bcn::runtime_assets::PrepareTexturePathsAsync(
-                    static_cast<std::uint64_t>(resolved->GetFormID()) << 1U,
-                    std::move(paths), continueApply,
-                    bcn::async_work::FrameTaskQueue::InteractiveLease(lease))) {
-                continueApply(false);
-            }
-        }, 1, bcn::appearance::WorkChannel::skinApply);
-        return ApplyResult::queued;
+        return result;
     }
 
     ApplyResult QueueClear(RE::Actor* actor)
     {
-        return QueueClearInternal(actor, {});
+        const auto result = bcn::native_skin::QueueClear(actor,
+            [actor] { QueueLegacyBodySkinCleanup(actor); });
+        if (result == ApplyResult::queued && actor) {
+            const auto generation = BeginSkinChange(actor->GetFormID());
+            bcn::skin_session::TrackSkinSelection(actor->GetFormID(), {});
+            static_cast<void>(ReleaseRsvTransientFace(actor->GetFormID()));
+            QueueMaleGenitalClear(actor, generation);
+        }
+        return result;
     }
 
     std::optional<std::string> CurrentProfileId(const RE::Actor* actor)
     {
         if (!actor) return std::nullopt;
-        if (bcn::skin_session::HasTrackedSelection(actor->GetFormID())) {
-            return bcn::skin_session::RuntimeProfileId(actor->GetFormID());
-        }
-        // A partial profile can remain pending until its covered geometry is
-        // loaded. Keep returning the desired selection so equipment and 3D
-        // refresh events retry it instead of reviving an older complete skin.
+        if (const auto native = bcn::native_skin::CurrentProfileId(actor)) return native;
         if (const auto selected = bcn::ActorRegistry::Get().SelectedSkinId(actor)) return selected;
         return bcn::ActorRegistry::Get().AppliedSkinId(actor);
     }
 
     bool HasTrackedSelection(const RE::Actor* actor)
     {
-        if (!actor) return false;
-        return bcn::skin_session::HasTrackedSelection(actor->GetFormID());
+        return bcn::native_skin::HasTrackedSelection(actor);
+    }
+
+    bool HasCurrentMaleGenitalSkin(const RE::Actor* actor)
+    {
+        const auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!base || base->GetSex() != RE::SEX::kMale) return false;
+        const auto profileId = CurrentProfileId(actor);
+        const auto profile = profileId ? bcn::SkinProfiles::Get().Find(*profileId) :
+            std::optional<bcn::SkinProfile>{};
+        return profile && !profile->maleGenitals.empty();
+    }
+
+    void QueueReapplyCurrentMaleGenitals(RE::Actor* actor)
+    {
+        if (!actor || !HasCurrentMaleGenitalSkin(actor)) return;
+        const auto profileId = CurrentProfileId(actor);
+        const auto profile = profileId ? bcn::SkinProfiles::Get().Find(*profileId) :
+            std::optional<bcn::SkinProfile>{};
+        if (!profile) return;
+        auto generation = CurrentSkinGeneration(actor->GetFormID());
+        if (!generation) {
+            generation = BeginSkinChange(actor->GetFormID());
+            bcn::skin_session::TrackSkinSelection(actor->GetFormID(), profile->id);
+        }
+        QueueMaleGenitalApply(actor, *profile, *generation);
     }
 
     std::optional<bcn::FutanariSkinType> CurrentFutanariType(
@@ -2674,11 +3007,23 @@ namespace bcn::skin_override
         // slot and ArmorAddon remain equipped. TESEquipEvent, actor selection
         // and actor teardown are the exact cache invalidation points for a
         // real slot ownership change.
-        // Ordinary BCNG skins do not need RSV's delayed face race. Avoid a
-        // queued 150-ms reconciliation on every unrelated NiNode rebuild.
-        if (!HasRsvTransientFace(actor->GetFormID())) return;
-        const auto profileId = RuntimeProfileId(actor->GetFormID());
+        const auto profileId = CurrentProfileId(actor);
         if (!profileId) return;
+        // A cell detach intentionally drops reference-scoped transient state,
+        // while the native Face TXST remains owned at ActorBase scope. Rebuild
+        // the bridge marker only from current, bounded evidence so a reloaded
+        // RSV face is not left behind and an unrelated NiNode update still
+        // performs no queued work.
+        if (!HasRsvTransientFace(actor->GetFormID())) {
+            const auto profile = bcn::SkinProfiles::Get().Find(*profileId);
+            if (!profile || !HasPotentialFaceLayers(*profile) ||
+                !ActorHasRsvFaceOwnership(actor)) return;
+            bcn::skin_session::MarkTransientFace(actor->GetFormID());
+        }
+        if (!CurrentSkinGeneration(actor->GetFormID())) {
+            static_cast<void>(BeginSkinChange(actor->GetFormID()));
+            bcn::skin_session::TrackSkinSelection(actor->GetFormID(), *profileId);
+        }
         // RSV's head effect intentionally waits 0.1 seconds before restoring
         // its serialized face keys. Apply BCNG immediately on selection, then
         // reconcile only this already-selected actor once after that boundary.
@@ -2689,7 +3034,7 @@ namespace bcn::skin_override
             generation, std::chrono::steady_clock::now() + std::chrono::milliseconds(150));
     }
 
-    std::optional<bool> LiveSkinStateMatches(RE::Actor* actor, const std::string_view profileId,
+    [[maybe_unused]] std::optional<bool> LegacyLiveSkinStateMatches(RE::Actor* actor, const std::string_view profileId,
         const bool expectDefault, const LiveCheckScope scope)
     {
         if (!actor || !actor->Is3DLoaded()) return std::nullopt;
@@ -2825,7 +3170,7 @@ namespace bcn::skin_override
         };
 
         const auto plan = EffectiveSkinPlan(
-            *profile, base, faceNode ? faceNode->detailFilename : std::string_view{});
+            *profile, actor, base, faceNode ? faceNode->detailFilename : std::string_view{});
         const auto bodyRoute = FindLoadedProfileBodyRoute(actor, *profile, false);
         inspectPart(plan.body, bodyRoute.slot,
             bodyRoute.selection, "skin", &bodyRoute.targets);
@@ -2848,6 +3193,13 @@ namespace bcn::skin_override
                 bcn::skin_geometry::BodySelection::all, "skin-face");
         }
         return comparableLayers != 0U && !mismatch;
+    }
+
+    std::optional<bool> LiveSkinStateMatches(RE::Actor* actor,
+        const std::string_view profileId, const bool expectDefault,
+        const LiveCheckScope)
+    {
+        return bcn::native_skin::LiveStateMatches(actor, profileId, expectDefault);
     }
 
     void AuditNow(RE::Actor* actor, const std::string_view reason)

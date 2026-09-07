@@ -3,6 +3,7 @@
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
+#include "BodyChangeNG/RuntimeCompatibility.h"
 
 #include "BodyChangeNG/Settings.h"
 
@@ -193,12 +194,15 @@ namespace
         // closed rather than probing an unverified layout.
         if (!player || REL::Module::IsVR()) return {};
         const auto version = REL::Module::get().version();
-        const auto newestLayout = version.compare(SKSE::RUNTIME_SSE_1_7_99) != std::strong_ordering::less;
-        const auto aeLayout = version.compare(SKSE::RUNTIME_SSE_1_6_629) != std::strong_ordering::less;
-        const auto baseOffset = newestLayout ? 0xB20 : aeLayout ? 0xB18 : 0xB10;
-        const auto overlayOffset = newestLayout ? 0xB38 : aeLayout ? 0xB30 : 0xB28;
-        auto* base = &REL::RelocateMember<RE::BSTArray<RE::TintMask*>>(player, baseOffset);
-        auto* overlayTints = REL::RelocateMember<RE::BSTArray<RE::TintMask*>*>(player, overlayOffset);
+        const auto layout = bcn::runtime::ResolvePlayerTintLayout(version);
+        if (!layout) {
+            SKSE::log::error("Body Change NG disabled PlayerTint raw-member access for unaudited runtime {}",
+                version.string());
+            return {};
+        }
+        auto* base = &REL::RelocateMember<RE::BSTArray<RE::TintMask*>>(player, layout->baseOffset);
+        auto* overlayTints = REL::RelocateMember<RE::BSTArray<RE::TintMask*>*>(
+            player, layout->overlayOffset);
         return { base, overlayTints };
     }
 

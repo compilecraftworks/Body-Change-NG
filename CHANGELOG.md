@@ -6,16 +6,35 @@ All notable public changes to Body Change NG are documented here.
 
 ### Skin architecture
 
-- Models skin UV layouts independently from BodySlide morph presets: female Vanilla, CBBE, UNP, UBE, male Vanilla, HIMBO, SAM, Argonian, and Khajiit.
-- Requires one exact profile and actor layout before applying a humanoid skin. Ambiguous profiles and conflicting actor evidence fail closed instead of treating an unknown family as compatible with every DDS set.
-- Applies body, hands, feet, and face as one profile plan regardless of equipped items. RaceMenu's live broad skin-slot route remains limited to UBE's explicit shared body atlas; conventional hands and feet always receive an immediate persistent one-bit value whether fully covered, partly exposed, or uncovered, while visible skin also receives exact Armor+ArmorAddon+geometry writes.
+- Separates catalog `SkinLayout` from runtime `BodyFamily`. Only an explicit `!UBE` atlas tree is UBE; every other conventional female pack is Legacy regardless of folder labels or optional genital/anal DDS files.
+- Does not classify female packs as CBBE/3BA versus UNP/BHUNP. Both runtime families accept Legacy, UBE accepts only UBE, and optional genital/anal atlases route only through matching TXST/geometry roles.
+- Removes the regression that excluded metadata-free conventional female packs as `unknown`, preserves every relative-path automatic ID, and keeps existing CBBE/UNP manifest values as Legacy aliases.
+- Replaces general BodySkin NiOverride painting with a private deep clone of the current native TXST -> ARMA -> Skin Armor graph and an optional Face TXST. The clone preserves all source channels and overlays only the part/channel pairs declared by the selected profile.
+- Requires an exact TXST role only for parts the partial pack actually supplies. Missing body parts or DDS channels retain the current provider value; a declared part with no exact role aborts before attachment instead of being redirected to another part.
+- Models the shipped UBE 2.0 graph explicitly: its slot-53 torso and separate hand/foot ARMAs share `!UBE\Body\femalebody_1_{d,n,sk}` while their NAM1 fields are empty. BCNG synthesizes a private TXST only on clones of verified canonical UBE naked models when body-atlas layers are actually declared; face-only profiles, custom paths, and absent channels are never guessed.
+- Attaches the complete graph at the NPC ActorBase, so naked body, hand, and foot rebuilds use Skyrim's native skin source without tracking equipment. Outfit-owned hard-coded materials are not guessed or repainted.
 - Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
-- Adds `uvLayout` to explicit skin manifests and keeps unsupported or contradictory manifests out of the catalog.
+- Keeps `profile.json` as an optional override for special packs rather than a requirement for conventional female skins.
+
+### Ownership, distribution, and compatibility
+
+- Keeps BodyMorph reference-scoped while making native skin distribution ActorBase-scoped. The existing 1.1.4 rule conditions, priorities, pools, JSON schema, and UI remain unchanged; every reference sharing one NPC base now converges on one stable skin-pool choice, including legacy reference-scoped results, and contradictory manual requests fail closed.
+- Allows ActorBase ownership to transfer to another reference only while no skin is active. The same active profile may be shared; a different active profile or a forced Default from a non-owner remains a conflict.
+- Treats the current RSV Skin Armor as a source provider, rebuilds BCNG's clone when RSV replaces body/far-skin/face pointers, and rebases an unattached face or far-skin component before a later profile starts using it. Only pointers BCNG still owns are restored. The bounded face bridge paints only channels currently owned by RSV as live, non-persistent values and never creates or removes a serialized key.
+- Preserves UBE 2.0's upstream requirement to exclude its player race from RSV (`PLAYER VANILLA`); only an already valid UBE/RSV provider graph is cloned.
+- Keeps male SOS/TNG slot-52 textures and optional female SOS/ERF/TRX futanari textures in independent reference-scoped adapters. Only those adapters and outfit morph correction observe equipment changes; general native skin does not.
+- Reapplies male SOS/TNG, female futanari, and the verified RSV face bridge independently when cell attachment recreates their external geometry; native base skin is not repainted on that path.
+- Removes only BCNG-owned 1.1.x body/hand/foot/tail/face NiOverride keys once during migration. It excludes RSV, foreign providers, male genital, and futanari ownership.
+- Stores an optional language-neutral `nameKey` for built-in samples and untouched generated rule names, so they follow the Korean, English, or Simplified Chinese UI without translating or overwriting a user-edited name.
+- Makes starter samples editable, movable, and deletable like every other rule, allocates collision-free persistent IDs for new rows, and shows a localized warning when an earlier same-sex all-NPC rule makes the selected row unreachable.
+- Saves distribution rules and settings through a flushed, reparsed temporary file followed by an atomic Windows replace, so a failed write cannot delete the last valid file.
+- Logs every rejected automatic NPC body/skin submission with the actor, ActorBase, rule/manual source, selected ID, and exact rejection reason. Co-save completion remains recorded only after the BodyMorph or native TXST operation finishes successfully.
 
 ### Appearance work coordination
 
-- Replaces numeric appearance-job channels at call sites with a typed operation model.
-- Assigns tint and futanari skin application distinct latest-wins channels, preventing either operation from cancelling the other.
+- Splits actor state, event ownership, and latest-wins work channels across body, native skin, tint, male genital, futanari, RSV face, and outfit features. Resetting or superseding one feature cannot clear or cancel another.
+- Removes the 1.1.x distribution delay that coupled native skin to completion of a BodyMorph rebuild. A face-only profile owns only its Face TXST and never attaches the cloned body/far-skin graph.
+- Admits only the exact SE/AE runtime table and RaceMenu BodyMorph v4/v5 plus Override v0/v1/v2 routes. Unknown game patches and future ABIs fail closed; the build remains `EXCLUSIVE_SKYRIM_FLAT` with no VR target.
 - Adds a dedicated skin architecture regression suite. The Release DLL and all 14 test executables pass.
 
 ## 1.1.4 — 2026-09-06

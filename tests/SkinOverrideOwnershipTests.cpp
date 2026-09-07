@@ -33,6 +33,12 @@ int main()
     assert(MayRemove(true, "textures/bodychangeng/cache/skin-face/head.dds"));
     assert(!MayRemove(true, "textures\\othermod\\head.dds"));
     assert(!MayRemove(false, "textures\\bodychangeng\\cache\\skin\\body.dds"));
+    assert(MayTransientlyPaintRsv(
+        true, "textures\\actors\\character\\rsv\\nord\\femalehead.dds"));
+    assert(!MayTransientlyPaintRsv(false, {}));
+    assert(!MayTransientlyPaintRsv(
+        true, "textures\\bodychangeng\\cache\\skin-face\\head.dds"));
+    assert(!MayTransientlyPaintRsv(true, "textures\\othermod\\head.dds"));
     assert(!bcn::skin_override::CanFinalizeSkinApply(true, true));
     assert(bcn::skin_override::CanFinalizeSkinApply(true, false));
     assert(!bcn::skin_override::CanFinalizeSkinApply(false, false));

@@ -1,6 +1,7 @@
 #include "BodyChangeNG/SkinOverrideBackend.h"
 
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/RuntimeCompatibility.h"
 
 #include <SKSE/Logger.h>
 
@@ -23,14 +24,13 @@ namespace bcn::skin_backend
         if (!candidate) return nullptr;
 
         const auto version = candidate->GetVersion();
-        const auto runtime = REL::Module::get().version();
-        const auto aeRuntime = runtime.compare(REL::Version{ 1, 6, 0, 0 }) !=
-            std::strong_ordering::less;
-        const auto route = racemenu_override::ResolveRoute(version, aeRuntime);
+        const auto runtimeVersion = REL::Module::get().version();
+        const auto branch = runtime::ResolveGameBranch(runtimeVersion);
+        const auto route = racemenu_override::ResolveRoute(version, branch);
         if (route == racemenu_override::Route::unsupported) {
             SKSE::log::error(
-                "Body Change NG rejected unsupported RaceMenu Override interface version {}",
-                version);
+                "Body Change NG rejected RaceMenu Override interface version {} on runtime {} ({})",
+                version, runtimeVersion.string(), runtime::GameBranchLabel(branch));
             return nullptr;
         }
 
@@ -38,7 +38,7 @@ namespace bcn::skin_backend
         g_interface.store(candidate, std::memory_order_release);
         SKSE::log::info(
             "Body Change NG received RaceMenu Override interface version {} runtime={} route={} path={}",
-            version, runtime.string(), racemenu_override::RouteLabel(route),
+            version, runtimeVersion.string(), racemenu_override::RouteLabel(route),
             racemenu_override::UsesNativeV2(route) ?
                 "native-v2-exact-persistent" : "Papyrus-NiOverride-exact-persistent");
         return candidate;

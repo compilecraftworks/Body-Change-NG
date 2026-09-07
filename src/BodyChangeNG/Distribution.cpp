@@ -1,4 +1,5 @@
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionRuleNames.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
@@ -29,6 +30,52 @@
 namespace
 {
     constexpr auto kSchemaVersion = 4;
+
+    [[nodiscard]] constexpr std::string_view BodyApplyResultLabel(
+        const bcn::racemenu::ApplyResult result) noexcept
+    {
+        using Result = bcn::racemenu::ApplyResult;
+        switch (result) {
+        case Result::queued: return "queued";
+        case Result::unavailable: return "racemenu-unavailable";
+        case Result::invalidActor: return "invalid-actor";
+        case Result::actor3DUnavailable: return "actor-3d-unavailable";
+        case Result::missingPreset: return "missing-preset";
+        case Result::emptyPreset: return "empty-preset";
+        case Result::incompatibleSex: return "incompatible-sex";
+        case Result::incompatibleBodyFamily: return "incompatible-body-family";
+        case Result::noTaskInterface: return "task-interface-unavailable";
+        }
+        return "unknown";
+    }
+
+    [[nodiscard]] constexpr std::string_view SkinApplyResultLabel(
+        const bcn::skin_override::ApplyResult result) noexcept
+    {
+        using Result = bcn::skin_override::ApplyResult;
+        switch (result) {
+        case Result::queued: return "queued";
+        case Result::unavailable: return "backend-unavailable";
+        case Result::invalidActor: return "invalid-actor";
+        case Result::actor3DUnavailable: return "actor-3d-unavailable";
+        case Result::missingProfile: return "missing-profile";
+        case Result::incompatibleSex: return "incompatible-sex";
+        case Result::incompatibleRace: return "incompatible-race";
+        case Result::incompatibleBodyFamily: return "incompatible-body-family";
+        case Result::ambiguousProfileLayout: return "ambiguous-profile-layout";
+        case Result::ambiguousActorLayout: return "ambiguous-actor-layout";
+        case Result::incompatibleFutanariType: return "incompatible-futanari-type";
+        case Result::futanariGeometryUnavailable: return "futanari-geometry-unavailable";
+        case Result::faceGeometryUnavailable: return "face-geometry-unavailable";
+        case Result::noTaskInterface: return "task-interface-unavailable";
+        case Result::unsupportedRuntime: return "unsupported-runtime";
+        case Result::actorBaseUnavailable: return "actor-base-unavailable";
+        case Result::nativeCloneFailed: return "native-clone-failed";
+        case Result::sharedActorBaseConflict: return "shared-actor-base-conflict";
+        case Result::ownershipConflict: return "ownership-conflict";
+        }
+        return "unknown";
+    }
 
     [[nodiscard]] std::filesystem::path LegacyDistributionPath()
     {
@@ -264,6 +311,7 @@ namespace
         bool bodyExcluded{};
         bool skinExcluded{};
         bool defaultBodyRequested{};
+        std::string ruleId;
         std::optional<std::string> presetId;
         std::optional<std::string> skinProfileId;
 
@@ -278,12 +326,16 @@ namespace
         const std::string_view previous)
     {
         if (pool.empty()) return std::nullopt;
-        if (!previous.empty() && std::ranges::find(pool, previous) != pool.end()) {
+        const auto feature = kind == "skin" ?
+            bcn::DistributionFeature::skin : bcn::DistributionFeature::body;
+        if (bcn::MayRetainPreviousDistributionSelection(feature) &&
+            !previous.empty() && std::ranges::find(pool, previous) != pool.end()) {
             return std::string{ previous };
         }
         const auto base = actor->GetActorBase();
         const auto key = rule.id + ":" + std::string{ kind };
-        const auto index = static_cast<std::size_t>(StableHash(key, base->GetFormID(), actor->GetFormID()) % pool.size());
+        const auto index = static_cast<std::size_t>(StableHash(key, base->GetFormID(),
+            bcn::DistributionReferenceSeed(feature, actor->GetFormID())) % pool.size());
         return pool[index];
     }
 
@@ -328,12 +380,13 @@ namespace
                 .bodyExcluded = rule.bodyExcluded,
                 .skinExcluded = rule.skinExcluded,
                 .defaultBodyRequested = !rule.bodyExcluded && !useBodyPreset,
+                .ruleId = rule.id,
                 .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, compatiblePresets,
-                    actor, "body", previous && !previous->manualBody ?
-                        std::string_view{ previous->selectedBodyId } : std::string_view{}),
+                    actor, "body", previous && !previous->body.selection.manual ?
+                        std::string_view{ previous->body.selection.selectedId } : std::string_view{}),
                 .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, compatibleSkins,
-                    actor, "skin", previous && !previous->manualSkin ?
-                        std::string_view{ previous->selectedSkinId } : std::string_view{})
+                    actor, "skin", previous && !previous->skin.selection.manual ?
+                        std::string_view{ previous->skin.selection.selectedId } : std::string_view{})
             };
         }
         return {};
@@ -352,30 +405,35 @@ namespace
             DistributionRule{
                 .id = "default-exclude-mod-follower-female",
                 .name = "Exclude Body Distribution for Custom Followers (Female)",
+                .nameKey = "default-exclude-mod-follower-female",
                 .female = true,
                 .scope = DistributionScope::modInstalledFollower,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-mod-follower-male",
                 .name = "Exclude Body Distribution for Custom Followers (Male)",
+                .nameKey = "default-exclude-mod-follower-male",
                 .female = false,
                 .scope = DistributionScope::modInstalledFollower,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-elder-female",
                 .name = "Exclude Body Distribution for Elder NPCs (Female)",
+                .nameKey = "default-exclude-elder-female",
                 .female = true,
                 .scope = DistributionScope::elderNPC,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-elder-male",
                 .name = "Exclude Body Distribution for Elder NPCs (Male)",
+                .nameKey = "default-exclude-elder-male",
                 .female = false,
                 .scope = DistributionScope::elderNPC,
                 .bodyExcluded = true },
             DistributionRule{
                 .id = "default-exclude-skin-argonian-female",
                 .name = "Exclude Skin Distribution for Argonians (Female)",
+                .nameKey = "default-exclude-skin-argonian-female",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -385,6 +443,7 @@ namespace
             DistributionRule{
                 .id = "default-exclude-skin-argonian-male",
                 .name = "Exclude Skin Distribution for Argonians (Male)",
+                .nameKey = "default-exclude-skin-argonian-male",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -394,6 +453,7 @@ namespace
             DistributionRule{
                 .id = "default-exclude-skin-khajiit-female",
                 .name = "Exclude Skin Distribution for Khajiit (Female)",
+                .nameKey = "default-exclude-skin-khajiit-female",
                 .female = true,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -403,6 +463,7 @@ namespace
             DistributionRule{
                 .id = "default-exclude-skin-khajiit-male",
                 .name = "Exclude Skin Distribution for Khajiit (Male)",
+                .nameKey = "default-exclude-skin-khajiit-male",
                 .female = false,
                 .scope = DistributionScope::raceEditorID,
                 .targetPlugin = "Skyrim.esm",
@@ -428,7 +489,18 @@ namespace
                     rule.id = GenerateRuleId(suffix++);
                 } while (!known.insert(rule.id).second);
             }
-            if (rule.name.empty()) rule.name = rule.female ? "All female NPCs" : "All male NPCs";
+            if (!rule.nameKey.empty() &&
+                (!bcn::distribution_names::Find(rule.nameKey) ||
+                    (!rule.name.empty() && !bcn::distribution_names::IsLocalizedValue(rule.nameKey, rule.name)))) {
+                rule.nameKey.clear();
+            }
+            if (rule.nameKey.empty()) {
+                rule.nameKey = bcn::distribution_names::RecognizeKey(rule.id, rule.name, rule.female);
+            }
+            if (rule.name.empty()) {
+                if (rule.nameKey.empty()) rule.nameKey = bcn::distribution_names::DefaultRuleKey(rule.female);
+                rule.name = bcn::distribution_names::Localized(rule.nameKey, bcn::UiLanguage::english);
+            }
             if (!IsValidScope(rule.scope)) rule.scope = bcn::DistributionScope::allNPCs;
             if (rule.scope == bcn::DistributionScope::npcBaseForm) {
                 if (rule.npcPlugin.empty() && rule.npcBaseFormID != 0U) {
@@ -501,6 +573,7 @@ namespace
                 serializedRules.push_back({
                     { "id", rule.id },
                     { "name", rule.name },
+                    { "nameKey", rule.nameKey },
                     { "enabled", rule.enabled },
                     { "female", rule.female },
                     { "scope", static_cast<std::uint8_t>(rule.scope) },
@@ -522,20 +595,32 @@ namespace
                 { "schemaVersion", kSchemaVersion },
                 { "rules", std::move(serializedRules) }
             };
-            const auto temporary = path.string() + ".new";
+            auto temporary = path;
+            temporary += ".new";
             {
-                std::ofstream stream(temporary, std::ios::trunc);
+                std::ofstream stream(temporary, std::ios::trunc | std::ios::binary);
                 stream << root.dump(2) << '\n';
+                stream.flush();
                 if (!stream.good()) throw std::runtime_error("write failed");
             }
-            std::error_code error;
-            std::filesystem::rename(temporary, path, error);
-            if (error) {
-                std::filesystem::remove(path, error);
-                error.clear();
-                std::filesystem::rename(temporary, path, error);
+            // Never discard the last valid rule file before its replacement
+            // has been flushed and parsed successfully.
+            {
+                std::ifstream verification(temporary, std::ios::binary);
+                const auto parsed = nlohmann::json::parse(verification);
+                if (!parsed.is_object() || parsed.value("schemaVersion", 0) != kSchemaVersion ||
+                    !parsed.contains("rules") || !parsed["rules"].is_array()) {
+                    throw std::runtime_error("temporary distribution verification failed");
+                }
             }
-            if (error) throw std::filesystem::filesystem_error("rename", path, error);
+            std::error_code error;
+            if (!MoveFileExW(temporary.c_str(), path.c_str(),
+                    MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH)) {
+                const auto code = GetLastError();
+                std::filesystem::remove(temporary, error);
+                throw std::system_error(static_cast<int>(code), std::system_category(),
+                    "atomic distribution replace");
+            }
             return true;
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Change NG could not save distribution rules: {}", exception.what());
@@ -597,6 +682,7 @@ namespace bcn
                 DistributionRule rule{
                     .id = source.value("id", std::string{}),
                     .name = source.value("name", std::string{}),
+                    .nameKey = source.value("nameKey", std::string{}),
                     .enabled = source.value("enabled", true),
                     .female = source.value("female", true),
                     .scope = static_cast<DistributionScope>(source.value("scope", 0)),
@@ -614,7 +700,6 @@ namespace bcn
                     .importedFromOBody = source.value("source", std::string{}) == "obody"
                 };
                 if (rule.id.empty()) rule.id = GenerateRuleId(loaded.size());
-                if (rule.name.empty()) rule.name = rule.female ? "All female NPCs" : "All male NPCs";
                 if (!IsValidScope(rule.scope)) continue;
                 if (rule.target.size() > 512U) rule.target.clear();
                 // Read the legacy field above so old files remain valid, then
@@ -798,16 +883,43 @@ namespace bcn
             *rules, actor, previous, distributionFamily, useBodyPreset);
         ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
         bool queued{};
-        bool bodyQueued{};
+        const auto ruleSource =
+            (selection.ruleId.empty() ? std::string_view{ "none" } :
+                std::string_view{ selection.ruleId });
+        const auto bodySource = manual && manual->hasBody ?
+            std::string_view{ "manual" } : ruleSource;
+        const auto skinSource = manual && manual->hasSkin ?
+            std::string_view{ "manual" } : ruleSource;
+        const auto queueBody = [&](const std::string_view presetId,
+                                   const racemenu::ApplyResult result) {
+            if (result != racemenu::ApplyResult::queued) {
+                SKSE::log::warn(
+                    "Body Change NG rejected NPC body distribution actor={:08X} source='{}' preset='{}' result={}",
+                    actor->GetFormID(), bodySource, presetId, BodyApplyResultLabel(result));
+                return false;
+            }
+            return true;
+        };
+        const auto queueSkin = [&](const std::string_view profileId,
+                                   const skin_override::ApplyResult result) {
+            if (result != skin_override::ApplyResult::queued) {
+                SKSE::log::warn(
+                    "Body Change NG rejected NPC skin distribution actor={:08X} base={:08X} source='{}' profile='{}' result={}",
+                    actor->GetFormID(), actor->GetActorBase()->GetFormID(), skinSource,
+                    profileId, SkinApplyResultLabel(result));
+                return false;
+            }
+            return true;
+        };
 
         if (manual && manual->hasBody && manual->useDefaultBody && racemenu::IsReady() &&
             ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
             racemenu::QueueClearBodyChangeMorphs(actor);
-            bodyQueued = queued = true;
+            queued = true;
         } else if (manual && manual->hasBody && !manual->bodyId.empty() &&
             ActorRegistry::Get().NeedsBodyApply(actor, manual->bodyId, false)) {
-            bodyQueued = racemenu::QueueApply(actor, manual->bodyId,
-                racemenu::ApplyMode::commit) == racemenu::ApplyResult::queued;
+            const auto bodyQueued = queueBody(manual->bodyId,
+                racemenu::QueueApply(actor, manual->bodyId, racemenu::ApplyMode::commit));
             queued = bodyQueued;
         } else if ((!manual || !manual->hasBody) && selection.presetId &&
             ActorRegistry::Get().NeedsBodyApply(actor, *selection.presetId, false)) {
@@ -815,47 +927,29 @@ namespace bcn
             // actor. Let RaceMenu defer its expensive partition rebuild just
             // like OBody NG, while manual UI changes retain the synchronous
             // ordering needed for rapid preview/commit input.
-            bodyQueued = racemenu::QueueApply(actor, *selection.presetId,
-                racemenu::ApplyMode::commit, 0U,
-                racemenu::UpdatePolicy::deferred) == racemenu::ApplyResult::queued;
+            const auto bodyQueued = queueBody(*selection.presetId,
+                racemenu::QueueApply(actor, *selection.presetId,
+                    racemenu::ApplyMode::commit, 0U,
+                    racemenu::UpdatePolicy::deferred));
             queued = bodyQueued;
         } else if ((!manual || !manual->hasBody) && selection.matched &&
             selection.defaultBodyRequested &&
             ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
             racemenu::QueueClearBodyChangeMorphs(actor);
-            bodyQueued = queued = true;
-        }
-
-        const auto hasDesiredSkin = (manual && manual->hasSkin) ||
-            ((!manual || !manual->hasSkin) && selection.skinProfileId.has_value());
-        if (ShouldDeferDistributedSkin(bodyQueued, hasDesiredSkin)) {
-            // RaceMenu may finish a deferred body partition rebuild after the
-            // morph call returns. Applying the skin in parallel lets that
-            // rebuild replace the freshly painted NPC Biped clone, producing
-            // a visible flash back to the original skin. Re-evaluate the same
-            // actor once after the queued body/outfit work; signatures make
-            // the body branch a no-op and the latest rule/manual choice wins.
-            const auto handle = actor->GetHandle();
-            const auto session = ActorRegistry::Get().SessionGeneration();
-            const auto skinDeferred = frame_tasks::Queue(actor->GetFormID(), [handle, session] {
-                const auto current = handle.get();
-                if (!current || ActorRegistry::Get().SessionGeneration() != session) return;
-                [[maybe_unused]] const auto applied = Distribution::Get().ApplyActor(current.get());
-            }, DistributedSkinDelayTicks(),
-                appearance::WorkChannel::distributedSkinApply);
-            queued = skinDeferred || queued;
-            if (skinDeferred) return queued;
+            queued = true;
         }
 
         if (manual && manual->hasSkin && manual->useDefaultSkin &&
             ActorRegistry::Get().NeedsSkinApply(actor, {}, true)) {
-            queued = skin_override::QueueClear(actor) == skin_override::ApplyResult::queued || queued;
+            queued = queueSkin("<default>", skin_override::QueueClear(actor)) || queued;
         } else if (manual && manual->hasSkin && !manual->skinId.empty() &&
             ActorRegistry::Get().NeedsSkinApply(actor, manual->skinId, false)) {
-            queued = skin_override::QueueApply(actor, manual->skinId) == skin_override::ApplyResult::queued || queued;
+            queued = queueSkin(manual->skinId,
+                skin_override::QueueApply(actor, manual->skinId)) || queued;
         } else if ((!manual || !manual->hasSkin) && selection.skinProfileId &&
             ActorRegistry::Get().NeedsSkinApply(actor, *selection.skinProfileId, false)) {
-            queued = skin_override::QueueApply(actor, *selection.skinProfileId) == skin_override::ApplyResult::queued || queued;
+            queued = queueSkin(*selection.skinProfileId,
+                skin_override::QueueApply(actor, *selection.skinProfileId)) || queued;
         }
         return queued;
     }

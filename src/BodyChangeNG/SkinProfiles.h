@@ -65,12 +65,10 @@ namespace bcn
         std::string name;
         SkinSex sex{ SkinSex::female };
         SkinRace race{ SkinRace::humanoid };
-        SkinUvLayout uvLayout{ SkinUvLayout::unknown };
-        // UBE uses its own body/head topology, UVs, texture namespace, and
-        // naked-body slot. Keep compatibility on the catalog item so the UI,
-        // distribution backend, and RaceMenu reapply path all make the same
-        // decision instead of relying on the user-facing name.
-        body_family::Mask bodyFamilies{};
+        // Catalog identity is only Legacy vs UBE for conventional female
+        // skins. The actor's runtime BodyFamily is deliberately not stored on
+        // the pack and is consulted only when compatibility/routing is needed.
+        SkinLayout layout{ SkinLayout::unknown };
         std::vector<SkinTextureLayer> body;
         // Optional family-specific genital/anal atlases. CBBE 3BA shares
         // femalebody_etc_v2_1 across its vagina and anus geometries. BHUNP
@@ -136,15 +134,10 @@ namespace bcn
             body_family::kMaleFamilies;
     }
 
-    [[nodiscard]] constexpr bool SkinMatchesActor(
-        const body_family::Mask skinFamilies, const body_family::Mask actorFamily) noexcept
+    [[nodiscard]] constexpr bool SkinLayoutMatchesActor(
+        const SkinLayout layout, const body_family::Mask actorFamily) noexcept
     {
-        // Texture UV compatibility is stricter than morph compatibility. An
-        // unknown or multi-family result is ambiguous and must not be treated
-        // as a wildcard.
-        return std::popcount(skinFamilies) == 1 &&
-            std::popcount(actorFamily) == 1 &&
-            (skinFamilies & actorFamily) != 0U;
+        return ResolveRuntimeSkinUvLayout(layout, actorFamily) != SkinUvLayout::unknown;
     }
 
     [[nodiscard]] constexpr bool SkinRaceMatchesActor(
@@ -157,11 +150,11 @@ namespace bcn
         const SkinProfile& profile, const SkinSex actorSex,
         const SkinRace actorRace, const body_family::Mask actorFamilies) noexcept
     {
-        return EvaluateSkinCompatibility(profile.uvLayout, profile.sex,
+        return EvaluateSkinCompatibility(profile.layout, profile.sex,
             profile.race, actorSex, actorRace, actorFamilies);
     }
 
-    [[nodiscard]] std::string SkinFamilyLabel(body_family::Mask a_families, SkinSex a_sex);
+    [[nodiscard]] std::string SkinFamilyLabel(SkinLayout a_layout, SkinSex a_sex);
     [[nodiscard]] std::string SkinRaceLabel(SkinRace a_race);
     [[nodiscard]] SkinRace SkinRaceFromEditorID(std::string_view a_editorID);
     [[nodiscard]] SkinRace ResolveActorSkinRace(const RE::Actor* a_actor);

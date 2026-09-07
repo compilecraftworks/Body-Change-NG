@@ -22,9 +22,25 @@ namespace bcn
         khajiit
     };
 
-    // UV/material layouts are deliberately separate from BodySlide morph
-    // presets. Two packs can use the same Bethesda filenames while targeting
-    // incompatible UVs. Unknown is a real fail-closed state, not "all".
+    // Catalog classification is intentionally independent of the installed
+    // BodySlide family. Conventional female packs are one Legacy layout: CBBE
+    // and UNP cannot be active as the same actor's base body, so the actor's
+    // runtime BodyFamily chooses the concrete material route at apply time.
+    enum class SkinLayout : std::uint8_t
+    {
+        unknown,
+        legacy,
+        ube,
+        maleVanilla,
+        himbo,
+        sam,
+        argonian,
+        khajiit
+    };
+
+    // Concrete runtime layout used only by material/geometry routing. It is
+    // derived from SkinLayout + the actor's BodyFamily and is never used to
+    // classify or identify a catalog entry.
     enum class SkinUvLayout : std::uint8_t
     {
         unknown,
@@ -66,48 +82,84 @@ namespace bcn
         bodyAtlas
     };
 
+    [[nodiscard]] constexpr body_family::Mask LegacyFemaleFamilies() noexcept
+    {
+        using body_family::Bit;
+        using body_family::Family;
+        return Bit(Family::femaleVanilla) | Bit(Family::cbbe) | Bit(Family::unp);
+    }
+
     [[nodiscard]] constexpr body_family::Mask SkinLayoutFamilyMask(
-        const SkinUvLayout layout) noexcept
+        const SkinLayout layout) noexcept
     {
         using body_family::Bit;
         using body_family::Family;
         switch (layout) {
-        case SkinUvLayout::femaleVanilla: return Bit(Family::femaleVanilla);
-        case SkinUvLayout::cbbe: return Bit(Family::cbbe);
-        case SkinUvLayout::unp: return Bit(Family::unp);
-        case SkinUvLayout::ube: return Bit(Family::ube);
-        case SkinUvLayout::maleVanilla: return Bit(Family::maleVanilla);
-        case SkinUvLayout::himbo: return Bit(Family::himbo);
-        case SkinUvLayout::sam: return Bit(Family::sam);
+        case SkinLayout::legacy: return LegacyFemaleFamilies();
+        case SkinLayout::ube: return Bit(Family::ube);
+        case SkinLayout::maleVanilla: return Bit(Family::maleVanilla);
+        case SkinLayout::himbo: return Bit(Family::himbo);
+        case SkinLayout::sam: return Bit(Family::sam);
         default: return 0U;
         }
     }
 
-    [[nodiscard]] constexpr SkinUvLayout SkinLayoutFromFamilyMask(
+    [[nodiscard]] constexpr SkinLayout SkinLayoutFromFamilyMask(
         const body_family::Mask families) noexcept
     {
-        if (std::popcount(families) != 1) return SkinUvLayout::unknown;
         using body_family::Bit;
         using body_family::Family;
-        if (families == Bit(Family::femaleVanilla)) return SkinUvLayout::femaleVanilla;
-        if (families == Bit(Family::cbbe)) return SkinUvLayout::cbbe;
-        if (families == Bit(Family::unp)) return SkinUvLayout::unp;
-        if (families == Bit(Family::ube)) return SkinUvLayout::ube;
-        if (families == Bit(Family::maleVanilla)) return SkinUvLayout::maleVanilla;
-        if (families == Bit(Family::himbo)) return SkinUvLayout::himbo;
-        if (families == Bit(Family::sam)) return SkinUvLayout::sam;
-        return SkinUvLayout::unknown;
+        if (families != 0U && (families & ~LegacyFemaleFamilies()) == 0U) {
+            return SkinLayout::legacy;
+        }
+        if (families == Bit(Family::ube)) return SkinLayout::ube;
+        if (families == Bit(Family::maleVanilla)) return SkinLayout::maleVanilla;
+        if (families == Bit(Family::himbo)) return SkinLayout::himbo;
+        if (families == Bit(Family::sam)) return SkinLayout::sam;
+        return SkinLayout::unknown;
     }
 
-    [[nodiscard]] constexpr SkinUvLayout BeastSkinLayout(const SkinRace race) noexcept
+    [[nodiscard]] constexpr SkinLayout BeastSkinLayout(const SkinRace race) noexcept
     {
-        if (race == SkinRace::argonian) return SkinUvLayout::argonian;
-        if (race == SkinRace::khajiit) return SkinUvLayout::khajiit;
+        if (race == SkinRace::argonian) return SkinLayout::argonian;
+        if (race == SkinRace::khajiit) return SkinLayout::khajiit;
+        return SkinLayout::unknown;
+    }
+
+    [[nodiscard]] constexpr SkinUvLayout ResolveRuntimeSkinUvLayout(
+        const SkinLayout layout, const body_family::Mask actorFamilies) noexcept
+    {
+        using body_family::Bit;
+        using body_family::Family;
+        if (layout == SkinLayout::argonian) return SkinUvLayout::argonian;
+        if (layout == SkinLayout::khajiit) return SkinUvLayout::khajiit;
+        if (std::popcount(actorFamilies) != 1) return SkinUvLayout::unknown;
+        switch (layout) {
+        case SkinLayout::legacy:
+            if (actorFamilies == Bit(Family::femaleVanilla)) return SkinUvLayout::femaleVanilla;
+            if (actorFamilies == Bit(Family::cbbe)) return SkinUvLayout::cbbe;
+            if (actorFamilies == Bit(Family::unp)) return SkinUvLayout::unp;
+            break;
+        case SkinLayout::ube:
+            if (actorFamilies == Bit(Family::ube)) return SkinUvLayout::ube;
+            break;
+        case SkinLayout::maleVanilla:
+            if (actorFamilies == Bit(Family::maleVanilla)) return SkinUvLayout::maleVanilla;
+            break;
+        case SkinLayout::himbo:
+            if (actorFamilies == Bit(Family::himbo)) return SkinUvLayout::himbo;
+            break;
+        case SkinLayout::sam:
+            if (actorFamilies == Bit(Family::sam)) return SkinUvLayout::sam;
+            break;
+        default:
+            break;
+        }
         return SkinUvLayout::unknown;
     }
 
     [[nodiscard]] constexpr SkinCompatibility EvaluateSkinCompatibility(
-        const SkinUvLayout profileLayout, const SkinSex profileSex,
+        const SkinLayout profileLayout, const SkinSex profileSex,
         const SkinRace profileRace, const SkinSex actorSex,
         const SkinRace actorRace, const body_family::Mask actorFamilies) noexcept
     {
@@ -117,7 +169,7 @@ namespace bcn
         if (profileRace != actorRace) {
             return { SkinCompatibilityStatus::incompatibleRace };
         }
-        if (profileLayout == SkinUvLayout::unknown) {
+        if (profileLayout == SkinLayout::unknown) {
             return { SkinCompatibilityStatus::unknownProfileLayout };
         }
         if (profileRace != SkinRace::humanoid) {
@@ -125,14 +177,11 @@ namespace bcn
                 SkinCompatibilityStatus::compatible :
                 SkinCompatibilityStatus::incompatibleLayout };
         }
-        const auto profileFamily = SkinLayoutFamilyMask(profileLayout);
-        if (profileFamily == 0U) {
-            return { SkinCompatibilityStatus::unknownProfileLayout };
-        }
         if (std::popcount(actorFamilies) != 1) {
             return { SkinCompatibilityStatus::unknownActorLayout };
         }
-        return { (profileFamily & actorFamilies) != 0U ?
+        return { ResolveRuntimeSkinUvLayout(profileLayout, actorFamilies) !=
+                SkinUvLayout::unknown ?
             SkinCompatibilityStatus::compatible :
             SkinCompatibilityStatus::incompatibleLayout };
     }
@@ -140,24 +189,21 @@ namespace bcn
     // Only a verified humanoid layout may inherit its body atlas for feet.
     // Beast and unknown layouts must supply an explicit feet atlas.
     [[nodiscard]] constexpr FeetLayerSource ResolveFeetLayerSource(
-        const SkinUvLayout layout, const SkinRace race,
+        const SkinLayout layout, const SkinRace race,
         const std::size_t bodyLayerCount, const std::size_t feetLayerCount) noexcept
     {
         if (feetLayerCount != 0U) return FeetLayerSource::explicitFeet;
-        if (race != SkinRace::humanoid || layout == SkinUvLayout::unknown ||
+        if (race != SkinRace::humanoid || layout == SkinLayout::unknown ||
             bodyLayerCount == 0U) {
             return FeetLayerSource::none;
         }
         return FeetLayerSource::bodyAtlas;
     }
 
-    // RaceMenu's skin-slot API can visit several ArmorAddons. UBE explicitly
-    // shares one body atlas across those surfaces; all other layouts require
-    // exact Armor+ArmorAddon+node targets.
     [[nodiscard]] constexpr bool AllowsBroadSkinSlotFallback(
-        const SkinUvLayout layout) noexcept
+        const SkinLayout layout) noexcept
     {
-        return layout == SkinUvLayout::ube;
+        return layout == SkinLayout::ube;
     }
 
     enum class LimbSkinSlotRoute : std::uint8_t
@@ -168,34 +214,26 @@ namespace bcn
         persistentAndExact
     };
 
-    // Conventional hands and feet always receive a persistent one-bit key,
-    // independently of equipment. Any exposed skin geometry is also painted
-    // through exact Armor+Addon+node targets. The persistent write itself must
-    // never repaint the loaded Skin Armor through the broad slot API. Unknown
-    // layouts remain fail-closed; UBE keeps its intentional live shared-atlas
-    // route. Callers must use this policy only for hand and foot slots.
     [[nodiscard]] constexpr LimbSkinSlotRoute ResolveLimbSkinSlotRoute(
-        const SkinUvLayout layout, const std::size_t exactTargetCount) noexcept
+        const SkinLayout layout, const std::size_t exactTargetCount) noexcept
     {
-        if (layout == SkinUvLayout::unknown) return LimbSkinSlotRoute::none;
+        if (layout == SkinLayout::unknown) return LimbSkinSlotRoute::none;
         if (AllowsBroadSkinSlotFallback(layout)) return LimbSkinSlotRoute::broadLive;
         return exactTargetCount == 0U ?
             LimbSkinSlotRoute::persistentOnly : LimbSkinSlotRoute::persistentAndExact;
     }
 
-    [[nodiscard]] constexpr std::string_view SkinUvLayoutName(
-        const SkinUvLayout layout) noexcept
+    [[nodiscard]] constexpr std::string_view SkinLayoutName(
+        const SkinLayout layout) noexcept
     {
         switch (layout) {
-        case SkinUvLayout::femaleVanilla: return "female-vanilla";
-        case SkinUvLayout::cbbe: return "cbbe";
-        case SkinUvLayout::unp: return "unp";
-        case SkinUvLayout::ube: return "ube";
-        case SkinUvLayout::maleVanilla: return "male-vanilla";
-        case SkinUvLayout::himbo: return "himbo";
-        case SkinUvLayout::sam: return "sam";
-        case SkinUvLayout::argonian: return "argonian";
-        case SkinUvLayout::khajiit: return "khajiit";
+        case SkinLayout::legacy: return "legacy";
+        case SkinLayout::ube: return "ube";
+        case SkinLayout::maleVanilla: return "male-vanilla";
+        case SkinLayout::himbo: return "himbo";
+        case SkinLayout::sam: return "sam";
+        case SkinLayout::argonian: return "argonian";
+        case SkinLayout::khajiit: return "khajiit";
         default: return "unknown";
         }
     }

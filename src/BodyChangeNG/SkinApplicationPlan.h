@@ -13,11 +13,13 @@ namespace bcn::skin_plan
         bool vampire{};
         HumanoidSkinRace humanoidRace{ HumanoidSkinRace::generic };
         std::string_view faceDetailFilename;
+        body_family::Mask bodyFamily{};
     };
 
     struct ApplicationPlan final
     {
-        SkinUvLayout layout{ SkinUvLayout::unknown };
+        SkinLayout layout{ SkinLayout::unknown };
+        SkinUvLayout runtimeUvLayout{ SkinUvLayout::unknown };
         std::vector<SkinTextureLayer> body;
         std::vector<SkinTextureLayer> hands;
         std::vector<SkinTextureLayer> feet;
@@ -28,6 +30,13 @@ namespace bcn::skin_plan
         bool broadSharedAtlas{};
         bool beastTail{};
     };
+
+    [[nodiscard]] constexpr bool RoutesGenitalAnalAtlas(
+        const ApplicationPlan& plan, const SkinUvLayout atlasLayout) noexcept
+    {
+        return (atlasLayout == SkinUvLayout::cbbe || atlasLayout == SkinUvLayout::unp) &&
+            plan.runtimeUvLayout == atlasLayout;
+    }
 
     void OverlayLayers(
         std::vector<SkinTextureLayer>& base, const std::vector<SkinTextureLayer>& overlay);

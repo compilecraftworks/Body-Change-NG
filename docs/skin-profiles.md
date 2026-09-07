@@ -6,16 +6,15 @@ automatically assigned to NPCs. Each NPC distribution rule owns a separate
 body-preset pool and skin-profile pool, so different NPC groups may receive
 different fixed or stable-randomized results.
 
-A profile changes RaceMenu skin-texture overrides only. Body, hands, and feet
-use their corresponding skin geometry overrides, while supplied face textures
-target the live face geometry. A pack may be partial: only its supplied parts
+A profile changes the actor's private native Skin Armor/TXST graph, with the
+legacy RaceMenu override backend retained only for supported older interface
+versions. A pack may be partial: only its supplied parts
 and channels change, while absent ones retain the actor's underlying textures.
 Body, hands, feet, and face files are never guessed across parts. A verified
 humanoid layout may intentionally use its body atlas for feet when no separate
 feet atlas exists; beast-race and unknown layouts never do. It does
-not replace a NIF, an
-ActorBase's Skin Armor, inventory, equipment slots, baked FaceGen files, or NPC
-tint masks.
+not replace a NIF, inventory, equipment slots, baked FaceGen files, or NPC tint
+masks.
 
 Put each skin pack below `BodySkin` at the MO2 mod root (the game's virtual
 `Data` root). Copy the source skin mod's `textures` folder contents directly
@@ -107,10 +106,11 @@ are not assigned to guessed `BSTextureSet` indices. They remain controlled by
 the actor's active UBE material/Community Shaders setup, preventing a skin
 selection from overwriting an unrelated shader channel.
 
-`profile.json` is optional when the folder name and known texture structure
-identify one exact UV layout. It is required for custom or ambiguous packs.
-When it exists, it is placed directly beside `Textures` and overrides automatic
-detection for that skin folder. Its `id` is the stable value used by favorites
+`profile.json` is optional. Every conventional female texture tree is
+automatically classified as `Legacy`; only an explicit `!UBE` Body/Head tree is
+classified as `UBE`. A manifest is useful only as an override for a special
+pack. When it exists, it is placed directly beside `Textures` and overrides
+automatic detection for that skin folder. Its `id` is the stable value used by favorites
 and distribution rules, so do not change it after assigning the profile to NPC
 rules.
 
@@ -121,7 +121,7 @@ rules.
   "name": "My Skin A",
   "sex": "female",
   "race": "humanoid",
-  "uvLayout": "cbbe",
+  "uvLayout": "legacy",
   "body": [
     { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_1.dds" },
     { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_1_msn.dds" },
@@ -149,9 +149,10 @@ rules.
 }
 ```
 
-`sex` accepts `female` or `male`. `uvLayout` accepts `female-vanilla`, `cbbe`,
-`unp`, `ube`, `male-vanilla`, `himbo`, `sam`, `argonian`, or `khajiit`.
-Aliases `3ba`, `bhunp`, and `cbbe-3ba`/`bhunp-unp` are also accepted. The
+`sex` accepts `female` or `male`. `uvLayout` accepts `legacy`, `ube`,
+`male-vanilla`, `himbo`, `sam`, `argonian`, or `khajiit`. Existing values
+`female-vanilla`, `cbbe`, `unp`, `3ba`, `bhunp`, and
+`cbbe-3ba`/`bhunp-unp` remain accepted as aliases for `legacy`. The
 optional `race` accepts `humanoid`, `argonian`, or `khajiit`; when omitted it is
 inferred from standard beast-race texture folders. The layout must agree with
 the profile's sex and race. `Textures\\...` is relative to the
@@ -168,13 +169,13 @@ feet, or face map. Missing parts and missing diffuse, normal, subsurface, detail
 or specular channels remain controlled by the actor's original skin/material.
 
 The main Skin list compares every profile with the selected actor's race, sex,
-and one exact detected body UV layout. Humanoid, Argonian, and Khajiit profiles
-never cross race boundaries; CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, and vanilla
-profiles never cross UV-layout boundaries. An NPC distribution rule can still
+and runtime body family. Humanoid, Argonian, and Khajiit profiles never cross
+race boundaries. CBBE 3BA and UNP/BHUNP actors both accept Legacy packs, while
+UBE actors accept only UBE packs. An NPC distribution rule can still
 contain a mixed skin pool; at runtime it stably samples only the compatible
-profiles for that NPC. An ambiguous profile or conflicting/unknown humanoid
-actor layout fails closed and is not applied. Add `uvLayout` to `profile.json`
-or fix the actor's body-family detection instead of relying on a guess.
+profiles for that NPC. Existing relative-folder automatic IDs do not change
+when a pack is classified, and `profile.json` is not required for a normal
+female pack. Conflicting/unknown runtime actor evidence still fails closed.
 
 RaceMenu's broad skin-slot call may traverse several ArmorAddons attached to
 one Skin Armor. Body Change NG 1.2 permits that route only for UBE's explicitly

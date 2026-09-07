@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/RuntimeCompatibility.h"
+
 #include <cstdint>
 #include <string_view>
 
@@ -15,10 +17,12 @@ namespace bcn::racemenu_override
     };
 
     [[nodiscard]] constexpr Route ResolveRoute(
-        const std::uint32_t interfaceVersion, const bool aeRuntime) noexcept
+        const std::uint32_t interfaceVersion, const runtime::GameBranch branch) noexcept
     {
+        if (branch == runtime::GameBranch::unsupported) return Route::unsupported;
         if (interfaceVersion == 0U) {
-            return aeRuntime ? Route::aeBackportV0Papyrus : Route::legacySeV0Papyrus;
+            return branch == runtime::GameBranch::ae ?
+                Route::aeBackportV0Papyrus : Route::legacySeV0Papyrus;
         }
         if (interfaceVersion == 1U) return Route::officialV1Papyrus;
         if (interfaceVersion == 2U) return Route::officialV2Native;

@@ -1,6 +1,7 @@
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionRuleNames.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/Settings.h"
 
@@ -52,6 +53,12 @@ int main()
             "performance mode actor budget changed");
         Require(bcn::InitialDistributionDelayTicks() == 2U,
             "initial distribution no longer yields to save-load listeners");
+        Require(bcn::DistributionReferenceSeed(bcn::DistributionFeature::skin, 0x1234U) == 0U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::body, 0x1234U) == 0x1234U,
+            "native skin distribution escaped ActorBase scope or body distribution lost reference scope");
+        Require(!bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::skin) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::body),
+            "a legacy reference-scoped skin choice could prevent ActorBase convergence");
         Require(bcn::IsDistributionActorStateEligible(false, false, false, true, true) &&
                 bcn::IsDistributionActorStateEligible(false, false, true, true, true),
             "loaded corpses were excluded from NPC distribution");
@@ -60,11 +67,6 @@ int main()
                 !bcn::IsDistributionActorStateEligible(false, false, false, false, true) &&
                 !bcn::IsDistributionActorStateEligible(false, false, false, true, false),
             "NPC distribution eligibility lost a player/disabled/3D/type safety boundary");
-        Require(bcn::ShouldDeferDistributedSkin(true, true) &&
-                !bcn::ShouldDeferDistributedSkin(false, true) &&
-                !bcn::ShouldDeferDistributedSkin(true, false) &&
-                bcn::DistributedSkinDelayTicks() >= 2U,
-            "automatic skin application no longer waits behind a queued body rebuild");
         Require(StableStateSignature("body", "same", false, 0, 1ULL) !=
             StableStateSignature("body", "same", false, 0, 0x100000001ULL), "upper content hash bits lost");
         const auto omittedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.0F, 0.4F);
@@ -90,24 +92,42 @@ int main()
             .actorFormID = 0x1234U,
             .baseLocalFormID = 0x5678U,
             .basePlugin = "Example.esp",
-            .selectedBodyId = "preset-a",
-            .selectedSkinId = "skin-a",
-            .selectedFutanariSkinId = "futanari:skin-a:cbbe-trx",
-            .manualBody = true,
-            .manualSkin = true,
-            .bodySignature = body,
-            .skinSignature = StableStateSignature("skin", "skin-a", false)
+            .body = {
+                .selection = { .selectedId = "preset-a", .manual = true },
+                .application = { .signature = body }
+            },
+            .skin = {
+                .selection = { .selectedId = "skin-a", .manual = true },
+                .application = { .signature = StableStateSignature("skin", "skin-a", false) }
+            },
+            .futanari = { .selectedSkinId = "futanari:skin-a:cbbe-trx" }
         };
-        Require(state.manualBody && state.manualSkin && state.selectedBodyId != state.selectedSkinId,
+        Require(state.body.selection.manual && state.skin.selection.manual &&
+                state.body.selection.selectedId != state.skin.selection.selectedId,
             "body and skin channels did not remain independent");
-        state.bodyApplied = state.skinApplied = true;
-        state.bodyVerifiedThisSession = state.skinVerifiedThisSession = true;
+        state.body.application.applied = state.skin.application.applied = true;
+        state.body.application.verifiedThisSession = state.skin.application.verifiedThisSession = true;
         bcn::PrepareRestoredState(state);
-        Require(state.bodyApplied && state.skinApplied &&
-                state.selectedFutanariSkinId == "futanari:skin-a:cbbe-trx" &&
-                !state.bodyVerifiedThisSession &&
-                !state.skinVerifiedThisSession,
+        Require(state.body.application.applied && state.skin.application.applied &&
+                state.futanari.selectedSkinId == "futanari:skin-a:cbbe-trx" &&
+                !state.body.application.verifiedThisSession &&
+                !state.skin.application.verifiedThisSession,
             "cosave restore lost the futanari selection or live-session proof boundary");
+        const auto preservedBodyBeforeReset = state.body;
+        const auto preservedSkin = state.skin;
+        const auto preservedFutanari = state.futanari;
+        state.body = {};
+        Require(state.skin.selection.selectedId == preservedSkin.selection.selectedId &&
+                state.skin.application.signature == preservedSkin.application.signature &&
+                state.futanari.selectedSkinId == preservedFutanari.selectedSkinId,
+            "resetting body state crossed the skin or futanari feature boundary");
+        state.body = preservedBodyBeforeReset;
+        const auto preservedBody = state.body;
+        state.skin = {};
+        Require(state.body.selection.selectedId == preservedBody.selection.selectedId &&
+                state.body.application.signature == preservedBody.application.signature &&
+                state.futanari.selectedSkinId == preservedFutanari.selectedSkinId,
+            "resetting skin state crossed the body or futanari feature boundary");
         using Decision = bcn::RestoredApplicationDecision;
         Require(bcn::EvaluateRestoredApplication(true, false, true, true) == Decision::acceptLive,
             "a matching restored live state was not accepted");
@@ -150,6 +170,51 @@ int main()
         Require(defaultSettings.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba &&
                 defaultSettings.maleNpcBodyType == bcn::MaleNpcBodyType::himbo,
             "new-install NPC body-type defaults were not CBBE 3BA and HIMBO");
+        namespace names = bcn::distribution_names;
+        for (const auto& entry : names::kEntries) {
+            Require(!names::Localized(entry.key, bcn::UiLanguage::korean).empty() &&
+                    !names::Localized(entry.key, bcn::UiLanguage::english).empty() &&
+                    !names::Localized(entry.key, bcn::UiLanguage::chineseSimplified).empty(),
+                "a distribution-rule name is missing a Korean, English, or Chinese translation");
+            Require(names::IsLocalizedValue(entry.key, entry.korean) &&
+                    names::IsLocalizedValue(entry.key, entry.english) &&
+                    names::IsLocalizedValue(entry.key, entry.chinese),
+                "a localized distribution-rule name could not be recognized after loading");
+        }
+        Require(names::RecognizeKey("default-exclude-elder-female",
+                    "Exclude Body Distribution for Elder NPCs (Female)", true) ==
+                "default-exclude-elder-female" &&
+                names::RecognizeKey("user-rule-1", "새 여성 NPC 규칙", true) ==
+                "rule-new-female",
+            "legacy sample/generated rule names did not migrate to language-neutral keys");
+        std::vector<bcn::DistributionRule> editableSamples{
+            { .id = "default-exclude-elder-female", .name = "renamed sample" },
+            { .id = "user-rule-1", .name = "user rule" }
+        };
+        editableSamples.front().scope = bcn::DistributionScope::allNPCs;
+        Require(editableSamples.front().name == "renamed sample" &&
+                editableSamples.front().scope == bcn::DistributionScope::allNPCs,
+            "a built-in sample rule was not editable");
+        std::size_t selectedSample{};
+        Require(bcn::MoveDistributionRule(editableSamples, selectedSample, 1) &&
+                selectedSample == 1U && editableSamples[1].id == "default-exclude-elder-female",
+            "a built-in sample rule could not be reordered");
+        Require(bcn::EraseDistributionRule(editableSamples, selectedSample) &&
+                editableSamples.size() == 1U && selectedSample == 0U,
+            "a built-in sample rule could not be deleted");
+        editableSamples.push_back({ .id = "user-rule-1", .female = true });
+        std::uint32_t nextRuleId{ 1U };
+        Require(bcn::GenerateUniqueUserRuleId(editableSamples, nextRuleId) == "user-rule-2" &&
+                nextRuleId == 3U,
+            "a newly created distribution rule reused an existing ImGui/persistent ID");
+        std::vector<bcn::DistributionRule> priorityRules{
+            { .id = "female-all", .female = true, .scope = bcn::DistributionScope::allNPCs },
+            { .id = "male-all", .female = false, .scope = bcn::DistributionScope::allNPCs },
+            { .id = "female-lower", .female = true, .scope = bcn::DistributionScope::npcName }
+        };
+        Require(bcn::EarlierCatchAllRule(priorityRules, 2U) == 0U &&
+                !bcn::EarlierCatchAllRule(priorityRules, 1U),
+            "rule-priority diagnostics missed a same-sex catch-all or crossed sex boundaries");
         std::cout << "ActorStateTests passed\n";
         return 0;
     } catch (const std::exception& error) {

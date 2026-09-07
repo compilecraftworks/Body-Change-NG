@@ -17,7 +17,6 @@ namespace bcn::appearance
         equipmentReconcile = 102,
         raceMenuRestore = 103,
         equipmentVerify = 104,
-        distributedSkinApply = 105,
         rsvFaceReconcile = 109,
         legacySkinWatchdog = 113,
 
@@ -27,7 +26,9 @@ namespace bcn::appearance
         bodyPreviewCleanup = 203,
         skinApply = 204,
         futanariSkinApply = 205,
-        tintApply = 206
+        tintApply = 206,
+        maleGenitalSkinApply = 207,
+        legacyBodySkinCleanup = 208
     };
 
     [[nodiscard]] constexpr std::uint32_t ChannelValue(const WorkChannel channel) noexcept
@@ -45,6 +46,7 @@ namespace bcn::appearance
         case WorkChannel::skinApply:
         case WorkChannel::futanariSkinApply:
         case WorkChannel::tintApply:
+        case WorkChannel::maleGenitalSkinApply:
             return true;
         default:
             return false;

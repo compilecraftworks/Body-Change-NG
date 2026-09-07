@@ -6,6 +6,7 @@
 #include "BodyChangeNG/OutfitRefit.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
+#include "BodyChangeNG/RaceMenuCompatibility.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/Settings.h"
 
@@ -744,14 +745,21 @@ namespace bcn::racemenu
             return;
         }
         const auto version = bodyMorph->GetVersion();
-        if (version < 4U || version > 5U) {
-            SKSE::log::warn("Body Change NG rejected unsupported RaceMenu BodyMorph interface version {}", version);
+        const auto runtimeVersion = REL::Module::get().version();
+        const auto branch = bcn::runtime::ResolveGameBranch(runtimeVersion);
+        const auto abi = bcn::racemenu_compat::ResolveBodyMorphAbi(version, branch);
+        if (abi == bcn::racemenu_compat::BodyMorphAbi::unsupported) {
+            SKSE::log::warn(
+                "Body Change NG rejected RaceMenu BodyMorph interface version {} on runtime {} ({})",
+                version, runtimeVersion.string(), bcn::runtime::GameBranchLabel(branch));
             return;
         }
         g_version.store(version, std::memory_order_release);
         g_interfaceMap.store(message.interfaceMap, std::memory_order_release);
         g_bodyMorph.store(bodyMorph, std::memory_order_release);
-        SKSE::log::info("Body Change NG received RaceMenu BodyMorph interface version {}", version);
+        SKSE::log::info("Body Change NG received RaceMenu {} on runtime {} ({})",
+            bcn::racemenu_compat::BodyMorphAbiLabel(abi), runtimeVersion.string(),
+            bcn::runtime::GameBranchLabel(branch));
     }
 
     void ResetSessionState()

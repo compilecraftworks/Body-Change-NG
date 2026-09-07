@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/SkinApplyResult.h"
+
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -25,23 +27,7 @@ namespace bcn::skin_override
         return complete && !rebuildQueued;
     }
 
-    enum class ApplyResult : std::uint8_t
-    {
-        queued,
-        unavailable,
-        invalidActor,
-        actor3DUnavailable,
-        missingProfile,
-        incompatibleSex,
-        incompatibleRace,
-        incompatibleBodyFamily,
-        ambiguousProfileLayout,
-        ambiguousActorLayout,
-        incompatibleFutanariType,
-        futanariGeometryUnavailable,
-        faceGeometryUnavailable,
-        noTaskInterface
-    };
+    using ApplyResult = bcn::SkinApplyResult;
 
     enum class LiveCheckScope : std::uint8_t
     {
@@ -51,17 +37,24 @@ namespace bcn::skin_override
 
     void ResetSessionState();
 
-    // Applies a shared texture profile to either the player or an NPC. It does
-    // not change the actor's Skin Armor, NIF path, inventory, or equipment slots.
+    // Applies a shared texture profile to either the player or an NPC through
+    // a private clone of the current native TXST -> ARMA -> Skin Armor graph.
+    // NIF paths, inventory, and equipment slots are never changed.
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_profileId);
-    // Removes only Body Change NG's texture-path overrides for body, hands,
-    // feet, and the FaceGen face-head node. Other NiOverride shader values
-    // (for example Wet Function's gloss/alpha values) remain.
+    // Detaches only Body Change NG's still-owned native clones. Another
+    // provider's later form pointer or persistent NiOverride values are never
+    // removed; RSV therefore becomes visible again after a clear.
     [[nodiscard]] ApplyResult QueueClear(RE::Actor* a_actor);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* a_actor);
     // True only for actors whose skin was explicitly managed this session,
     // including an explicit Default Skin selection.
     [[nodiscard]] bool HasTrackedSelection(const RE::Actor* a_actor);
+    // Male SOS/TNG geometry is an optional external addon even though its
+    // texture choice belongs to the selected general male BodySkin. Only this
+    // addon adapter observes equipment replacement; native body/hand/foot
+    // TXSTs remain equipment-independent.
+    [[nodiscard]] bool HasCurrentMaleGenitalSkin(const RE::Actor* a_actor);
+    void QueueReapplyCurrentMaleGenitals(RE::Actor* a_actor);
     // The futanari path is independent from the full BodySkin profile. It
     // targets only a currently loaded TRX/ERF genital ArmorAddon and retains
     // the chosen profile while Gender Bender/TNG temporarily removes it.

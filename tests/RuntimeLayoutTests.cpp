@@ -1,4 +1,5 @@
 #include "BodyChangeNG/RuntimeLayout.h"
+#include "BodyChangeNG/RaceMenuCompatibility.h"
 #include "BodyChangeNG/RaceMenuOverrideRouting.h"
 #include "BodyChangeNG/MenuCameraProjection.h"
 
@@ -20,24 +21,54 @@ namespace
 int main()
 {
     using bcn::racemenu_override::Route;
-    Expect(bcn::racemenu_override::ResolveRoute(0U, false) == Route::legacySeV0Papyrus &&
+    using bcn::runtime::GameBranch;
+    Expect(bcn::racemenu_override::ResolveRoute(0U, GameBranch::se) == Route::legacySeV0Papyrus &&
         bcn::racemenu_override::UsesPapyrus(Route::legacySeV0Papyrus),
         "legacy SE RaceMenu Override v0 must use the Papyrus route");
-    Expect(bcn::racemenu_override::ResolveRoute(0U, true) == Route::aeBackportV0Papyrus &&
+    Expect(bcn::racemenu_override::ResolveRoute(0U, GameBranch::ae) == Route::aeBackportV0Papyrus &&
         bcn::racemenu_override::UsesPapyrus(Route::aeBackportV0Papyrus),
         "the AE backport Override v0 must stay separate from legacy SE v0");
-    Expect(bcn::racemenu_override::ResolveRoute(1U, false) == Route::officialV1Papyrus &&
-        bcn::racemenu_override::ResolveRoute(1U, true) == Route::officialV1Papyrus &&
+    Expect(bcn::racemenu_override::ResolveRoute(1U, GameBranch::se) == Route::officialV1Papyrus &&
+        bcn::racemenu_override::ResolveRoute(1U, GameBranch::ae) == Route::officialV1Papyrus &&
         bcn::racemenu_override::UsesPapyrus(Route::officialV1Papyrus),
         "official Override v1 must use its serialization-safe Papyrus route");
-    Expect(bcn::racemenu_override::ResolveRoute(2U, false) == Route::officialV2Native &&
-        bcn::racemenu_override::ResolveRoute(2U, true) == Route::officialV2Native &&
+    Expect(bcn::racemenu_override::ResolveRoute(2U, GameBranch::se) == Route::officialV2Native &&
+        bcn::racemenu_override::ResolveRoute(2U, GameBranch::ae) == Route::officialV2Native &&
         bcn::racemenu_override::UsesNativeV2(Route::officialV2Native),
         "official Override v2 must use the native wrapper route");
-    Expect(bcn::racemenu_override::ResolveRoute(3U, true) == Route::unsupported &&
+    Expect(bcn::racemenu_override::ResolveRoute(3U, GameBranch::ae) == Route::unsupported &&
         !bcn::racemenu_override::UsesPapyrus(Route::unsupported) &&
         !bcn::racemenu_override::UsesNativeV2(Route::unsupported),
         "an unaudited future Override ABI must fail closed");
+    Expect(bcn::racemenu_override::ResolveRoute(2U, GameBranch::unsupported) == Route::unsupported,
+        "a known Override ABI must not run on an unaudited Skyrim runtime");
+
+    using bcn::racemenu_compat::BodyMorphAbi;
+    Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(4U, GameBranch::se) == BodyMorphAbi::v4 &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(5U, GameBranch::ae) == BodyMorphAbi::v5,
+        "verified RaceMenu BodyMorph ABIs must resolve explicitly");
+    Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(6U, GameBranch::ae) == BodyMorphAbi::unsupported &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(5U, GameBranch::unsupported) == BodyMorphAbi::unsupported,
+        "future BodyMorph ABIs and unknown runtimes must fail closed");
+
+    Expect(bcn::runtime::ResolveGameBranch(REL::Version{ 1, 5, 97, 0 }) == GameBranch::se &&
+        bcn::runtime::ResolveGameBranch(REL::Version{ 1, 6, 1170, 0 }) == GameBranch::ae,
+        "verified Skyrim runtimes must resolve to an explicit SE/AE branch");
+    Expect(bcn::runtime::ResolveGameBranch(REL::Version{ 1, 6, 641, 0 }) == GameBranch::unsupported &&
+        bcn::runtime::ResolveGameBranch(REL::Version{ 1, 7, 99, 0 }) == GameBranch::unsupported &&
+        bcn::runtime::ResolveGameBranch(REL::Version{ 1, 8, 0, 0 }) == GameBranch::unsupported,
+        "unverified Skyrim patch and future minor versions must fail closed even when one isolated layout is known");
+
+    const auto legacyTint = bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 6, 353, 0 });
+    const auto aeTint = bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 6, 629, 0 });
+    Expect(legacyTint && legacyTint->baseOffset == 0xB10 && legacyTint->overlayOffset == 0xB28,
+        "pre-1.6.629 PlayerTint layout boundary changed");
+    Expect(aeTint && aeTint->baseOffset == 0xB18 && aeTint->overlayOffset == 0xB30,
+        "1.6.629+ PlayerTint layout boundary changed");
+    Expect(!bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 6, 641, 0 }) &&
+        !bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 7, 99, 0 }) &&
+        !bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 7, 100, 0 }),
+        "PlayerTint raw member access guessed an unaudited layout");
 
     const auto seRenderer = bcn::runtime::ResolveRendererHook(REL::Version{ 1, 5, 97, 0 });
     const auto seInput = bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 5, 97, 0 });
@@ -56,6 +87,9 @@ int main()
     Expect(!bcn::runtime::ResolveRendererHook(REL::Version{ 1, 6, 641, 0 }) &&
         !bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 6, 641, 0 }),
         "unknown AE runtimes must fail closed");
+    Expect(!bcn::runtime::ResolveRendererHook(REL::Version{ 1, 7, 99, 0 }) &&
+        !bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 7, 99, 0 }),
+        "an isolated 1.7.99 tint layout must not imply full renderer/input support");
     Expect(!bcn::runtime::ResolveRendererHook(REL::Version{ 1, 4, 15, 0 }) &&
         !bcn::runtime::ResolveInputPollHook(REL::Version{ 1, 4, 15, 0 }),
         "Skyrim VR must not select unverified flat hook layouts");

@@ -446,7 +446,7 @@ namespace bcn::skin_target
     LoadedProfileBodyRoute FindLoadedProfileBodyRoute(
         RE::Actor* actor, const SkinProfile& profile, const bool logTargets)
     {
-        if (profile.uvLayout != SkinUvLayout::ube) {
+        if (profile.layout != SkinLayout::ube) {
             return {
                 .slot = RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
                 .selection = skin_geometry::BodySelection::regular,
