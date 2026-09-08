@@ -32,14 +32,14 @@ All notable public changes to Body Change NG are documented here.
 - Logs every rejected automatic NPC body/skin submission with the actor, ActorBase, rule/manual source, selected ID, and exact rejection reason. Co-save completion remains recorded only after the BodyMorph or native TXST operation finishes successfully.
 - Preserves an automatic actor's serialized body/skin choice when a matched rule leaves that category unchanged; a selected asset and an explicit Default Body remain distinct outcomes. Private native form graphs are reused across save loads after restoring provider pointers and clearing ownership, avoiding per-load duplicate-form growth, and every TXST clone is reset to provider paths before applying the next profile.
 - Preserves every installed same-name BodySlide preset ID when importing OBody NG distribution rules, so CBBE/UBE or multi-source catalog order cannot pin an NPC rule to the wrong BodyFamily and leave the actor undistributed.
-- Routes OBody/ORefit outfit name, plugin, and resolved FormID exclusions through one tested runtime policy. Registering the list now re-evaluates every loaded actor immediately, so a newly excluded outfit clears an already-applied correction without waiting for another equip or cell event.
+- Routes OBody NG ORefit outfit name, plugin, and resolved FormID exclusions through one tested runtime policy. Registering the list now re-evaluates every loaded actor immediately, so a newly excluded outfit clears an already-applied BCNG Outfit Correction without waiting for another equip or cell event.
 
 ### Appearance work coordination
 
 - Splits actor state, event ownership, and latest-wins work channels across body, native skin, tint, male genital, futanari, RSV face, and outfit features. Resetting or superseding one feature cannot clear or cancel another.
 - Removes the 1.1.x distribution delay that coupled native skin to completion of a BodyMorph rebuild. A face-only profile owns only its Face TXST and never attaches the cloned body/far-skin graph.
 - Admits only the exact SE/AE runtime table and RaceMenu BodyMorph v4/v5 plus Override v0/v1/v2 routes. Unknown game patches and future ABIs fail closed; the build remains `EXCLUSIVE_SKYRIM_FLAT` with no VR target.
-- Adds dedicated skin architecture and OBody/ORefit import regression suites plus feedback-audit coverage for distribution tri-state persistence and independent external-addon identities. The Release DLL and all 15 test executables pass.
+- Adds dedicated skin architecture and OBody NG ORefit import regression suites plus feedback-audit coverage for distribution tri-state persistence and independent external-addon identities. The Release DLL and all 15 test executables pass.
 
 ## 1.1.4 — 2026-09-06
 

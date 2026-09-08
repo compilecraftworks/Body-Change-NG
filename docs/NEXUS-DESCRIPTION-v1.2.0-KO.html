@@ -61,7 +61,7 @@
       <li><strong>즉시 또는 다음 실행 배포</strong> — 로드된 NPC에게 지금 적용하거나 현재 세션 활성 규칙을 바꾸지 않고 다음 실행용 초안을 저장합니다.</li>
       <li><strong>세이브별 결과</strong> — 직접 선택과 평가된 NPC 결과는 SKSE 코세이브에 저장하며 변경 없는 액터의 전체 재배포를 피합니다.</li>
       <li><strong>분리된 실시간 상태</strong> — 미리보기·확정 바디모프·의상 보정·네이티브 바디스킨·틴트·성기 애드온 스킨의 소유권을 분리합니다.</li>
-      <li><strong>선택적 이전 경로</strong> — 기존 OBody NG JSON의 지원되는 NPC 배포와 ORefit 데이터를 사용자가 명시적으로 가져올 수 있습니다.</li>
+      <li><strong>선택적 이전 경로</strong> — 기존 OBody NG JSON의 지원되는 NPC 배포와 OBody NG ORefit 데이터를 사용자가 명시적으로 가져올 수 있습니다.</li>
     </ul>
 
     <h3>기존 메시 슬롯 방식과 비교</h3>
@@ -137,7 +137,7 @@
       <li>지원되는 CBBE 3BA·BHUNP/UNP 액터의 의상 착용 시 가슴 보정과 별도 유두 보정 옵션을 제공합니다.</li>
       <li>지원되는 CBBE 3BA·BHUNP/UNP NPC의 유두·생식기 형태를 세이브에서 안정적으로 무작위화할 수 있습니다.</li>
       <li>슬라이더 구조가 다른 UBE 액터는 건너뛰며 UBE 플레이어·일반 계열 NPC 혼합 설치도 액터별로 판정합니다.</li>
-      <li>ORefit은 의상별 지정 프리셋, 현재 바디 이름의 정확한 <code>-Refit</code>, <code>Female-Refit</code>/<code>Male-Refit</code>, 절차적 보정 순서로 후보를 찾습니다.</li>
+      <li><strong>ORefit은 OBody NG의 기능명이며 BCNG 자체 기능명은 의상 보정입니다.</strong> OBody NG ORefit 규칙을 등록한 경우, BCNG 의상 보정은 가져온 의상별 지정 프리셋을 먼저 사용하고 현재 바디 이름의 정확한 <code>-Refit</code>, <code>Female-Refit</code>/<code>Male-Refit</code>, 절차적 보정 순서로 다음 후보를 찾습니다.</li>
     </ul>
 
     <h3>UI·입력</h3>
@@ -217,7 +217,7 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
     <p>Body Change NG는 OBody NG 또는 그 JSON 없이도 작동합니다. 기존 규칙을 재사용하려는 경우에만 다음 파일을 선택적으로 사용합니다.</p>
     <p><code>Data\SKSE\Plugins\OBody_presetDistributionConfig.json</code></p>
     <p><code>BodyChangeNGdistribution.json</code>과 같은 폴더에 두되 두 파일을 합치거나 이름을 바꾸지 않습니다. BCNG는 명시적인 UI 동작에서만 OBody 파일을 읽고 원본은 수정하지 않습니다.</p>
-    <p>같은 OBody 파일명을 제공하는 MO2 모드가 여러 개면 MO2가 내용을 자동 병합하지 않습니다. BCNG는 가상 <code>Data</code> 경로에서 최종 승리한 파일 하나를 읽습니다. 배포 설정과 ORefit 마스터 목록을 함께 써야 한다면 OBody 규칙끼리 미리 합쳐진 OBody 형식 파일을 사용하고, BCNG의 별도 <code>BodyChangeNGdistribution.json</code>과는 합치지 마세요.</p>
+    <p>같은 OBody 파일명을 제공하는 MO2 모드가 여러 개면 MO2가 내용을 자동 병합하지 않습니다. BCNG는 가상 <code>Data</code> 경로에서 최종 승리한 파일 하나를 읽습니다. 배포 설정과 OBody NG ORefit 마스터 목록을 함께 써야 한다면 OBody 규칙끼리 미리 합쳐진 OBody 형식 파일을 사용하고, BCNG의 별도 <code>BodyChangeNGdistribution.json</code>과는 합치지 마세요.</p>
     <ul>
       <li><strong>NPC 배포</strong>의 <strong>저장 값 불러오기</strong>를 누르면 BCNG 저장 규칙과 함께 지원되는 OBody NPC 배포 데이터를 가져옵니다.</li>
       <li>프리셋 배포 제외 목록, NPC 이름/FormID 제외·지정, 플러그인·종족 제외, 팩션·플러그인·종족 지정, 여성·남성 기본 풀을 지원합니다. 프리셋 이름은 설치된 카탈로그와 일치해야 하며 누락된 이름은 건너뛰고 로그에 남깁니다.</li>
@@ -225,8 +225,8 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
       <li>가져온 행도 모든 BCNG 규칙과 같은 위→아래 우선순위를 사용합니다. 앞쪽의 같은 성별 <strong>모든 NPC</strong> 규칙이 뒤의 구체적인 가져오기 행을 가릴 수 있으며, 이때 편집기가 경고하므로 구체적인 행을 위로 옮기거나 앞 규칙의 범위를 좁히세요.</li>
       <li><strong>의상·랜덤화</strong>의 <strong>OBody NG 의상 보정 규칙 등록</strong>은 의상 이름·플러그인·FormID 제외, 이름·FormID 강제 보정, 여성·남성 의상별 프리셋 매핑을 불러옵니다.</li>
       <li>등록 직후 현재 로드된 액터를 모두 다시 판정합니다. 제외된 몸통 의상은 보정 판정에서 없는 것으로 취급하고, 어느 착용 슬롯이든 강제 보정 항목이 있으면 OBody NG와 같은 우선 동작을 유지합니다.</li>
-      <li>NPC 배포 가져오기와 ORefit 등록은 독립적이므로 필요한 쪽만 사용하거나 둘 다 사용할 수 있습니다.</li>
-      <li>SlickSilk의 <a href="https://www.nexusmods.com/skyrimspecialedition/mods/105052"><strong>OBody Next Generation ORefit JSON Master List</strong></a>를 선택적 가져오기 소스로 지원합니다. JSON과 참조 프리셋 에셋은 별도로 설치해야 하며 BCNG 배포 파일에는 포함되지 않습니다.</li>
+      <li>NPC 배포 가져오기와 OBody NG ORefit 등록은 독립적이므로 필요한 쪽만 사용하거나 둘 다 사용할 수 있습니다.</li>
+      <li>SlickSilk의 <a href="https://www.nexusmods.com/skyrimspecialedition/mods/105052"><strong>OBody Next Generation ORefit JSON Master List</strong></a>를 선택적 가져오기 소스로 지원합니다. 이 마스터리스트는 주로 OBody NG ORefit에서 제외해야 하는 의상 이름·플러그인 목록이며, BCNG는 이를 해당 의상을 가슴·유두 의상 보정 대상에서 제외하는 데 사용합니다. 목록에 강제 보정 항목이 포함된 경우에는 그 명시적 우선 동작을 유지합니다. JSON과 참조 프리셋 에셋은 별도로 설치해야 하며 BCNG 배포 파일에는 포함되지 않습니다.</li>
     </ul>
 
     <h2>호환 참고</h2>

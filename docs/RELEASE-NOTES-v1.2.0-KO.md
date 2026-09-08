@@ -32,7 +32,7 @@ TXST → ArmorAddon → Skin Armor 그래프를 전용으로 복제해 NPC Actor
 
 - Release 플러그인 빌드 통과
 - 자동 회귀 테스트 실행 파일 15종 전체 통과
-- 떼껄룩·툴레드에 설치된 OBody JSON 공급자 6개로 배포/ORefit 파서를 점검했고,
+- 떼껄룩·툴레드에 설치된 OBody JSON 공급자 6개로 배포/OBody NG ORefit 파서를 점검했고,
   읽힌 의상 이름·플러그인 제외와 강제 보정 항목 전체를 플러그인과 같은 판정
   경로로 확인했습니다. 등록 시 현재 로드된 모든 액터를 즉시 다시 판정합니다.
 - 실제 TAKEALOOK 자산 트리에서 BodySkin 11개: Legacy 7개, UBE 4개

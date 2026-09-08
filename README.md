@@ -332,12 +332,17 @@ The outfit popup can explicitly register OBody NG's complete ORefit rule set
 from `Data\SKSE\Plugins\OBody_presetDistributionConfig.json`. Outfit-name,
 plugin and FormID exclusions, name and FormID force-refit entries, and the
 female/male outfit-to-refit-preset mappings are imported without modifying the
-OBody source file. An outfit-specific mapping is evaluated before the current
-body's `-Refit` preset, the sex-wide fallback, and the procedural fallback.
+OBody source file. ORefit is OBody NG's feature name; Body Change NG calls its
+own system Outfit Correction. BCNG first honors an imported OBody NG
+outfit-specific mapping, then checks the current body's `-Refit` preset, the
+sex-wide fallback, and the procedural fallback.
 The
 [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
 by SlickSilk is explicitly supported as an optional import source. Its JSON and
-assets are not redistributed by Body Change NG.
+assets are not redistributed by Body Change NG. Its exclusions primarily list
+outfit names and plugins that should not receive OBody NG ORefit; BCNG uses
+them to exclude those outfits from clothed breast/nipple correction. Explicit
+force-refit entries retain their override behavior.
 
 ## Source and license
 

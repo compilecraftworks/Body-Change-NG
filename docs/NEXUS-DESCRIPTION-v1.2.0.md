@@ -94,7 +94,7 @@ state-management layer above that shared morph pipeline.
 - **Separated live state** — preview, committed BodyMorph, outfit correction,
   native BodySkin, tint, and genital-addon skin use independent ownership.
 - **Optional migration path** — an existing OBody NG JSON can be explicitly
-  imported for supported NPC distribution and ORefit data.
+  imported for supported NPC distribution and OBody NG ORefit data.
 
 ### **Compared with legacy mesh-slot systems**
 
@@ -206,9 +206,11 @@ profile, restore it to the same path, and press **Load saved values**.
   CBBE 3BA and BHUNP/UNP NPCs.
 - UBE actors are skipped because their slider layout is materially different;
   mixed UBE-player and conventional-NPC installations are evaluated per actor.
-- ORefit rules may select an outfit-specific preset first, then the current
-  body's exact `-Refit` preset, a `Female-Refit`/`Male-Refit` fallback, and
-  finally procedural correction.
+- **ORefit is an OBody NG feature name; BCNG calls its own system Outfit
+  Correction.** When OBody NG ORefit rules are registered, BCNG Outfit
+  Correction first honors an imported outfit-specific preset, then looks for
+  the current body's exact `-Refit` preset, a `Female-Refit`/`Male-Refit`
+  fallback, and finally procedural correction.
 
 ### **UI and Input**
 
@@ -349,7 +351,7 @@ modifies it.
 
 MO2 does not merge several mods that provide this same OBody filename. BCNG
 reads the one file that wins at the virtual `Data` path. If a distribution
-config and an ORefit master list must be used together, install an OBody-format
+config and an OBody NG ORefit master list must be used together, install an OBody-format
 file in which those OBody rules have already been combined; never merge it with
 BCNG's separate `BodyChangeNGdistribution.json`.
 
@@ -372,12 +374,16 @@ BCNG's separate `BodyChangeNGdistribution.json`.
 - Registration immediately re-evaluates every loaded actor. A blacklisted
   torso item is treated as absent for correction, while a force-refit item in
   any worn slot retains OBody NG's override behavior.
-- Distribution import and ORefit registration are independent; use either or
-  both.
+- Distribution import and OBody NG ORefit registration are independent; use
+  either or both.
 
 The [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
 by SlickSilk is supported as an optional import source. Install its JSON and
 referenced preset assets separately; Body Change NG does not redistribute them.
+This is primarily a list of outfit names and plugins that must be excluded from
+OBody NG ORefit. BCNG uses those exclusions to keep the corresponding outfits
+out of its clothed breast/nipple correction; any included force-refit entries
+retain their explicit override behavior.
 
 ---
 
