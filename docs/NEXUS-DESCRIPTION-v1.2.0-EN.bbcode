@@ -14,8 +14,6 @@ Body Change NG is a native SKSE plugin for changing BodySlide morph presets, act
 
 Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old general-purpose skin repaint pipeline with an actor-native TextureSet → ArmorAddon → Skin Armor graph. The selected skin becomes the NPC base's normal skin source, so naked body, hands, feet, and face rebuild through Skyrim's own system without BCNG tracking which gloves, boots, or outfits are equipped.
 
-[b]No MCM. No runtime body-mesh replacement. No skin-pack profile JSON.[/b]
-
 [line]
 
 [size=5][color=#5FB8E8][b]WHAT'S NEW IN 1.2.0[/b][/color][/size]
@@ -24,7 +22,7 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [*][b]Native Skin Armor/TXST backend[/b] — BCNG deep-clones the actor's current provider graph, preserves every original texture channel, overlays only the DDS parts supplied by the selected pack, and attaches the private graph at the NPC ActorBase.
 [*][b]Equipment-independent base skin[/b] — changing clothes is no longer a trigger for repainting the normal body skin. When an outfit reveals the real body, Skyrim rebuilds it from the already selected Skin Armor.
 [*][b]Exact body-part routing[/b] — body, hands, feet, face, 3BA vagina/anus, BHUNP vagina/anus/canal, beast tails, and external genital addons have separate roles. A missing or ambiguous role is never redirected to another part.
-[*][b]Legacy versus UBE catalog[/b] — only an explicit [font=Courier New]!UBE\Body[/font] or [font=Courier New]!UBE\Head[/font] tree is UBE. Every conventional humanoid pack is Legacy. CBBE/UNP and vanilla/HIMBO/SAM routing is derived from the actor at apply time, not from the pack name.
+[*][b]Conventional-body versus UBE catalog[/b] — Legacy means a pack using Skyrim's conventional [font=Courier New]actors\character[/font] texture tree, including CBBE/3BA, BHUNP/UNP, vanilla female/male, HIMBO, and SAM. Only an explicit [font=Courier New]!UBE\Body[/font] or [font=Courier New]!UBE\Head[/font] tree is UBE. Exact material routing is derived from the actor at apply time, not from the pack name.
 [*][b]No skin profile manifest[/b] — [font=Courier New]BodySkin\&lt;pack&gt;\profile.json[/font] is not read. Automatic IDs remain based on the relative pack folder and detected sex; a stale manifest cannot rename or reclassify a pack.
 [*][b]Safe partial packs[/b] — every part and material channel is optional. Missing DDS files keep the current provider value instead of borrowing a body, hand, foot, face, or genital texture.
 [*][b]UBE 2.0 graph support[/b] — the verified slot-53 body plus separate hand/foot ArmorAddons use the UBE Body atlas, while the Head atlas targets the face. Private TXST synthesis is limited to verified canonical UBE naked models.
@@ -54,7 +52,7 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [list]
 [*]Apply separate skin packs to the player or loaded NPCs.
 [*]Native body, hand, foot, far-skin, and optional face TextureSets are cloned from the current provider; unrelated channels stay intact.
-[*]Conventional humanoid skins are Legacy. UBE is detected only from the explicit [font=Courier New]!UBE[/font] atlas namespace.
+[*]Conventional CBBE/3BA, BHUNP/UNP, vanilla, HIMBO, and SAM texture trees are grouped as Legacy. UBE is detected only from the explicit [font=Courier New]!UBE[/font] atlas namespace.
 [*]CBBE 3BA and BHUNP/UNP genital/anal atlases route only to their exact matching geometry.
 [*]Male body skin and SOS/TNG slot-52 textures may live in one pack; the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
 [*]Argonian and Khajiit packs are filtered by race and sex, and the body atlas also reaches the matching native tail role.

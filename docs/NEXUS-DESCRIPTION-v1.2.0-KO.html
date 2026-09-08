@@ -35,14 +35,12 @@
     <h2>소개</h2>
     <p>Body Change NG는 하나의 인게임 인터페이스에서 BodySlide 바디모프 프리셋, 액터 스킨 텍스처, 선택형 성기 애드온 스킨, 플레이어 RaceMenu 틴트 레이어를 변경하는 네이티브 SKSE 플러그인입니다. 바디와 스킨을 NPC에게 자동 배포하는 우선순위 규칙 편집기도 포함합니다.</p>
     <p>바디 형태는 계속 RaceMenu BodyMorph 데이터입니다. 1.2.0은 과거의 범용 스킨 재도색 경로를 액터의 네이티브 TextureSet → ArmorAddon → Skin Armor 그래프로 교체했습니다. 선택 스킨이 NPC base의 정상 스킨 원본이 되므로, 장갑·신발·의상 착탈 여부를 BCNG가 추적하지 않아도 Skyrim 자체 시스템이 알몸 몸·손·발·얼굴을 같은 스킨에서 다시 생성합니다.</p>
-    <p class="notice"><strong>MCM 없음 · 런타임 바디 메시 교체 없음 · 스킨팩 profile.json 없음</strong></p>
-
     <h2>1.2.0 핵심 변경점</h2>
     <ul>
       <li><strong>네이티브 Skin Armor/TXST 백엔드</strong> — 액터가 현재 쓰는 공급자 그래프를 깊게 복제하고 원본 텍스처 채널을 모두 보존한 뒤, 선택팩에 실제로 있는 DDS 부위·채널만 덮어써 NPC ActorBase에 연결합니다.</li>
       <li><strong>장비와 독립된 기본 스킨</strong> — 일반 바디스킨은 의상 변경 때 다시 칠하지 않습니다. 의상이 실제 바디를 노출하면 Skyrim이 이미 선택된 Skin Armor에서 해당 부위를 생성합니다.</li>
       <li><strong>부위별 정확한 라우팅</strong> — 몸·손·발·얼굴, 3BA 질/항문, BHUNP 질/항문/내부, 수인종 꼬리, 외부 성기 애드온 역할을 분리합니다. 없거나 애매한 역할을 다른 부위로 보내지 않습니다.</li>
-      <li><strong>Legacy/UBE 카탈로그</strong> — 명백한 <code>!UBE\Body</code> 또는 <code>!UBE\Head</code> 구조만 UBE이고, 나머지 일반 인간형 스킨은 Legacy입니다. CBBE/UNP와 바닐라/HIMBO/SAM의 구체 경로는 폴더명이 아니라 적용 시 액터의 런타임 바디 계열에서 결정합니다.</li>
+      <li><strong>일반 바디 계열/UBE 카탈로그</strong> — Legacy는 CBBE/3BA·BHUNP/UNP·바닐라 여성/남성·HIMBO·SAM처럼 Skyrim의 일반 <code>actors\character</code> 텍스처 구조를 쓰는 스킨팩을 뜻합니다. <code>!UBE\Body</code> 또는 <code>!UBE\Head</code> 경로가 명시된 팩만 UBE로 분류합니다. 세부 재질 경로는 팩 이름이 아니라 적용할 액터의 런타임 바디 계열에서 결정합니다.</li>
       <li><strong>스킨 프로필 매니페스트 제거</strong> — <code>BodySkin\&lt;팩&gt;\profile.json</code>을 읽지 않습니다. 기존 자동 ID는 상대 폴더와 감지 성별을 계속 사용하며, 남아 있는 매니페스트가 이름·ID·분류·DDS 매핑을 바꿀 수 없습니다.</li>
       <li><strong>안전한 부분팩</strong> — 모든 부위와 재질 채널은 선택 사항입니다. 없는 DDS는 현재 공급자 값을 유지하고 몸·손·발·얼굴·성기 파일을 서로 빌려 쓰지 않습니다.</li>
       <li><strong>UBE 2.0 실제 그래프 지원</strong> — 확인된 슬롯 53 몸과 별도 손·발 ArmorAddon은 UBE Body 아틀라스를, 얼굴은 Head 아틀라스를 사용합니다. 전용 TXST 생성은 확인된 정식 UBE 알몸 모델 복제본에만 제한됩니다.</li>
@@ -67,7 +65,7 @@
     <ul>
       <li>플레이어와 로드된 NPC에게 서로 다른 스킨팩을 적용합니다.</li>
       <li>몸·손·발·far skin과 선택적 얼굴 TXST를 현재 공급자에서 복제하므로 선택팩과 무관한 채널은 그대로 유지됩니다.</li>
-      <li>일반 인간형은 Legacy, 명시적 <code>!UBE</code> 아틀라스 구조만 UBE로 자동 분류합니다.</li>
+      <li>CBBE/3BA·BHUNP/UNP·바닐라·HIMBO·SAM용 일반 텍스처 트리는 Legacy로 묶고, 명시적 <code>!UBE</code> 아틀라스 구조만 UBE로 자동 분류합니다.</li>
       <li>CBBE 3BA와 BHUNP/UNP의 질·항문 아틀라스는 정확히 일치하는 내부 지오메트리에만 연결됩니다.</li>
       <li>남성 몸스킨과 SOS/TNG 슬롯 52 텍스처를 한 팩에 둘 수 있습니다. 현재 애드온 경로로 Regular·Muscular·Smurf 및 종족·노인 변형을 고릅니다.</li>
       <li>아르고니안·카짓은 종족·성별로 필터링하며 몸 아틀라스를 해당 종족의 네이티브 꼬리 역할에도 연결합니다.</li>

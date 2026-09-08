@@ -20,8 +20,6 @@ ArmorAddon → Skin Armor graph. The selected skin becomes the NPC base's normal
 skin source, so naked body, hands, feet, and face rebuild through Skyrim's own
 system without BCNG tracking which gloves, boots, or outfits are equipped.
 
-**No MCM. No runtime body-mesh replacement. No skin-pack profile JSON.**
-
 ---
 
 ## **WHAT'S NEW IN 1.2.0**
@@ -37,10 +35,11 @@ system without BCNG tracking which gloves, boots, or outfits are equipped.
   BHUNP vagina/anus/canal, beast tails, and external genital addons have
   separate roles. A missing or ambiguous role is never redirected to another
   body part.
-- **Legacy versus UBE catalog** — only an explicit `!UBE\Body` or `!UBE\Head`
-  texture tree is UBE. Every conventional humanoid pack is Legacy. CBBE/UNP
-  and vanilla/HIMBO/SAM routing is derived from the selected actor at apply
-  time, not from the pack name.
+- **Conventional-body versus UBE catalog** — Legacy means a skin pack using
+  Skyrim's conventional `actors\character` texture tree, including CBBE/3BA,
+  BHUNP/UNP, vanilla female/male, HIMBO, and SAM. Only an explicit `!UBE\Body`
+  or `!UBE\Head` tree is UBE. Exact material routing is derived from the
+  selected actor at apply time, not from the pack name.
 - **No skin profile manifest** — `BodySkin\<pack>\profile.json` is not read.
   Existing automatic IDs remain based on the relative pack folder and detected
   sex; a stale manifest cannot rename or reclassify a pack.
@@ -90,8 +89,9 @@ system without BCNG tracking which gloves, boots, or outfits are equipped.
 - Apply separate skin packs to the player or loaded NPCs.
 - Native body, hand, foot, far-skin, and optional face TextureSets are cloned
   from the actor's current provider; unrelated channels stay intact.
-- Conventional humanoid skins are Legacy. UBE is detected only from its
-  explicit `!UBE` atlas namespace.
+- Conventional CBBE/3BA, BHUNP/UNP, vanilla, HIMBO, and SAM texture trees are
+  grouped as Legacy. UBE is detected only from its explicit `!UBE` atlas
+  namespace.
 - CBBE 3BA and BHUNP/UNP genital/anal atlases remain part of the normal female
   skin pack and route only to their exact matching geometry.
 - Male body skin and SOS/TNG slot-52 genital textures may live in one pack;
