@@ -41,7 +41,6 @@
       <li><strong>장비와 독립된 기본 스킨</strong> — 일반 바디스킨은 의상 변경 때 다시 칠하지 않습니다. 의상이 실제 바디를 노출하면 Skyrim이 이미 선택된 Skin Armor에서 해당 부위를 생성합니다.</li>
       <li><strong>부위별 정확한 라우팅</strong> — 몸·손·발·얼굴, 3BA 질/항문, BHUNP 질/항문/내부, 수인종 꼬리, 외부 성기 애드온 역할을 분리합니다. 없거나 애매한 역할을 다른 부위로 보내지 않습니다.</li>
       <li><strong>일반 바디 계열/UBE 카탈로그</strong> — Legacy는 CBBE/3BA·BHUNP/UNP·바닐라 여성/남성·HIMBO·SAM처럼 Skyrim의 일반 <code>actors\character</code> 텍스처 구조를 쓰는 스킨팩을 뜻합니다. <code>!UBE\Body</code> 또는 <code>!UBE\Head</code> 경로가 명시된 팩만 UBE로 분류합니다. 세부 재질 경로는 팩 이름이 아니라 적용할 액터의 런타임 바디 계열에서 결정합니다.</li>
-      <li><strong>스킨 프로필 매니페스트 제거</strong> — <code>BodySkin\&lt;팩&gt;\profile.json</code>을 읽지 않습니다. 기존 자동 ID는 상대 폴더와 감지 성별을 계속 사용하며, 남아 있는 매니페스트가 이름·ID·분류·DDS 매핑을 바꿀 수 없습니다.</li>
       <li><strong>안전한 부분팩</strong> — 모든 부위와 재질 채널은 선택 사항입니다. 없는 DDS는 현재 공급자 값을 유지하고 몸·손·발·얼굴·성기 파일을 서로 빌려 쓰지 않습니다.</li>
       <li><strong>UBE 2.0 실제 그래프 지원</strong> — 확인된 슬롯 53 몸과 별도 손·발 ArmorAddon은 UBE Body 아틀라스를, 얼굴은 Head 아틀라스를 사용합니다. 전용 TXST 생성은 확인된 정식 UBE 알몸 모델 복제본에만 제한됩니다.</li>
       <li><strong>RSV 소유권 호환</strong> — 현재 Racial Skin Variance 그래프를 공급자로 사용할 수 있습니다. RSV 폼이 바뀌면 그 현재 값을 다시 원본으로 삼고 BCNG가 여전히 소유한 포인터만 복원합니다. 얼굴 브리지는 RSV 저장 키를 만들거나 삭제하지 않습니다.</li>
@@ -67,7 +66,7 @@
       <li>몸·손·발·far skin과 선택적 얼굴 TXST를 현재 공급자에서 복제하므로 선택팩과 무관한 채널은 그대로 유지됩니다.</li>
       <li>CBBE/3BA·BHUNP/UNP·바닐라·HIMBO·SAM용 일반 텍스처 트리는 Legacy로 묶고, 명시적 <code>!UBE</code> 아틀라스 구조만 UBE로 자동 분류합니다.</li>
       <li>CBBE 3BA와 BHUNP/UNP의 질·항문 아틀라스는 정확히 일치하는 내부 지오메트리에만 연결됩니다.</li>
-      <li>남성 몸스킨과 SOS/TNG 슬롯 52 텍스처를 한 팩에 둘 수 있습니다. 현재 애드온 경로로 Regular·Muscular·Smurf 및 종족·노인 변형을 고릅니다.</li>
+      <li>HIMBO·SAM 스킨과 SOS/TNG 슬롯 52 텍스처를 한 팩에 둘 수 있습니다. 바닐라 남성 스킨도 지원하며, 현재 애드온 경로로 Regular·Muscular·Smurf 및 종족·노인 변형을 고릅니다.</li>
       <li>아르고니안·카짓은 종족·성별로 필터링하며 몸 아틀라스를 해당 종족의 네이티브 꼬리 역할에도 연결합니다.</li>
       <li>기본 스킨은 바디모프·틴트·후타나리·외부 모드 키를 건드리지 않고 캡처한 공급자 그래프로 복원합니다.</li>
     </ul>
@@ -129,11 +128,11 @@
     <p><code>CalienteTools\BodySlide\SliderPresets\*.xml</code></p>
     <p>표준 BodySlide 프리셋 XML을 넣고 대응하는 몸·의상 TRI를 Build Morphs로 생성합니다.</p>
 
-    <h3>일반 BodySkin 팩</h3>
+    <h3>CBBE 3BA · BHUNP/UNP 여성 BodySkin 팩</h3>
     <pre><code>BodySkin\내 스킨\Textures\actors\character\female\femalebody_1.dds
 BodySkin\내 스킨\Textures\actors\character\female\femalehands_1.dds
 BodySkin\내 스킨\Textures\actors\character\female\femalehead.dds</code></pre>
-    <p>스킨 모드의 원래 텍스처 트리를 복사합니다. 최상위 폴더명이 표시 이름이자 안정적인 자동 ID의 근거입니다. <strong>profile.json은 만들지 마세요. 파일이 있어도 무시합니다.</strong></p>
+    <p>스킨 모드의 원래 텍스처 트리를 복사합니다. 최상위 폴더명이 표시 이름이자 안정적인 자동 ID의 근거입니다.</p>
     <p>CBBE 3BA는 <code>femalebody_etc_v2_1</code>과 <code>_msn</code>·<code>_sk</code>·<code>_s</code>를 질/항문 아틀라스로 사용합니다. BHUNP/UNP는 같은 채널의 <code>BakaUNP\VaginalAnalCanal2</code>를 질/항문/내부 아틀라스로 유지합니다. 이 파일은 스킨 분류 근거가 아니며 일반 몸·손·발·얼굴을 대신하지 않습니다.</p>
 
     <h3>UBE 2.0 BodySkin 팩</h3>
@@ -143,8 +142,8 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Body\femalebody_1_sk.dds
 BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
     <p>Legacy와 UBE 에셋은 서로 다른 최상위 스킨팩 폴더에 둡니다.</p>
 
-    <h3>남성 몸+SOS/TNG</h3>
-    <p>남성 몸·손·발·얼굴과 SOS 애드온 폴더를 같은 최상위 스킨팩에 둡니다. 서로 다른 팩의 파일은 합치지 않습니다.</p>
+    <h3>HIMBO · SAM BodySkin + SOS/TNG 팩</h3>
+    <p>HIMBO·SAM의 몸·손·발·얼굴 텍스처와 SOS/TNG 애드온 폴더를 같은 최상위 스킨팩에 둡니다. 바닐라 남성 스킨도 같은 일반 텍스처 구조를 사용합니다. 서로 다른 팩의 파일은 합치지 않습니다.</p>
     <p><code>BodySkin\내 남성 스킨\Textures\actors\character\SOS\&lt;애드온 이름&gt;\malegenitals_1*</code></p>
 
     <h3>후타나리 팩</h3>
@@ -161,10 +160,8 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
     <h2>호환 참고</h2>
     <ul>
       <li><strong>Racial Skin Variance</strong> — 현재 RSV 그래프를 공급자로 사용하고 제한된 얼굴 브리지를 유지합니다. UBE 2.0 자체의 RSV 플레이어 제외(<code>PLAYER VANILLA</code>) 요구사항은 그대로 적용됩니다.</li>
-      <li><strong>SFS·SVS·Skyrim Outfit System</strong> — BCNG 네이티브 기본 스킨은 의상 선택을 소유하거나 장비 이벤트 추적을 요구하지 않습니다. 액터의 실제 Skin Armor가 노출되면 선택 스킨을 사용합니다. 자체 복사 피부 지오메트리와 고정 재질이 든 커스텀 의상 NIF는 그 의상 모드가 계속 소유합니다.</li>
       <li><strong>SOS·TNG·TRX·ERF</strong> — 외부 성기 지오메트리는 ActorBase 바디스킨과 분리된 액터 레퍼런스 단위·장비 인식 어댑터로 처리합니다.</li>
       <li><strong>Mu Dynamic NormalMap</strong> — 지원하는 노멀 동반 묶음을 선택 캐시 노멀과 함께 유지합니다.</li>
-      <li><strong>OBody NG</strong> — 선택 사항입니다. 배포·의상 JSON은 사용자가 UI에서 명시적으로 가져올 때만 읽고 BCNG 규칙에 자동 병합하지 않습니다.</li>
     </ul>
 
     <h2>저장·소유권 범위</h2>
@@ -173,7 +170,6 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
       <li>네이티브 BodySkin은 NPC ActorBase 단위입니다. 같은 base를 공유하는 레퍼런스는 하나의 네이티브 스킨을 공유합니다.</li>
       <li>직접 선택과 평가된 NPC 결과는 현재 SKSE 코세이브에 속합니다.</li>
       <li>배포 규칙은 <code>Data\SKSE\Plugins\BodyChangeNGdistribution.json</code>에 별도 저장됩니다.</li>
-      <li>설정·배포 규칙 JSON은 계속 지원하며, 제거된 스킨팩 프로필 매니페스트와는 무관합니다.</li>
     </ul>
 
     <h2>크레딧 &amp; 라이선스</h2>

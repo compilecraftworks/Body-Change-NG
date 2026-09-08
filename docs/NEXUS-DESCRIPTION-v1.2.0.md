@@ -40,9 +40,6 @@ system without BCNG tracking which gloves, boots, or outfits are equipped.
   BHUNP/UNP, vanilla female/male, HIMBO, and SAM. Only an explicit `!UBE\Body`
   or `!UBE\Head` tree is UBE. Exact material routing is derived from the
   selected actor at apply time, not from the pack name.
-- **No skin profile manifest** — `BodySkin\<pack>\profile.json` is not read.
-  Existing automatic IDs remain based on the relative pack folder and detected
-  sex; a stale manifest cannot rename or reclassify a pack.
 - **Partial packs remain safe** — every supplied part and material channel is
   optional. Missing DDS files retain the current provider value instead of
   borrowing a body, hand, foot, face, or genital texture.
@@ -94,8 +91,9 @@ system without BCNG tracking which gloves, boots, or outfits are equipped.
   namespace.
 - CBBE 3BA and BHUNP/UNP genital/anal atlases remain part of the normal female
   skin pack and route only to their exact matching geometry.
-- Male body skin and SOS/TNG slot-52 genital textures may live in one pack;
-  the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
+- HIMBO or SAM skin and SOS/TNG slot-52 genital textures may live in one pack.
+  Vanilla male skin is also supported; the live addon path chooses Regular,
+  Muscular, Smurf, race, and elder variants.
 - Argonian and Khajiit packs are filtered by race and sex, and their matching
   body atlas also reaches the native tail role.
 - A Default Skin action restores the captured provider graph without touching
@@ -179,7 +177,7 @@ under 1.2.0.
 Use standard BodySlide preset XML and build the matching body/outfit TRI data
 with Build Morphs.
 
-### **Conventional BodySkin packs**
+### **CBBE 3BA and BHUNP/UNP female BodySkin packs**
 
 ```text
 BodySkin\My Skin\Textures\actors\character\female\femalebody_1.dds
@@ -188,7 +186,7 @@ BodySkin\My Skin\Textures\actors\character\female\femalehead.dds
 ```
 
 Copy the source mod's original texture tree. The top-level pack folder is the
-display name and stable-ID source. **Do not create `profile.json`; it is ignored.**
+display name and stable-ID source.
 
 For CBBE 3BA, `femalebody_etc_v2_1` plus `_msn`, `_sk`, and `_s` is the
 vagina/anus atlas. For BHUNP/UNP, preserve
@@ -207,10 +205,11 @@ BodySkin\My UBE Skin\Textures\!UBE\Head\femalehead_d.dds
 
 Keep Legacy and UBE assets in separate top-level pack folders.
 
-### **Male plus SOS/TNG**
+### **HIMBO and SAM BodySkin plus SOS/TNG**
 
-Keep the male body/hand/foot/face tree and its SOS addon folders under the same
-top-level skin pack. BCNG never joins textures across packs.
+Keep the HIMBO or SAM body/hand/foot/face tree and its SOS/TNG addon folders
+under the same top-level skin pack. Vanilla male skins use the same conventional
+texture layout. BCNG never joins textures across packs.
 
 `BodySkin\My Male Skin\Textures\actors\character\SOS\<addon name>\malegenitals_1*`
 
@@ -234,17 +233,10 @@ matching tab.
 - **Racial Skin Variance:** BCNG treats the current RSV graph as a provider and
   maintains a bounded face bridge. UBE 2.0's own requirement to exclude its
   player race from RSV (`PLAYER VANILLA`) still applies.
-- **SFS, SVS, and Skyrim Outfit System:** BCNG's native base skin does not own
-  outfit selection or require equipment-event tracking. Skin revealed from the
-  actor's real Skin Armor follows the selected pack. A custom outfit NIF that
-  embeds its own copied skin geometry and hard-coded material remains owned by
-  that outfit mod.
 - **SOS/TNG/TRX/ERF:** external genital geometry remains reference-scoped and
   equipment-aware, separate from ActorBase-scoped body skin.
 - **Mu Dynamic NormalMap:** supported companion normal bundles are preserved
   with the selected cached normal.
-- **OBody NG:** optional. Its distribution/outfit JSON can be imported only by
-  an explicit UI action and is never silently merged with BCNG's rules.
 
 ---
 
@@ -256,8 +248,7 @@ matching tab.
 - Direct choices and evaluated NPC results belong to the current SKSE co-save.
 - Distribution rules are stored separately in
   `Data\SKSE\Plugins\BodyChangeNGdistribution.json`.
-- The editor writes settings and rules as validated JSON. This is unrelated to
-  the removed skin-pack profile manifest.
+- The editor writes settings and rules as validated JSON.
 
 ---
 

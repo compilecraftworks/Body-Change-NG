@@ -23,7 +23,6 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [*][b]Equipment-independent base skin[/b] — changing clothes is no longer a trigger for repainting the normal body skin. When an outfit reveals the real body, Skyrim rebuilds it from the already selected Skin Armor.
 [*][b]Exact body-part routing[/b] — body, hands, feet, face, 3BA vagina/anus, BHUNP vagina/anus/canal, beast tails, and external genital addons have separate roles. A missing or ambiguous role is never redirected to another part.
 [*][b]Conventional-body versus UBE catalog[/b] — Legacy means a pack using Skyrim's conventional [font=Courier New]actors\character[/font] texture tree, including CBBE/3BA, BHUNP/UNP, vanilla female/male, HIMBO, and SAM. Only an explicit [font=Courier New]!UBE\Body[/font] or [font=Courier New]!UBE\Head[/font] tree is UBE. Exact material routing is derived from the actor at apply time, not from the pack name.
-[*][b]No skin profile manifest[/b] — [font=Courier New]BodySkin\&lt;pack&gt;\profile.json[/font] is not read. Automatic IDs remain based on the relative pack folder and detected sex; a stale manifest cannot rename or reclassify a pack.
 [*][b]Safe partial packs[/b] — every part and material channel is optional. Missing DDS files keep the current provider value instead of borrowing a body, hand, foot, face, or genital texture.
 [*][b]UBE 2.0 graph support[/b] — the verified slot-53 body plus separate hand/foot ArmorAddons use the UBE Body atlas, while the Head atlas targets the face. Private TXST synthesis is limited to verified canonical UBE naked models.
 [*][b]RSV-aware ownership[/b] — Racial Skin Variance may remain the provider. BCNG rebuilds from current RSV forms when they change and restores only pointers it still owns; its bounded face bridge does not create or delete RSV's saved keys.
@@ -54,7 +53,7 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [*]Native body, hand, foot, far-skin, and optional face TextureSets are cloned from the current provider; unrelated channels stay intact.
 [*]Conventional CBBE/3BA, BHUNP/UNP, vanilla, HIMBO, and SAM texture trees are grouped as Legacy. UBE is detected only from the explicit [font=Courier New]!UBE[/font] atlas namespace.
 [*]CBBE 3BA and BHUNP/UNP genital/anal atlases route only to their exact matching geometry.
-[*]Male body skin and SOS/TNG slot-52 textures may live in one pack; the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
+[*]HIMBO or SAM skin and SOS/TNG slot-52 textures may live in one pack. Vanilla male skin is also supported; the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
 [*]Argonian and Khajiit packs are filtered by race and sex, and the body atlas also reaches the matching native tail role.
 [*]Default Skin restores the captured provider graph without touching BodyMorph, tint, futanari, or foreign override ownership.
 [/list]
@@ -132,13 +131,13 @@ Version 1.2.0 is a separate architectural line from 1.1.4. Do not combine DLLs f
 
 Use standard BodySlide preset XML and build the matching body/outfit TRI data with Build Morphs.
 
-[size=4][color=#9AD7F5][b]Conventional BodySkin Packs[/b][/color][/size]
+[size=4][color=#9AD7F5][b]CBBE 3BA and BHUNP/UNP Female BodySkin Packs[/b][/color][/size]
 
 [font=Courier New]BodySkin\My Skin\Textures\actors\character\female\femalebody_1.dds[/font]
 [font=Courier New]BodySkin\My Skin\Textures\actors\character\female\femalehands_1.dds[/font]
 [font=Courier New]BodySkin\My Skin\Textures\actors\character\female\femalehead.dds[/font]
 
-Copy the source mod's original texture tree. The top-level folder is the display name and stable-ID source. [b]Do not create profile.json; it is ignored.[/b]
+Copy the source mod's original texture tree. The top-level folder is the display name and stable-ID source.
 
 For CBBE 3BA, [font=Courier New]femalebody_etc_v2_1[/font] plus [font=Courier New]_msn[/font], [font=Courier New]_sk[/font], and [font=Courier New]_s[/font] is the vagina/anus atlas. For BHUNP/UNP, preserve [font=Courier New]BakaUNP\VaginalAnalCanal2[/font] with the same suffixes for vagina/anus/canal. These do not classify the pack and never replace the regular body, hands, feet, or face.
 
@@ -149,9 +148,9 @@ For CBBE 3BA, [font=Courier New]femalebody_etc_v2_1[/font] plus [font=Courier Ne
 
 Keep Legacy and UBE assets in separate top-level pack folders.
 
-[size=4][color=#9AD7F5][b]Male plus SOS/TNG[/b][/color][/size]
+[size=4][color=#9AD7F5][b]HIMBO and SAM BodySkin plus SOS/TNG[/b][/color][/size]
 
-Keep the male body/hand/foot/face tree and SOS addon folders under the same skin pack. BCNG never joins textures across packs.
+Keep the HIMBO or SAM body/hand/foot/face tree and SOS/TNG addon folders under the same skin pack. Vanilla male skins use the same conventional texture layout. BCNG never joins textures across packs.
 
 [font=Courier New]BodySkin\My Male Skin\Textures\actors\character\SOS\&lt;addon name&gt;\malegenitals_1*[/font]
 
@@ -175,10 +174,8 @@ Files added while Skyrim is running appear after pressing [b]Refresh[/b] on the 
 
 [list]
 [*][b]Racial Skin Variance[/b] — BCNG treats the current RSV graph as a provider and maintains a bounded face bridge. UBE 2.0's own requirement to exclude its player race from RSV ([font=Courier New]PLAYER VANILLA[/font]) still applies.
-[*][b]SFS, SVS, and Skyrim Outfit System[/b] — BCNG's native base skin does not own outfit selection or require equipment-event tracking. Skin revealed from the actor's real Skin Armor follows the selected pack. A custom outfit NIF with copied skin geometry and a hard-coded material remains owned by that outfit mod.
 [*][b]SOS/TNG/TRX/ERF[/b] — external genital geometry remains reference-scoped and equipment-aware, separate from ActorBase-scoped body skin.
 [*][b]Mu Dynamic NormalMap[/b] — supported companion normal bundles remain with the selected cached normal.
-[*][b]OBody NG[/b] — optional. Its distribution/outfit JSON is imported only through an explicit UI action and is never silently merged with BCNG rules.
 [/list]
 
 [line]
