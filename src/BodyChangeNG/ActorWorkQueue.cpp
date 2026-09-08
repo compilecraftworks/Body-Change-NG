@@ -52,12 +52,12 @@ namespace
                 if (bcn::appearance::NeedsReconcile(
                         bcn::appearance::Feature::maleGenitalAddon,
                         bcn::appearance::Event::actor3DAttached)) {
-                    bcn::skin_override::QueueReapplyCurrentMaleGenitals(actor.get());
+                    bcn::skin_override::QueueReapplyCurrentMaleGenitals(actor.get(), true);
                 }
                 if (bcn::appearance::NeedsReconcile(
                         bcn::appearance::Feature::futanariAddon,
                         bcn::appearance::Event::actor3DAttached)) {
-                    bcn::skin_override::QueueReapplyCurrentFutanari(actor.get());
+                    bcn::skin_override::QueueReapplyCurrentFutanari(actor.get(), true);
                 }
                 if (bcn::appearance::NeedsReconcile(
                         bcn::appearance::Feature::rsvFaceBridge,

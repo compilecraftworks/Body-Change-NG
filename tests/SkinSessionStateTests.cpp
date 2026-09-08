@@ -46,6 +46,25 @@ int main()
         InvalidateFutanariType(actorA);
         Require(!CachedFutanariType(actorA).cached, "futanari invalidation failed");
 
+        using Channel = AddonTextureChannel;
+        Require(!AppliedAddonSignature(actorA, Channel::maleGenitals) &&
+                !AppliedAddonSignature(actorA, Channel::futanari),
+            "an empty session exposed a genital addon signature");
+        Require(!NeedsAddonReapply(std::nullopt, 0U) &&
+                NeedsAddonReapply(std::nullopt, 0x1234U) &&
+                !NeedsAddonReapply(0x1234U, 0x1234U) &&
+                NeedsAddonReapply(0x1234U, 0x5678U),
+            "genital reapply filtering did not distinguish missing, unchanged, and replaced addons");
+        MarkAddonApplied(actorA, Channel::maleGenitals, 0x1234U);
+        MarkAddonApplied(actorA, Channel::futanari, 0x5678U);
+        Require(AppliedAddonSignature(actorA, Channel::maleGenitals) == 0x1234U &&
+                AppliedAddonSignature(actorA, Channel::futanari) == 0x5678U,
+            "independent genital addon identities crossed channels");
+        ClearAddonApplied(actorA, Channel::maleGenitals);
+        Require(!AppliedAddonSignature(actorA, Channel::maleGenitals) &&
+                AppliedAddonSignature(actorA, Channel::futanari) == 0x5678U,
+            "clearing one genital addon identity changed the other channel");
+
         const auto face = BeginFaceRefresh(actorA);
         MarkTransientFace(actorA);
         Require(IsCurrentFaceRefresh(actorA, face) && HasTransientFace(actorA),
@@ -59,11 +78,12 @@ int main()
         static_cast<void>(BeginFutanariChange(actorA));
         Forget(actorA);
         Require(!HasTrackedSelection(actorA) && !CurrentSkinGeneration(actorA) &&
-                ClaimLegacyCleanup(actorA),
+                !AppliedAddonSignature(actorA, Channel::futanari) && ClaimLegacyCleanup(actorA),
             "actor teardown left session state behind");
 
         Reset();
-        Require(!HasTrackedSelection(actorA) && !CachedFutanariType(actorA).cached,
+        Require(!HasTrackedSelection(actorA) && !CachedFutanariType(actorA).cached &&
+                !AppliedAddonSignature(actorA, Channel::maleGenitals),
             "session reset left cached state behind");
         std::cout << "Skin session state tests passed\n";
         return 0;

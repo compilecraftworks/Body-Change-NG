@@ -105,6 +105,21 @@ int main()
         Require(state.body.selection.manual && state.skin.selection.manual &&
                 state.body.selection.selectedId != state.skin.selection.selectedId,
             "body and skin channels did not remain independent");
+        bcn::FeatureSelectionState automatic{ .selectedId = "saved-skin" };
+        bcn::UpdateAutomaticSelection(automatic, std::nullopt);
+        Require(automatic.selectedId == "saved-skin" && !automatic.useDefault,
+            "an unchanged automatic rule erased its serialized selection");
+        bcn::UpdateAutomaticSelection(automatic, std::string{ "new-skin" });
+        Require(automatic.selectedId == "new-skin" && !automatic.useDefault,
+            "an automatic rule did not store its selected asset");
+        bcn::UpdateAutomaticSelection(automatic, std::nullopt, true);
+        Require(automatic.selectedId.empty() && automatic.useDefault,
+            "an automatic Default decision was collapsed into unchanged state");
+        bcn::FeatureSelectionState manualSelection{
+            .selectedId = "manual-skin", .manual = true };
+        bcn::UpdateAutomaticSelection(manualSelection, std::string{ "rule-skin" });
+        Require(manualSelection.selectedId == "manual-skin" && manualSelection.manual,
+            "automatic distribution overwrote a direct actor selection");
         state.body.application.applied = state.skin.application.applied = true;
         state.body.application.verifiedThisSession = state.skin.application.verifiedThisSession = true;
         bcn::PrepareRestoredState(state);
@@ -185,7 +200,11 @@ int main()
                     "Exclude Body Distribution for Elder NPCs (Female)", true) ==
                 "default-exclude-elder-female" &&
                 names::RecognizeKey("user-rule-1", "새 여성 NPC 규칙", true) ==
-                "rule-new-female",
+                "rule-new-female" &&
+                names::RecognizeKey("rule-11", "새 남성 NPC 규칙", true) ==
+                "rule-new-female" &&
+                names::RecognizeKey("rule-12", "所有女性 NPC", false) ==
+                "rule-all-male",
             "legacy sample/generated rule names did not migrate to language-neutral keys");
         std::vector<bcn::DistributionRule> editableSamples{
             { .id = "default-exclude-elder-female", .name = "renamed sample" },

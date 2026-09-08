@@ -58,6 +58,24 @@ namespace bcn
         FutanariFeatureState futanari;
     };
 
+    // Automatic distribution has three distinct outcomes for each feature:
+    // preserve the previous choice (no value), select a new asset (value), or
+    // explicitly select Default.  Collapsing preserve into an empty string
+    // loses the serialized choice and makes an unchanged rule fail to restore
+    // after the next save load.
+    inline void UpdateAutomaticSelection(FeatureSelectionState& selection,
+        const std::optional<std::string>& selectedId, const bool useDefault = false)
+    {
+        if (selection.manual) return;
+        if (selectedId) {
+            selection.selectedId = *selectedId;
+            selection.useDefault = false;
+        } else if (useDefault) {
+            selection.selectedId.clear();
+            selection.useDefault = true;
+        }
+    }
+
     enum class RestoredApplicationDecision : std::uint8_t
     {
         apply,

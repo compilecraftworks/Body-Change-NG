@@ -23,19 +23,21 @@ All notable public changes to Body Change NG are documented here.
 - Treats the current RSV Skin Armor as a source provider, rebuilds BCNG's clone when RSV replaces body/far-skin/face pointers, and rebases an unattached face or far-skin component before a later profile starts using it. Only pointers BCNG still owns are restored. The bounded face bridge paints only channels currently owned by RSV as live, non-persistent values and never creates or removes a serialized key.
 - Preserves UBE 2.0's upstream requirement to exclude its player race from RSV (`PLAYER VANILLA`); only an already valid UBE/RSV provider graph is cloned.
 - Keeps male SOS/TNG slot-52 textures and optional female SOS/ERF/TRX futanari textures in independent reference-scoped adapters. Only those adapters and outfit morph correction observe equipment changes; general native skin does not.
-- Reapplies male SOS/TNG, female futanari, and the verified RSV face bridge independently when cell attachment recreates their external geometry; native base skin is not repainted on that path.
+- Reapplies male SOS/TNG, female futanari, and the verified RSV face bridge independently when cell attachment recreates their external geometry; native base skin is not repainted on that path. Genital adapters compare the loaded Armor/ArmorAddon identity before equipment/cell reconciliation, so unrelated OStim/ODF/outfit events cannot repeatedly overwrite live third-party effects; removal clears the identity so the same Form is restored after re-equip.
 - Removes only BCNG-owned 1.1.x body/hand/foot/tail/face NiOverride keys once during migration. It excludes RSV, foreign providers, male genital, and futanari ownership.
 - Stores an optional language-neutral `nameKey` for built-in samples and untouched generated rule names, so they follow the Korean, English, or Simplified Chinese UI without translating or overwriting a user-edited name.
+- Recovers an exact legacy generated label whose saved rule sex was changed without its name, retargeting only that built-in Korean/English/Chinese label to the current sex while leaving arbitrary custom names untouched.
 - Makes starter samples editable, movable, and deletable like every other rule, allocates collision-free persistent IDs for new rows, and shows a localized warning when an earlier same-sex all-NPC rule makes the selected row unreachable.
 - Saves distribution rules and settings through a flushed, reparsed temporary file followed by an atomic Windows replace, so a failed write cannot delete the last valid file.
 - Logs every rejected automatic NPC body/skin submission with the actor, ActorBase, rule/manual source, selected ID, and exact rejection reason. Co-save completion remains recorded only after the BodyMorph or native TXST operation finishes successfully.
+- Preserves an automatic actor's serialized body/skin choice when a matched rule leaves that category unchanged; a selected asset and an explicit Default Body remain distinct outcomes. Private native form graphs are reused across save loads after restoring provider pointers and clearing ownership, avoiding per-load duplicate-form growth, and every TXST clone is reset to provider paths before applying the next profile.
 
 ### Appearance work coordination
 
 - Splits actor state, event ownership, and latest-wins work channels across body, native skin, tint, male genital, futanari, RSV face, and outfit features. Resetting or superseding one feature cannot clear or cancel another.
 - Removes the 1.1.x distribution delay that coupled native skin to completion of a BodyMorph rebuild. A face-only profile owns only its Face TXST and never attaches the cloned body/far-skin graph.
 - Admits only the exact SE/AE runtime table and RaceMenu BodyMorph v4/v5 plus Override v0/v1/v2 routes. Unknown game patches and future ABIs fail closed; the build remains `EXCLUSIVE_SKYRIM_FLAT` with no VR target.
-- Adds a dedicated skin architecture regression suite. The Release DLL and all 14 test executables pass.
+- Adds a dedicated skin architecture regression suite and feedback-audit coverage for distribution tri-state persistence and independent external-addon identities. The Release DLL and all 14 test executables pass.
 
 ## 1.1.4 — 2026-09-06
 

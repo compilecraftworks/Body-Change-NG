@@ -84,9 +84,9 @@ namespace bcn
                 // and optional external genital addons.
                 ActorRegistry::Get().InvalidateOutfit(actor.get());
                 OutfitRefit::Get().ProcessActor(actor.get());
-                skin_override::QueueReapplyCurrentMaleGenitals(actor.get());
+                skin_override::QueueReapplyCurrentMaleGenitals(actor.get(), true);
                 skin_override::InvalidateFutanariDetection(actorFormID);
-                skin_override::QueueReapplyCurrentFutanari(actor.get());
+                skin_override::QueueReapplyCurrentFutanari(actor.get(), true);
                 FinishEquipmentChange(actorFormID, generation);
             }, std::max(1U, remainingHops),
                 appearance::WorkChannel::equipmentReconcile, true);

@@ -58,7 +58,7 @@ namespace bcn
         // selection. Stable rule hashing remains the fallback if no record is
         // present or the rule pools change.
         void SetRuleSelection(RE::Actor* a_actor, std::optional<std::string> a_bodyId,
-            std::optional<std::string> a_skinId);
+            std::optional<std::string> a_skinId, bool a_useDefaultBody = false);
         [[nodiscard]] bool NeedsBodyApply(RE::Actor* a_actor, std::string_view a_bodyId,
             bool a_useDefault);
         [[nodiscard]] bool NeedsSkinApply(RE::Actor* a_actor, std::string_view a_skinId,

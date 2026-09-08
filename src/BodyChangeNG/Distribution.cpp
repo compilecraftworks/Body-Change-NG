@@ -881,7 +881,19 @@ namespace bcn
             UsesNpcBodyPreset(settings.maleNpcBodyType);
         const auto selection = ChooseRuleSelection(
             *rules, actor, previous, distributionFamily, useBodyPreset);
-        ActorRegistry::Get().SetRuleSelection(actor, selection.presetId, selection.skinProfileId);
+        ActorRegistry::Get().SetRuleSelection(actor, selection.presetId,
+            selection.skinProfileId, selection.defaultBodyRequested);
+        // A matched exclusion/empty pool and the absence of a matching rule
+        // both mean "unchanged", not "forget the co-save choice".  Resolve
+        // the effective state after the tri-state update so a native skin
+        // graph (which is intentionally detached at a load boundary) and an
+        // unverified BodyMorph choice are actually restored in the new
+        // session even when the current rule contributes no new ID.
+        const auto effective = ActorRegistry::Get().Snapshot(actor);
+        const auto* automaticBody = effective && (!manual || !manual->hasBody) ?
+            &effective->body.selection : nullptr;
+        const auto* automaticSkin = effective && (!manual || !manual->hasSkin) ?
+            &effective->skin.selection : nullptr;
         bool queued{};
         const auto ruleSource =
             (selection.ruleId.empty() ? std::string_view{ "none" } :
@@ -921,19 +933,19 @@ namespace bcn
             const auto bodyQueued = queueBody(manual->bodyId,
                 racemenu::QueueApply(actor, manual->bodyId, racemenu::ApplyMode::commit));
             queued = bodyQueued;
-        } else if ((!manual || !manual->hasBody) && selection.presetId &&
-            ActorRegistry::Get().NeedsBodyApply(actor, *selection.presetId, false)) {
+        } else if (automaticBody && !automaticBody->useDefault &&
+            !automaticBody->selectedId.empty() &&
+            ActorRegistry::Get().NeedsBodyApply(actor, automaticBody->selectedId, false)) {
             // Automatic distribution has at most one accepted body result per
             // actor. Let RaceMenu defer its expensive partition rebuild just
             // like OBody NG, while manual UI changes retain the synchronous
             // ordering needed for rapid preview/commit input.
-            const auto bodyQueued = queueBody(*selection.presetId,
-                racemenu::QueueApply(actor, *selection.presetId,
+            const auto bodyQueued = queueBody(automaticBody->selectedId,
+                racemenu::QueueApply(actor, automaticBody->selectedId,
                     racemenu::ApplyMode::commit, 0U,
                     racemenu::UpdatePolicy::deferred));
             queued = bodyQueued;
-        } else if ((!manual || !manual->hasBody) && selection.matched &&
-            selection.defaultBodyRequested &&
+        } else if (automaticBody && automaticBody->useDefault &&
             ActorRegistry::Get().NeedsBodyApply(actor, {}, true)) {
             racemenu::QueueClearBodyChangeMorphs(actor);
             queued = true;
@@ -946,10 +958,11 @@ namespace bcn
             ActorRegistry::Get().NeedsSkinApply(actor, manual->skinId, false)) {
             queued = queueSkin(manual->skinId,
                 skin_override::QueueApply(actor, manual->skinId)) || queued;
-        } else if ((!manual || !manual->hasSkin) && selection.skinProfileId &&
-            ActorRegistry::Get().NeedsSkinApply(actor, *selection.skinProfileId, false)) {
-            queued = queueSkin(*selection.skinProfileId,
-                skin_override::QueueApply(actor, *selection.skinProfileId)) || queued;
+        } else if (automaticSkin && !automaticSkin->useDefault &&
+            !automaticSkin->selectedId.empty() &&
+            ActorRegistry::Get().NeedsSkinApply(actor, automaticSkin->selectedId, false)) {
+            queued = queueSkin(automaticSkin->selectedId,
+                skin_override::QueueApply(actor, automaticSkin->selectedId)) || queued;
         }
         return queued;
     }

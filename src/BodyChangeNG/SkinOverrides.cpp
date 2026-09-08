@@ -62,6 +62,51 @@ namespace
     using bcn::skin_target::StableTextureSet;
     using bcn::skin_target::ViewContainsNode;
 
+    [[nodiscard]] std::uint64_t AddonTargetSignature(
+        const std::vector<LoadedPartTarget>& targets, const std::uint64_t discriminator)
+    {
+        if (targets.empty()) return 0U;
+        std::uint64_t hash = 1469598103934665603ULL;
+        const auto appendByte = [&hash](const std::uint8_t value) {
+            hash = (hash ^ value) * 1099511628211ULL;
+        };
+        const auto appendInteger = [&appendByte](const std::uint64_t value) {
+            for (std::uint32_t shift{}; shift < 64U; shift += 8U) {
+                appendByte(static_cast<std::uint8_t>(value >> shift));
+            }
+        };
+        appendInteger(discriminator);
+        for (const auto& target : targets) {
+            appendInteger(target.armor ? target.armor->GetFormID() : 0U);
+            appendInteger(target.addon ? target.addon->GetFormID() : 0U);
+            appendInteger(target.slotMask);
+            for (const auto& node : target.persistentNodes) {
+                for (const auto character : node) {
+                    appendByte(static_cast<std::uint8_t>(character));
+                }
+                appendByte(0xFFU);
+            }
+            appendByte(0xFEU);
+        }
+        return hash == 0U ? 1U : hash;
+    }
+
+    [[nodiscard]] std::uint64_t MaleGenitalTargetSignature(RE::Actor* actor)
+    {
+        return AddonTargetSignature(FindLoadedPartTargets(actor, kSosMaleGenitalSlot,
+            bcn::skin_geometry::BodySelection::maleGenitals, false), 0x4D414C45ULL);
+    }
+
+    [[nodiscard]] std::uint64_t FutanariTargetSignature(
+        const LoadedFutanariRoute& route)
+    {
+        const auto discriminator = 0x46555441ULL |
+            (static_cast<std::uint64_t>(route.addonKind) << 32U) |
+            (static_cast<std::uint64_t>(route.type.value_or(
+                bcn::FutanariSkinType::cbbeTrx)) << 40U);
+        return route.type ? AddonTargetSignature(route.targets, discriminator) : 0U;
+    }
+
     [[nodiscard]] bool ProfileMatchesActor(RE::Actor* actor, const bcn::SkinProfile& profile)
     {
         auto* base = actor ? actor->GetActorBase() : nullptr;
@@ -2519,6 +2564,9 @@ namespace
         static_cast<void>(ClearArmorAddonTargets(*overrides, actor.get(), false, targets));
         if (ApplyLoadedPart(*overrides, actor.get(), false, kSosMaleGenitalSlot,
                 layers, targets, "skin", "male-genitals")) {
+            bcn::skin_session::MarkAddonApplied(actor->GetFormID(),
+                bcn::skin_session::AddonTextureChannel::maleGenitals,
+                AddonTargetSignature(targets, 0x4D414C45ULL));
             SKSE::log::info(
                 "Body Change NG applied the selected male BodySkin to the active SOS/TNG addon for actor {:08X}",
                 actor->GetFormID());
@@ -2534,6 +2582,8 @@ namespace
             !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
         const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
             bcn::skin_geometry::BodySelection::maleGenitals);
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::maleGenitals);
         auto* overrides = OverrideInterfaceV2();
         if (!overrides || targets.empty()) return;
         const auto cleared = ClearArmorAddonTargets(*overrides, actor.get(), false, targets);
@@ -2577,6 +2627,9 @@ namespace
                 auto* settledVM = RE::BSScript::Internal::VirtualMachine::GetSingleton();
                 if (!settled || !settledVM || accepted == 0U ||
                     !IsCurrentSkinChange(settled->GetFormID(), generation)) return;
+                bcn::skin_session::MarkAddonApplied(settled->GetFormID(),
+                    bcn::skin_session::AddonTextureChannel::maleGenitals,
+                    MaleGenitalTargetSignature(settled.get()));
                 static_cast<void>(QueueNiNodeUpdate(
                     *settledVM, settled.get(), actorHandle, generation, false));
             };
@@ -2599,6 +2652,8 @@ namespace
             !vm || !IsCurrentSkinChange(actor->GetFormID(), generation)) return;
         const auto targets = FindLoadedPartTargets(actor.get(), kSosMaleGenitalSlot,
             bcn::skin_geometry::BodySelection::maleGenitals);
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::maleGenitals);
         if (targets.empty()) return;
         auto clearBatch = MakeLegacyBatch(actor.get(), generation);
         clearBatch->completion = [actorHandle, generation](const std::uint32_t accepted) {
@@ -2657,6 +2712,8 @@ namespace
     {
         auto* base = actor ? actor->GetActorBase() : nullptr;
         if (!actor || !base || base->GetSex() != RE::SEX::kMale) return;
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::maleGenitals);
         const auto handle = actor->GetHandle();
         const auto legacy = UsesLegacyOverride();
         bcn::frame_tasks::Queue(actor->GetFormID(), [handle, generation, legacy] {
@@ -2678,6 +2735,9 @@ namespace
         static_cast<void>(ClearArmorAddonTargets(*overrides, actor.get(), true, route.targets));
         if (ApplyLoadedPart(*overrides, actor.get(), true, kSosMaleGenitalSlot,
                 profile.layers, route.targets, "futanari", "futanari-genitals")) {
+            bcn::skin_session::MarkAddonApplied(actor->GetFormID(),
+                bcn::skin_session::AddonTextureChannel::futanari,
+                FutanariTargetSignature(route));
             SKSE::log::info(
                 "Body Change NG applied futanari skin '{}' ({}) to actor {:08X}",
                 profile.name, bcn::FutanariSkinTypeLabel(profile.type), actor->GetFormID());
@@ -2690,6 +2750,8 @@ namespace
         if (!actor || !actor->Is3DLoaded() ||
             !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
         const auto route = FindLoadedFutanariRoute(actor.get());
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::futanari);
         auto* overrides = OverrideInterfaceV2();
         auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
         if (!overrides || route.targets.empty()) return;
@@ -2726,6 +2788,10 @@ namespace
                 if (!settledActor || !IsCurrentFutanariChange(
                         settledActor->GetFormID(), generation)) return;
                 if (accepted != 0U) {
+                    bcn::skin_session::MarkAddonApplied(settledActor->GetFormID(),
+                        bcn::skin_session::AddonTextureChannel::futanari,
+                        FutanariTargetSignature(FindLoadedFutanariRoute(
+                            settledActor.get(), false)));
                     SKSE::log::info(
                         "Body Change NG applied futanari skin '{}' ({}) to actor {:08X} through RaceMenu Override v0/v1 Papyrus",
                         profile.name, bcn::FutanariSkinTypeLabel(profile.type),
@@ -2756,6 +2822,8 @@ namespace
         if (!actor || !actor->Is3DLoaded() || !vm ||
             !IsCurrentFutanariChange(actor->GetFormID(), generation)) return;
         const auto route = FindLoadedFutanariRoute(actor.get());
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::futanari);
         if (route.targets.empty()) return;
         auto clearBatch = MakeLegacyBatch(actor.get(), generation, true);
         clearBatch->completion = [actorHandle, generation](const std::uint32_t) {
@@ -2863,9 +2931,26 @@ namespace bcn::skin_override
         return profile && !profile->maleGenitals.empty();
     }
 
-    void QueueReapplyCurrentMaleGenitals(RE::Actor* actor)
+    void QueueReapplyCurrentMaleGenitals(RE::Actor* actor, const bool onlyIfAddonChanged)
     {
         if (!actor || !HasCurrentMaleGenitalSkin(actor)) return;
+        if (onlyIfAddonChanged) {
+            const auto signature = MaleGenitalTargetSignature(actor);
+            if (signature == 0U) {
+                // Forget a removed addon so equipping the same Form again is
+                // still treated as a new loaded target (required by the
+                // legacy node route, whose override lived on the old clone).
+                bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+                    bcn::skin_session::AddonTextureChannel::maleGenitals);
+                return;
+            }
+            if (!bcn::skin_session::NeedsAddonReapply(
+                    bcn::skin_session::AppliedAddonSignature(actor->GetFormID(),
+                        bcn::skin_session::AddonTextureChannel::maleGenitals),
+                    signature)) {
+                return;
+            }
+        }
         const auto profileId = CurrentProfileId(actor);
         const auto profile = profileId ? bcn::SkinProfiles::Get().Find(*profileId) :
             std::optional<bcn::SkinProfile>{};
@@ -2963,6 +3048,8 @@ namespace bcn::skin_override
         if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         if (!actor) return ApplyResult::invalidActor;
         bcn::ActorRegistry::Get().ClearFutanariSkin(actor);
+        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+            bcn::skin_session::AddonTextureChannel::futanari);
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         const auto* overrideInterface = OverrideInterface();
         const auto legacyOverride = bcn::racemenu_override::UsesPapyrus(OverrideRoute());
@@ -2986,9 +3073,26 @@ namespace bcn::skin_override
         return bcn::ActorRegistry::Get().SelectedFutanariSkinId(actor);
     }
 
-    void QueueReapplyCurrentFutanari(RE::Actor* actor)
+    void QueueReapplyCurrentFutanari(RE::Actor* actor, const bool onlyIfAddonChanged)
     {
         if (const auto profile = CurrentFutanariProfileId(actor)) {
+            if (onlyIfAddonChanged) {
+                const auto signature = actor ?
+                    FutanariTargetSignature(FindLoadedFutanariRoute(actor, false)) : 0U;
+                if (signature == 0U) {
+                    if (actor) {
+                        bcn::skin_session::ClearAddonApplied(actor->GetFormID(),
+                            bcn::skin_session::AddonTextureChannel::futanari);
+                    }
+                    return;
+                }
+                if (!bcn::skin_session::NeedsAddonReapply(
+                        bcn::skin_session::AppliedAddonSignature(actor->GetFormID(),
+                            bcn::skin_session::AddonTextureChannel::futanari),
+                        signature)) {
+                    return;
+                }
+            }
             [[maybe_unused]] const auto result = QueueApplyFutanari(actor, *profile);
         }
     }

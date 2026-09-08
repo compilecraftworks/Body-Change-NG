@@ -54,7 +54,8 @@ namespace bcn::skin_override
     // addon adapter observes equipment replacement; native body/hand/foot
     // TXSTs remain equipment-independent.
     [[nodiscard]] bool HasCurrentMaleGenitalSkin(const RE::Actor* a_actor);
-    void QueueReapplyCurrentMaleGenitals(RE::Actor* a_actor);
+    void QueueReapplyCurrentMaleGenitals(
+        RE::Actor* a_actor, bool a_onlyIfAddonChanged = false);
     // The futanari path is independent from the full BodySkin profile. It
     // targets only a currently loaded TRX/ERF genital ArmorAddon and retains
     // the chosen profile while Gender Bender/TNG temporarily removes it.
@@ -63,7 +64,8 @@ namespace bcn::skin_override
     [[nodiscard]] ApplyResult QueueApplyFutanari(RE::Actor* a_actor, std::string a_profileId);
     [[nodiscard]] ApplyResult QueueClearFutanari(RE::Actor* a_actor);
     [[nodiscard]] std::optional<std::string> CurrentFutanariProfileId(const RE::Actor* a_actor);
-    void QueueReapplyCurrentFutanari(RE::Actor* a_actor);
+    void QueueReapplyCurrentFutanari(
+        RE::Actor* a_actor, bool a_onlyIfAddonChanged = false);
     void InvalidateFutanariDetection(std::uint32_t a_actorFormID);
     // Reconciles only a currently selected skin's face after another provider
     // (notably RSV) finishes its deferred NiNode update. Calls are coalesced

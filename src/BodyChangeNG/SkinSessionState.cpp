@@ -21,6 +21,8 @@ namespace
     std::unordered_map<ActorId, std::uint64_t> g_futanariGenerations;
     std::unordered_map<ActorId, std::uint64_t> g_faceGenerations;
     std::unordered_map<ActorId, FutanariCacheValue> g_futanariTypes;
+    std::unordered_map<ActorId, std::uint64_t> g_maleGenitalSignatures;
+    std::unordered_map<ActorId, std::uint64_t> g_futanariSignatures;
     std::unordered_set<ActorId> g_transientFaces;
     std::unordered_set<ActorId> g_legacyCleanupComplete;
 
@@ -150,6 +152,35 @@ namespace bcn::skin_session
         g_futanariTypes.erase(actorId);
     }
 
+    std::optional<std::uint64_t> AppliedAddonSignature(
+        const ActorId actorId, const AddonTextureChannel channel)
+    {
+        std::scoped_lock lock(g_lock);
+        const auto& signatures = channel == AddonTextureChannel::maleGenitals ?
+            g_maleGenitalSignatures : g_futanariSignatures;
+        const auto found = signatures.find(actorId);
+        return found == signatures.end() ? std::nullopt :
+            std::optional<std::uint64_t>{ found->second };
+    }
+
+    void MarkAddonApplied(const ActorId actorId, const AddonTextureChannel channel,
+        const std::uint64_t signature)
+    {
+        if (actorId == 0U || signature == 0U) return;
+        std::scoped_lock lock(g_lock);
+        auto& signatures = channel == AddonTextureChannel::maleGenitals ?
+            g_maleGenitalSignatures : g_futanariSignatures;
+        signatures.insert_or_assign(actorId, signature);
+    }
+
+    void ClearAddonApplied(const ActorId actorId, const AddonTextureChannel channel)
+    {
+        std::scoped_lock lock(g_lock);
+        auto& signatures = channel == AddonTextureChannel::maleGenitals ?
+            g_maleGenitalSignatures : g_futanariSignatures;
+        signatures.erase(actorId);
+    }
+
     void Reset()
     {
         std::scoped_lock lock(g_lock);
@@ -158,6 +189,8 @@ namespace bcn::skin_session
         g_futanariGenerations.clear();
         g_faceGenerations.clear();
         g_futanariTypes.clear();
+        g_maleGenitalSignatures.clear();
+        g_futanariSignatures.clear();
         g_transientFaces.clear();
         g_legacyCleanupComplete.clear();
     }
@@ -170,6 +203,8 @@ namespace bcn::skin_session
         g_futanariGenerations.erase(actorId);
         g_faceGenerations.erase(actorId);
         g_futanariTypes.erase(actorId);
+        g_maleGenitalSignatures.erase(actorId);
+        g_futanariSignatures.erase(actorId);
         g_transientFaces.erase(actorId);
         g_legacyCleanupComplete.erase(actorId);
     }

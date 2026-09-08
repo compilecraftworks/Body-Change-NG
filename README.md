@@ -292,9 +292,13 @@ bounded face merge after RSV's delayed node update. UBE's own upstream loadout
 requirement to exclude its player race from RSV (the `PLAYER VANILLA` option)
 still applies; BCNG does not fabricate compatibility for an invalid UBE/RSV base
 graph. Default Skin then reveals RSV again. Male SOS/TNG and optional female
-SOS/ERF/TRX futanari meshes
-remain reference-scoped external-addon adapters and alone observe equipment
-replacement.
+SOS/ERF/TRX futanari meshes remain reference-scoped external-addon adapters and
+alone observe equipment replacement. Equipment and cell-attach reconciliation
+compares the loaded Armor/ArmorAddon identity first: the adapter repaints only
+a newly attached or replaced genital target, while an unrelated OStim/ODF/outfit
+event cannot keep overwriting a live third-party material effect. Removing an
+addon forgets that identity so re-equipping the same Form still restores its
+selected texture.
 
 When the player leaves RaceMenu, Body Change NG waits for RaceMenu's final
 geometry and tint-array rebuild, then restores the currently confirmed body,
@@ -309,6 +313,12 @@ so unchanged NPCs are not fully redistributed every time a save loads. Rules
 remain global in `BodyChangeNGdistribution.json`; evaluated actor results are
 save-specific. New or changed actors are coalesced through a handle-based work
 queue, and detached actors do not leave stale preview or apply generations.
+An automatic rule result distinguishes `unchanged`, a selected asset, and an
+explicit Default Body; an empty/excluded pool preserves the actor's serialized
+choice rather than erasing it at the next save. Native private forms are reused
+across save loads, with every clone TXST reset to its provider paths before the
+next profile overlay, preventing both per-load duplicate-form growth and DDS
+carry-over between profiles.
 The initial loaded-NPC pass waits for engine update boundaries after loading.
 Normal mode budgets up to four actor jobs / 2ms per batch; performance mode
 budgets two / 1ms. Direct selections receive a reserved opportunity within that

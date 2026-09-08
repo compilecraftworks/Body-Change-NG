@@ -13,6 +13,12 @@ namespace bcn::skin_session
 {
     using ActorId = std::uint32_t;
 
+    enum class AddonTextureChannel : std::uint8_t
+    {
+        maleGenitals,
+        futanari
+    };
+
     struct FutanariCacheResult final
     {
         bool cached{};
@@ -43,6 +49,22 @@ namespace bcn::skin_session
     [[nodiscard]] FutanariCacheResult CachedFutanariType(ActorId actorId);
     void CacheFutanariType(ActorId actorId, std::optional<FutanariSkinType> type);
     void InvalidateFutanariType(ActorId actorId);
+
+    // Equipment events are broad: OStim and many outfit systems emit them for
+    // unrelated armor. Remember only the Armor/ArmorAddon ownership identity
+    // successfully painted by BCNG so those events cannot repeatedly overwrite
+    // a third-party live material effect on the same genital addon.
+    [[nodiscard]] std::optional<std::uint64_t> AppliedAddonSignature(
+        ActorId actorId, AddonTextureChannel channel);
+    [[nodiscard]] constexpr bool NeedsAddonReapply(
+        const std::optional<std::uint64_t> appliedSignature,
+        const std::uint64_t currentSignature) noexcept
+    {
+        return currentSignature != 0U && appliedSignature != currentSignature;
+    }
+    void MarkAddonApplied(ActorId actorId, AddonTextureChannel channel,
+        std::uint64_t signature);
+    void ClearAddonApplied(ActorId actorId, AddonTextureChannel channel);
 
     void Reset();
     void Forget(ActorId actorId);

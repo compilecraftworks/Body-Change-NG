@@ -539,19 +539,13 @@ namespace bcn
     }
 
     void ActorRegistry::SetRuleSelection(RE::Actor* actor, std::optional<std::string> bodyId,
-        std::optional<std::string> skinId)
+        std::optional<std::string> skinId, const bool useDefaultBody)
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
-        if (!state.body.selection.manual) {
-            state.body.selection.selectedId = bodyId.value_or(std::string{});
-            state.body.selection.useDefault = false;
-        }
-        if (!state.skin.selection.manual) {
-            state.skin.selection.selectedId = skinId.value_or(std::string{});
-            state.skin.selection.useDefault = false;
-        }
+        UpdateAutomaticSelection(state.body.selection, bodyId, useDefaultBody);
+        UpdateAutomaticSelection(state.skin.selection, skinId);
     }
 
     std::uint64_t ActorRegistry::BodySignature(const std::string_view bodyId, const bool useDefault)

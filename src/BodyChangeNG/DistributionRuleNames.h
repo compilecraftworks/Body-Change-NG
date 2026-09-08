@@ -116,6 +116,15 @@ namespace bcn::distribution_names
         for (const auto key : { NewRuleKey(female), DefaultRuleKey(female) }) {
             if (!name.empty() && IsLocalizedValue(key, name)) return key;
         }
+        // Older editors could change the stored sex without retargeting the
+        // generated label.  Recover that exact built-in text as a generated
+        // name for the current sex; arbitrary custom names remain untouched.
+        for (const auto key : { NewRuleKey(!female), DefaultRuleKey(!female) }) {
+            if (!name.empty() && IsLocalizedValue(key, name)) {
+                return key == NewRuleKey(!female) ? NewRuleKey(female) :
+                    DefaultRuleKey(female);
+            }
+        }
         return name.empty() ? DefaultRuleKey(female) : std::string_view{};
     }
 }

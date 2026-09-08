@@ -871,6 +871,11 @@ namespace bcn::native_skin
             for (auto& [baseId, instance] : g_instances) {
                 if (instance.base) changed.push_back(instance.base);
                 RestoreOwnedPointers(instance);
+                // TESNPC and the private duplicate forms are game-data forms,
+                // not save-specific references.  Reuse the already allocated
+                // graph across save loads after clearing every selection and
+                // ownership marker; rebuilding one graph per load would leak
+                // duplicate forms for the lifetime of the Skyrim process.
                 instance.ownerActor = 0U;
                 instance.desiredProfileId.clear();
                 instance.appliedProfileId.clear();
