@@ -1,6 +1,7 @@
 #include "BodyChangeNG/Settings.h"
 
 #include "BodyChangeNG/PathMigration.h"
+#include "BodyChangeNG/PathText.h"
 
 #include <SKSE/Logger.h>
 
@@ -216,16 +217,17 @@ namespace bcn
                 }
                 if (error) {
                     SKSE::log::warn("Body Change NG loaded legacy settings but could not migrate {} to {}: {}",
-                        source.path.string(), path.string(), error.message());
+                        bcn::path_text::Utf8(source.path), bcn::path_text::Utf8(path), error.message());
                 } else {
                     SKSE::log::info("Body Change NG migrated legacy settings from {} to {}",
-                        source.path.string(), path.string());
+                        bcn::path_text::Utf8(source.path), bcn::path_text::Utf8(path));
                 }
             }
             SKSE::log::info("Body Change NG loaded opening shortcut {}", data_.openHotkey.DisplayName());
         } catch (const std::exception& exception) {
             data_ = {};
-            SKSE::log::error("Body Change NG could not read {}: {}", source.path.string(), exception.what());
+            SKSE::log::error("Body Change NG could not read {}: {}",
+                bcn::path_text::Utf8(source.path), exception.what());
         }
     }
 
@@ -304,10 +306,11 @@ namespace bcn
                 throw std::system_error(static_cast<int>(code), std::system_category(),
                     "atomic settings replace");
             }
-            SKSE::log::info("Body Change NG saved settings to {}", path.string());
+            SKSE::log::info("Body Change NG saved settings to {}", bcn::path_text::Utf8(path));
             return true;
         } catch (const std::exception& exception) {
-            SKSE::log::error("Body Change NG could not save {}: {}", path.string(), exception.what());
+            SKSE::log::error("Body Change NG could not save {}: {}",
+                bcn::path_text::Utf8(path), exception.what());
             return false;
         }
     }

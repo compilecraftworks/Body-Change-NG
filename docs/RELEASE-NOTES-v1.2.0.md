@@ -33,6 +33,8 @@ graph attached at the NPC ActorBase.
 
 - Release plugin build passed.
 - All 15 automated regression executables passed.
+- The exact TuLED crash case using a Korean skin-pack directory and
+  `FemaleHeadDetail_Age40.dds` is covered by a UTF-8 path regression test.
 - OBody distribution and OBody NG ORefit parsing were audited against all six installed
   TAKEALOOK/TuLED JSON providers. Every parsed outfit-name/plugin exclusion and
   force-refit entry was exercised through the same decision policy used by the

@@ -14,6 +14,7 @@ All notable public changes to Body Change NG are documented here.
 - Models the shipped UBE 2.0 graph explicitly: its slot-53 torso and separate hand/foot ARMAs share `!UBE\Body\femalebody_1_{d,n,sk}` while their NAM1 fields are empty. BCNG synthesizes a private TXST only on clones of verified canonical UBE naked models when body-atlas layers are actually declared; face-only profiles, custom paths, and absent channels are never guessed.
 - Attaches the complete graph at the NPC ActorBase, so naked body, hand, and foot rebuilds use Skyrim's native skin source without tracking equipment. Outfit-owned hard-coded materials are not guessed or repainted.
 - Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
+- Fixes a CTD that could abort the skin change before TXST attachment when a Korean, Chinese, or other Unicode skin-pack directory was compared with the actor's face-detail filename. Game-relative UTF-8 texture paths are now matched without an ANSI filesystem conversion.
 - Removes skin-pack `profile.json` parsing and the bundled manifest example. A stale manifest is ignored; folder-relative automatic identity and the texture namespace are the only catalog inputs. Settings and distribution-rule JSON are unchanged.
 
 ### Ownership, distribution, and compatibility

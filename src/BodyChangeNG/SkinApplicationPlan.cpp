@@ -1,8 +1,6 @@
 #include "BodyChangeNG/SkinApplicationPlan.h"
 
 #include <algorithm>
-#include <cctype>
-#include <filesystem>
 #include <optional>
 #include <string>
 
@@ -12,9 +10,17 @@ namespace
 
     [[nodiscard]] std::string LowerFilename(const std::string_view path)
     {
-        auto filename = std::filesystem::path{ path }.filename().string();
+        // SkinProfile paths are UTF-8 game-relative strings. Constructing a
+        // Windows filesystem::path from this narrow string asks the active
+        // ANSI code page to decode it and throws system_error 1113 for Korean
+        // or Chinese pack directories. Filename matching needs no filesystem
+        // conversion, so split the UTF-8 bytes directly and lowercase ASCII.
+        const auto separator = path.find_last_of("/\\");
+        auto filename = std::string{ path.substr(
+            separator == std::string_view::npos ? 0U : separator + 1U) };
         std::ranges::transform(filename, filename.begin(), [](const unsigned char value) {
-            return static_cast<char>(std::tolower(value));
+            return static_cast<char>(value >= 'A' && value <= 'Z' ?
+                value + ('a' - 'A') : value);
         });
         return filename;
     }

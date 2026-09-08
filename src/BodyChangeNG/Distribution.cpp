@@ -7,6 +7,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OBodyDistributionImport.h"
 #include "BodyChangeNG/PathMigration.h"
+#include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/Settings.h"
@@ -713,15 +714,15 @@ namespace bcn
             if (sourcePath.legacy) {
                 if (WriteDistributionFile(path, loaded)) {
                     SKSE::log::info("Body Change NG migrated legacy distribution rules from {} to {}",
-                        sourcePath.path.string(), path.string());
+                        bcn::path_text::Utf8(sourcePath.path), bcn::path_text::Utf8(path));
                 } else {
                     SKSE::log::warn("Body Change NG loaded legacy distribution rules but could not migrate them to {}",
-                        path.string());
+                        bcn::path_text::Utf8(path));
                 }
             }
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Change NG could not load distribution rules from {}: {}",
-                sourcePath.path.string(), exception.what());
+                bcn::path_text::Utf8(sourcePath.path), exception.what());
             std::scoped_lock lock(lock_);
             rules_ = DefaultExclusionRules();
             evaluationRules_.reset();

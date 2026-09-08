@@ -5,6 +5,7 @@ Body Change NG 1.2.0
 - Separates skin catalog layout from runtime BodyFamily. Explicit !UBE trees are UBE; every conventional humanoid pack is Legacy.
 - Removes skin-pack profile.json support. Stable automatic IDs continue to use the relative pack folder and detected sex.
 - Preserves partial packs and exact body/hand/foot/face routing. Missing DDS parts and channels keep the current provider value.
+- Fixes a CTD and failed skin change when Korean, Chinese, or other Unicode skin-pack directories are matched against the actor's face-detail texture.
 - Routes CBBE 3BA and BHUNP/UNP vagina/anal atlases only to their exact matching geometry.
 - Keeps male SOS/TNG and female SOS/TNG/TRX/ERF genital skins in independent reference-scoped adapters.
 - Adds RSV-aware provider rebasing and bounded face reconciliation without taking ownership of RSV's saved keys.

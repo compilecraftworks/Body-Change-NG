@@ -4,6 +4,7 @@
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/OutfitRefitEvaluation.h"
+#include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/OutfitRefitRules.h"
 #include "BodyChangeNG/PresetCatalog.h"
@@ -138,7 +139,7 @@ namespace bcn
             "Body Change NG registered OBody outfit-correction rules from {} "
             "(excluded-names={}, excluded-plugins={}, excluded-forms={}, forced-names={}, forced-forms={}, "
             "female-mappings={}, male-mappings={})",
-            path.string(), rules_.blacklistedOutfitNames.size(), rules_.blacklistedPlugins.size(),
+            bcn::path_text::Utf8(path), rules_.blacklistedOutfitNames.size(), rules_.blacklistedPlugins.size(),
             rules_.blacklistedFormIDs.size(), rules_.forcedOutfitNames.size(), rules_.forcedFormIDs.size(),
             rules_.femalePresetByOutfit.size(), rules_.malePresetByOutfit.size());
         return report;

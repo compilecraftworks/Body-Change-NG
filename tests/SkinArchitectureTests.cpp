@@ -292,7 +292,8 @@ int main()
 
     cbbeProfile.vampireFace = { { 0U, "vampire-face.dds" } };
     cbbeProfile.faceDetails = {
-        { 3U, "femalehead_frek.dds" }, { 3U, "femalehead_rough.dds" }
+        { 3U, "BodySkin\\린아 ver2\\textures\\femalehead_frek.dds" },
+        { 3U, "BodySkin\\린아 ver2\\textures\\femalehead_rough.dds" }
     };
     const auto facePlan = bcn::skin_plan::Build(cbbeProfile, {
         .vampire = true,
@@ -301,8 +302,22 @@ int main()
     });
     if (!Require(facePlan.requiresFaceGeometry && facePlan.face.size() == 2U &&
             facePlan.face[0].path == "vampire-face.dds" &&
-            facePlan.face[1].path == "femalehead_rough.dds",
-            "face specificity or detail matching escaped the planner")) return 1;
+            facePlan.face[1].path ==
+                "BodySkin\\린아 ver2\\textures\\femalehead_rough.dds",
+            "UTF-8 face-detail paths crashed or escaped filename matching")) return 1;
+
+    cbbeProfile.faceDetails = {
+        { 3U, "BodySkin\\린아 ver2\\textures\\femaleheaddetail_age40.dds" }
+    };
+    const auto observedCrashPlan = bcn::skin_plan::Build(cbbeProfile, {
+        .faceDetailFilename =
+            "Actors\\Character\\Female\\FemaleHeadDetail_Age40.dds",
+        .bodyFamily = Bit(Family::cbbe)
+    });
+    if (!Require(observedCrashPlan.face.size() == 2U &&
+            observedCrashPlan.face[1].path ==
+                "BodySkin\\린아 ver2\\textures\\femaleheaddetail_age40.dds",
+            "the TuLED Unicode Age40 face-detail crash regressed")) return 1;
 
     std::cout << "Skin architecture tests passed\n";
     return 0;
