@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Body Change NG v1.2.0</title>
+  <style>
+    :root { color-scheme: dark; --bg:#101216; --panel:#181c22; --line:#303946; --text:#e8edf2; --muted:#b8c5d1; --blue:#74c7f5; --blue2:#9ad7f5; --warn:#ffd27a; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.68 system-ui,-apple-system,"Segoe UI","Noto Sans KR",sans-serif; }
+    main { width:min(1040px,calc(100% - 32px)); margin:32px auto; padding:34px 42px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+    h1 { margin:0; color:var(--blue); font-size:2.5rem; line-height:1.2; }
+    h1 small { color:var(--muted); font-size:1.15rem; }
+    h2 { margin-top:2.2em; padding-bottom:.3em; color:var(--blue); border-bottom:1px solid var(--line); }
+    h3 { margin-top:1.6em; color:var(--blue2); }
+    p, li { color:var(--text); }
+    .lead { color:var(--muted); font-size:1.14rem; }
+    .badges { color:var(--blue2); font-weight:700; letter-spacing:.03em; }
+    .notice { padding:14px 16px; border-left:4px solid var(--warn); background:#242116; }
+    code { padding:.12em .35em; color:#d9effb; background:#0d1116; border:1px solid #2a3340; border-radius:4px; overflow-wrap:anywhere; }
+    pre { padding:14px 16px; background:#0d1116; border:1px solid var(--line); border-radius:8px; overflow:auto; }
+    pre code { padding:0; border:0; }
+    a { color:var(--blue); }
+    li + li { margin-top:.35em; }
+    @media (max-width:700px) { main { padding:24px 20px; } h1 { font-size:2rem; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Body Change NG <small>v1.2.0</small></h1>
+    <p class="lead">BodySlide 프리셋, 액터의 네이티브 바디스킨, 플레이어 틴트마스크를 게임 안에서 실시간 변경합니다.</p>
+    <p class="badges">네이티브 인게임 GUI · 게임패드 지원 · 규칙 기반 NPC 배포</p>
+    <p><strong>지원 바디:</strong> CBBE 3BA · BHUNP/UNP · UBE 2.0 · HIMBO · SAM · 바닐라 여성/남성</p>
+
+    <h2>소개</h2>
+    <p>Body Change NG는 하나의 인게임 인터페이스에서 BodySlide 바디모프 프리셋, 액터 스킨 텍스처, 선택형 성기 애드온 스킨, 플레이어 RaceMenu 틴트 레이어를 변경하는 네이티브 SKSE 플러그인입니다. 바디와 스킨을 NPC에게 자동 배포하는 우선순위 규칙 편집기도 포함합니다.</p>
+    <p>바디 형태는 계속 RaceMenu BodyMorph 데이터입니다. 1.2.0은 과거의 범용 스킨 재도색 경로를 액터의 네이티브 TextureSet → ArmorAddon → Skin Armor 그래프로 교체했습니다. 선택 스킨이 NPC base의 정상 스킨 원본이 되므로, 장갑·신발·의상 착탈 여부를 BCNG가 추적하지 않아도 Skyrim 자체 시스템이 알몸 몸·손·발·얼굴을 같은 스킨에서 다시 생성합니다.</p>
+    <p class="notice"><strong>MCM 없음 · 런타임 바디 메시 교체 없음 · 스킨팩 profile.json 없음</strong></p>
+
+    <h2>1.2.0 핵심 변경점</h2>
+    <ul>
+      <li><strong>네이티브 Skin Armor/TXST 백엔드</strong> — 액터가 현재 쓰는 공급자 그래프를 깊게 복제하고 원본 텍스처 채널을 모두 보존한 뒤, 선택팩에 실제로 있는 DDS 부위·채널만 덮어써 NPC ActorBase에 연결합니다.</li>
+      <li><strong>장비와 독립된 기본 스킨</strong> — 일반 바디스킨은 의상 변경 때 다시 칠하지 않습니다. 의상이 실제 바디를 노출하면 Skyrim이 이미 선택된 Skin Armor에서 해당 부위를 생성합니다.</li>
+      <li><strong>부위별 정확한 라우팅</strong> — 몸·손·발·얼굴, 3BA 질/항문, BHUNP 질/항문/내부, 수인종 꼬리, 외부 성기 애드온 역할을 분리합니다. 없거나 애매한 역할을 다른 부위로 보내지 않습니다.</li>
+      <li><strong>Legacy/UBE 카탈로그</strong> — 명백한 <code>!UBE\Body</code> 또는 <code>!UBE\Head</code> 구조만 UBE이고, 나머지 일반 인간형 스킨은 Legacy입니다. CBBE/UNP와 바닐라/HIMBO/SAM의 구체 경로는 폴더명이 아니라 적용 시 액터의 런타임 바디 계열에서 결정합니다.</li>
+      <li><strong>스킨 프로필 매니페스트 제거</strong> — <code>BodySkin\&lt;팩&gt;\profile.json</code>을 읽지 않습니다. 기존 자동 ID는 상대 폴더와 감지 성별을 계속 사용하며, 남아 있는 매니페스트가 이름·ID·분류·DDS 매핑을 바꿀 수 없습니다.</li>
+      <li><strong>안전한 부분팩</strong> — 모든 부위와 재질 채널은 선택 사항입니다. 없는 DDS는 현재 공급자 값을 유지하고 몸·손·발·얼굴·성기 파일을 서로 빌려 쓰지 않습니다.</li>
+      <li><strong>UBE 2.0 실제 그래프 지원</strong> — 확인된 슬롯 53 몸과 별도 손·발 ArmorAddon은 UBE Body 아틀라스를, 얼굴은 Head 아틀라스를 사용합니다. 전용 TXST 생성은 확인된 정식 UBE 알몸 모델 복제본에만 제한됩니다.</li>
+      <li><strong>RSV 소유권 호환</strong> — 현재 Racial Skin Variance 그래프를 공급자로 사용할 수 있습니다. RSV 폼이 바뀌면 그 현재 값을 다시 원본으로 삼고 BCNG가 여전히 소유한 포인터만 복원합니다. 얼굴 브리지는 RSV 저장 키를 만들거나 삭제하지 않습니다.</li>
+      <li><strong>외형 기능 완전 분리</strong> — 바디모프, 네이티브 기본 스킨, 플레이어 틴트, 남성 SOS/TNG, 여성 후타나리, RSV 얼굴, 의상 보정이 별도 상태와 작업 채널을 사용합니다. 한 기능을 고치거나 초기화해도 다른 기능을 지우지 않습니다.</li>
+      <li><strong>NPC 배포 저장 안정화</strong> — BodyMorph는 액터 레퍼런스 단위, 네이티브 스킨은 ActorBase 단위입니다. 실제 작업 성공 뒤에만 완료로 저장하며, 규칙이 바디 또는 스킨을 변경하지 않으면 그 범주의 기존 저장 결과를 유지합니다.</li>
+      <li><strong>배포 규칙 편집·저장 개선</strong> — 샘플도 수정·순서 변경·삭제할 수 있고 새 ID 충돌을 막습니다. 앞선 광역 규칙이 뒤 규칙을 가리면 세 언어로 경고하며, 기본 이름은 한국어·영어·중국어 UI를 따릅니다. JSON은 검증된 임시 파일과 원자 교체로 저장합니다.</li>
+      <li><strong>명시적인 버전 경계</strong> — Skyrim SE 1.5.97과 검증된 AE 1.6.x(1.6.1179까지)를 지원합니다. RaceMenu 인터페이스 세대를 분리해 처리하고 미확인 레이아웃은 실패 폐쇄합니다. Skyrim VR 빌드는 제공하지 않습니다.</li>
+    </ul>
+
+    <h2>주요 기능</h2>
+    <h3>바디프리셋</h3>
+    <ul>
+      <li>플레이어 또는 로드된 NPC의 호환 BodySlide 프리셋을 즉시 미리보기·확정합니다.</li>
+      <li>액터 체중에 따라 low/high 값을 보간합니다.</li>
+      <li>미리보기·확정·의상 보정은 서로 다른 BCNG 소유 BodyMorph 키를 사용합니다.</li>
+      <li>반복 적용해도 같은 절대 결과에 도달하며 다른 모드의 모프 키를 전체 삭제하지 않습니다.</li>
+      <li>BodySlide XML 분류와 액터의 런타임 BodyFamily 판정은 스킨팩 분류와 독립적입니다.</li>
+    </ul>
+
+    <h3>바디스킨</h3>
+    <ul>
+      <li>플레이어와 로드된 NPC에게 서로 다른 스킨팩을 적용합니다.</li>
+      <li>몸·손·발·far skin과 선택적 얼굴 TXST를 현재 공급자에서 복제하므로 선택팩과 무관한 채널은 그대로 유지됩니다.</li>
+      <li>일반 인간형은 Legacy, 명시적 <code>!UBE</code> 아틀라스 구조만 UBE로 자동 분류합니다.</li>
+      <li>CBBE 3BA와 BHUNP/UNP의 질·항문 아틀라스는 정확히 일치하는 내부 지오메트리에만 연결됩니다.</li>
+      <li>남성 몸스킨과 SOS/TNG 슬롯 52 텍스처를 한 팩에 둘 수 있습니다. 현재 애드온 경로로 Regular·Muscular·Smurf 및 종족·노인 변형을 고릅니다.</li>
+      <li>아르고니안·카짓은 종족·성별로 필터링하며 몸 아틀라스를 해당 종족의 네이티브 꼬리 역할에도 연결합니다.</li>
+      <li>기본 스킨은 바디모프·틴트·후타나리·외부 모드 키를 건드리지 않고 캡처한 공급자 그래프로 복원합니다.</li>
+    </ul>
+
+    <h3>후타나리 스킨</h3>
+    <ul>
+      <li>지원하는 여성 애드온이 실제 감지될 때만 탭이 표시됩니다: UBE SOS/TNG, UBE/CBBE TRX, CBBE 3BA ERF.</li>
+      <li>성기 스킨 선택은 전체 바디스킨과 독립적입니다.</li>
+      <li>애드온을 제거해도 선택을 저장하고, 지원 유형을 다시 장착하면 맞는 스킨을 복구합니다.</li>
+      <li>없는 채널은 애드온의 원본 재질을 유지합니다.</li>
+    </ul>
+
+    <h3>플레이어 틴트마스크</h3>
+    <ul>
+      <li>여러 RaceMenu 틴트팩을 설치하고 레이어별 DDS를 선택합니다.</li>
+      <li>색상과 강도를 즉시 변경하고 BCNG 변경 직전의 정확한 원본 값으로 복원할 수 있습니다.</li>
+      <li>RaceMenu가 플레이어를 다시 만든 뒤 확정된 틴트 레이어를 복구합니다.</li>
+      <li>플레이어 전용 기능입니다. 오버레이 기반 화장은 틴트마스크가 아니므로 이 탭에서 지원하지 않습니다.</li>
+    </ul>
+
+    <h3>NPC 조건 배포</h3>
+    <ul>
+      <li>규칙을 위에서 아래로 평가하며 처음 일치한 규칙이 바디와 스킨 결정을 소유합니다.</li>
+      <li>바디·스킨 각각 후보 배포, 명시적 기본값, 배포 제외, 변경 없음 상태를 구분합니다.</li>
+      <li>성별, 커스텀 팔로워, 노인, 플러그인, 종족, 팩션, 키워드, 클래스, 이름, NPC Base FormID 조건을 지원합니다.</li>
+      <li>후보 하나는 고정, 여러 개는 NPC별 안정적인 결과를 선택합니다.</li>
+      <li>로드된 NPC에게 즉시 배포하거나, 현재 세션의 활성 규칙은 건드리지 않고 다음 실행용 초안만 저장할 수 있습니다.</li>
+      <li>샘플과 사용자 규칙은 같은 수정·순서 변경·삭제 동작을 사용합니다.</li>
+    </ul>
+
+    <h3>UI·입력</h3>
+    <ul>
+      <li>한국어·영어·중국어 UI</li>
+      <li>Ctrl·Shift·Ctrl+Shift 조합을 포함한 F7 단축키 변경</li>
+      <li>마우스, 방향키/WASD, 게임패드 D-pad 탐색과 선택·취소</li>
+      <li>네이티브 IME, 유니코드 검색·이름, 즐겨찾기와 탭별 즐겨찾기 모아보기</li>
+    </ul>
+
+    <h2>필수 모드</h2>
+    <ul>
+      <li>Skyrim SE 1.5.97 또는 지원하는 Skyrim AE 1.6.x 런타임(1.6.1179까지)</li>
+      <li>게임 버전에 맞는 SKSE64</li>
+      <li>게임 버전에 맞는 Address Library for SKSE Plugins</li>
+      <li>게임 버전에 맞고 BodyMorph 및 NiOverride/Override를 제공하는 RaceMenu</li>
+      <li><strong>Build Morphs</strong>로 생성한 BodySlide 프리셋·호환 TRI 파일</li>
+    </ul>
+    <p><strong>Skyrim VR은 지원하지 않습니다.</strong></p>
+
+    <h2>설치·업데이트</h2>
+    <ol>
+      <li>Release ZIP을 MO2로 설치하고 폴더 구조를 유지합니다.</li>
+      <li>개인 에셋이나 <code>SKSE\Plugins\BodyChangeNGdistribution.json</code>을 메인 모드 안에 보관했다면 업데이트 전에 백업합니다.</li>
+      <li>모드를 활성화하고 SKSE로 실행한 뒤 F7을 누릅니다.</li>
+    </ol>
+    <p class="notice">1.2.0은 1.1.4와 분리된 새 아키텍처입니다. 두 버전 DLL을 섞지 마세요. 설정·배포 규칙·즐겨찾기·코세이브 식별자는 기존 위치에서 마이그레이션하지만, 1.2.0으로 장시간 진행하지 않은 세이브에서는 이전 DLL 백업이 가장 안전한 롤백 지점입니다.</p>
+
+    <h2>에셋 추가</h2>
+    <h3>BodySlide 프리셋</h3>
+    <p><code>CalienteTools\BodySlide\SliderPresets\*.xml</code></p>
+    <p>표준 BodySlide 프리셋 XML을 넣고 대응하는 몸·의상 TRI를 Build Morphs로 생성합니다.</p>
+
+    <h3>일반 BodySkin 팩</h3>
+    <pre><code>BodySkin\내 스킨\Textures\actors\character\female\femalebody_1.dds
+BodySkin\내 스킨\Textures\actors\character\female\femalehands_1.dds
+BodySkin\내 스킨\Textures\actors\character\female\femalehead.dds</code></pre>
+    <p>스킨 모드의 원래 텍스처 트리를 복사합니다. 최상위 폴더명이 표시 이름이자 안정적인 자동 ID의 근거입니다. <strong>profile.json은 만들지 마세요. 파일이 있어도 무시합니다.</strong></p>
+    <p>CBBE 3BA는 <code>femalebody_etc_v2_1</code>과 <code>_msn</code>·<code>_sk</code>·<code>_s</code>를 질/항문 아틀라스로 사용합니다. BHUNP/UNP는 같은 채널의 <code>BakaUNP\VaginalAnalCanal2</code>를 질/항문/내부 아틀라스로 유지합니다. 이 파일은 스킨 분류 근거가 아니며 일반 몸·손·발·얼굴을 대신하지 않습니다.</p>
+
+    <h3>UBE 2.0 BodySkin 팩</h3>
+    <pre><code>BodySkin\내 UBE 스킨\Textures\!UBE\Body\femalebody_1_d.dds
+BodySkin\내 UBE 스킨\Textures\!UBE\Body\femalebody_1_n.dds
+BodySkin\내 UBE 스킨\Textures\!UBE\Body\femalebody_1_sk.dds
+BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
+    <p>Legacy와 UBE 에셋은 서로 다른 최상위 스킨팩 폴더에 둡니다.</p>
+
+    <h3>남성 몸+SOS/TNG</h3>
+    <p>남성 몸·손·발·얼굴과 SOS 애드온 폴더를 같은 최상위 스킨팩에 둡니다. 서로 다른 팩의 파일은 합치지 않습니다.</p>
+    <p><code>BodySkin\내 남성 스킨\Textures\actors\character\SOS\&lt;애드온 이름&gt;\malegenitals_1*</code></p>
+
+    <h3>후타나리 팩</h3>
+    <ul>
+      <li>UBE SOS/TNG: <code>Futanari\&lt;팩&gt;\Textures\!UBE\Body\malebody_1_[d/n/sk].dds</code></li>
+      <li>TRX: <code>Futanari\&lt;팩&gt;\Textures\[TRX] Futa addon\Regular\Default\schlong*</code></li>
+      <li>ERF: <code>Futanari\&lt;팩&gt;\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong*</code></li>
+    </ul>
+
+    <h3>틴트팩</h3>
+    <p><code>TintMask\&lt;팩&gt;\textures\actors\character\character assets\tintmasks\*.dds</code></p>
+    <p>게임 실행 중 추가한 파일은 해당 탭에서 <strong>새로고침</strong>을 누르면 나타납니다.</p>
+
+    <h2>호환 참고</h2>
+    <ul>
+      <li><strong>Racial Skin Variance</strong> — 현재 RSV 그래프를 공급자로 사용하고 제한된 얼굴 브리지를 유지합니다. UBE 2.0 자체의 RSV 플레이어 제외(<code>PLAYER VANILLA</code>) 요구사항은 그대로 적용됩니다.</li>
+      <li><strong>SFS·SVS·Skyrim Outfit System</strong> — BCNG 네이티브 기본 스킨은 의상 선택을 소유하거나 장비 이벤트 추적을 요구하지 않습니다. 액터의 실제 Skin Armor가 노출되면 선택 스킨을 사용합니다. 자체 복사 피부 지오메트리와 고정 재질이 든 커스텀 의상 NIF는 그 의상 모드가 계속 소유합니다.</li>
+      <li><strong>SOS·TNG·TRX·ERF</strong> — 외부 성기 지오메트리는 ActorBase 바디스킨과 분리된 액터 레퍼런스 단위·장비 인식 어댑터로 처리합니다.</li>
+      <li><strong>Mu Dynamic NormalMap</strong> — 지원하는 노멀 동반 묶음을 선택 캐시 노멀과 함께 유지합니다.</li>
+      <li><strong>OBody NG</strong> — 선택 사항입니다. 배포·의상 JSON은 사용자가 UI에서 명시적으로 가져올 때만 읽고 BCNG 규칙에 자동 병합하지 않습니다.</li>
+    </ul>
+
+    <h2>저장·소유권 범위</h2>
+    <ul>
+      <li>BodyMorph와 외부 성기 애드온은 액터 레퍼런스 단위입니다.</li>
+      <li>네이티브 BodySkin은 NPC ActorBase 단위입니다. 같은 base를 공유하는 레퍼런스는 하나의 네이티브 스킨을 공유합니다.</li>
+      <li>직접 선택과 평가된 NPC 결과는 현재 SKSE 코세이브에 속합니다.</li>
+      <li>배포 규칙은 <code>Data\SKSE\Plugins\BodyChangeNGdistribution.json</code>에 별도 저장됩니다.</li>
+      <li>설정·배포 규칙 JSON은 계속 지원하며, 제거된 스킨팩 프로필 매니페스트와는 무관합니다.</li>
+    </ul>
+
+    <h2>크레딧 &amp; 라이선스</h2>
+    <p>Body Change NG는 <a href="https://www.gnu.org/licenses/gpl-3.0.html"><strong>GNU GPLv3</strong></a> 라이선스를 따릅니다. 대응하는 소스 코드, 빌드 스크립트, 버전 이력은 <a href="https://github.com/compilecraftworks/Body-Change-NG"><strong>GitHub</strong></a>에서 제공합니다.</p>
+    <p>CommonLibSSE-NG, SKSE64, Address Library, RaceMenu, Dear ImGui, pugixml, nlohmann/json, BodySlide 및 테스트에 사용한 바디·스킨·호환 프로젝트의 제작자와 유지보수자에게 감사드립니다. 자세한 내용은 <code>THIRD_PARTY_NOTICES.md</code>를 확인하세요.</p>
+  </main>
+</body>
+</html>

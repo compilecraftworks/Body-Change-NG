@@ -9,20 +9,21 @@ shortcut is configurable in-game.
 Version 1.2.0 supports the verified Skyrim SE 1.5.97 and listed Skyrim AE
 1.6.x runtimes through 1.6.1179. The project is built for Skyrim SE/AE only.
 
-## Development line: 1.2.0
+## Release line: 1.2.0
 
-The `v1.2.0-rearchitecture` branch is isolated from the 1.1.x release line.
+The `v1.2.0-rearchitecture` branch is the separately maintained 1.2 release line.
 It separates catalog `SkinLayout` from runtime `BodyFamily`: conventional
-female packs are `Legacy`, explicit `!UBE` atlas trees are `UBE`, and CBBE/3BA
-versus UNP/BHUNP is resolved only from the actor's installed body at apply time.
+humanoid packs are `Legacy`, explicit `!UBE` atlas trees are `UBE`, and
+CBBE/3BA versus UNP/BHUNP or vanilla/HIMBO/SAM is resolved only from the
+actor's installed body at apply time. Skin-pack `profile.json` is not used.
 General BodySkin now deep-clones the actor's native
 TXST -> ARMA -> Skin Armor graph and changes only the part/channel pairs actually
-declared by the profile. Equipment state is not an input to that backend.
+detected in the selected pack. Equipment state is not an input to that backend.
 Appearance state, events, and queue operations are separated by feature, so a
 skin change cannot cancel or reset body morph, tint, futanari, or outfit work.
 
 - [1.2.0 architecture notes (한국어)](docs/ARCHITECTURE-v1.2.0-KO.md)
-- [1.1.4 release notes](docs/RELEASE-NOTES-v1.1.4.md) · [한국어](docs/RELEASE-NOTES-v1.1.4-KO.md)
+- [1.2.0 release notes](docs/RELEASE-NOTES-v1.2.0.md) · [한국어](docs/RELEASE-NOTES-v1.2.0-KO.md)
 
 - [English changelog](CHANGELOG.md) · [한국어 변경 이력](CHANGELOG-KO.md)
 - [Nexus descriptions and bilingual upload files](docs/README.md)

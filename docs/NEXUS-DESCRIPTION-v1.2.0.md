@@ -1,0 +1,273 @@
+# **BODY CHANGE NG · v1.2.0**
+### Change BodySlide presets, native actor skins, and player tint masks in real time
+
+**NATIVE IN-GAME GUI · GAMEPAD SUPPORT · RULE-BASED NPC DISTRIBUTION**
+
+**BODY SUPPORT:** CBBE 3BA · BHUNP / UNP · UBE 2.0 · HIMBO · SAM · VANILLA FEMALE / MALE
+
+---
+
+## **OVERVIEW**
+
+Body Change NG is a native SKSE plugin for changing BodySlide morph presets,
+actor skin textures, optional genital-addon skins, and the player's RaceMenu
+tint layers from one in-game interface. It also includes an ordered rule editor
+for distributing body presets and skins to NPCs.
+
+Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old
+general-purpose skin repaint pipeline with an actor-native TextureSet →
+ArmorAddon → Skin Armor graph. The selected skin becomes the NPC base's normal
+skin source, so naked body, hands, feet, and face rebuild through Skyrim's own
+system without BCNG tracking which gloves, boots, or outfits are equipped.
+
+**No MCM. No runtime body-mesh replacement. No skin-pack profile JSON.**
+
+---
+
+## **WHAT'S NEW IN 1.2.0**
+
+- **Native Skin Armor/TXST backend** — BCNG deep-clones the actor's current
+  provider graph, preserves every original texture channel, overlays only the
+  DDS parts supplied by the chosen pack, and attaches the private graph at the
+  NPC ActorBase.
+- **Equipment-independent base skin** — changing clothes is no longer a trigger
+  for repainting the normal body skin. When an outfit reveals the actor's real
+  body, Skyrim rebuilds it from the already selected Skin Armor.
+- **Exact body-part routing** — body, hands, feet, face, 3BA vagina/anus,
+  BHUNP vagina/anus/canal, beast tails, and external genital addons have
+  separate roles. A missing or ambiguous role is never redirected to another
+  body part.
+- **Legacy versus UBE catalog** — only an explicit `!UBE\Body` or `!UBE\Head`
+  texture tree is UBE. Every conventional humanoid pack is Legacy. CBBE/UNP
+  and vanilla/HIMBO/SAM routing is derived from the selected actor at apply
+  time, not from the pack name.
+- **No skin profile manifest** — `BodySkin\<pack>\profile.json` is not read.
+  Existing automatic IDs remain based on the relative pack folder and detected
+  sex; a stale manifest cannot rename or reclassify a pack.
+- **Partial packs remain safe** — every supplied part and material channel is
+  optional. Missing DDS files retain the current provider value instead of
+  borrowing a body, hand, foot, face, or genital texture.
+- **UBE 2.0 graph support** — the verified slot-53 body plus separate hand/foot
+  ARMAs use the UBE Body atlas, while the Head atlas targets the live face.
+  Private TXST synthesis is limited to verified canonical UBE naked models.
+- **RSV-aware ownership** — Racial Skin Variance may remain the provider. BCNG
+  rebuilds from current RSV forms when they change and restores only pointers
+  it still owns; the bounded face bridge does not create or delete RSV's saved
+  keys.
+- **Independent appearance features** — body morph, native base skin, player
+  tint, male SOS/TNG, female futanari, RSV face, and outfit correction use
+  separate state and work channels. Fixing or clearing one does not reset the
+  others.
+- **Reliable NPC distribution** — BodyMorph stays reference-scoped, while the
+  native skin selection is ActorBase-scoped. Stable choices are recorded only
+  after the relevant operation succeeds, and unchanged Body or Skin categories
+  preserve their prior saved result.
+- **Safer rule editing and saving** — starter rules can be edited, reordered,
+  and deleted; new IDs do not collide; broad earlier rules show a shadowing
+  warning; built-in names follow Korean, English, or Simplified Chinese; JSON
+  saves use validated temporary files and atomic replacement.
+- **Explicit compatibility boundaries** — verified Skyrim SE 1.5.97 and AE
+  1.6.x layouts through 1.6.1179 are supported. RaceMenu BodyMorph/Override
+  interface generations are dispatched separately and unknown layouts fail
+  closed. Skyrim VR is not built or supported.
+
+---
+
+## **FEATURES**
+
+### **Body Presets**
+
+- Select the player or a loaded NPC and preview compatible BodySlide presets.
+- Low/high values interpolate by actor weight.
+- Preview, commit, and outfit correction use separate owned BodyMorph keys.
+- Repeated application targets the same absolute result without clearing morph
+  keys owned by other mods.
+- Body preset XML classification and runtime actor BodyFamily checks remain
+  independent from skin-pack classification.
+
+### **Body Skins**
+
+- Apply separate skin packs to the player or loaded NPCs.
+- Native body, hand, foot, far-skin, and optional face TextureSets are cloned
+  from the actor's current provider; unrelated channels stay intact.
+- Conventional humanoid skins are Legacy. UBE is detected only from its
+  explicit `!UBE` atlas namespace.
+- CBBE 3BA and BHUNP/UNP genital/anal atlases remain part of the normal female
+  skin pack and route only to their exact matching geometry.
+- Male body skin and SOS/TNG slot-52 genital textures may live in one pack;
+  the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
+- Argonian and Khajiit packs are filtered by race and sex, and their matching
+  body atlas also reaches the native tail role.
+- A Default Skin action restores the captured provider graph without touching
+  BodyMorph, tint, futanari, or foreign override ownership.
+
+### **Futanari Skin**
+
+- The tab appears only for a detected supported female addon: UBE SOS/TNG,
+  UBE/CBBE TRX, or CBBE 3BA ERF.
+- The genital skin choice is separate from the full BodySkin choice.
+- Removing the addon keeps the selection; re-equipping the supported type
+  reapplies its matching saved skin.
+- Missing channels remain controlled by the addon's original material.
+
+### **Player Tint Masks**
+
+- Install several RaceMenu tint-mask packs and choose per tint layer.
+- Edit color and opacity immediately.
+- Restore the exact value captured before BCNG first changed that layer.
+- Reapply confirmed layers after RaceMenu rebuilds the player.
+- Tint editing is player-only. Overlay-based makeup is not a tint mask and is
+  not supported by this tab.
+
+### **NPC Distribution**
+
+- Rules are evaluated from top to bottom; the first match owns both category
+  decisions.
+- Body and Skin can each distribute a pool, explicitly use Default, be excluded,
+  or remain unchanged.
+- Conditions include sex, custom followers, elders, plugin, race, faction,
+  keyword, class, name, and exact NPC base FormID.
+- One pool entry is fixed; several entries produce a stable per-NPC result.
+- Apply the edited rules to loaded NPCs now, or save the draft for the next
+  launch without silently replacing the current session's active rules.
+- All sample and user rules use the same edit, reorder, and delete behavior.
+
+### **UI and Input**
+
+- Korean, English, and Simplified Chinese interface text.
+- Configurable F7 shortcut with Ctrl, Shift, and Ctrl+Shift combinations.
+- Mouse, keyboard/WASD, and gamepad D-pad navigation with confirm/cancel.
+- Native IME input, Unicode searches and names, favorites, and per-tab
+  favorites-only filters.
+
+---
+
+## **REQUIREMENTS**
+
+- Skyrim SE 1.5.97 or a supported Skyrim AE 1.6.x runtime through 1.6.1179
+- Matching SKSE64
+- Address Library for SKSE Plugins matching the game runtime
+- RaceMenu matching the game runtime, with BodyMorph and NiOverride/Override
+- BodySlide presets and compatible TRI files built with **Build Morphs**
+
+Skyrim VR is not supported.
+
+---
+
+## **INSTALLATION AND UPDATE**
+
+1. Install the Release ZIP with MO2 and keep its folder structure intact.
+2. When updating, preserve your own asset folders and
+   `SKSE\Plugins\BodyChangeNGdistribution.json` if they are stored inside the
+   main mod.
+3. Enable the mod, launch through SKSE, and press F7.
+
+Version 1.2.0 is a separate architectural line from 1.1.4. Do not combine DLLs
+from the two versions. Existing settings, distribution rules, favorites, and
+co-save identifiers are migrated in place; the old DLL backup is still the
+safest rollback point for a save that has not yet been continued extensively
+under 1.2.0.
+
+---
+
+## **ADDING ASSETS**
+
+### **BodySlide presets**
+
+`CalienteTools\BodySlide\SliderPresets\*.xml`
+
+Use standard BodySlide preset XML and build the matching body/outfit TRI data
+with Build Morphs.
+
+### **Conventional BodySkin packs**
+
+```text
+BodySkin\My Skin\Textures\actors\character\female\femalebody_1.dds
+BodySkin\My Skin\Textures\actors\character\female\femalehands_1.dds
+BodySkin\My Skin\Textures\actors\character\female\femalehead.dds
+```
+
+Copy the source mod's original texture tree. The top-level pack folder is the
+display name and stable-ID source. **Do not create `profile.json`; it is ignored.**
+
+For CBBE 3BA, `femalebody_etc_v2_1` plus `_msn`, `_sk`, and `_s` is the
+vagina/anus atlas. For BHUNP/UNP, preserve
+`BakaUNP\VaginalAnalCanal2` plus the same channel suffixes for the
+vagina/anus/canal atlas. These assets do not classify the pack and are never
+used as replacements for regular body, hands, feet, or face.
+
+### **UBE 2.0 BodySkin packs**
+
+```text
+BodySkin\My UBE Skin\Textures\!UBE\Body\femalebody_1_d.dds
+BodySkin\My UBE Skin\Textures\!UBE\Body\femalebody_1_n.dds
+BodySkin\My UBE Skin\Textures\!UBE\Body\femalebody_1_sk.dds
+BodySkin\My UBE Skin\Textures\!UBE\Head\femalehead_d.dds
+```
+
+Keep Legacy and UBE assets in separate top-level pack folders.
+
+### **Male plus SOS/TNG**
+
+Keep the male body/hand/foot/face tree and its SOS addon folders under the same
+top-level skin pack. BCNG never joins textures across packs.
+
+`BodySkin\My Male Skin\Textures\actors\character\SOS\<addon name>\malegenitals_1*`
+
+### **Futanari packs**
+
+- UBE SOS/TNG: `Futanari\<pack>\Textures\!UBE\Body\malebody_1_[d/n/sk].dds`
+- TRX: `Futanari\<pack>\Textures\[TRX] Futa addon\Regular\Default\schlong*`
+- ERF: `Futanari\<pack>\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong*`
+
+### **Tint packs**
+
+`TintMask\<pack>\textures\actors\character\character assets\tintmasks\*.dds`
+
+Files added while Skyrim is running appear after pressing **Refresh** on the
+matching tab.
+
+---
+
+## **COMPATIBILITY NOTES**
+
+- **Racial Skin Variance:** BCNG treats the current RSV graph as a provider and
+  maintains a bounded face bridge. UBE 2.0's own requirement to exclude its
+  player race from RSV (`PLAYER VANILLA`) still applies.
+- **SFS, SVS, and Skyrim Outfit System:** BCNG's native base skin does not own
+  outfit selection or require equipment-event tracking. Skin revealed from the
+  actor's real Skin Armor follows the selected pack. A custom outfit NIF that
+  embeds its own copied skin geometry and hard-coded material remains owned by
+  that outfit mod.
+- **SOS/TNG/TRX/ERF:** external genital geometry remains reference-scoped and
+  equipment-aware, separate from ActorBase-scoped body skin.
+- **Mu Dynamic NormalMap:** supported companion normal bundles are preserved
+  with the selected cached normal.
+- **OBody NG:** optional. Its distribution/outfit JSON can be imported only by
+  an explicit UI action and is never silently merged with BCNG's rules.
+
+---
+
+## **SAVE AND OWNERSHIP SCOPE**
+
+- BodyMorph and external genital addons are actor-reference scoped.
+- Native BodySkin is NPC ActorBase scoped. References sharing the same base
+  therefore share one native skin selection.
+- Direct choices and evaluated NPC results belong to the current SKSE co-save.
+- Distribution rules are stored separately in
+  `Data\SKSE\Plugins\BodyChangeNGdistribution.json`.
+- The editor writes settings and rules as validated JSON. This is unrelated to
+  the removed skin-pack profile manifest.
+
+---
+
+## **CREDITS AND LICENSE**
+
+Body Change NG is licensed under [GNU GPLv3](https://www.gnu.org/licenses/gpl-3.0.html).
+The corresponding source, build scripts, and version history are available on
+[GitHub](https://github.com/compilecraftworks/Body-Change-NG).
+
+Thanks to the authors and maintainers of CommonLibSSE-NG, SKSE64, Address
+Library, RaceMenu, Dear ImGui, pugixml, nlohmann/json, BodySlide, and the body,
+skin, and compatibility projects used during testing. See the included
+`THIRD_PARTY_NOTICES.md` for details.

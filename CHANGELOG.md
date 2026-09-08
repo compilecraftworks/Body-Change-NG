@@ -2,7 +2,7 @@
 
 All notable public changes to Body Change NG are documented here.
 
-## 1.2.0 — development
+## 1.2.0 — 2026-09-08
 
 ### Skin architecture
 

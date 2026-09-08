@@ -1,0 +1,17 @@
+Body Change NG 1.2.0
+
+- Replaces general BodySkin repainting with a private native TXST -> ArmorAddon -> Skin Armor graph attached at the NPC ActorBase.
+- Makes normal body skin independent of equipment tracking. Skyrim rebuilds naked body, hands, feet, and face from the selected native skin source.
+- Separates skin catalog layout from runtime BodyFamily. Explicit !UBE trees are UBE; every conventional humanoid pack is Legacy.
+- Removes skin-pack profile.json support. Stable automatic IDs continue to use the relative pack folder and detected sex.
+- Preserves partial packs and exact body/hand/foot/face routing. Missing DDS parts and channels keep the current provider value.
+- Routes CBBE 3BA and BHUNP/UNP vagina/anal atlases only to their exact matching geometry.
+- Keeps male SOS/TNG and female SOS/TNG/TRX/ERF genital skins in independent reference-scoped adapters.
+- Adds RSV-aware provider rebasing and bounded face reconciliation without taking ownership of RSV's saved keys.
+- Separates Body, Skin, Tint, Futanari, RSV face, and outfit work so one feature cannot cancel or reset another.
+- Repairs NPC Body/Skin distribution persistence, Default versus Unchanged decisions, stable ActorBase skin ownership, and save-load form reuse.
+- Makes built-in sample rules editable/reorderable/deletable, prevents new-rule ID collisions, warns about shadowed rules, and localizes generated names in Korean, English, and Simplified Chinese.
+- Saves settings and distribution rules with validated temporary files and atomic replacement.
+- Supports verified Skyrim SE 1.5.97 and AE 1.6.x runtimes through 1.6.1179. Skyrim VR is not supported.
+
+Important: 1.2.0 is a separate architecture from 1.1.4. Do not combine DLLs. Preserve BodyChangeNGdistribution.json and personal asset folders before replacing the old mod. Settings and distribution JSON remain supported; only the per-skin profile.json format was removed.
