@@ -10,8 +10,11 @@ Body Change NG 1.2.0
 - Adds RSV-aware provider rebasing and bounded face reconciliation without taking ownership of RSV's saved keys.
 - Separates Body, Skin, Tint, Futanari, RSV face, and outfit work so one feature cannot cancel or reset another.
 - Repairs NPC Body/Skin distribution persistence, Default versus Unchanged decisions, stable ActorBase skin ownership, and save-load form reuse.
+- Fixes OBody NG distribution import when the same preset name exists in more than one BodyFamily or XML source; every matching stable ID is retained for runtime filtering.
+- Verifies ORefit outfit-name, plugin, and FormID exclusions in the runtime decision path. Registering ORefit rules now re-evaluates all loaded actors immediately.
 - Makes built-in sample rules editable/reorderable/deletable, prevents new-rule ID collisions, warns about shadowed rules, and localizes generated names in Korean, English, and Simplified Chinese.
 - Saves settings and distribution rules with validated temporary files and atomic replacement.
 - Supports verified Skyrim SE 1.5.97 and AE 1.6.x runtimes through 1.6.1179. Skyrim VR is not supported.
+- Release build and all 15 regression executables pass, including audits against the installed TAKEALOOK and TuLED OBody JSON files.
 
 Important: 1.2.0 is a separate architecture from 1.1.4. Do not combine DLLs. Preserve BodyChangeNGdistribution.json and personal asset folders before replacing the old mod. Settings and distribution JSON remain supported; only the per-skin profile.json format was removed.

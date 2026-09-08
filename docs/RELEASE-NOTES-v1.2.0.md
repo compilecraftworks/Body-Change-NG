@@ -32,7 +32,11 @@ graph attached at the NPC ActorBase.
 ## Verification
 
 - Release plugin build passed.
-- All 14 automated regression executables passed.
+- All 15 automated regression executables passed.
+- OBody distribution and ORefit parsing were audited against all six installed
+  TAKEALOOK/TuLED JSON providers. Every parsed outfit-name/plugin exclusion and
+  force-refit entry was exercised through the same decision policy used by the
+  plugin; registration now re-evaluates every loaded actor immediately.
 - The real TAKEALOOK asset tree produced 11 BodySkin rows: 7 Legacy and 4 UBE.
 - That scan mapped 139 skin DDS files, left 23 unrelated DDS files unassigned,
   and retained 85 tint entries plus 10 futanari entries.

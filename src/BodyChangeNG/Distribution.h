@@ -114,6 +114,14 @@ namespace bcn
         bool importedFromOBody{};
     };
 
+    struct OBodyImportReport final
+    {
+        bool loaded{};
+        std::size_t importedRules{};
+        std::size_t requestedPresetNames{};
+        std::size_t missingPresetNames{};
+    };
+
     // Changing a rule's sex invalidates every catalog choice made under the
     // previous sex. Keep this transition in one place so hidden preset/skin
     // IDs can never leak through the editor into runtime distribution.
@@ -216,7 +224,7 @@ namespace bcn
         [[nodiscard]] bool ApplyActor(RE::Actor* a_actor) const;
         [[nodiscard]] std::size_t ApplyLoadedNPCs();
         [[nodiscard]] std::size_t ResetLoadedNPCs();
-        [[nodiscard]] bool ImportOBodyDefaults();
+        [[nodiscard]] OBodyImportReport ImportOBodyDefaults();
 
     private:
         [[nodiscard]] static std::filesystem::path Path();

@@ -33,7 +33,7 @@
     <p><strong>지원 바디:</strong> CBBE 3BA · BHUNP/UNP · UBE 2.0 · HIMBO · SAM · 바닐라 여성/남성</p>
 
     <h2>소개</h2>
-    <p>Body Change NG는 하나의 인게임 인터페이스에서 BodySlide 바디모프 프리셋, 액터 스킨 텍스처, 선택형 성기 애드온 스킨, 플레이어 RaceMenu 틴트 레이어를 변경하는 네이티브 SKSE 플러그인입니다. 바디와 스킨을 NPC에게 자동 배포하는 우선순위 규칙 편집기도 포함합니다.</p>
+    <p>Body Change NG는 하나의 인게임 인터페이스에서 BodySlide 바디모프 프리셋, 액터 스킨 텍스처, 선택형 성기 애드온 스킨, 플레이어 RaceMenu 틴트 레이어를 변경하는 네이티브 SKSE 플러그인입니다. 바디와 스킨을 NPC에게 자동 배포하는 우선순위 규칙 편집기, 세이브별 결과 복구, 즐겨찾기, 의상 보정, 선택적 OBody NG JSON 가져오기도 포함합니다.</p>
     <p>바디 형태는 계속 RaceMenu BodyMorph 데이터입니다. 1.2.0은 과거의 범용 스킨 재도색 경로를 액터의 네이티브 TextureSet → ArmorAddon → Skin Armor 그래프로 교체했습니다. 선택 스킨이 NPC base의 정상 스킨 원본이 되므로, 장갑·신발·의상 착탈 여부를 BCNG가 추적하지 않아도 Skyrim 자체 시스템이 알몸 몸·손·발·얼굴을 같은 스킨에서 다시 생성합니다.</p>
     <h2>1.2.0 핵심 변경점</h2>
     <ul>
@@ -50,6 +50,30 @@
       <li><strong>명시적인 버전 경계</strong> — Skyrim SE 1.5.97과 검증된 AE 1.6.x(1.6.1179까지)를 지원합니다. RaceMenu 인터페이스 세대를 분리해 처리하고 미확인 레이아웃은 실패 폐쇄합니다. Skyrim VR 빌드는 제공하지 않습니다.</li>
     </ul>
 
+    <h2>Body Change NG를 사용하는 이유</h2>
+    <h3>OBody NG와 비교</h3>
+    <p>두 모드 모두 빌드된 바디를 RaceMenu BodyMorph와 TRI 데이터로 변형합니다. 차이는 그 위에서 선택·배포·상태를 관리하는 방식입니다.</p>
+    <ul>
+      <li><strong>하나의 네이티브 인터페이스</strong> — F7 창에서 플레이어와 로드된 NPC, 바디프리셋, 스킨, 플레이어 틴트, 즐겨찾기, 배포 규칙을 관리합니다.</li>
+      <li><strong>액터별 호환 목록</strong> — 프리셋은 액터의 런타임 BodyFamily에 맞추고, 스킨 구조·종족·성별은 별도로 검사합니다.</li>
+      <li><strong>명시적인 바디·스킨 풀</strong> — 각 규칙에서 정확한 후보를 고르고 바디와 스킨을 각각 후보 배포·기본값·제외·변경 없음으로 설정합니다.</li>
+      <li><strong>보이는 위→아래 우선순위</strong> — 처음 일치한 규칙이 두 범주의 결정을 소유하며 광역·세부 조건의 순서를 게임 안에서 바꿉니다.</li>
+      <li><strong>즉시 또는 다음 실행 배포</strong> — 로드된 NPC에게 지금 적용하거나 현재 세션 활성 규칙을 바꾸지 않고 다음 실행용 초안을 저장합니다.</li>
+      <li><strong>세이브별 결과</strong> — 직접 선택과 평가된 NPC 결과는 SKSE 코세이브에 저장하며 변경 없는 액터의 전체 재배포를 피합니다.</li>
+      <li><strong>분리된 실시간 상태</strong> — 미리보기·확정 바디모프·의상 보정·네이티브 바디스킨·틴트·성기 애드온 스킨의 소유권을 분리합니다.</li>
+      <li><strong>선택적 이전 경로</strong> — 기존 OBody NG JSON의 지원되는 NPC 배포와 ORefit 데이터를 사용자가 명시적으로 가져올 수 있습니다.</li>
+    </ul>
+
+    <h3>기존 메시 슬롯 방식과 비교</h3>
+    <p>기존 슬롯 방식은 미리 정한 슬롯마다 별도 바디 메시와 ESP의 Skin Armor·HeadPart·TextureSet 레코드를 준비해야 합니다. Body Change NG는 고정 CustomSet 슬롯을 사용하지 않습니다.</p>
+    <ul>
+      <li>바디 형태는 설치된 BodySlide XML에서 선택하고 BodyMorph로 적용합니다.</li>
+      <li>1.2.0은 액터의 현재 네이티브 TXST → ArmorAddon → Skin Armor 공급자 그래프를 깊게 복제하고 전용 복제본의 확인된 채널만 바꿉니다.</li>
+      <li>바디 형태와 스킨을 하나의 준비된 메시·레코드 세트로 묶지 않고 독립적으로 선택합니다.</li>
+      <li>네이티브 기본 스킨을 NPC ActorBase에 연결하므로 의상 상태를 BCNG가 추적하지 않아도 Skyrim이 노출된 몸·손·발·얼굴을 다시 생성합니다.</li>
+      <li>플레이어·NPC 직접 선택, 조건 배포, 즐겨찾기, 실행 중 새로고침, 플레이어 틴트를 한 인터페이스에서 제공합니다.</li>
+    </ul>
+
     <h2>주요 기능</h2>
     <h3>바디프리셋</h3>
     <ul>
@@ -57,17 +81,22 @@
       <li>액터 체중에 따라 low/high 값을 보간합니다.</li>
       <li>미리보기·확정·의상 보정은 서로 다른 BCNG 소유 BodyMorph 키를 사용합니다.</li>
       <li>반복 적용해도 같은 절대 결과에 도달하며 다른 모드의 모프 키를 전체 삭제하지 않습니다.</li>
+      <li>액터의 런타임 BodyFamily를 보수적으로 판정해 메인 목록을 필터링하며, 불확실하거나 여러 계열에 해당하는 프리셋은 안전한 표시 폴백을 유지합니다.</li>
+      <li>NPC 규칙 풀은 모드 설정의 여성·남성 바디 타입을 사용하고 실제 배포 직전에도 호환성을 다시 확인합니다.</li>
       <li>BodySlide XML 분류와 액터의 런타임 BodyFamily 판정은 스킨팩 분류와 독립적입니다.</li>
     </ul>
 
     <h3>바디스킨</h3>
     <ul>
       <li>플레이어와 로드된 NPC에게 서로 다른 스킨팩을 적용합니다.</li>
+      <li>수동 스킨·기본 스킨 선택은 접수 즉시 소유권을 잡아 액터 초기화나 자동 배포가 미리보기를 덮지 않게 합니다.</li>
       <li>몸·손·발·far skin과 선택적 얼굴 TXST를 현재 공급자에서 복제하므로 선택팩과 무관한 채널은 그대로 유지됩니다.</li>
       <li>CBBE/3BA·BHUNP/UNP·바닐라·HIMBO·SAM용 일반 텍스처 트리는 Legacy로 묶고, 명시적 <code>!UBE</code> 아틀라스 구조만 UBE로 자동 분류합니다.</li>
       <li>CBBE 3BA와 BHUNP/UNP의 질·항문 아틀라스는 정확히 일치하는 내부 지오메트리에만 연결됩니다.</li>
       <li>HIMBO·SAM 스킨과 SOS/TNG 슬롯 52 텍스처를 한 팩에 둘 수 있습니다. 바닐라 남성 스킨도 지원하며, 현재 애드온 경로로 Regular·Muscular·Smurf 및 종족·노인 변형을 고릅니다.</li>
       <li>아르고니안·카짓은 종족·성별로 필터링하며 몸 아틀라스를 해당 종족의 네이티브 꼬리 역할에도 연결합니다.</li>
+      <li>Diffuse·Normal·Subsurface·Specular·호환 Detail과 노인·뱀파이어·종족 변형은 일치하는 파일이 있을 때만 적용합니다.</li>
+      <li>네이티브 재구성 경계 뒤 최종 결과를 검증하고, 누락된 캐시 파일은 NPC 이벤트마다 전체 검색하지 않고 원본 팩에서 복구합니다.</li>
       <li>기본 스킨은 바디모프·틴트·후타나리·외부 모드 키를 건드리지 않고 캡처한 공급자 그래프로 복원합니다.</li>
     </ul>
 
@@ -92,9 +121,23 @@
       <li>규칙을 위에서 아래로 평가하며 처음 일치한 규칙이 바디와 스킨 결정을 소유합니다.</li>
       <li>바디·스킨 각각 후보 배포, 명시적 기본값, 배포 제외, 변경 없음 상태를 구분합니다.</li>
       <li>성별, 커스텀 팔로워, 노인, 플러그인, 종족, 팩션, 키워드, 클래스, 이름, NPC Base FormID 조건을 지원합니다.</li>
+      <li>팩션·종족·키워드·클래스는 플러그인과 로컬 FormID를 함께 보존해 이름 없는 레코드도 선택하고 로드 순서 변경에도 다시 해석합니다.</li>
       <li>후보 하나는 고정, 여러 개는 NPC별 안정적인 결과를 선택합니다.</li>
+      <li>이미 죽었어도 3D가 로드된 NPC는 같은 규칙을 적용하며 플레이어·비활성·미로드·비 NPC 레퍼런스는 제외합니다.</li>
+      <li>편집 가능한 기본 제외 8개는 커스텀 팔로워·노인·아르고니안·카짓을 다루며 샘플도 사용자 규칙과 동일하게 수정·삭제할 수 있습니다.</li>
+      <li>전체 선택·전체 해제로 호환 바디 또는 스킨 풀을 빠르게 구성합니다.</li>
       <li>로드된 NPC에게 즉시 배포하거나, 현재 세션의 활성 규칙은 건드리지 않고 다음 실행용 초안만 저장할 수 있습니다.</li>
       <li>샘플과 사용자 규칙은 같은 수정·순서 변경·삭제 동작을 사용합니다.</li>
+    </ul>
+    <p><strong>규칙 파일:</strong> <code>Data\SKSE\Plugins\BodyChangeNGdistribution.json</code></p>
+    <p>인게임 편집기가 이 파일을 씁니다. 모드나 MO2 프로필을 교체할 때 백업한 뒤 같은 경로로 복원하고 <strong>저장 값 불러오기</strong>를 누릅니다.</p>
+
+    <h3>의상 보정·랜덤화</h3>
+    <ul>
+      <li>지원되는 CBBE 3BA·BHUNP/UNP 액터의 의상 착용 시 가슴 보정과 별도 유두 보정 옵션을 제공합니다.</li>
+      <li>지원되는 CBBE 3BA·BHUNP/UNP NPC의 유두·생식기 형태를 세이브에서 안정적으로 무작위화할 수 있습니다.</li>
+      <li>슬라이더 구조가 다른 UBE 액터는 건너뛰며 UBE 플레이어·일반 계열 NPC 혼합 설치도 액터별로 판정합니다.</li>
+      <li>ORefit은 의상별 지정 프리셋, 현재 바디 이름의 정확한 <code>-Refit</code>, <code>Female-Refit</code>/<code>Male-Refit</code>, 절차적 보정 순서로 후보를 찾습니다.</li>
     </ul>
 
     <h3>UI·입력</h3>
@@ -123,7 +166,20 @@
     </ol>
     <p class="notice">1.2.0은 1.1.4와 분리된 새 아키텍처입니다. 두 버전 DLL을 섞지 마세요. 설정·배포 규칙·즐겨찾기·코세이브 식별자는 기존 위치에서 마이그레이션하지만, 1.2.0으로 장시간 진행하지 않은 세이브에서는 이전 DLL 백업이 가장 안전한 롤백 지점입니다.</p>
 
+    <h2>사용법</h2>
+    <ol>
+      <li><strong>F7</strong>을 누르고 플레이어를 선택하거나 <strong>액터 새로고침</strong> 뒤 현재 로드된 NPC를 선택합니다.</li>
+      <li><strong>바디프리셋</strong> 또는 <strong>바디스킨</strong>을 엽니다. 한 번 클릭은 미리보기, 더블클릭은 창을 유지한 확정이며 선택창을 닫으면 마지막 미리보기가 확정됩니다. 기본 항목은 해당 범주의 BCNG 선택을 해제합니다.</li>
+      <li><strong>틴트마스크</strong>에서 플레이어의 기존 RaceMenu 레이어를 선택하고 색상·강도를 조절하거나 BCNG가 처음 변경하기 직전 값으로 복원합니다.</li>
+      <li>지원하는 여성 성기 지오메트리가 감지되면 독립된 <strong>후타나리</strong> 탭에서 SOS/TNG·TRX·ERF 유형에 맞는 스킨을 고릅니다.</li>
+      <li><strong>모드 설정</strong>에서 여성·남성 NPC 바디 타입을 고르고 <strong>NPC 배포</strong>에서 조건과 풀을 편집한 뒤 지금 로드된 NPC에게 적용하거나 다음 실행용으로 저장합니다.</li>
+      <li><strong>의상·랜덤화</strong>에서 지원되는 의상 보정·NPC 형태 무작위화 또는 OBody NG ORefit 규칙 등록을 선택합니다.</li>
+      <li>게임 실행 중 에셋을 추가·교체했다면 해당 목록의 <strong>새로고침</strong>을 누릅니다.</li>
+    </ol>
+    <p><strong>저장 범위:</strong> 액터 직접 선택과 평가 결과는 현재 SKSE 코세이브에 속하며 배포 규칙은 위의 별도 JSON에 저장됩니다.</p>
+
     <h2>에셋 추가</h2>
+    <p>아래 경로는 MO2 모드 루트 기준입니다. Body Change NG 안에 넣거나 같은 가상 경로를 제공하는 별도 활성 MO2 모드로 관리할 수 있습니다.</p>
     <h3>BodySlide 프리셋</h3>
     <p><code>CalienteTools\BodySlide\SliderPresets\*.xml</code></p>
     <p>표준 BodySlide 프리셋 XML을 넣고 대응하는 몸·의상 TRI를 Build Morphs로 생성합니다.</p>
@@ -157,11 +213,28 @@ BodySkin\내 UBE 스킨\Textures\!UBE\Head\femalehead_d.dds</code></pre>
     <p><code>TintMask\&lt;팩&gt;\textures\actors\character\character assets\tintmasks\*.dds</code></p>
     <p>게임 실행 중 추가한 파일은 해당 탭에서 <strong>새로고침</strong>을 누르면 나타납니다.</p>
 
+    <h2>선택적 OBody NG JSON 가져오기</h2>
+    <p>Body Change NG는 OBody NG 또는 그 JSON 없이도 작동합니다. 기존 규칙을 재사용하려는 경우에만 다음 파일을 선택적으로 사용합니다.</p>
+    <p><code>Data\SKSE\Plugins\OBody_presetDistributionConfig.json</code></p>
+    <p><code>BodyChangeNGdistribution.json</code>과 같은 폴더에 두되 두 파일을 합치거나 이름을 바꾸지 않습니다. BCNG는 명시적인 UI 동작에서만 OBody 파일을 읽고 원본은 수정하지 않습니다.</p>
+    <p>같은 OBody 파일명을 제공하는 MO2 모드가 여러 개면 MO2가 내용을 자동 병합하지 않습니다. BCNG는 가상 <code>Data</code> 경로에서 최종 승리한 파일 하나를 읽습니다. 배포 설정과 ORefit 마스터 목록을 함께 써야 한다면 OBody 규칙끼리 미리 합쳐진 OBody 형식 파일을 사용하고, BCNG의 별도 <code>BodyChangeNGdistribution.json</code>과는 합치지 마세요.</p>
+    <ul>
+      <li><strong>NPC 배포</strong>의 <strong>저장 값 불러오기</strong>를 누르면 BCNG 저장 규칙과 함께 지원되는 OBody NPC 배포 데이터를 가져옵니다.</li>
+      <li>프리셋 배포 제외 목록, NPC 이름/FormID 제외·지정, 플러그인·종족 제외, 팩션·플러그인·종족 지정, 여성·남성 기본 풀을 지원합니다. 프리셋 이름은 설치된 카탈로그와 일치해야 하며 누락된 이름은 건너뛰고 로그에 남깁니다.</li>
+      <li>다시 가져오면 이전 OBody 가져오기 행만 교체하고 BCNG 샘플·사용자 규칙은 보존합니다. 가져온 행도 저장·배포 전에 화면에서 확인하고 편집할 수 있습니다.</li>
+      <li>가져온 행도 모든 BCNG 규칙과 같은 위→아래 우선순위를 사용합니다. 앞쪽의 같은 성별 <strong>모든 NPC</strong> 규칙이 뒤의 구체적인 가져오기 행을 가릴 수 있으며, 이때 편집기가 경고하므로 구체적인 행을 위로 옮기거나 앞 규칙의 범위를 좁히세요.</li>
+      <li><strong>의상·랜덤화</strong>의 <strong>OBody NG 의상 보정 규칙 등록</strong>은 의상 이름·플러그인·FormID 제외, 이름·FormID 강제 보정, 여성·남성 의상별 프리셋 매핑을 불러옵니다.</li>
+      <li>등록 직후 현재 로드된 액터를 모두 다시 판정합니다. 제외된 몸통 의상은 보정 판정에서 없는 것으로 취급하고, 어느 착용 슬롯이든 강제 보정 항목이 있으면 OBody NG와 같은 우선 동작을 유지합니다.</li>
+      <li>NPC 배포 가져오기와 ORefit 등록은 독립적이므로 필요한 쪽만 사용하거나 둘 다 사용할 수 있습니다.</li>
+      <li>SlickSilk의 <a href="https://www.nexusmods.com/skyrimspecialedition/mods/105052"><strong>OBody Next Generation ORefit JSON Master List</strong></a>를 선택적 가져오기 소스로 지원합니다. JSON과 참조 프리셋 에셋은 별도로 설치해야 하며 BCNG 배포 파일에는 포함되지 않습니다.</li>
+    </ul>
+
     <h2>호환 참고</h2>
     <ul>
       <li><strong>Racial Skin Variance</strong> — 현재 RSV 그래프를 공급자로 사용하고 제한된 얼굴 브리지를 유지합니다. UBE 2.0 자체의 RSV 플레이어 제외(<code>PLAYER VANILLA</code>) 요구사항은 그대로 적용됩니다.</li>
       <li><strong>SOS·TNG·TRX·ERF</strong> — 외부 성기 지오메트리는 ActorBase 바디스킨과 분리된 액터 레퍼런스 단위·장비 인식 어댑터로 처리합니다.</li>
       <li><strong>Mu Dynamic NormalMap</strong> — 지원하는 노멀 동반 묶음을 선택 캐시 노멀과 함께 유지합니다.</li>
+      <li><strong>OverlayFix</strong> — 액터 갱신과 비동기 작업 경계를 분리해 동시 사용 호환성을 높였습니다.</li>
     </ul>
 
     <h2>저장·소유권 범위</h2>

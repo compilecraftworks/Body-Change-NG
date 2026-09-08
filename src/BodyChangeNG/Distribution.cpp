@@ -5,6 +5,7 @@
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/OBodyDistributionImport.h"
 #include "BodyChangeNG/PathMigration.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
@@ -967,12 +968,12 @@ namespace bcn
         return queued;
     }
 
-    bool Distribution::ImportOBodyDefaults()
+    OBodyImportReport Distribution::ImportOBodyDefaults()
     {
         const auto legacyPath = std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / "OBody_presetDistributionConfig.json";
         try {
             std::ifstream stream(legacyPath);
-            if (!stream) return false;
+            if (!stream) return {};
             const auto root = nlohmann::json::parse(stream);
             if (!root.is_object()) throw std::runtime_error("OBody configuration root is not an object");
 
@@ -986,19 +987,8 @@ namespace bcn
             std::unordered_set<std::string> missingPresetNames;
             const auto matchingPresetIds = [&catalog, &requestedPresetNames, &missingPresetNames](
                                                const std::vector<std::string>& names, const bool female) {
-                std::vector<std::string> ids;
-                for (const auto& name : names) {
-                    ++requestedPresetNames;
-                    const auto found = std::ranges::find_if(catalog, [&](const auto& preset) {
-                        return preset.male == !female && preset.name == name;
-                    });
-                    if (found != catalog.end() && std::ranges::find(ids, found->PersistentId()) == ids.end()) {
-                        ids.push_back(found->PersistentId());
-                    } else if (found == catalog.end()) {
-                        missingPresetNames.insert(name);
-                    }
-                }
-                return ids;
+                return obody_distribution::MatchingPresetIds(
+                    catalog, names, female, requestedPresetNames, missingPresetNames);
             };
             const auto addRule = [&](std::string name, const DistributionScope scope, const bool female,
                                      std::string target, const std::uint32_t baseFormID,
@@ -1014,7 +1004,9 @@ namespace bcn
                     .bodyExcluded = excluded,
                     .importedFromOBody = true
                 };
-                if (excluded || !rule.presetIds.empty()) imported.push_back(std::move(rule));
+                if (excluded || !rule.presetIds.empty()) {
+                    imported.push_back(std::move(rule));
+                }
             };
             const auto addForBothSexes = [&](const std::string& name, const DistributionScope scope,
                                              const std::string& target, const std::uint32_t baseFormID,
@@ -1111,6 +1103,8 @@ namespace bcn
             }
             addRule("Imported OBody female default", DistributionScope::allNPCs, true, {}, 0U, femaleDefaultNames);
             addRule("Imported OBody male default", DistributionScope::allNPCs, false, {}, 0U, maleDefaultNames);
+            obody_distribution::RetainGloballyMissingPresetNames(catalog, missingPresetNames);
+            const auto importedRuleCount = imported.size();
             auto merged = Snapshot();
             std::erase_if(merged, [](const DistributionRule& rule) {
                 return rule.importedFromOBody || rule.id.starts_with("obody-import-");
@@ -1120,14 +1114,19 @@ namespace bcn
             SetRules(std::move(merged));
             SKSE::log::info(
                 "Body Change NG imported {} OBody distribution rules; preset references={} unique-missing={}",
-                imported.size(), requestedPresetNames, missingPresetNames.size());
+                importedRuleCount, requestedPresetNames, missingPresetNames.size());
             for (const auto& name : missingPresetNames) {
                 SKSE::log::warn("Body Change NG could not match imported OBody preset '{}'", name);
             }
-            return true;
+            return {
+                .loaded = true,
+                .importedRules = importedRuleCount,
+                .requestedPresetNames = requestedPresetNames,
+                .missingPresetNames = missingPresetNames.size()
+            };
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Change NG could not import OBody defaults: {}", exception.what());
-            return false;
+            return {};
         }
     }
 }

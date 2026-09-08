@@ -2405,17 +2405,35 @@ namespace
             ImGui::SameLine();
             if (ImGui::Button(Text("저장 값 불러오기", "Load saved values", "加载保存值"))) {
                 const auto loaded = bcn::Distribution::Get().Load();
-                const auto imported = bcn::Distribution::Get().ImportOBodyDefaults();
+                const auto importReport = bcn::Distribution::Get().ImportOBodyDefaults();
+                const auto imported = importReport.loaded;
                 g_distributionRules = bcn::Distribution::Get().Snapshot();
                 g_selectedDistributionRule = 0;
                 g_distributionRuleNameLanguage.reset();
-                bcn::ui::Notify(loaded ?
+                std::string message = loaded ?
                     (imported ?
                         Text("저장값과 OBody 호환 규칙을 함께 불러왔습니다.", "Loaded saved values and OBody-compatible rules.", "已加载保存值和 OBody 兼容规则。") :
                         Text("저장값을 불러왔습니다.", "Loaded saved values.", "已加载保存值。")) :
                     (imported ?
                         Text("기본 샘플 조건과 OBody 호환 규칙을 불러왔습니다.", "Loaded the default sample rules and OBody-compatible rules.", "已加载默认示例规则和 OBody 兼容规则。") :
-                        Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。")));
+                        Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。"));
+                if (imported) {
+                    message += " ";
+                    message += std::to_string(importReport.importedRules);
+                    message += Text(
+                        "개의 OBody 배포 규칙을 BCNG 목록으로 치환했습니다.",
+                        " OBody distribution rules were converted into the BCNG list.",
+                        " 条 OBody 分发规则已转换到 BCNG 列表。");
+                }
+                if (importReport.missingPresetNames != 0U) {
+                    message += " ";
+                    message += std::to_string(importReport.missingPresetNames);
+                    message += Text(
+                        "개의 OBody 프리셋 이름이 설치 목록에 없어 해당 지정 규칙을 건너뛰었습니다. SKSE 로그를 확인하세요.",
+                        " OBody preset names were not installed, so their assignment rules were skipped. See the SKSE log.",
+                        " 个 OBody 预设名称未安装，因此已跳过对应分配规则。请查看 SKSE 日志。");
+                }
+                bcn::ui::Notify(std::move(message));
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"))) {
@@ -2505,10 +2523,21 @@ namespace
             ImGui::Unindent();
             if (playerUbe) ImGui::EndDisabled();
             if (ImGui::Button(Text("OBody NG 의상 보정 규칙 등록", "Register OBody NG outfit-correction rules", "注册 OBody NG 服装修正规则"))) {
-                const auto registered = bcn::OutfitRefit::Get().LoadOBodyRules();
-                if (registered) {
+                const auto report = bcn::OutfitRefit::Get().LoadOBodyRules();
+                if (report.loaded) {
                     g_orefitRulesRegistered = true;
-                    bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
+                    const auto processed = bcn::OutfitRefit::Get().ProcessLoadedActors();
+                    const auto excluded = report.excludedNames + report.excludedPlugins + report.excludedFormIDs;
+                    const auto forced = report.forcedNames + report.forcedFormIDs;
+                    const auto mappings = report.femaleMappings + report.maleMappings;
+                    bcn::ui::Notify(
+                        std::to_string(excluded) + Text("개 제외, ", " exclusions, ", " 条排除、") +
+                        std::to_string(forced) + Text("개 강제 보정, ", " force-refit entries, ", " 条强制修正、") +
+                        std::to_string(mappings) + Text("개 프리셋 매핑을 등록하고 ", " preset mappings registered; ", " 条预设映射已注册；") +
+                        std::to_string(processed) + Text(
+                            "명의 로드된 액터를 다시 판정했습니다.",
+                            " loaded actors were re-evaluated.",
+                            " 名已加载角色已重新判定。"));
                 } else {
                     bcn::ui::Notify(Text("OBody NG 의상 보정 규칙을 등록하지 못했습니다.", "Could not register OBody NG outfit-correction rules.", "无法注册 OBody NG 服装修正规则。"));
                 }

@@ -3,15 +3,18 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
+#include "BodyChangeNG/OutfitRefitEvaluation.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/OutfitRefitRules.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/Settings.h"
 
 #include <SKSE/Logger.h>
+#include <RE/P/ProcessLists.h>
 
 #include <charconv>
 #include <fstream>
+#include <unordered_set>
 
 namespace
 {
@@ -32,16 +35,20 @@ namespace
 
     [[nodiscard]] bool IsBlacklisted(const RE::TESObjectARMO* armor, const bcn::OutfitRefit::Rules& rules)
     {
-        if (!armor || rules.blacklistedOutfitNames.contains(armor->GetName()) || rules.blacklistedFormIDs.contains(armor->GetFormID())) {
-            return true;
-        }
+        if (!armor) return true;
         const auto* file = armor->GetFile(0);
-        return file && rules.blacklistedPlugins.contains(std::string(file->GetFilename()));
+        return bcn::outfit_refit_evaluation::IsBlacklisted({
+            armor->GetName(), file ? file->GetFilename() : "", armor->GetFormID()
+        }, rules);
     }
 
     [[nodiscard]] bool IsForced(const RE::TESObjectARMO* armor, const bcn::OutfitRefit::Rules& rules)
     {
-        return armor && (rules.forcedOutfitNames.contains(armor->GetName()) || rules.forcedFormIDs.contains(armor->GetFormID()));
+        if (!armor) return false;
+        const auto* file = armor->GetFile(0);
+        return bcn::outfit_refit_evaluation::IsForced({
+            armor->GetName(), file ? file->GetFilename() : "", armor->GetFormID()
+        }, rules);
     }
 
     // OBody NG deliberately treats a force-refit item in any worn slot as an
@@ -78,16 +85,16 @@ namespace bcn
         return evaluationRules_;
     }
 
-    bool OutfitRefit::LoadOBodyRules()
+    OBodyOutfitImportReport OutfitRefit::LoadOBodyRules()
     {
         const auto path = std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / "OBody_presetDistributionConfig.json";
         Rules loaded;
         try {
             std::ifstream stream(path);
-            if (!stream) return false;
+            if (!stream) return {};
             const auto root = nlohmann::json::parse(stream);
             outfit_refit_rules::ImportedRules imported;
-            if (!outfit_refit_rules::ParseOBodyRules(root, imported)) return false;
+            if (!outfit_refit_rules::ParseOBodyRules(root, imported)) return {};
 
             auto* dataHandler = const_cast<RE::TESDataHandler*>(RE::TESDataHandler::GetSingleton());
             const auto resolveFormIDs = [&](const auto& references, auto& destination) {
@@ -112,8 +119,18 @@ namespace bcn
             loaded.malePresetByOutfit = std::move(imported.malePresetByOutfit);
         } catch (const std::exception& exception) {
             SKSE::log::error("Body Change NG could not register OBody outfit-correction rules: {}", exception.what());
-            return false;
+            return {};
         }
+        const OBodyOutfitImportReport report{
+            .loaded = true,
+            .excludedNames = loaded.blacklistedOutfitNames.size(),
+            .excludedPlugins = loaded.blacklistedPlugins.size(),
+            .excludedFormIDs = loaded.blacklistedFormIDs.size(),
+            .forcedNames = loaded.forcedOutfitNames.size(),
+            .forcedFormIDs = loaded.forcedFormIDs.size(),
+            .femaleMappings = loaded.femalePresetByOutfit.size(),
+            .maleMappings = loaded.malePresetByOutfit.size()
+        };
         std::scoped_lock lock(lock_);
         rules_ = std::move(loaded);
         evaluationRules_.reset();
@@ -124,7 +141,7 @@ namespace bcn
             path.string(), rules_.blacklistedOutfitNames.size(), rules_.blacklistedPlugins.size(),
             rules_.blacklistedFormIDs.size(), rules_.forcedOutfitNames.size(), rules_.forcedFormIDs.size(),
             rules_.femalePresetByOutfit.size(), rules_.malePresetByOutfit.size());
-        return true;
+        return report;
     }
 
     void OutfitRefit::ClearLegacyRules()
@@ -166,7 +183,7 @@ namespace bcn
             forceRefit = forceRefit || IsForced(worn[index], rules);
         }
         forceRefit = forceRefit || HasAnyForcedWornArmor(actor, rules);
-        if (!hasEligibleOutfit && !forceRefit) {
+        if (!outfit_refit_evaluation::ShouldApply(hasEligibleOutfit, forceRefit)) {
             const auto signature = StableStateSignature("outfit", "clear", true,
                 settings.outfitNippleCorrection ? 1U : 0U);
             if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
@@ -236,5 +253,25 @@ namespace bcn
         if (result != racemenu::ApplyResult::queued) {
             SKSE::log::debug("Body Change NG could not queue outfit correction '{}' for {:08X}", found->name, actor->GetFormID());
         }
+    }
+
+    std::size_t OutfitRefit::ProcessLoadedActors() const
+    {
+        std::unordered_set<RE::FormID> seen;
+        std::size_t processed{};
+        const auto process = [&](RE::Actor* actor) {
+            if (!actor || !actor->Is3DLoaded() || !seen.insert(actor->GetFormID()).second) return;
+            ProcessActor(actor);
+            ++processed;
+        };
+
+        process(RE::PlayerCharacter::GetSingleton());
+        if (auto* processes = RE::ProcessLists::GetSingleton()) {
+            processes->ForAllActors([&](RE::Actor* actor) {
+                process(actor);
+                return RE::BSContainer::ForEachResult::kContinue;
+            });
+        }
+        return processed;
     }
 }

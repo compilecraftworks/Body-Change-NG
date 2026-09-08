@@ -10,7 +10,7 @@
 
 [size=5][color=#5FB8E8][b]OVERVIEW[/b][/color][/size]
 
-Body Change NG is a native SKSE plugin for changing BodySlide morph presets, actor skin textures, optional genital-addon skins, and the player's RaceMenu tint layers from one in-game interface. It also includes an ordered rule editor for distributing body presets and skins to NPCs.
+Body Change NG is a native SKSE plugin for changing BodySlide morph presets, actor skin textures, optional genital-addon skins, and the player's RaceMenu tint layers from one in-game interface. It also includes an ordered rule editor for distributing body presets and skins to NPCs, save-specific result recovery, favorites, outfit correction, and explicit OBody NG JSON import.
 
 Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old general-purpose skin repaint pipeline with an actor-native TextureSet → ArmorAddon → Skin Armor graph. The selected skin becomes the NPC base's normal skin source, so naked body, hands, feet, and face rebuild through Skyrim's own system without BCNG tracking which gloves, boots, or outfits are equipped.
 
@@ -34,6 +34,37 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 
 [line]
 
+[size=5][color=#5FB8E8][b]WHY BODY CHANGE NG?[/b][/color][/size]
+
+[size=4][color=#9AD7F5][b]Compared with OBody NG[/b][/color][/size]
+
+Both mods ultimately deform an already built body through RaceMenu BodyMorph and TRI data. The difference is the selection, distribution, and state-management layer above that shared morph pipeline.
+
+[list]
+[*][b]One native interface[/b] — press F7 to manage the player and loaded NPCs, body presets, skins, player tint, favorites, and distribution rules.
+[*][b]Actor-matched catalogs[/b] — preset compatibility is resolved from the actor's runtime BodyFamily. Skin layout, race, and sex are checked separately.
+[*][b]Explicit Body and Skin pools[/b] — choose exactly which entries each rule may distribute; either category can use a pool, Default, exclusion, or Unchanged.
+[*][b]Visible top-down priority[/b] — the first matching rule owns both category decisions, so broad and specific conditions can be reordered in game.
+[*][b]Immediate or next-launch distribution[/b] — apply edited rules to loaded NPCs now, or save a next-launch draft without silently changing the current session's active rules.
+[*][b]Save-specific results[/b] — direct choices and evaluated NPC results live in the SKSE co-save and unchanged actors avoid unnecessary full redistribution.
+[*][b]Separated live state[/b] — preview, committed BodyMorph, outfit correction, native BodySkin, tint, and genital-addon skin use independent ownership.
+[*][b]Optional migration path[/b] — an existing OBody NG JSON can be explicitly imported for supported NPC distribution and ORefit data.
+[/list]
+
+[size=4][color=#9AD7F5][b]Compared with legacy mesh-slot systems[/b][/color][/size]
+
+Legacy slot systems require a separately built body mesh and prepared ESP Skin Armor, HeadPart, and TextureSet records for every predefined slot. Body Change NG does not use fixed CustomSet slots.
+
+[list]
+[*]Body shape is selected from installed BodySlide XML and applied as BodyMorph.
+[*]Version 1.2.0 deep-clones the actor's current native TXST → ArmorAddon → Skin Armor provider graph and changes only mapped channels on the private clone.
+[*]Body shape and skin remain independently selectable instead of requiring one prepared mesh-and-record set.
+[*]The native base skin is attached at the NPC ActorBase, allowing Skyrim to rebuild exposed body, hands, feet, and face without BCNG tracking outfits.
+[*]Direct player/NPC selection, conditional distribution, favorites, live Refresh, and player tint editing share the same interface.
+[/list]
+
+[line]
+
 [size=5][color=#5FB8E8][b]FEATURES[/b][/color][/size]
 
 [size=4][color=#9AD7F5][b]Body Presets[/b][/color][/size]
@@ -43,6 +74,8 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [*]Low/high values interpolate by actor weight.
 [*]Preview, commit, and outfit correction use separate owned BodyMorph keys.
 [*]Repeated application reaches the same absolute result without clearing morph keys owned by other mods.
+[*]The main list is filtered with conservative runtime BodyFamily evidence; ambiguous and multi-family presets retain a safe visible fallback.
+[*]NPC rule pools use the female/male body type selected in Mod Settings, and runtime distribution rechecks compatibility before choosing a candidate.
 [*]Body preset XML classification and runtime BodyFamily checks remain independent from skin-pack classification.
 [/list]
 
@@ -50,11 +83,14 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 
 [list]
 [*]Apply separate skin packs to the player or loaded NPCs.
+[*]Manual Skin and Default Skin choices take ownership immediately, preventing actor initialization or automatic distribution from replacing the preview.
 [*]Native body, hand, foot, far-skin, and optional face TextureSets are cloned from the current provider; unrelated channels stay intact.
 [*]Conventional CBBE/3BA, BHUNP/UNP, vanilla, HIMBO, and SAM texture trees are grouped as Legacy. UBE is detected only from the explicit [font=Courier New]!UBE[/font] atlas namespace.
 [*]CBBE 3BA and BHUNP/UNP genital/anal atlases route only to their exact matching geometry.
 [*]HIMBO or SAM skin and SOS/TNG slot-52 textures may live in one pack. Vanilla male skin is also supported; the live addon path chooses Regular, Muscular, Smurf, race, and elder variants.
 [*]Argonian and Khajiit packs are filtered by race and sex, and the body atlas also reaches the matching native tail role.
+[*]Diffuse, normal, subsurface, specular, compatible detail, elder, vampire, and race-specific variants are applied only when matching files exist.
+[*]Completed results are verified after the native rebuild boundary. Missing cache files are reconstructed from the original pack without rescanning every NPC event.
 [*]Default Skin restores the captured provider graph without touching BodyMorph, tint, futanari, or foreign override ownership.
 [/list]
 
@@ -83,8 +119,24 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [*]Body and Skin can each distribute a pool, explicitly use Default, be excluded, or remain unchanged.
 [*]Conditions include sex, custom followers, elders, plugin, race, faction, keyword, class, name, and exact NPC base FormID.
 [*]One entry is fixed; multiple entries produce a stable per-NPC result.
+[*]Loaded corpses receive the same rules; the player, disabled, unloaded, and non-NPC references remain excluded.
+[*]Eight editable starter exclusions cover custom followers, elders, Argonians, and Khajiit without locking sample rows against editing or deletion.
+[*]Select all and Clear all populate compatible Body or Skin pools quickly.
 [*]Apply rules to loaded NPCs now, or save a next-launch draft without silently replacing the current session's active rules.
 [*]Sample and user rules have the same edit, reorder, and delete behavior.
+[/list]
+
+[b]Rules file:[/b] [font=Courier New]Data\SKSE\Plugins\BodyChangeNGdistribution.json[/font]
+
+The in-game editor writes this file. Back it up when replacing the mod or MO2 profile, restore it to the same path, and press [b]Load saved values[/b].
+
+[size=4][color=#9AD7F5][b]Outfit Correction and Randomization[/b][/color][/size]
+
+[list]
+[*]Optional clothed breast correction for supported CBBE 3BA and BHUNP/UNP actors, with a separate nipple-correction toggle.
+[*]Optional stable NPC nipple and genital-shape randomization for supported CBBE 3BA and BHUNP/UNP NPCs.
+[*]UBE actors are skipped because their slider layout is materially different; mixed UBE-player and conventional-NPC installations are evaluated per actor.
+[*]ORefit rules may select an outfit-specific preset first, then the current body's exact [font=Courier New]-Refit[/font] preset, a [font=Courier New]Female-Refit[/font]/[font=Courier New]Male-Refit[/font] fallback, and finally procedural correction.
 [/list]
 
 [size=4][color=#9AD7F5][b]UI and Input[/b][/color][/size]
@@ -121,6 +173,22 @@ Body shape remains RaceMenu BodyMorph data. Version 1.2.0 replaces the old gener
 [/list]
 
 Version 1.2.0 is a separate architectural line from 1.1.4. Do not combine DLLs from the two versions. Existing settings, distribution rules, favorites, and co-save identifiers are migrated in place. Keep the old DLL backup as the safest rollback point for a save not yet continued extensively under 1.2.0.
+
+[line]
+
+[size=5][color=#5FB8E8][b]HOW TO USE[/b][/color][/size]
+
+[list=1]
+[*]Press [b]F7[/b], choose the player, or press [b]Refresh actors[/b] and select a currently loaded NPC.
+[*]Open [b]Body Presets[/b] or [b]Body Skins[/b]. A single click previews; double-click confirms while keeping the picker open; closing the picker confirms the last preview. The Default row clears BCNG's selection for that category.
+[*]Open [b]Tint Masks[/b] for the player's existing RaceMenu tint layers. Select a pack and layer, adjust color/opacity, or restore the value captured before BCNG first changed it.
+[*]If supported female genital geometry is detected, choose a matching SOS/TNG, TRX, or ERF skin from the independent [b]Futanari[/b] tab.
+[*]Choose female and male NPC body types in [b]Mod Settings[/b], open [b]NPC Distribution[/b], edit conditions and pools, then apply to loaded NPCs now or save the draft for the next launch.
+[*]Open [b]Outfit · randomization[/b] to configure supported clothed correction, NPC shape randomization, or explicitly register OBody NG ORefit rules.
+[*]Press [b]Refresh[/b] on a catalog tab after adding or replacing assets while the game is running.
+[/list]
+
+Direct actor choices and evaluated results belong to the current SKSE co-save. Distribution rules remain in the separate JSON shown above.
 
 [line]
 
@@ -170,12 +238,37 @@ Files added while Skyrim is running appear after pressing [b]Refresh[/b] on the 
 
 [line]
 
+[size=5][color=#5FB8E8][b]OPTIONAL OBODY NG JSON IMPORT[/b][/color][/size]
+
+Body Change NG works without OBody NG or its JSON. This optional path reuses supported rules from:
+
+[font=Courier New]Data\SKSE\Plugins\OBody_presetDistributionConfig.json[/font]
+
+Keep it beside [font=Courier New]BodyChangeNGdistribution.json[/font]; do not rename or merge the two files. BCNG reads the OBody file only through an explicit UI action and never modifies it.
+
+MO2 does not merge several mods that provide this same OBody filename. BCNG reads the one file that wins at the virtual [font=Courier New]Data[/font] path. If a distribution config and an ORefit master list must be used together, install an OBody-format file in which those OBody rules have already been combined; never merge it with BCNG's separate [font=Courier New]BodyChangeNGdistribution.json[/font].
+
+[list]
+[*]In [b]NPC Distribution[/b], press [b]Load saved values[/b] to load BCNG's saved rules and import supported OBody NPC distribution data when the file exists.
+[*]Distribution import supports preset blacklists, NPC name/FormID exclusions and assignments, plugin/race exclusions, faction/plugin/race assignments, and female/male default pools. Preset names must match installed catalog entries; missing names are skipped and logged.
+[*]A repeated import replaces only earlier OBody-imported rows and preserves BCNG sample and user rules. Imported rows remain visible and editable before saving or distributing.
+[*]Imported rows use the same top-to-bottom priority as every BCNG rule. An earlier same-sex [b]All NPCs[/b] rule can shadow a more specific imported row; the editor warns about this so the specific row can be moved upward or the earlier rule narrowed.
+[*]In [b]Outfit · randomization[/b], press [b]Register OBody NG outfit-correction rules[/b] to load outfit name/plugin/FormID exclusions, name/FormID force-refit entries, and female/male outfit-to-preset mappings.
+[*]Registration immediately re-evaluates every loaded actor. A blacklisted torso item is treated as absent for correction, while a force-refit item in any worn slot retains OBody NG's override behavior.
+[*]Distribution import and ORefit registration are independent; use either or both.
+[/list]
+
+The [url=https://www.nexusmods.com/skyrimspecialedition/mods/105052][b]OBody Next Generation ORefit JSON Master List[/b][/url] by SlickSilk is supported as an optional import source. Install its JSON and referenced preset assets separately; Body Change NG does not redistribute them.
+
+[line]
+
 [size=5][color=#5FB8E8][b]COMPATIBILITY NOTES[/b][/color][/size]
 
 [list]
 [*][b]Racial Skin Variance[/b] — BCNG treats the current RSV graph as a provider and maintains a bounded face bridge. UBE 2.0's own requirement to exclude its player race from RSV ([font=Courier New]PLAYER VANILLA[/font]) still applies.
 [*][b]SOS/TNG/TRX/ERF[/b] — external genital geometry remains reference-scoped and equipment-aware, separate from ActorBase-scoped body skin.
 [*][b]Mu Dynamic NormalMap[/b] — supported companion normal bundles remain with the selected cached normal.
+[*][b]OverlayFix[/b] — actor-update and asynchronous-work boundaries are isolated to improve coexistence.
 [/list]
 
 [line]
@@ -187,7 +280,7 @@ Files added while Skyrim is running appear after pressing [b]Refresh[/b] on the 
 [*]Native BodySkin is NPC ActorBase scoped. References sharing one base share one native skin selection.
 [*]Direct choices and evaluated NPC results belong to the current SKSE co-save.
 [*]Distribution rules are stored in [font=Courier New]Data\SKSE\Plugins\BodyChangeNGdistribution.json[/font].
-[*]Settings and rule JSON remain supported; they are unrelated to the removed skin-pack manifest.
+[*]Settings and rule JSON remain supported and are kept separate from asset discovery.
 [/list]
 
 [line]
