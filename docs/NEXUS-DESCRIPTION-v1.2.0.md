@@ -1,5 +1,5 @@
 # **BODY CHANGE NG · v1.2.0**
-### Change BodySlide presets, native actor skins, and player tint masks in real time
+### Change the player's and NPCs' BodySlide presets and body skins, edit the player's tint masks in real time, and distribute BodySlide presets and body skins to NPCs using editable conditions
 
 **NATIVE IN-GAME GUI · GAMEPAD SUPPORT · RULE-BASED NPC DISTRIBUTION**
 
