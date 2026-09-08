@@ -2,9 +2,8 @@ Body Change NG - 스킨팩 설치 안내
 
 이 폴더 아래에 스킨팩마다 별도의 폴더를 만드세요.
 
-중요: 선택할 스킨과 바디 계열마다 최상위 폴더를 따로 만드세요.
-CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, 바닐라 파일을 하나의
-BodySkin\<스킨팩 이름> 폴더에 모두 넣지 마세요.
+중요: 선택할 스킨마다 최상위 폴더를 따로 만드세요. 일반 인간형 Legacy
+텍스처와 UBE 텍스처를 하나의 BodySkin\<스킨팩 이름> 폴더에 섞지 마세요.
 
 예시:
 BodySkin\CBBE 3BA - Skin A\Textures\actors\character\female\...
@@ -90,9 +89,9 @@ VectorPlexus Muscular ArmorAddon 경로와 종족·노인 상태에 맞는 채�
 발 텍스처를 대신 복제하지 않습니다.
 남성 몸·손·발·얼굴의 male 폴더와 SOS 폴더는 반드시 같은
 BodySkin\<스킨팩 이름> 안에 두어 하나의 스킨 항목으로 묶습니다. 서로 다른
-스킨팩 폴더의 남성 몸과 SOS 파일은 합치지 않습니다. 최상위 스킨팩 이름에
-HIMBO 또는 SAM을 명시하면 해당 바디 계열에만 표시·배포하며, 계열명이 없는
-일반 남성 스킨은 기존 호환 남성 계열에서 사용할 수 있습니다.
+스킨팩 폴더의 남성 몸과 SOS 파일은 합치지 않습니다. 폴더명은 표시 이름일
+뿐이며, 일반 남성팩은 Legacy로 등록되고 실제 바닐라/HIMBO/SAM 재질 경로는
+선택한 액터의 런타임 바디 계열에서 결정합니다.
 
 아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
 표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
@@ -101,6 +100,10 @@ HIMBO 또는 SAM을 명시하면 해당 바디 계열에만 표시·배포하며
 !UBE\Body 및 !UBE\Head 구조는 UBE 스킨으로 자동 분류하며 UBE의 슬롯 53
 바디와 얼굴에 적용합니다. 일반 스킨과 UBE 스킨은 선택한 액터의 실제
 바디 계열에 맞는 것만 목록에 표시됩니다.
+
+스킨팩용 profile.json은 사용하지 않습니다. 기존 파일이 남아 있어도 무시하며
+폴더 상대경로 기반 자동 ID와 실제 텍스처 구조만 사용합니다. Body Change NG의
+설정 및 NPC 배포 규칙 JSON은 별개이며 그대로 사용합니다.
 
 게임 실행 중 폴더를 추가했다면 Body Change NG의 바디스킨 탭에서
 새로고침을 누르세요. 아르고니안·카짓의 각 종족·성별 조합은 별도로
@@ -137,12 +140,16 @@ files. The live slot-52 ArmorAddon selects the matching Smurf Average or
 VectorPlexus Regular/Muscular material. Missing variants and channels retain
 the currently loaded texture and never borrow a body, hand, or foot map.
 Keep the male body/hand/foot/face files and SOS folders under the same
-BodySkin\<pack name>; BCNG never combines them across pack folders. An explicit
-HIMBO or SAM token in the top-level pack name restricts that pack to the named
-family. Unlabelled general male skins retain the compatible male fallback.
+BodySkin\<pack name>; BCNG never combines them across pack folders. The folder
+name is display text only. Every conventional male pack is Legacy, while the
+selected actor's runtime BodyFamily chooses vanilla, HIMBO, or SAM routing.
 
-Create a separate top-level pack folder for every selectable skin and body
-family. Do not combine CBBE 3BA, BHUNP/UNP, UBE, HIMBO, SAM, and Vanilla assets
-under one pack name. Keep matching body parts and optional race/elder variants
-together only within that family-specific pack. A male pack may include its own
-matching SOS folders; never mix them with another pack or body family.
+Create a separate top-level folder for every selectable skin. Never combine
+conventional Legacy and UBE assets under one pack name. Keep matching body
+parts and optional race/elder variants together. A male pack may include its
+own matching SOS folders; never mix them with another skin pack.
+
+Skin-pack profile.json is unsupported and ignored. Catalog IDs always come
+from the relative pack folder and detected sex; the texture namespace decides
+Legacy versus UBE. Settings and NPC distribution-rule JSON are separate and
+remain supported.

@@ -84,9 +84,9 @@ Legacy는 CBBE/3BA와 UNP/BHUNP를 스킨팩 단계에서 다시 나누지 않�
 
 ## 자동 검증과 남은 실게임 인수 조건
 
-자동 검증은 Release DLL 빌드, 테스트 실행 파일 14종, 패키지 구조 검사, `git diff --check`, 실제 떼껄룩 BodySkin/Tint/Futanari 카탈로그를 대상으로 합니다. 실제 자산 기대값은 Legacy 7개, UBE 4개, 스킨 매핑 DDS 139개, 무관 DDS 23개, Tint 85개, Futanari 10개입니다. `profile.json` 없는 7개 Legacy 팩도 목록에 남아야 합니다.
+자동 검증은 Release DLL 빌드, 테스트 실행 파일 14종, 패키지 구조 검사, `git diff --check`, 실제 떼껄룩 BodySkin/Tint/Futanari 카탈로그를 대상으로 합니다. 실제 자산 기대값은 Legacy 7개, UBE 4개, 스킨 매핑 DDS 139개, 무관 DDS 23개, Tint 85개, Futanari 10개입니다. 7개 일반팩은 별도 스킨 메타데이터 없이 모두 Legacy 목록에 남아야 합니다.
 
-2026-09-08의 기존 실게임 로그도 대조했습니다. Skyrim SE 1.5.97에서 RaceMenu BodyMorph v4 연결은 성공했고, 바디 프리셋은 CBBE/3BA 59, UBE 25, HIMBO 42, SAM 1, 미분류 여성 3으로 총 130개가 로드됐습니다. 반면 당시 1.2 중간 DLL은 스킨 11개를 스캔하고도 7개 Legacy 팩을 `diagnostic-only`로 표시해 목록에서 숨겼습니다. 현재 코드로 같은 원본 폴더를 다시 스캔하면 7개 모두 Legacy로 들어오며 `profile.json`이 필요하지 않습니다. C:\TAKEALOOK의 현재 TKL 활성 목록에 있는 프리셋 공급자 34개와 XML 84개도 각각 직접 파싱했고, 가상 경로 중복 제거 전 Preset 요소 115개가 오류 없이 처리됐습니다.
+2026-09-08의 기존 실게임 로그도 대조했습니다. Skyrim SE 1.5.97에서 RaceMenu BodyMorph v4 연결은 성공했고, 바디 프리셋은 CBBE/3BA 59, UBE 25, HIMBO 42, SAM 1, 미분류 여성 3으로 총 130개가 로드됐습니다. 반면 당시 1.2 중간 DLL은 스킨 11개를 스캔하고도 7개 Legacy 팩을 `diagnostic-only`로 표시해 목록에서 숨겼습니다. 현재 코드로 같은 원본 폴더를 다시 스캔하면 7개 모두 Legacy로 들어옵니다. C:\TAKEALOOK의 현재 TKL 활성 목록에 있는 프리셋 공급자 34개와 XML 84개도 각각 직접 파싱했고, 가상 경로 중복 제거 전 Preset 요소 115개가 오류 없이 처리됐습니다.
 
 동봉 배포 JSON은 schema 4의 제외 샘플 8개뿐이며 전체 여성 배포 규칙은 포함하지 않습니다. 현재 C:\TAKEALOOK 사용자 JSON은 이 8개와 `user-rule-1` 하나로 총 9개이고 두 개의 전체 여성 규칙 충돌이 없습니다. D:\TuLED13E 사용자 JSON에는 샘플 8개와 사용자 규칙 3개가 있으며, `user-rule-1` 전체 여성 행이 아래 `rule-10` 전체 여성 행을 가립니다. 이는 배포본이 아닌 사용자 우선순위이므로 임의로 순서나 풀을 바꾸지 않았고 UI 경고 대상으로 유지했습니다. `rule-11`은 저장 성별이 여성인데 과거 자동 이름이 남성인 상태여서, 정확한 구형 자동 문구를 현재 성별의 언어 키로 마이그레이션하도록 수정했습니다. 사용자 규칙 JSON 자체는 배포본으로 덮지 않았습니다.
 

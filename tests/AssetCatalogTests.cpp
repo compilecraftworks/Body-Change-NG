@@ -276,7 +276,7 @@ int main(const int argc, char** argv)
     }
 
     // Mirrors the seven conventional Toolred pack folder names which exposed
-    // the 1.2 regression: no profile.json and no CBBE/UNP token is required.
+    // the 1.2 regression: no metadata and no CBBE/UNP token is required.
     const std::array<std::string_view, 7> toolredLegacyPackNames{
         "니블A",
         "다이아 (뷰지스 기본)",
@@ -294,6 +294,11 @@ int main(const int argc, char** argv)
         Touch(directory / "femalehands_1.dds");
         Touch(directory / "femalehead.dds");
     }
+    // A leftover schema-1 manifest must not override automatic identity or
+    // turn a conventional female texture tree into UBE.
+    WriteText(sandbox / "BodySkin" /
+        bcn::path_text::FromUtf8(toolredLegacyPackNames.front()) / "profile.json",
+        R"json({"schemaVersion":1,"id":"must-not-load","sex":"female","uvLayout":"ube"})json");
 
     const auto ubeBody = sandbox / "BodySkin" / "UBE 2.0 Momo Skin" /
         "Textures" / "!UBE" / "Body";
@@ -399,7 +404,7 @@ int main(const int argc, char** argv)
             std::filesystem::equivalent(discoveredSkinRoots.front(), sandbox / "BodySkin", equivalentError) &&
             !equivalentError,
             "catalog root discovery climbed above the physical BodySkin provider")) return 1;
-    if (!Require(skins.size() == 20U, "skin scanner did not preserve valid humanoid and beast-race skin rows")) return 1;
+    if (!Require(skins.size() == 21U, "skin scanner did not preserve valid humanoid and beast-race skin rows")) return 1;
     const auto cbbeFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto unpFamilyForLegacy = bcn::body_family::Bit(bcn::body_family::Family::unp);
     const auto ubeFamilyForLegacy = bcn::body_family::Bit(bcn::body_family::Family::ube);
@@ -413,17 +418,24 @@ int main(const int argc, char** argv)
                 "a Toolred-style metadata-free female pack was not restored as a stable Legacy row")) return 1;
     }
     const auto explicitHimboSkin = std::ranges::find(
+        skins, "auto:Explicit HIMBO:male", &bcn::SkinProfile::id);
+    const auto metadataOnlyId = std::ranges::find(
         skins, "explicit-himbo", &bcn::SkinProfile::id);
+    const auto formerlyAmbiguousMale = std::ranges::find(
+        skins, "auto:Ambiguous Explicit Male:male", &bcn::SkinProfile::id);
     if (!Require(explicitHimboSkin != skins.end() &&
-            explicitHimboSkin->layout == bcn::SkinLayout::himbo,
-            "profile.json uvLayout did not establish one exact HIMBO contract")) return 1;
-    if (!Require(std::ranges::find(skins, "ambiguous-explicit-male",
-            &bcn::SkinProfile::id) == skins.end(),
-            "an ambiguous explicit profile was accepted without uvLayout")) return 1;
+            explicitHimboSkin->layout == bcn::SkinLayout::legacy &&
+            formerlyAmbiguousMale != skins.end() &&
+            formerlyAmbiguousMale->layout == bcn::SkinLayout::legacy &&
+            metadataOnlyId == skins.end() &&
+            std::ranges::find(skins, "must-not-load",
+                &bcn::SkinProfile::id) == skins.end() &&
+            std::ranges::find(skins, "ambiguous-explicit-male",
+                &bcn::SkinProfile::id) == skins.end(),
+            "skin metadata JSON changed automatic identity or Legacy classification")) return 1;
     std::size_t argonianRows{};
     std::size_t khajiitRows{};
     for (const auto& skin : skins) {
-        if (skin.id == "explicit-himbo") continue;
         if (skin.name == "Argonian Complete") {
             ++argonianRows;
             if (!Require(skin.race == bcn::SkinRace::argonian &&
@@ -533,11 +545,18 @@ int main(const int argc, char** argv)
                     "hands normal map was not kept on the hands normal channel")) return 1;
             continue;
         }
-        if (skin.name == "HIMBO Skin SOS" || skin.name == "SAM Skin SOS") {
-            const auto expectedLayout = skin.name.starts_with("HIMBO") ?
-                bcn::SkinLayout::himbo : bcn::SkinLayout::sam;
+        if (skin.name == "Explicit HIMBO" ||
+            skin.name == "Ambiguous Explicit Male") {
             if (!Require(skin.sex == bcn::SkinSex::male &&
-                    skin.layout == expectedLayout && skin.body.size() == 1U &&
+                    skin.layout == bcn::SkinLayout::legacy &&
+                    skin.body.size() == 1U && skin.hands.empty() &&
+                    skin.feet.empty() && skin.face.empty(),
+                    "a stale skin metadata file changed automatic male discovery")) return 1;
+            continue;
+        }
+        if (skin.name == "HIMBO Skin SOS" || skin.name == "SAM Skin SOS") {
+            if (!Require(skin.sex == bcn::SkinSex::male &&
+                    skin.layout == bcn::SkinLayout::legacy && skin.body.size() == 1U &&
                     skin.maleGenitals.size() == 1U &&
                     skin.maleGenitals.front().addonDirectory == "VectorPlexus Regular" &&
                     skin.maleGenitals.front().humanoid.size() == 2U,
@@ -695,19 +714,19 @@ int main(const int argc, char** argv)
     const auto himboFamily = bcn::body_family::Bit(bcn::body_family::Family::himbo);
     const auto samFamily = bcn::body_family::Bit(bcn::body_family::Family::sam);
     if (!Require(maleSkin != skins.end() &&
-            maleSkin->layout == bcn::SkinLayout::unknown &&
-            !bcn::SkinLayoutMatchesActor(maleSkin->layout, himboFamily) &&
-            !bcn::SkinLayoutMatchesActor(maleSkin->layout, samFamily) &&
+            maleSkin->layout == bcn::SkinLayout::legacy &&
+            bcn::SkinLayoutMatchesActor(maleSkin->layout, himboFamily) &&
+            bcn::SkinLayoutMatchesActor(maleSkin->layout, samFamily) &&
             maleSkin->maleGenitals.size() == 3U,
-            "an unlabeled male skin was not kept fail-closed between HIMBO and SAM")) return 1;
+            "a conventional male skin was not classified as Legacy")) return 1;
     const auto himboSkin = std::ranges::find(skins, "HIMBO Skin SOS", &bcn::SkinProfile::name);
     const auto samSkin = std::ranges::find(skins, "SAM Skin SOS", &bcn::SkinProfile::name);
     if (!Require(himboSkin != skins.end() && samSkin != skins.end() &&
             bcn::SkinLayoutMatchesActor(himboSkin->layout, himboFamily) &&
-            !bcn::SkinLayoutMatchesActor(himboSkin->layout, samFamily) &&
+            bcn::SkinLayoutMatchesActor(himboSkin->layout, samFamily) &&
             bcn::SkinLayoutMatchesActor(samSkin->layout, samFamily) &&
-            !bcn::SkinLayoutMatchesActor(samSkin->layout, himboFamily),
-            "explicit HIMBO and SAM skin packs leaked into the other male body family")) return 1;
+            bcn::SkinLayoutMatchesActor(samSkin->layout, himboFamily),
+            "conventional HIMBO and SAM packs were not normalized to Legacy")) return 1;
     if (!Require(bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3bbb_vagina") &&
             bcn::skin_geometry::IsCBBEGenitalAnal("3BA_Anus") &&

@@ -48,11 +48,19 @@ int main()
             SkinRace::humanoid, SkinSex::male, SkinRace::humanoid,
             Bit(Family::himbo)).status == SkinCompatibilityStatus::unknownProfileLayout,
             "an ambiguous skin profile did not fail closed")) return 1;
-    if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::himbo, SkinSex::male,
+    if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::legacy, SkinSex::male,
             SkinRace::humanoid, SkinSex::male, SkinRace::humanoid,
             Bit(Family::himbo) | Bit(Family::sam)).status ==
                 SkinCompatibilityStatus::unknownActorLayout,
             "an actor with conflicting layout evidence did not fail closed")) return 1;
+    if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::legacy, SkinSex::male,
+            SkinRace::humanoid, SkinSex::male, SkinRace::humanoid,
+            Bit(Family::himbo)).Compatible() &&
+            bcn::ResolveRuntimeSkinUvLayout(SkinLayout::legacy,
+                Bit(Family::himbo)) == SkinUvLayout::himbo &&
+            bcn::ResolveRuntimeSkinUvLayout(SkinLayout::legacy,
+                Bit(Family::sam)) == SkinUvLayout::sam,
+            "Legacy male classification lost exact runtime BodyFamily routing")) return 1;
     if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::argonian, SkinSex::female,
             SkinRace::argonian, SkinSex::female, SkinRace::argonian, 0U).Compatible(),
             "an exact Argonian layout incorrectly depended on a humanoid body family")) return 1;

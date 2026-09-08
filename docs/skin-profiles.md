@@ -106,61 +106,18 @@ are not assigned to guessed `BSTextureSet` indices. They remain controlled by
 the actor's active UBE material/Community Shaders setup, preventing a skin
 selection from overwriting an unrelated shader channel.
 
-`profile.json` is optional. Every conventional female texture tree is
-automatically classified as `Legacy`; only an explicit `!UBE` Body/Head tree is
-classified as `UBE`. A manifest is useful only as an override for a special
-pack. When it exists, it is placed directly beside `Textures` and overrides
-automatic detection for that skin folder. Its `id` is the stable value used by favorites
-and distribution rules, so do not change it after assigning the profile to NPC
-rules.
+Skin-pack metadata JSON is not supported. Every conventional humanoid texture
+tree is classified as `Legacy`; only an explicit `!UBE` Body/Head tree is
+classified as `UBE`. Argonian and Khajiit remain separate race boundaries, not
+body-family classifications. A stale metadata file beside `Textures` is
+ignored and cannot change the pack's name, identity, sex, race, layout, or DDS
+mapping.
 
-```json
-{
-  "schemaVersion": 1,
-  "id": "my-skin-a",
-  "name": "My Skin A",
-  "sex": "female",
-  "race": "humanoid",
-  "uvLayout": "legacy",
-  "body": [
-    { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_1.dds" },
-    { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_1_msn.dds" },
-    { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_1_sk.dds" },
-    { "index": 7, "path": "Textures\\actors\\character\\female\\femalebody_1_s.dds" }
-  ],
-  "cbbeGenitalAnal": [
-    { "index": 0, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1.dds" },
-    { "index": 1, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_msn.dds" },
-    { "index": 2, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_sk.dds" },
-    { "index": 7, "path": "Textures\\actors\\character\\female\\femalebody_etc_v2_1_s.dds" }
-  ],
-  "hands": [
-    { "index": 0, "path": "Textures\\actors\\character\\female\\femalehands_1.dds" }
-  ],
-  "feet": [
-    { "index": 0, "path": "Textures\\actors\\character\\female\\femalefeet_1.dds" }
-  ],
-  "face": [
-    { "index": 0, "path": "Textures\\actors\\character\\female\\femalehead.dds" },
-    { "index": 1, "path": "Textures\\actors\\character\\female\\femalehead_msn.dds" },
-    { "index": 2, "path": "Textures\\actors\\character\\female\\femalehead_sk.dds" },
-    { "index": 7, "path": "Textures\\actors\\character\\female\\femalehead_s.dds" }
-  ]
-}
-```
-
-`sex` accepts `female` or `male`. `uvLayout` accepts `legacy`, `ube`,
-`male-vanilla`, `himbo`, `sam`, `argonian`, or `khajiit`. Existing values
-`female-vanilla`, `cbbe`, `unp`, `3ba`, `bhunp`, and
-`cbbe-3ba`/`bhunp-unp` remain accepted as aliases for `legacy`. The
-optional `race` accepts `humanoid`, `argonian`, or `khajiit`; when omitted it is
-inferred from standard beast-race texture folders. The layout must agree with
-the profile's sex and race. `Textures\\...` is relative to the
-skin folder. Explicit paths may also start with `BodySkin\\` or `textures\\`.
-Every path must end in `.dds` and must not include `..` or a drive letter.
-The optional `cbbeGenitalAnal` and `unpGenitalAnal` arrays provide the two
-family-specific atlases described above. The schema-1 `vagina` key remains a
-backward-compatible alias for `cbbeGenitalAnal`.
+The stable catalog ID is always derived from the top-level folder's relative
+path and detected sex, for example `auto:MySkinA:female`. UBE adds the existing
+`:ube` suffix and beast-race rows add their existing race suffix. Rename a pack
+folder only when intentionally creating a new catalog identity. Favorites and
+NPC distribution rules continue to store these automatic IDs.
 
 Shader texture indices follow the RaceMenu/NiOverride convention used here:
 `0` diffuse, `1` normal (`_msn`), `2` skin/tint (`_sk`), `3` face detail, and
@@ -174,8 +131,8 @@ race boundaries. CBBE 3BA and UNP/BHUNP actors both accept Legacy packs, while
 UBE actors accept only UBE packs. An NPC distribution rule can still
 contain a mixed skin pool; at runtime it stably samples only the compatible
 profiles for that NPC. Existing relative-folder automatic IDs do not change
-when a pack is classified, and `profile.json` is not required for a normal
-female pack. Conflicting/unknown runtime actor evidence still fails closed.
+when a pack is classified. Conflicting/unknown runtime actor evidence still
+fails closed.
 
 RaceMenu's broad skin-slot call may traverse several ArmorAddons attached to
 one Skin Armor. Body Change NG 1.2 permits that route only for UBE's explicitly

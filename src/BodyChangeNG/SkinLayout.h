@@ -23,17 +23,14 @@ namespace bcn
     };
 
     // Catalog classification is intentionally independent of the installed
-    // BodySlide family. Conventional female packs are one Legacy layout: CBBE
-    // and UNP cannot be active as the same actor's base body, so the actor's
-    // runtime BodyFamily chooses the concrete material route at apply time.
+    // BodySlide family. Every conventional humanoid pack is one Legacy layout;
+    // only the explicit !UBE namespace is UBE. The actor's runtime BodyFamily
+    // chooses the concrete material route at apply time.
     enum class SkinLayout : std::uint8_t
     {
         unknown,
         legacy,
         ube,
-        maleVanilla,
-        himbo,
-        sam,
         argonian,
         khajiit
     };
@@ -82,24 +79,20 @@ namespace bcn
         bodyAtlas
     };
 
-    [[nodiscard]] constexpr body_family::Mask LegacyFemaleFamilies() noexcept
+    [[nodiscard]] constexpr body_family::Mask LegacyHumanoidFamilies() noexcept
     {
-        using body_family::Bit;
-        using body_family::Family;
-        return Bit(Family::femaleVanilla) | Bit(Family::cbbe) | Bit(Family::unp);
+        return (body_family::kFemaleFamilies &
+                ~body_family::Bit(body_family::Family::ube)) |
+            body_family::kMaleFamilies;
     }
 
     [[nodiscard]] constexpr body_family::Mask SkinLayoutFamilyMask(
         const SkinLayout layout) noexcept
     {
-        using body_family::Bit;
-        using body_family::Family;
         switch (layout) {
-        case SkinLayout::legacy: return LegacyFemaleFamilies();
-        case SkinLayout::ube: return Bit(Family::ube);
-        case SkinLayout::maleVanilla: return Bit(Family::maleVanilla);
-        case SkinLayout::himbo: return Bit(Family::himbo);
-        case SkinLayout::sam: return Bit(Family::sam);
+        case SkinLayout::legacy: return LegacyHumanoidFamilies();
+        case SkinLayout::ube:
+            return body_family::Bit(body_family::Family::ube);
         default: return 0U;
         }
     }
@@ -109,13 +102,10 @@ namespace bcn
     {
         using body_family::Bit;
         using body_family::Family;
-        if (families != 0U && (families & ~LegacyFemaleFamilies()) == 0U) {
+        if (families != 0U && (families & ~LegacyHumanoidFamilies()) == 0U) {
             return SkinLayout::legacy;
         }
         if (families == Bit(Family::ube)) return SkinLayout::ube;
-        if (families == Bit(Family::maleVanilla)) return SkinLayout::maleVanilla;
-        if (families == Bit(Family::himbo)) return SkinLayout::himbo;
-        if (families == Bit(Family::sam)) return SkinLayout::sam;
         return SkinLayout::unknown;
     }
 
@@ -139,18 +129,12 @@ namespace bcn
             if (actorFamilies == Bit(Family::femaleVanilla)) return SkinUvLayout::femaleVanilla;
             if (actorFamilies == Bit(Family::cbbe)) return SkinUvLayout::cbbe;
             if (actorFamilies == Bit(Family::unp)) return SkinUvLayout::unp;
+            if (actorFamilies == Bit(Family::maleVanilla)) return SkinUvLayout::maleVanilla;
+            if (actorFamilies == Bit(Family::himbo)) return SkinUvLayout::himbo;
+            if (actorFamilies == Bit(Family::sam)) return SkinUvLayout::sam;
             break;
         case SkinLayout::ube:
             if (actorFamilies == Bit(Family::ube)) return SkinUvLayout::ube;
-            break;
-        case SkinLayout::maleVanilla:
-            if (actorFamilies == Bit(Family::maleVanilla)) return SkinUvLayout::maleVanilla;
-            break;
-        case SkinLayout::himbo:
-            if (actorFamilies == Bit(Family::himbo)) return SkinUvLayout::himbo;
-            break;
-        case SkinLayout::sam:
-            if (actorFamilies == Bit(Family::sam)) return SkinUvLayout::sam;
             break;
         default:
             break;
@@ -229,9 +213,6 @@ namespace bcn
         switch (layout) {
         case SkinLayout::legacy: return "legacy";
         case SkinLayout::ube: return "ube";
-        case SkinLayout::maleVanilla: return "male-vanilla";
-        case SkinLayout::himbo: return "himbo";
-        case SkinLayout::sam: return "sam";
         case SkinLayout::argonian: return "argonian";
         case SkinLayout::khajiit: return "khajiit";
         default: return "unknown";

@@ -26,19 +26,20 @@ NPC 배포 조건·우선순위·풀 편집 방식은 1.1.4를 유지하되, 내
 
 ## 스킨 레이아웃과 런타임 바디 계열
 
-카탈로그의 `SkinLayout`과 액터의 `BodyFamily`는 별도 계약이다. 일반 여성
-스킨팩은 CBBE/3BA와 UNP/BHUNP를 파일명·폴더명으로 다시 분류하지 않고 모두
-`Legacy`로 등록한다. 명백한 `!UBE/Body`, `!UBE/Head` 구조만 `UBE`다.
-따라서 `profile.json`이 없는 기존 일반 여성팩도 이름과 무관하게 목록에
-남고, 자동 ID인 `auto:<상대 폴더>:female`도 변하지 않는다.
+카탈로그의 `SkinLayout`과 액터의 `BodyFamily`는 별도 계약이다. 일반 인간형
+스킨팩은 CBBE/3BA·UNP/BHUNP·바닐라/HIMBO/SAM을 파일명·폴더명으로 다시
+분류하지 않고 모두 `Legacy`로 등록한다. 명백한 `!UBE/Body`, `!UBE/Head`
+구조만 `UBE`다. 스킨팩 메타데이터 JSON은 읽지 않으며, 자동 ID인
+`auto:<상대 폴더>:<성별>`도 변하지 않는다.
 
 호환성은 적용 시 액터의 `BodyFamily`와 결합한다. CBBE/3BA·UNP/BHUNP·일반
 여성 바디는 Legacy를 허용하고 UBE는 UBE만 허용한다. 네이티브 재질 라우팅에
 필요한 구체 `SkinUvLayout`은 이 시점에만 파생한다. 3BA의
 `femalebody_etc_v2_1`과 BHUNP의 `BakaUNP/VaginalAnalCanal2`는 분류 근거가
 아니라 독립된 선택적 질·항문 자산이며, 실제 설치 그래프에서 일치하는 정확한
-TXST/지오메트리 역할에만 들어간다. 남성 HIMBO/SAM과 수인종은 기존의 정확한
-레이아웃 실패 폐쇄를 유지한다.
+TXST/지오메트리 역할에만 들어간다. 남성의 구체적인 바닐라/HIMBO/SAM 경로도
+적용 시점의 런타임 BodyFamily에서만 파생한다. 아르고니안·카짓은 바디 계열
+분류가 아니라 별도의 종족 경계로 유지한다.
 
 ## 네이티브 기본 스킨 그래프
 

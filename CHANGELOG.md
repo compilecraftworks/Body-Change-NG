@@ -6,15 +6,15 @@ All notable public changes to Body Change NG are documented here.
 
 ### Skin architecture
 
-- Separates catalog `SkinLayout` from runtime `BodyFamily`. Only an explicit `!UBE` atlas tree is UBE; every other conventional female pack is Legacy regardless of folder labels or optional genital/anal DDS files.
-- Does not classify female packs as CBBE/3BA versus UNP/BHUNP. Both runtime families accept Legacy, UBE accepts only UBE, and optional genital/anal atlases route only through matching TXST/geometry roles.
-- Removes the regression that excluded metadata-free conventional female packs as `unknown`, preserves every relative-path automatic ID, and keeps existing CBBE/UNP manifest values as Legacy aliases.
+- Separates catalog `SkinLayout` from runtime `BodyFamily`. Only an explicit `!UBE` atlas tree is UBE; every other conventional humanoid pack is Legacy regardless of folder labels or optional genital/anal DDS files.
+- Does not classify packs as CBBE/3BA versus UNP/BHUNP or vanilla/HIMBO/SAM. Runtime BodyFamily still selects the exact material route, UBE accepts only UBE, and optional genital/anal atlases route only through matching TXST/geometry roles.
+- Removes the regression that excluded metadata-free conventional packs as `unknown` and preserves every relative-path automatic ID.
 - Replaces general BodySkin NiOverride painting with a private deep clone of the current native TXST -> ARMA -> Skin Armor graph and an optional Face TXST. The clone preserves all source channels and overlays only the part/channel pairs declared by the selected profile.
 - Requires an exact TXST role only for parts the partial pack actually supplies. Missing body parts or DDS channels retain the current provider value; a declared part with no exact role aborts before attachment instead of being redirected to another part.
 - Models the shipped UBE 2.0 graph explicitly: its slot-53 torso and separate hand/foot ARMAs share `!UBE\Body\femalebody_1_{d,n,sk}` while their NAM1 fields are empty. BCNG synthesizes a private TXST only on clones of verified canonical UBE naked models when body-atlas layers are actually declared; face-only profiles, custom paths, and absent channels are never guessed.
 - Attaches the complete graph at the NPC ActorBase, so naked body, hand, and foot rebuilds use Skyrim's native skin source without tracking equipment. Outfit-owned hard-coded materials are not guessed or repainted.
 - Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
-- Keeps `profile.json` as an optional override for special packs rather than a requirement for conventional female skins.
+- Removes skin-pack `profile.json` parsing and the bundled manifest example. A stale manifest is ignored; folder-relative automatic identity and the texture namespace are the only catalog inputs. Settings and distribution-rule JSON are unchanged.
 
 ### Ownership, distribution, and compatibility
 

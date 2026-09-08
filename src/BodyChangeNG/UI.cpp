@@ -1030,7 +1030,7 @@ namespace
         case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
         case bcn::skin_override::ApplyResult::ambiguousProfileLayout:
-            return Text("스킨팩의 UV 레이아웃을 확정할 수 없습니다. profile.json에 uvLayout을 지정하세요.", "The skin pack's UV layout is ambiguous. Set uvLayout in profile.json.", "无法确定皮肤包的 UV 布局。请在 profile.json 中设置 uvLayout。");
+            return Text("스킨팩의 텍스처 구조를 지원되는 레이아웃으로 확정할 수 없습니다.", "The skin pack's texture structure does not identify a supported layout.", "无法根据皮肤包的纹理结构确定受支持的布局。");
         case bcn::skin_override::ApplyResult::ambiguousActorLayout:
             return Text("액터의 바디 UV 레이아웃을 안전하게 판별하지 못해 적용을 중단했습니다.", "The actor's body UV layout could not be identified safely, so the skin was not applied.", "无法安全识别角色的身体 UV 布局，因此未应用皮肤。");
         case bcn::skin_override::ApplyResult::incompatibleFutanariType:

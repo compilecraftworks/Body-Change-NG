@@ -4,7 +4,6 @@
 #include "BodyChangeNG/SkinLayout.h"
 
 #include <array>
-#include <bit>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -65,9 +64,9 @@ namespace bcn
         std::string name;
         SkinSex sex{ SkinSex::female };
         SkinRace race{ SkinRace::humanoid };
-        // Catalog identity is only Legacy vs UBE for conventional female
-        // skins. The actor's runtime BodyFamily is deliberately not stored on
-        // the pack and is consulted only when compatibility/routing is needed.
+        // Catalog identity is only Legacy vs UBE for humanoid skins. The
+        // actor's runtime BodyFamily is deliberately not stored on the pack
+        // and is consulted only when compatibility/routing is needed.
         SkinLayout layout{ SkinLayout::unknown };
         std::vector<SkinTextureLayer> body;
         // Optional family-specific genital/anal atlases. CBBE 3BA shares
@@ -168,8 +167,10 @@ namespace bcn
     public:
         static SkinProfiles& Get();
 
-        // Loads BodySkin/<skin name>/profile.json and auto-detects the common
-        // BodySkin/<skin name>/Textures/... layout when no profile JSON exists.
+        // Auto-detects the common BodySkin/<skin name>/Textures/... layout.
+        // Skin-pack profile JSON is deliberately unsupported: catalog identity
+        // and compatibility come only from the stable relative folder path,
+        // texture namespace, actor sex/race, and runtime BodyFamily.
         // Conventional and UBE packs may be partial. Each available body part
         // and material channel becomes an override; absent parts/channels keep
         // the actor's underlying texture instead of being synthesized from a
