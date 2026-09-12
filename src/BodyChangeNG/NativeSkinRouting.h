@@ -62,6 +62,15 @@ namespace bcn::native_skin
         return (available & required) == required;
     }
 
+    // Partial skin packs are valid. This is the subset that can be applied to
+    // the current native graph without borrowing a texture from another body
+    // part or guessing an absent target.
+    [[nodiscard]] constexpr TextureRoleMask ApplicableRoleMask(
+        const TextureRoleMask available, const TextureRoleMask requested) noexcept
+    {
+        return available & requested;
+    }
+
     [[nodiscard]] constexpr TextureRole ResolveTextureRole(
         const std::uint32_t slotMask, const std::string_view originalDiffuse,
         const SkinUvLayout layout) noexcept
@@ -149,7 +158,7 @@ namespace bcn::native_skin
         switch (shaderTextureIndex) {
         case 0U: return "!UBE\\Body\\femalebody_1_d.dds";
         case 1U: return "!UBE\\Body\\femalebody_1_n.dds";
-        case 3U: return "!UBE\\Body\\femalebody_1_sk.dds";
+        case 2U: return "!UBE\\Body\\femalebody_1_sk.dds";
         default: return {};
         }
     }

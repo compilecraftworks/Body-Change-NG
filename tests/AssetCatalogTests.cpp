@@ -1,4 +1,7 @@
 #include "BodyChangeNG/PlayerTint.h"
+#include "BodyChangeNG/PlayerTintSerialization.h"
+#include "BodyChangeNG/DistributionOverlayColors.h"
+#include "BodyChangeNG/AppearanceColorDrafts.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/FutanariRouting.h"
@@ -6,6 +9,9 @@
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
+#include "BodyChangeNG/SkinApplicationPlan.h"
+#include "BodyChangeNG/FaceSkinPolicy.h"
+#include "BodyChangeNG/SlaveTatsCatalog.h"
 
 #include <filesystem>
 #include <fstream>
@@ -13,8 +19,10 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <chrono>
 #include <ranges>
 #include <unordered_set>
+#include <cstring>
 
 namespace
 {
@@ -71,7 +79,10 @@ namespace
             std::string_view{ "handsmale" }, std::string_view{ "feetmale" },
             std::string_view{ "headmale" }
         };
-        if (filename == "blankdetailmap.dds" || filename.starts_with("femaleheaddetail_") ||
+        // blankdetailmap.dds is deliberately sex-ambiguous and may be shipped
+        // in an opposite-sex helper directory without belonging to a profile.
+        // Its positive mapping is covered by the synthetic catalog test below.
+        if (filename.starts_with("femaleheaddetail_") ||
             filename.starts_with("maleheaddetail_")) return filename.ends_with(".dds");
         for (const auto stem : stems) {
             if (filename == std::string{ stem } + ".dds" ||
@@ -102,10 +113,253 @@ namespace
                 });
             });
     }
+
+    bool HasExactUbeMaterialChannels(
+        const std::vector<bcn::SkinTextureLayer>& layers, const std::string_view stem)
+    {
+        const std::array expected{
+            std::pair{ 0U, std::string{ stem } + "_d.dds" },
+            std::pair{ 1U, std::string{ stem } + "_n.dds" }
+        };
+        return layers.size() == expected.size() &&
+            std::ranges::all_of(expected, [&](const auto& item) {
+                const auto& [index, filename] = item;
+                return std::ranges::any_of(layers, [&](const auto& layer) {
+                    return layer.shaderTextureIndex == index &&
+                        Filename(Lower(layer.path)) == filename;
+                });
+            });
+    }
 }
 
 int main(const int argc, char** argv)
 {
+    using namespace bcn::player_tint;
+    PersistedState tintState{ .pack = "Tint pack A" };
+    for (std::uint8_t i{}; i < 15U; ++i) {
+        tintState.layers.push_back({ .layer = static_cast<Layer>(i), .restored = i == 14U,
+            .assetID = "Tint pack A/asset" + std::to_string(i),
+            .color = { 0.1F, 0.5F, 0.9F, static_cast<float>(i) / 14.0F } });
+        tintState.backups.push_back({ .type = i, .texturePath = "Actors/OriginalA/" + std::to_string(i) + ".dds",
+            .color = { i, 127U, 255U }, .alpha = 0.25F });
+    }
+    std::vector<std::uint8_t> tintBytes;
+    const auto writeTint = [&](const auto& value) {
+        const auto* bytes = reinterpret_cast<const std::uint8_t*>(&value);
+        tintBytes.insert(tintBytes.end(), bytes, bytes + sizeof(value));
+        return true;
+    };
+    const auto writeTintString = [&](const std::string& value) {
+        writeTint(static_cast<std::uint32_t>(value.size()));
+        tintBytes.insert(tintBytes.end(), value.begin(), value.end());
+        return true;
+    };
+    if (!Require(WriteState(tintState, writeTint, writeTintString), "tint state failed to encode")) return 1;
+    const auto readTint = [&](const std::uint32_t version, const std::size_t length) {
+        std::size_t cursor{};
+        const auto read = [&](auto& value) {
+            if (cursor > length || sizeof(value) > length - cursor) return false;
+            std::memcpy(&value, tintBytes.data() + cursor, sizeof(value));
+            cursor += sizeof(value);
+            return true;
+        };
+        const auto string = [&](std::string& value) {
+            std::uint32_t size{};
+            if (!read(size) || size > 1024U || size > length - cursor) return false;
+            value.assign(reinterpret_cast<const char*>(tintBytes.data() + cursor), size);
+            cursor += size;
+            return true;
+        };
+        return ReadState(version, read, string);
+    };
+    const auto restoredTint = readTint(2U, tintBytes.size());
+    if (!Require(restoredTint && restoredTint->pack == tintState.pack && restoredTint->layers.size() == 15U &&
+            restoredTint->backups.size() == 15U && restoredTint->layers[0].color.alpha == 0.0F &&
+            restoredTint->layers[13].color.alpha == tintState.layers[13].color.alpha &&
+            restoredTint->layers[14].restored && restoredTint->backups[7].texturePath == tintState.backups[7].texturePath &&
+            restoredTint->backups[7].color == tintState.backups[7].color && restoredTint->backups[7].alpha == 0.25F,
+            "tint pack, per-layer RGBA, restore intent or original masks failed round trip")) return 1;
+    const auto legacyTintRecord = readTint(1U, tintBytes.size());
+    if (!Require(legacyTintRecord && legacyTintRecord->layers.size() == 15U && legacyTintRecord->backups.empty(),
+            "v1 tint selection was rejected or borrowed unrelated global backups")) return 1;
+    for (std::size_t length{}; length < tintBytes.size(); ++length) {
+        if (!Require(!readTint(2U, length), "truncated tint record was partially published")) return 1;
+    }
+    RestorePersistedState(*restoredTint);
+    BeginPreview();
+    if (!Require(SnapshotPersistedState().backups[0].texturePath == tintState.backups[0].texturePath,
+            "pinning a preview discarded original tint backups")) return 1;
+    auto otherSave = tintState;
+    otherSave.pack = "Tint pack B";
+    otherSave.backups[0].texturePath = "Actors/OriginalB/lips.dds";
+    RestorePersistedState(otherSave);
+    if (!Require(SnapshotPersistedState().pack == otherSave.pack &&
+            SnapshotPersistedState().backups[0].texturePath == otherSave.backups[0].texturePath,
+            "loading save B retained save A's tint baseline")) return 1;
+    ResetPersistedState();
+    if (!Require(!SnapshotPersistedState().pack && SnapshotPersistedState().backups.empty(),
+            "new game retained tint state from the previous save")) return 1;
+    bcn::DistributionRule coloredRule;
+    bcn::ui::AppearanceColorDrafts<std::uint32_t> batchDrafts;
+    batchDrafts.Set(0x14U, 0U, "A", 0x80123456U);
+    batchDrafts.Set(0x14U, 0U, "B", 0x40010203U);
+    batchDrafts.Set(0x14U, 1U, "A", 0xFF112233U);
+    batchDrafts.Set(0x14U, 0U, "unchecked", 0xFFFFFFFFU);
+    coloredRule.overlayIds[0] = { "A", "B", "new" };
+    coloredRule.overlayIds[1] = { "A" };
+    unsigned fallbackReads{};
+    for (std::size_t area{}; area < coloredRule.overlayIds.size(); ++area) {
+        coloredRule.overlayColors[area] = batchDrafts.CopySelection(0x14U,
+            static_cast<std::uint8_t>(area), coloredRule.overlayIds[area],
+            [&](const auto&) { ++fallbackReads; return 0xFFFFFFFFU; });
+    }
+    const nlohmann::json batchJson = coloredRule.overlayColors;
+    batchDrafts.Clear(); // UI close must not invalidate an explicitly saved rule.
+    coloredRule.overlayColors = bcn::ReadDistributionOverlayColors(
+        nlohmann::json::parse(batchJson.dump()), coloredRule.overlayIds);
+    if (!Require(fallbackReads == 1U && coloredRule.overlayColors[0].size() == 3U &&
+            bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::face, "A") == 0x80123456U &&
+            bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::face, "B") == 0x40010203U &&
+            bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::body, "A") == 0xFF112233U &&
+            bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::face, "new") == 0xFFFFFFFFU,
+            "batch color selection, rule serialization, or NPC color lookup lost per-entry RGBA")) return 1;
+
+    coloredRule.overlayIds[0] = { "A", "B", "zero", "negative", "overflow", "float", "text" };
+    coloredRule.overlayIds[1] = { "A" };
+    coloredRule.overlayColors[0] = { { "A", 0x80123456U }, { "B", 0xFFFFFFFFU }, { "zero", 0U } };
+    coloredRule.overlayColors[1] = { { "A", 0x40654321U } };
+    const nlohmann::json colors = coloredRule.overlayColors;
+    auto decoded = bcn::ReadDistributionOverlayColors(nlohmann::json::parse(colors.dump()), coloredRule.overlayIds);
+    if (!Require(decoded == coloredRule.overlayColors, "distribution RGBA JSON round trip changed colors")) return 1;
+    auto malformed = colors;
+    malformed[0]["negative"] = -1;
+    malformed[0]["overflow"] = 0x100000000ULL;
+    malformed[0]["float"] = 0.5;
+    malformed[0]["text"] = "red";
+    malformed[0]["unselected"] = 123U;
+    decoded = bcn::ReadDistributionOverlayColors(malformed, coloredRule.overlayIds);
+    if (!Require(decoded == coloredRule.overlayColors &&
+            bcn::ReadDistributionOverlayColors(nullptr, coloredRule.overlayIds)[0].empty(),
+            "bad optional colors rejected good values or legacy rules")) return 1;
+    if (argc == 3 && std::string_view(argv[1]) == "--verify-bnp") {
+        const auto profiles = bcn::SkinProfiles::ScanDirectory(std::filesystem::path{argv[2]});
+        const std::array names{
+            "BnP female skin 4k (CBBE Player and Replacer)",
+            "BnP female skin 4k (UNP Player and Replacer)",
+            "BnP male skin 4k (SOS full Player Replacer)" };
+        std::size_t combinations{};
+        for (std::size_t pack{}; pack < names.size(); ++pack) {
+            const auto found = std::ranges::find(profiles, names[pack], &bcn::SkinProfile::name);
+            if (!Require(found != profiles.end(), "requested BnP pack missing")) return 1;
+            const auto& profile = *found;
+            const bool male = pack == 2;
+            if (!Require(profile.sex == (male ? bcn::SkinSex::male : bcn::SkinSex::female) &&
+                    profile.id == std::string("auto:") + names[pack] + (male ? ":male" : ":female") &&
+                    HasExactMaterialChannels(profile.face, male ? "malehead" : "femalehead"),
+                    "BnP sex, stable ID, or four generic face channels changed")) return 1;
+            const auto family = male ? bcn::body_family::Family::himbo : pack == 0 ?
+                bcn::body_family::Family::cbbe : bcn::body_family::Family::unp;
+            if (!Require(HasExactMaterialChannels(profile.body,
+                        male ? "malebody_1" : "femalebody_1") &&
+                    HasExactMaterialChannels(profile.hands,
+                        male ? "malehands_1" : "femalehands_1"),
+                    "BnP body or hands DDS channels do not match the Legacy NIF layout")) return 1;
+            if (!male && !Require(
+                    pack == 0 ? HasExactMaterialChannels(profile.cbbeGenitalAnal,
+                                      "femalebody_etc_v2_1") && profile.unpGenitalAnal.empty() :
+                                HasExactMaterialChannels(profile.unpGenitalAnal,
+                                      "vaginalanalcanal2") && profile.cbbeGenitalAnal.empty(),
+                    "BnP female genital/anal DDS channels crossed CBBE and UNP layouts")) return 1;
+            if (male && !Require(profile.maleGenitals.size() == 3U &&
+                    std::ranges::all_of(profile.maleGenitals, [](const auto& variant) {
+                        return HasExactMaterialChannels(variant.humanoid, "malegenitals_1");
+                    }), "BnP SOS genital DDS channels do not match the installed Legacy SOS NIFs")) return 1;
+            const std::string prefix = std::string("BodySkin\\") + names[pack] + "\\";
+            const auto pathFor = [](const auto& layers, unsigned index) {
+                for (const auto& layer : layers) if (layer.shaderTextureIndex == index) return layer.path;
+                return std::string{};
+            };
+            const auto safeLayers = [&](const auto& layers) {
+                for (const auto& layer : layers) {
+                    const auto path = Lower(layer.path);
+                    if (!layer.path.starts_with(prefix) || path.contains("tintmasks") ||
+                        path.contains("facetint") || layer.shaderTextureIndex == 6U) return false;
+                }
+                return true;
+            };
+            for (bool elder : {false, true}) for (bool vampire : {false, true}) {
+                for (unsigned race = 1; race < static_cast<unsigned>(bcn::HumanoidSkinRace::count); ++race) {
+                    const auto plan = bcn::skin_plan::Build(profile, {
+                        .elder=elder, .vampire=vampire,
+                        .humanoidRace=static_cast<bcn::HumanoidSkinRace>(race),
+                        .faceDetailFilename=male ? "maleheaddetail_age40.dds" : "femaleheaddetail_age40.dds",
+                        .bodyFamily=bcn::body_family::Bit(family) });
+                    auto expected = pathFor(profile.face, 1);
+                    if (auto specific = pathFor(profile.raceFace[race], 1); !specific.empty()) expected = specific;
+                    if (auto specific = pathFor(profile.vampireFace, 1); vampire && !specific.empty()) expected = specific;
+                    if (auto specific = pathFor(profile.elderFace, 1); elder && !specific.empty()) expected = specific;
+                    if (!Require(pathFor(plan.face, 1) == expected && safeLayers(plan.face) &&
+                            safeLayers(plan.body) && safeLayers(plan.hands) && safeLayers(plan.feet) &&
+                            pathFor(plan.feet, 0) == pathFor(plan.body, 0),
+                            "BnP conditional role/fallback, pack isolation, or tint exclusion failed")) return 1;
+                    for (const auto& layer : plan.face) {
+                        if (!Require(std::ranges::find(bcn::face_skin::kChannels, layer.shaderTextureIndex) !=
+                                bcn::face_skin::kChannels.end(), "unsupported face channel")) return 1;
+                    }
+                    ++combinations;
+                }
+            }
+            std::cout << "VERIFIED_BNP " << profile.name << " face=" << profile.face.size()
+                << " vampire=" << profile.vampireFace.size() << " details=" << profile.faceDetails.size() << '\n';
+        }
+        std::cout << "BnP real-folder catalog/plan verification passed: " << combinations
+            << " combinations; tint masks excluded; no game writes\n";
+        return 0;
+    }
+    // Read-only diagnostic mode: inspect real packs through the same
+    // production catalog, without copying assets or changing game settings.
+    if (argc == 3 && (std::string_view(argv[1]) == "--inspect-skin-root" ||
+            std::string_view(argv[1]) == "--inspect-installed-pack")) {
+        auto root = std::filesystem::path{argv[2]};
+        if (std::string_view(argv[1]) == "--inspect-installed-pack") {
+            // Catalog-only mirror: preserve actual relative filenames, not
+            // DDS contents. No game-file writes or rendering/load attempts.
+            const auto source = std::filesystem::absolute(root);
+            root = std::filesystem::current_path() / "build" / "diagnostics" /
+                ("male-pack-audit-" + std::to_string(
+                    std::chrono::steady_clock::now().time_since_epoch().count()));
+            std::filesystem::create_directories(root.parent_path());
+            if (!std::filesystem::create_directory(root)) return 1;
+            root /= "BodySkin";
+            for (const auto& entry : std::filesystem::recursive_directory_iterator(source)) {
+                if (!entry.is_regular_file() || Lower(entry.path().extension().string()) != ".dds") continue;
+                Touch(root / "Pack" / std::filesystem::relative(entry.path(),source));
+            }
+            std::cout << "CATALOG_ONLY_MIRROR " << root.string() << '\n';
+        }
+        const auto profiles = bcn::SkinProfiles::ScanDirectory(root);
+        std::size_t males{};
+        for (const auto& profile : profiles) {
+            if (profile.sex == bcn::SkinSex::male) ++males;
+            std::cout << (profile.sex == bcn::SkinSex::male ? "MALE_PROFILE " : "FEMALE_PROFILE ") << profile.id << '\n';
+            const auto dump = [](std::string_view role, const auto& layers) {
+                for (const auto& layer : layers)
+                    std::cout << role << '[' << unsigned(layer.shaderTextureIndex) << "] " << layer.path << '\n';
+            };
+            dump("body", profile.body); dump("hands", profile.hands);
+            dump("feet", profile.feet); dump("face", profile.face);
+            dump("elderBody", profile.elderBody); dump("elderHands", profile.elderHands);
+            dump("elderFace", profile.elderFace); dump("vampire", profile.vampireFace);
+            for (std::size_t i{};i<profile.raceFace.size();++i)
+                dump("raceFace"+std::to_string(i),profile.raceFace[i]);
+            for (const auto& variant : profile.maleGenitals) {
+                std::cout << "GENITAL_VARIANT " << variant.addonDirectory << '\n';
+                dump("genital",variant.humanoid); dump("genitalElder",variant.elder);
+            }
+        }
+        std::cout << "PROFILE_COUNTS total=" << profiles.size() << " male=" << males << '\n';
+        return 0;
+    }
     if (!Require(!bcn::AllowsBroadSkinSlotFallback(bcn::SkinLayout::legacy),
             "part-specific CBBE/BHUNP atlases were routed through RaceMenu's broad skin-slot apply")) return 1;
     if (!Require(bcn::AllowsBroadSkinSlotFallback(bcn::SkinLayout::ube),
@@ -156,6 +410,7 @@ int main(const int argc, char** argv)
         // can accidentally accept a same-named DDS mapped from another pack.
         std::size_t verifiedSkinTextures{};
         std::size_t unrelatedDdsFiles{};
+        std::size_t omittedSkinTextures{};
         std::error_code error;
         const auto skinRoot = std::filesystem::path{ argv[1] };
         for (std::filesystem::recursive_directory_iterator it(skinRoot,
@@ -180,10 +435,15 @@ int main(const int argc, char** argv)
                 return 1;
             }
             const auto gamePath = normalizePath(bcn::path_text::GenericUtf8(relative));
-            if (!Require(mapped.contains(gamePath),
-                    "a standard nested skin DDS was omitted from the generated profile")) return 1;
+            if (!mapped.contains(gamePath)) {
+                std::cerr << "omitted standard skin DDS: " << gamePath << '\n';
+                ++omittedSkinTextures;
+                continue;
+            }
             ++verifiedSkinTextures;
         }
+        if (!Require(omittedSkinTextures == 0U,
+                "a standard nested skin DDS was omitted from the generated profile")) return 1;
         if (!Require(verifiedSkinTextures != 0U, "real skin packs exposed no standard DDS channels")) return 1;
         std::size_t futanariSkins{};
         if (argc == 4) {
@@ -224,6 +484,30 @@ int main(const int argc, char** argv)
             "legacy settings migration did not preserve the new CBBE 3BA/HIMBO defaults")) return 1;
 
     const std::string skinPackName{ "피부팩 简体" };
+    // Popup positions survive restart independently, including the four NPC
+    // distribution editors, without changing any appearance/distribution data.
+    using PopupKind = bcn::popup_placement::Kind;
+    auto& popupSettings = bcn::Settings::Get();
+    for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
+        const auto kind = static_cast<PopupKind>(index);
+        if (!Require(!popupSettings.PopupPosition(kind).set,
+                "old settings must open previously unseen popups at center")) return 1;
+        const auto x = 100.0F + static_cast<float>(index) * 20.0F;
+        if (!Require(popupSettings.RememberPopupPosition(kind, x, 220.0F), "popup position not remembered")) return 1;
+        if (!Require(!popupSettings.RememberPopupPosition(kind, x, 220.0F), "unchanged popup causes repeated saves")) return 1;
+    }
+    std::filesystem::current_path(sandbox);
+    if (!Require(popupSettings.Save(), "popup settings save failed")) return 1;
+    popupSettings.Load();
+    std::filesystem::current_path(originalCurrentPath);
+    for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
+        const auto position = popupSettings.PopupPosition(static_cast<PopupKind>(index));
+        if (!Require(position.set && position.x == 100.0F + static_cast<float>(index) * 20.0F &&
+                position.y == 220.0F, "popup position did not survive settings reload")) return 1;
+    }
+    if (!Require(popupSettings.Snapshot().openHotkey.key == 66U,
+            "saving popup positions overwrote unrelated settings")) return 1;
+
     const auto female = sandbox / "BodySkin" / std::filesystem::path{ L"피부팩 简体" } /
         "Textures" / "actors" / "character" / "female";
     for (const auto* file : {
@@ -398,6 +682,11 @@ int main(const int argc, char** argv)
     Touch(khajiitMale / "headmale_s.dds");
 
     const auto skins = bcn::SkinProfiles::ScanDirectory(sandbox / "BodySkin");
+    if (!Require(
+            bcn::SkinFamilyLabel(bcn::SkinLayout::legacy, bcn::SkinSex::female) == "CBBE or UNP" &&
+            bcn::SkinFamilyLabel(bcn::SkinLayout::legacy, bcn::SkinSex::male) == "HIMBO or SAM" &&
+            bcn::SkinFamilyLabel(bcn::SkinLayout::ube, bcn::SkinSex::female) == "UBE",
+            "skin-list labels exposed the internal Legacy classification or mixed sex families")) return 1;
     const auto discoveredSkinRoots = bcn::catalog_roots::Discover(sandbox / "BodySkin");
     std::error_code equivalentError;
     if (!Require(!discoveredSkinRoots.empty() &&
@@ -666,16 +955,16 @@ int main(const int argc, char** argv)
     if (!Require(futanari.size() == 3U,
             "futanari catalog did not isolate UBE TRX, CBBE TRX, and ERF rows")) return 1;
     const auto requireFutanari = [&](const bcn::FutanariSkinType type,
-        const std::size_t layerCount, const std::string_view stem) {
+        const std::string_view stem) {
         const auto found = std::ranges::find(futanari, type, &bcn::FutanariSkinProfile::type);
-        return found != futanari.end() && found->layers.size() == layerCount &&
-            std::ranges::all_of(found->layers, [&](const auto& layer) {
-                return Filename(Lower(layer.path)).starts_with(stem);
-            });
+        if (found == futanari.end()) return false;
+        return type == bcn::FutanariSkinType::ubeTrx ?
+            HasExactUbeMaterialChannels(found->layers, stem) :
+            HasExactMaterialChannels(found->layers, stem);
     };
-    if (!Require(requireFutanari(bcn::FutanariSkinType::ubeTrx, 2U, "malebody_1_") &&
-            requireFutanari(bcn::FutanariSkinType::cbbeTrx, 4U, "schlong") &&
-            requireFutanari(bcn::FutanariSkinType::erf, 4U, "futanari_schlong"),
+    if (!Require(requireFutanari(bcn::FutanariSkinType::ubeTrx, "malebody_1") &&
+            requireFutanari(bcn::FutanariSkinType::cbbeTrx, "schlong") &&
+            requireFutanari(bcn::FutanariSkinType::erf, "futanari_schlong"),
             "futanari skin files crossed addon/body types or material channels")) return 1;
     if (!Require(
             !bcn::futanari::BodySkinOwnsSosSlot(true) &&
@@ -691,7 +980,7 @@ int main(const int argc, char** argv)
                 bcn::futanari::AddonKind::ube &&
             bcn::futanari::ClassifyEvidence({}, "penis",
                 R"(textures\BodyChangeNG\Cache\futanari\1234\malebody_1_d.dds)") ==
-                bcn::futanari::AddonKind::ube &&
+                bcn::futanari::AddonKind::none &&
             bcn::futanari::ClassifyEvidence(
                 R"(meshes\[TRX] Futa addon\trx.nif)", "penis",
                 R"(textures\BodyChangeNG\Cache\futanari\1234\schlong.dds)") ==
@@ -753,6 +1042,12 @@ int main(const int argc, char** argv)
             bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
             bcn::skin_geometry::Matches("BaseShapeCanal", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
             !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::unpGenitalAnal) &&
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
+                R"(textures\dw\ubeanus\malebody_1.dds)") &&
+            !bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::regular,
+                R"(textures\dw\ubeanus\malebody_1.dds)") &&
+            bcn::skin_geometry::Matches("3BA_Anus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
+                R"(textures\BodyChangeNG\Cache\skin\1234\femalebody_etc_v2_1.dds)") &&
             bcn::skin_geometry::Matches("RenamedShape", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
                 R"(textures\actors\character\female\femalebody_etc_v2_1.dds)") &&
             bcn::skin_geometry::Matches("BaseShapeAnus", bcn::skin_geometry::BodySelection::cbbeGenitalAnal,
@@ -897,6 +1192,17 @@ int main(const int argc, char** argv)
     const auto standardFamily = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
     const auto unpFamily = bcn::body_family::Bit(bcn::body_family::Family::unp);
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
+    if (!Require(bcn::FutanariSkinTypeMatchesActor(
+            bcn::FutanariSkinType::ubeTrx, ubeFamily) &&
+            !bcn::FutanariSkinTypeMatchesActor(
+                bcn::FutanariSkinType::cbbeTrx, ubeFamily) &&
+            bcn::FutanariSkinTypeMatchesActor(
+                bcn::FutanariSkinType::cbbeTrx, standardFamily) &&
+            bcn::FutanariSkinTypeMatchesActor(
+                bcn::FutanariSkinType::erf, standardFamily) &&
+            !bcn::FutanariSkinTypeMatchesActor(
+                bcn::FutanariSkinType::ubeTrx, standardFamily),
+            "futanari catalog mixed UBE and Legacy actor layouts")) return 1;
     const auto ubeSkin = std::ranges::find(skins, "UBE 2.0 Momo Skin", &bcn::SkinProfile::name);
     const auto standardSkin = std::ranges::find(skins, skinPackName, &bcn::SkinProfile::name);
     const auto unpSkin = std::ranges::find(skins, unpSkinPackName, &bcn::SkinProfile::name);
@@ -937,32 +1243,36 @@ int main(const int argc, char** argv)
             "elder race/voice classification did not preserve the distribution condition semantics")) return 1;
 
     const std::string tintPackName{ "틴트包" };
-    const auto tintA = sandbox / "TintMask" / std::filesystem::path{ L"틴트包" } / "textures" / "actors" / "character" /
+    const auto tintA = sandbox / "BodySkin" / std::filesystem::path{ L"틴트包" } / "textures" / "actors" / "character" /
         "character assets" / "tintmasks";
     Touch(tintA / "femalehead_lips.DDS");
     Touch(tintA / "femaleheadhuman_nose.dds");
     Touch(tintA / "not-a-tint.dds");
-    const auto tintB = sandbox / "TintMask" / "Pack B" / "textures" / "actors" / "character" /
+    const auto tintB = sandbox / "BodySkin" / "Pack B" / "textures" / "actors" / "character" /
         "character assets" / "tintmasks";
     Touch(tintB / "maleheadnord_lips.dds");
-    const auto tintUbe = sandbox / "TintMask" / "UBE Makeup" / "textures" / "actors" / "character" /
+    const auto tintUbe = sandbox / "BodySkin" / "UBE Makeup" / "textures" / "actors" / "character" /
         "character assets" / "tintmasks";
     Touch(tintUbe / "femalehead_lips.dds");
-    const auto tintCotr = sandbox / "TintMask" / "COtR Makeup" / "textures" / "actors" / "character" /
+    const auto tintCotr = sandbox / "BodySkin" / "COtR Makeup" / "textures" / "actors" / "character" /
         "character assets" / "tintmasks";
     Touch(tintCotr / "femalehead_eyeliner.dds");
 
-    const auto tints = bcn::player_tint::Catalog::ScanDirectory(sandbox / "TintMask");
-    if (!Require(tints.size() == 5U, "tint scanner did not classify the expected DDS files")) return 1;
+    const auto tints = bcn::player_tint::Catalog::ScanDirectory(sandbox / "BodySkin");
+    if (!Require(tints.size() == 6U, "tint scanner did not classify the expected DDS files")) return 1;
     if (!Require(std::ranges::any_of(tints, [&](const auto& tint) { return tint.pack == tintPackName; }),
             "tint pack name was not preserved as UTF-8")) return 1;
+    if (!Require(std::ranges::any_of(tints, [&](const auto& tint) {
+            return tint.pack == skinPackName && tint.name == "femalehead_lips";
+        }), "a tint mask embedded in an ordinary BodySkin pack was not discovered")) return 1;
     for (const auto& tint : tints) {
-        if (!Require(tint.path.starts_with("TintMask\\"), "tint path escaped the virtual Data root")) return 1;
+        if (!Require(tint.path.starts_with("BodySkinTint\\"), "tint source key escaped its isolated cache namespace")) return 1;
         if (!Require(!tint.id.starts_with(".."), "tint id contains a parent-directory escape")) return 1;
     }
     const auto ubeTint = std::ranges::find(tints, "UBE Makeup", &bcn::player_tint::Asset::pack);
     const auto cotrTint = std::ranges::find(tints, "COtR Makeup", &bcn::player_tint::Asset::pack);
     const auto maleTint = std::ranges::find(tints, "Pack B", &bcn::player_tint::Asset::pack);
+    const auto legacyTint = std::ranges::find(tints, tintPackName, &bcn::player_tint::Asset::pack);
     if (!Require(ubeTint != tints.end() &&
             ubeTint->bodyFamilies == bcn::body_family::Bit(bcn::body_family::Family::ube),
             "UBE tint pack was not isolated to UBE")) return 1;
@@ -973,6 +1283,56 @@ int main(const int argc, char** argv)
     if (!Require(maleTint != tints.end() && maleTint->sex == bcn::player_tint::Sex::male &&
             (maleTint->bodyFamilies & bcn::body_family::kMaleFamilies) != 0U,
             "male tint was not retained as a male-family asset")) return 1;
+    const auto maleTintFamily = bcn::body_family::Bit(bcn::body_family::Family::himbo);
+    if (!Require(legacyTint != tints.end() &&
+            bcn::player_tint::TintAssetMatchesActor(legacyTint->sex,
+                legacyTint->bodyFamilies, standardFamily, true) &&
+            !bcn::player_tint::TintAssetMatchesActor(legacyTint->sex,
+                legacyTint->bodyFamilies, ubeFamily, true) &&
+            bcn::player_tint::TintAssetMatchesActor(ubeTint->sex,
+                ubeTint->bodyFamilies, ubeFamily, true) &&
+            !bcn::player_tint::TintAssetMatchesActor(ubeTint->sex,
+                ubeTint->bodyFamilies, standardFamily, true) &&
+            bcn::player_tint::TintAssetMatchesActor(maleTint->sex,
+                maleTint->bodyFamilies, maleTintFamily, false) &&
+            !bcn::player_tint::TintAssetMatchesActor(maleTint->sex,
+                maleTint->bodyFamilies, standardFamily, true),
+            "tint catalog filtering mixed actor sex or UBE/Legacy layouts")) return 1;
+
+    const auto slaveTats = sandbox / "SlaveTats";
+    WriteText(slaveTats / "General.json", R"json([
+        {"name":"Face A","section":"General","texture":"Pack\\face.dds","area":"Face"},
+        {"name":"Body A","section":"General","texture":"Pack\\body.dds","area":"Body"},
+        {"name":"Hands A","section":"General","texture":"Pack\\hands.dds","area":"Hands"},
+        {"name":"Feet A","section":"General","texture":"Pack\\feet.dds","area":"Feet"},
+        {"name":"Escape","section":"General","texture":"..\\bad.dds","area":"Body"},
+        {"name":"Wrong","section":"General","texture":"Pack\\wrong.dds","area":"Tail"}
+    ])json");
+    WriteText(slaveTats / "UBE Pack.json", R"json([
+        {"name":"Tears","section":"UBE Tears","texture":"Tears\\tears.dds","area":"Face"}
+    ])json");
+    const auto tattoos = bcn::overlay::ScanSlaveTatsDirectory(slaveTats);
+    if (!Require(tattoos.size() == 5U &&
+            std::ranges::count(tattoos, bcn::overlay::Area::face,
+                &bcn::overlay::Entry::area) == 2U &&
+            std::ranges::count(tattoos, bcn::overlay::Area::body,
+                &bcn::overlay::Entry::area) == 1U &&
+            std::ranges::count(tattoos, bcn::overlay::Area::hands,
+                &bcn::overlay::Entry::area) == 1U &&
+            std::ranges::count(tattoos, bcn::overlay::Area::feet,
+                &bcn::overlay::Entry::area) == 1U,
+            "SlaveTats JSON rows were not separated into face/body/hands/feet")) return 1;
+    const auto ubeTattoo = std::ranges::find(tattoos, bcn::overlay::Layout::ube,
+        &bcn::overlay::Entry::layout);
+    if (!Require(ubeTattoo != tattoos.end() &&
+            ubeTattoo->sex == bcn::overlay::Sex::female &&
+            ubeTattoo->texturePath ==
+                R"(textures\actors\character\slavetats\Tears\tears.dds)",
+            "SlaveTats UBE metadata or texture path classification failed")) return 1;
+    if (!Require(std::ranges::all_of(tattoos, [](const auto& tattoo) {
+            return tattoo.source == bcn::overlay::Source::slaveTats &&
+                !tattoo.id.empty() && tattoo.name.starts_with("SlaveTats · ");
+        }), "SlaveTats rows lost their source or stable identity")) return 1;
     // Content refresh must distinguish equal-size DDS replacements even if
     // an archive extraction preserves timestamps. Cache aliases must differ.
     const auto refreshSource = sandbox / "refresh.dds";
@@ -1088,6 +1448,56 @@ int main(const int argc, char** argv)
     bcn::runtime_assets::RegisterGameRelativeSource(refreshKey, extendedRefreshSource);
     if (!Require(afterHash == bcn::runtime_assets::SourceContentHash(refreshKey),
             "one physical DDS was rehashed through a second Windows path alias")) return 1;
+    // A mixed-sex pack must retain separate conditional channels and stable
+    // IDs. Sort-earlier race folders must never supply the generic normal.
+    const auto variantRoot = sandbox / "ConditionalAudit" / "BodySkin";
+    const auto variantCharacter = variantRoot / "Mixed" / "Textures" / "actors" / "character";
+    for (const auto* sex : { "male", "female" }) {
+        for (const auto* part : { "body_1", "hands_1", "head" }) {
+            Touch(variantCharacter / sex / (std::string{sex} + part + ".dds"));
+            Touch(variantCharacter / sex / (std::string{sex} + part + "_msn.dds"));
+        }
+    }
+    const auto beforeVariants = bcn::SkinProfiles::ScanDirectory(variantRoot);
+    const std::array maleRaceDirs{ "nordmale", "bretonmale", "darkelfmale", "highelfmale",
+        "imperialmale", "orcmale", "redguardmale", "woodelfmale" };
+    for (const auto* directory : maleRaceDirs) {
+        Touch(variantCharacter / directory /
+            (std::string_view{directory} == "orcmale" ? "maleheadorc_msn.dds" : "malehead_msn.dds"));
+    }
+    for (const auto* sex : { "male", "female" }) {
+        for (const auto* part : { "body_1", "hands_1", "head" })
+            Touch(variantCharacter / (std::string{sex} + "old") /
+                (std::string{sex} + part + "_msn.dds"));
+    }
+    Touch(variantCharacter / "bretonfemale" / "femalehead_msn.dds");
+    const auto withVariants = bcn::SkinProfiles::ScanDirectory(variantRoot);
+    if (!Require(beforeVariants.size() == 2U && withVariants.size() == 2U,
+            "conditional directories created standalone rows")) return 1;
+    for (const auto& profile : withVariants) {
+        const auto original = std::ranges::find(beforeVariants, profile.id, &bcn::SkinProfile::id);
+        if (!Require(original != beforeVariants.end(), "conditional DDS changed the automatic pack ID")) return 1;
+        const std::string sex = profile.sex == bcn::SkinSex::male ? "male" : "female";
+        if (!Require(profile.body.size() == 2U && profile.hands.size() == 2U && profile.face.size() == 2U &&
+                profile.face[1].path.ends_with("\\" + sex + "\\" + sex + "head_msn.dds") &&
+                profile.elderBody.size() == 1U && profile.elderHands.size() == 1U &&
+                profile.elderFace.size() == 1U &&
+                profile.elderBody[0].path.ends_with("\\" + sex + "old\\" + sex + "body_1_msn.dds") &&
+                profile.elderHands[0].path.ends_with("\\" + sex + "old\\" + sex + "hands_1_msn.dds") &&
+                profile.elderFace[0].path.ends_with("\\" + sex + "old\\" + sex + "head_msn.dds"),
+                "male/female elder DDS missing or leaked into generic/other-sex channels")) return 1;
+        if (profile.sex == bcn::SkinSex::male) {
+            for (const auto race : { bcn::HumanoidSkinRace::nord, bcn::HumanoidSkinRace::breton,
+                     bcn::HumanoidSkinRace::darkElf, bcn::HumanoidSkinRace::highElf,
+                     bcn::HumanoidSkinRace::imperial, bcn::HumanoidSkinRace::orc,
+                     bcn::HumanoidSkinRace::redguard, bcn::HumanoidSkinRace::woodElf }) {
+                const auto& layers = profile.raceFace[static_cast<std::size_t>(race)];
+                if (!Require(layers.size() == 1U && layers[0].shaderTextureIndex == 1U &&
+                        !layers[0].path.contains("female"), "male race face missing or crossed sex")) return 1;
+            }
+        } else if (!Require(profile.raceFace[static_cast<std::size_t>(bcn::HumanoidSkinRace::nord)].empty(),
+                "male race normal leaked into female profile")) return 1;
+    }
     std::filesystem::remove_all(sandbox);
     return 0;
 }

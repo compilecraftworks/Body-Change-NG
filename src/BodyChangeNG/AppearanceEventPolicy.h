@@ -9,7 +9,6 @@ namespace bcn::appearance
         bodyMorph,
         baseSkin,
         faceTint,
-        rsvFaceBridge,
         maleGenitalAddon,
         futanariAddon,
         outfitMorph
@@ -32,14 +31,14 @@ namespace bcn::appearance
             return feature == Feature::maleGenitalAddon ||
                 feature == Feature::futanariAddon || feature == Feature::outfitMorph;
         case Event::actor3DAttached:
-            return feature == Feature::rsvFaceBridge ||
-                feature == Feature::maleGenitalAddon ||
+            return feature == Feature::maleGenitalAddon ||
                 feature == Feature::futanariAddon || feature == Feature::outfitMorph;
         case Event::niNodeUpdated:
-            return feature == Feature::rsvFaceBridge;
+            return feature == Feature::maleGenitalAddon ||
+                feature == Feature::futanariAddon;
         case Event::raceMenuClosed:
             return feature == Feature::bodyMorph || feature == Feature::baseSkin ||
-                feature == Feature::faceTint || feature == Feature::rsvFaceBridge ||
+                feature == Feature::faceTint ||
                 feature == Feature::maleGenitalAddon || feature == Feature::futanariAddon;
         case Event::saveLoaded:
             return true;

@@ -4,6 +4,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <bit>
 #include <format>
 #include <mutex>
@@ -36,6 +37,7 @@ namespace
     };
 
     std::mutex g_cacheLock;
+    std::atomic<bcn::body_family::SkinFamilyResolver> g_skinFamilyResolver{};
     std::unordered_map<RE::FormID, ActorCacheEntry> g_actorCache;
     std::array<std::optional<Mask>, 2> g_installedFamiliesCache;
 
@@ -245,9 +247,20 @@ namespace
 
 namespace bcn::body_family
 {
+    void SetSkinFamilyResolver(const SkinFamilyResolver resolver)
+    {
+        g_skinFamilyResolver.store(resolver, std::memory_order_release);
+    }
+
     Mask ResolveActor(RE::Actor* actor)
     {
         if (!actor) return 0U;
+        // Private cached DDS names and a temporarily absent 3D root must not
+        // turn a verified CBBE/UNP/UBE actor into unknown after a skin click.
+        // The backend invalidates this evidence for a race/sex/provider change.
+        if (const auto resolver = g_skinFamilyResolver.load(std::memory_order_acquire)) {
+            if (const auto source = resolver(actor)) return *source;
+        }
         const auto sex = ActorSex(actor);
         auto* skin = actor->GetSkin();
         const ActorSignature signature{

@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 namespace RE
 {
@@ -54,8 +55,8 @@ namespace bcn::racemenu
     void ResetSessionState();
     [[nodiscard]] bool IsReady() noexcept;
     [[nodiscard]] std::uint32_t Version() noexcept;
-    // Returns another interface from the same verified RaceMenu exchange map.
-    // The caller owns only the typed view; RaceMenu retains the object.
+    // Used by the isolated RaceMenu paint and face-node adapters after the same
+    // interface exchange has been runtime-validated here.
     [[nodiscard]] void* QueryInterface(const char* a_name) noexcept;
     [[nodiscard]] std::optional<std::string> CurrentPresetId(const RE::Actor* a_actor);
     // Verifies only BCNG-owned RaceMenu keys. The saved preset ID/signature is
@@ -71,6 +72,10 @@ namespace bcn::racemenu
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,
         std::uint64_t a_outfitSignature = 0U,
         UpdatePolicy a_updatePolicy = UpdatePolicy::synchronous);
+    // Previews the exact result of removing BCNG and legacy OBody-owned body
+    // keys without mutating any committed key. QueueCancelPreview restores the
+    // entry state by removing only the transient compensating layer.
+    [[nodiscard]] ApplyResult QueuePreviewDefault(RE::Actor* a_actor);
     // RaceMenu recreates the player's 3D when character generation closes.
     // Reapply the already selected preset to that fresh geometry.
     void QueueReapplyCurrent(RE::Actor* a_actor);
@@ -81,6 +86,7 @@ namespace bcn::racemenu
     void QueueCancelPreview();
     void QueueApplyProceduralOutfit(RE::Actor* a_actor, std::uint64_t a_outfitSignature);
     void QueueClearOutfit(RE::Actor* a_actor, std::uint64_t a_outfitSignature);
+    void CancelPendingOutfit(RE::Actor* a_actor);
     void QueueClearBodyChangeMorphs(RE::Actor* a_actor);
-    [[nodiscard]] bool QueueClearAllBodyChangeMorphs();
+    [[nodiscard]] bool QueueClearAllBodyChangeMorphs(std::vector<std::uint32_t> a_alreadyReset);
 }

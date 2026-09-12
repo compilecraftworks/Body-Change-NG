@@ -19,7 +19,51 @@ namespace
 
 int main()
 {
+    {
+        bcn::ActorState state;
+        state.body.selection = { .selectedId = "body", .manual = false };
+        state.body.application = { .appliedId = "body", .applied = true };
+        state.body.outfitSignature = 42U;
+        state.skin.selection = { .selectedId = "skin", .manual = false };
+        state.futanari = { .selectedSkinId = "futa", .manual = false };
+        for (auto& area : state.overlay.areas) {
+            area.items.push_back({ .selectedId = "overlay", .texturePath = "overlay.dds" });
+        }
+        bcn::ResetActorSelectionsToDefaults(state);
+        Require(state.body.selection.manual && state.body.selection.useDefault &&
+            state.body.selection.selectedId.empty() && !state.body.application.applied &&
+            state.body.outfitSignature == 0U,
+            "actor settings reset did not clear the body channel");
+        Require(state.skin.selection.manual && state.skin.selection.useDefault &&
+            state.skin.selection.selectedId.empty() && !state.skin.application.applied,
+            "actor settings reset did not clear the skin channel");
+        Require(state.futanari.manual && state.futanari.useDefault &&
+            state.futanari.selectedSkinId.empty(),
+            "actor settings reset did not clear the futanari channel");
+        Require(std::ranges::all_of(state.overlay.areas, [](const auto& area) {
+            return area.manual && area.useDefault && area.items.size() == 1U && area.resetRevision == 1U;
+        }), "reset discarded native ownership before removal");
+    }
     try {
+        for (const auto mode : { bcn::overlay::ApplyMode::preview,
+                bcn::overlay::ApplyMode::manualCommit, bcn::overlay::ApplyMode::automatic,
+                bcn::overlay::ApplyMode::restore }) {
+            bcn::ActorState state;
+            auto& area = state.overlay.areas[0];
+            area.items.push_back({ "old", "old.dds", 2U });
+            const auto started = area.resetRevision;
+            bcn::ResetActorSelectionsToDefaults(state);
+            Require(!bcn::CompleteOverlayTransaction(area, { "late", "late.dds", 2U }, mode, started),
+                "a pre-reset completion resurrected its selection");
+            Require(area.manual && area.useDefault && area.items.size() == 1U &&
+                    area.items.front().texturePath == "late.dds",
+                "late completion lost its exact cleanup ownership");
+            area.items.clear(); // native exact-node removal completed
+            Require(bcn::CompleteOverlayTransaction(area, { "new", "new.dds", 2U, 0x12345678U },
+                bcn::overlay::ApplyMode::manualCommit, area.resetRevision) &&
+                !area.useDefault && area.items.size() == 1U && area.items.front().color == 0x12345678U,
+                "a new selection after reset was incorrectly blocked");
+        }
         // Schema 4 appends new scopes. Existing schema-3 numeric values must
         // never move, or a saved rule could silently change meaning.
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::allNPCs) == 0U);
@@ -54,10 +98,20 @@ int main()
         Require(bcn::InitialDistributionDelayTicks() == 2U,
             "initial distribution no longer yields to save-load listeners");
         Require(bcn::DistributionReferenceSeed(bcn::DistributionFeature::skin, 0x1234U) == 0U &&
-                bcn::DistributionReferenceSeed(bcn::DistributionFeature::body, 0x1234U) == 0x1234U,
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::body, 0x1234U) == 0x1234U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::futanari, 0x1234U) == 0x1234U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::overlayFace, 0x1234U) == 0x1234U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::overlayBody, 0x1234U) == 0x1234U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::overlayHands, 0x1234U) == 0x1234U &&
+                bcn::DistributionReferenceSeed(bcn::DistributionFeature::overlayFeet, 0x1234U) == 0x1234U,
             "native skin distribution escaped ActorBase scope or body distribution lost reference scope");
         Require(!bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::skin) &&
-                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::body),
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::body) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::futanari) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::overlayFace) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::overlayBody) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::overlayHands) &&
+                bcn::MayRetainPreviousDistributionSelection(bcn::DistributionFeature::overlayFeet),
             "a legacy reference-scoped skin choice could prevent ActorBase convergence");
         Require(bcn::IsDistributionActorStateEligible(false, false, false, true, true) &&
                 bcn::IsDistributionActorStateEligible(false, false, true, true, true),
@@ -100,7 +154,13 @@ int main()
                 .selection = { .selectedId = "skin-a", .manual = true },
                 .application = { .signature = StableStateSignature("skin", "skin-a", false) }
             },
-            .futanari = { .selectedSkinId = "futanari:skin-a:cbbe-trx" }
+            .overlay = { .areas = {
+                bcn::OverlayAreaState{ .items = { { "face-a", "textures\\paint\\face-a.dds", 1U } }, .manual = true },
+                bcn::OverlayAreaState{ .items = { { "body-a", "textures\\paint\\body-a.dds", 2U } } },
+                bcn::OverlayAreaState{},
+                bcn::OverlayAreaState{}
+            } },
+            .futanari = { .selectedSkinId = "futanari:skin-a:cbbe-trx", .manual = true }
         };
         Require(state.body.selection.manual && state.skin.selection.manual &&
                 state.body.selection.selectedId != state.skin.selection.selectedId,
@@ -130,19 +190,22 @@ int main()
             "cosave restore lost the futanari selection or live-session proof boundary");
         const auto preservedBodyBeforeReset = state.body;
         const auto preservedSkin = state.skin;
+        const auto preservedOverlay = state.overlay;
         const auto preservedFutanari = state.futanari;
         state.body = {};
         Require(state.skin.selection.selectedId == preservedSkin.selection.selectedId &&
                 state.skin.application.signature == preservedSkin.application.signature &&
+                state.overlay.areas[0].items.front().selectedId == preservedOverlay.areas[0].items.front().selectedId &&
                 state.futanari.selectedSkinId == preservedFutanari.selectedSkinId,
-            "resetting body state crossed the skin or futanari feature boundary");
+            "resetting body state crossed the skin, overlay, or futanari feature boundary");
         state.body = preservedBodyBeforeReset;
         const auto preservedBody = state.body;
         state.skin = {};
         Require(state.body.selection.selectedId == preservedBody.selection.selectedId &&
                 state.body.application.signature == preservedBody.application.signature &&
+                state.overlay.areas[1].items.front().selectedId == preservedOverlay.areas[1].items.front().selectedId &&
                 state.futanari.selectedSkinId == preservedFutanari.selectedSkinId,
-            "resetting skin state crossed the body or futanari feature boundary");
+            "resetting skin state crossed the body, overlay, or futanari feature boundary");
         using Decision = bcn::RestoredApplicationDecision;
         Require(bcn::EvaluateRestoredApplication(true, false, true, true) == Decision::acceptLive,
             "a matching restored live state was not accepted");
@@ -157,11 +220,28 @@ int main()
             .female = true,
             .bodyFamily = "CBBE 3BA",
             .presetIds = { "female-body" },
-            .skinProfileIds = { "female-skin" }
+            .skinProfileIds = { "female-skin" },
+            .futanariSkinIds = { "female-futanari" },
+            .overlayIds = { std::vector<std::string>{ "face-paint" },
+                std::vector<std::string>{ "body-paint" }, {}, {} }
         };
+        Require(!rule.includeCustomFollowers && !rule.includeElderNPCs,
+            "positive all-NPC rules did not exclude optional NPC groups by default");
+        rule.overlayColors[0]["face-paint"] = 0x008000FFU;
+        rule.overlayColors[1]["body-paint"] = 0xFF123456U;
+        rule.overlayColors[0]["removed-paint"] = 0xFFFFFFFFU;
+        bcn::PruneDistributionOverlayColors(rule);
+        Require(rule.overlayColors[0].size() == 1U &&
+                bcn::DistributionOverlayColor(rule, bcn::overlay::Area::face, "face-paint") == 0x008000FFU &&
+                bcn::DistributionOverlayColor(rule, bcn::overlay::Area::body, "body-paint") == 0xFF123456U &&
+                bcn::DistributionOverlayColor(rule, bcn::overlay::Area::hands, "absent") == 0xFFFFFFFFU,
+            "per-candidate colors lost alpha, crossed areas, or retained deleted IDs");
         Require(bcn::SetDistributionRuleSex(rule, false), "rule sex change was not detected");
-        Require(!rule.female && rule.bodyFamily.empty() && rule.presetIds.empty() && rule.skinProfileIds.empty(),
-            "rule sex change retained hidden selections from the previous sex");
+        Require(!rule.female && rule.bodyFamily.empty() && rule.presetIds.empty() &&
+                rule.skinProfileIds.empty() && rule.futanariSkinIds.empty() &&
+                rule.overlayIds[0].empty() &&
+                rule.overlayIds[1].empty() && rule.overlayColors[0].empty() && rule.overlayColors[1].empty(),
+            "rule sex change retained a hidden opposite-sex catalog selection");
         rule.presetIds = { "male-body" };
         Require(!bcn::SetDistributionRuleSex(rule, false) && rule.presetIds.size() == 1U,
             "unchanged rule sex unnecessarily destroyed compatible selections");
@@ -196,10 +276,7 @@ int main()
                     names::IsLocalizedValue(entry.key, entry.chinese),
                 "a localized distribution-rule name could not be recognized after loading");
         }
-        Require(names::RecognizeKey("default-exclude-elder-female",
-                    "Exclude Body Distribution for Elder NPCs (Female)", true) ==
-                "default-exclude-elder-female" &&
-                names::RecognizeKey("user-rule-1", "새 여성 NPC 규칙", true) ==
+        Require(names::RecognizeKey("user-rule-1", "새 여성 NPC 규칙", true) ==
                 "rule-new-female" &&
                 names::RecognizeKey("rule-11", "새 남성 NPC 규칙", true) ==
                 "rule-new-female" &&
@@ -207,7 +284,7 @@ int main()
                 "rule-all-male",
             "legacy sample/generated rule names did not migrate to language-neutral keys");
         std::vector<bcn::DistributionRule> editableSamples{
-            { .id = "default-exclude-elder-female", .name = "renamed sample" },
+            { .id = "rule-all-female", .name = "renamed sample" },
             { .id = "user-rule-1", .name = "user rule" }
         };
         editableSamples.front().scope = bcn::DistributionScope::allNPCs;
@@ -216,7 +293,7 @@ int main()
             "a built-in sample rule was not editable");
         std::size_t selectedSample{};
         Require(bcn::MoveDistributionRule(editableSamples, selectedSample, 1) &&
-                selectedSample == 1U && editableSamples[1].id == "default-exclude-elder-female",
+                selectedSample == 1U && editableSamples[1].id == "rule-all-female",
             "a built-in sample rule could not be reordered");
         Require(bcn::EraseDistributionRule(editableSamples, selectedSample) &&
                 editableSamples.size() == 1U && selectedSample == 0U,
@@ -226,14 +303,6 @@ int main()
         Require(bcn::GenerateUniqueUserRuleId(editableSamples, nextRuleId) == "user-rule-2" &&
                 nextRuleId == 3U,
             "a newly created distribution rule reused an existing ImGui/persistent ID");
-        std::vector<bcn::DistributionRule> priorityRules{
-            { .id = "female-all", .female = true, .scope = bcn::DistributionScope::allNPCs },
-            { .id = "male-all", .female = false, .scope = bcn::DistributionScope::allNPCs },
-            { .id = "female-lower", .female = true, .scope = bcn::DistributionScope::npcName }
-        };
-        Require(bcn::EarlierCatchAllRule(priorityRules, 2U) == 0U &&
-                !bcn::EarlierCatchAllRule(priorityRules, 1U),
-            "rule-priority diagnostics missed a same-sex catch-all or crossed sex boundaries");
         std::cout << "ActorStateTests passed\n";
         return 0;
     } catch (const std::exception& error) {

@@ -42,7 +42,6 @@ namespace bcn::runtime
         case 629:
         case 640:
         case 659:
-        case 678:
         case 1130:
         case 1170:
         case 1179:
@@ -73,7 +72,6 @@ namespace bcn::runtime
         case 629:
         case 640:
         case 659:
-        case 678:
         case 1130:
         case 1170:
         case 1179:

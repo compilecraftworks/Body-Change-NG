@@ -80,10 +80,10 @@ namespace bcn::futanari
             EqualsIgnoreAsciiCase(nodeName, "CBBE_Schlong")) return AddonKind::trx;
         if (ContainsIgnoreAsciiCase(texturePath, "erf_futanari") ||
             EqualsIgnoreAsciiCase(nodeName, "CBBE Schlong")) return AddonKind::erf;
+        // A BCNG cache path is not UV/provider evidence: TRX/ERF use that
+        // namespace too. The live adapter supplies the captured source path.
         if (EqualsIgnoreAsciiCase(nodeName, "Penis") &&
-            (ContainsIgnoreAsciiCase(texturePath, "!ube\\body\\malebody_1") ||
-                ContainsIgnoreAsciiCase(texturePath, "bodychangeng\\cache\\futanari\\") ||
-                ContainsIgnoreAsciiCase(texturePath, "bodychangerng\\cache\\futanari\\"))) {
+            ContainsIgnoreAsciiCase(texturePath, "!ube\\body\\malebody_1")) {
             return AddonKind::ube;
         }
         return AddonKind::none;

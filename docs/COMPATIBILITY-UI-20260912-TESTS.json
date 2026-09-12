@@ -1,0 +1,251 @@
+{
+  "date": "2026-09-12",
+  "dllSha256": "66C8C241140B686EF5C38E290150B6412CC79EE1145DDC1849720914B9138FB1",
+  "tests": [
+    {
+      "name": "BodyChangeNGCatalogRefreshTests",
+      "exitCode": 0,
+      "elapsedMs": 22,
+      "output": "CatalogRefreshTests passed (10000 coalesced clicks, failure/retry, closure release)"
+    },
+    {
+      "name": "BodyChangeNGNativeAddonPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 127,
+      "output": "Native addon policy tests passed (not engine/render tests)"
+    },
+    {
+      "name": "BodyChangeNGHotkeyTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGPresetCatalogTests",
+      "exitCode": 0,
+      "elapsedMs": 12,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGAssetCatalogTests",
+      "exitCode": 0,
+      "elapsedMs": 268,
+      "output": "[2026-09-12 22:03:13.120] [info] [Settings.cpp:231] Body Change NG migrated legacy settings from C:\\Users\\yunha\\AppData\\Local\\Temp\\BodyChangeNGAssetCatalogTests\\Data\\SKSE\\Plugins\\BodyChangerNG\\settings.json to C:\\Users\\yunha\\AppData\\Local\\Temp\\BodyChangeNGAssetCatalogTests\\Data\\SKSE\\Plugins\\BodyChangeNG\\settings.json\r\n[2026-09-12 22:03:13.121] [info] [Settings.cpp:235] Body Change NG loaded opening shortcut Ctrl+F8"
+    },
+    {
+      "name": "BodyChangeNGSkinArchitectureTests",
+      "exitCode": 0,
+      "elapsedMs": 79,
+      "output": "Skin architecture tests passed"
+    },
+    {
+      "name": "BodyChangeNGFaceSkinPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 9,
+      "output": "Face skin policy / restoration serialization tests passed (not an engine integration test)"
+    },
+    {
+      "name": "BodyChangeNGFormDeletePolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 11,
+      "output": "FormDeletePolicyTests passed (SE 1.5.97 verified encoding; no game lifecycle claim)"
+    },
+    {
+      "name": "BodyChangeNGCodePatternTests",
+      "exitCode": 0,
+      "elapsedMs": 36,
+      "output": "CodePatternTests passed: callback, PE bounds, face queue, and preview lifecycle"
+    },
+    {
+      "name": "BodyChangeNGTexturePathIsolationTests",
+      "exitCode": 0,
+      "elapsedMs": 28,
+      "output": "Texture path isolation tests passed"
+    },
+    {
+      "name": "BodyChangeNGOverlayPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": "OverlayPolicyTests passed"
+    },
+    {
+      "name": "BodyChangeNGSkinSessionStateTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": "Skin session state tests passed"
+    },
+    {
+      "name": "BodyChangeNGBodyFamilyTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": "BodyFamilyTests passed"
+    },
+    {
+      "name": "BodyChangeNGOutfitRefitRulesTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGAsyncWorkGuardTests",
+      "exitCode": 0,
+      "elapsedMs": 10,
+      "output": "AsyncWorkGuardTests passed"
+    },
+    {
+      "name": "BodyChangeNGFrameTaskQueueTests",
+      "exitCode": 0,
+      "elapsedMs": 10,
+      "output": "FrameTaskQueueTests passed"
+    },
+    {
+      "name": "BodyChangeNGActorStateTests",
+      "exitCode": 0,
+      "elapsedMs": 32,
+      "output": "ActorStateTests passed"
+    },
+    {
+      "name": "BodyChangeNGGenitalPersistenceTests",
+      "exitCode": 0,
+      "elapsedMs": 9,
+      "output": "GenitalPersistenceTests passed (codec/session/common queue; engine integration not exercised)"
+    },
+    {
+      "name": "BodyChangeNGRuntimeLayoutTests",
+      "exitCode": 0,
+      "elapsedMs": 9,
+      "output": "Runtime layout boundary tests passed"
+    },
+    {
+      "name": "BodyChangeNGPathMigrationTests",
+      "exitCode": 0,
+      "elapsedMs": 11,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGRaceMenuPresetMigrationTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": ""
+    }
+  ],
+  "native": {
+    "limitation": "Only two runtimes have actual executable-code captures; other rows prove ID coverage only.",
+    "libraries": [
+      {
+        "runtime": "1.5.97.0",
+        "addressLibrary": "D:\\TuLED13E\\File Mod Skyrim SE\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\version-1-5-97-0.bin",
+        "sha256": "1d7530d001139ca58f462ea0210a8055868159057ba8b5ebc624fc5e9c4f5e9a",
+        "resolvedIDs": 32,
+        "executableCodeVerified": true
+      },
+      {
+        "runtime": "1.6.317.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-317-0.bin",
+        "sha256": "340dea0aefce62c7040c4a2337a7e90a107f9ca26f8620694ca88f73471b81ac",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.318.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-318-0.bin",
+        "sha256": "1ef4596b4a44c282e2e02212adaf29003d1d2f09315fe1d96cf91ca472121000",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.323.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-323-0.bin",
+        "sha256": "7e106899b481f966b65bcbcc96709f19cd7c3225c79acfda3edc0f6c259af1a8",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.342.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-342-0.bin",
+        "sha256": "1b5473a33f64a24905a09a2148af2e76db1a0d80fca387d6f1079b33f76898a7",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.353.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-353-0.bin",
+        "sha256": "85e4d30d9df65f90ca5a9a5a99b2f8d20a09a32f9d17ca3dfc7f945c46538c59",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.629.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-629-0.bin",
+        "sha256": "eabfb2ffae60c6528ce46618b33df8b85413a3c1c6486492dc45e5514a81dc66",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.640.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-640-0.bin",
+        "sha256": "4e4bec0af54cc99580908a714ea1418c877d634437f97bb208ea07f889850ec7",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.659.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-659-0.bin",
+        "sha256": "74116dfc7d9cfe591c1363e95ad144609262566f78b6cb18f4ce880085f441f1",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.1130.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-1130-0.bin",
+        "sha256": "5314ef0ece3b9300e811030329628f3917c04faa7dd600300540d74ff71a527a",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      },
+      {
+        "runtime": "1.6.1170.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-1170-0.bin",
+        "sha256": "c4093c569a3c83b26587f4b9ea4c55de9ae6e73b84a2af9fb3fbd30e2fe0d452",
+        "resolvedIDs": 32,
+        "executableCodeVerified": true
+      },
+      {
+        "runtime": "1.6.1179.0",
+        "addressLibrary": "C:\\TAKEALOOK\\mods\\Address Library for SKSE Plugins\\SKSE\\Plugins\\versionlib-1-6-1179-0.bin",
+        "sha256": "3ee46b2f3a8a24b9cda1f2aa63b0f0f47dea347e52701a6739327e5ea1b5838e",
+        "resolvedIDs": 32,
+        "executableCodeVerified": false
+      }
+    ],
+    "savedCallsites": [
+      {
+        "runtime": "1.5.97.0",
+        "site": "0x1cb555",
+        "capture": "C:\\Users\\yunha\\Desktop\\Body Change NG\\build\\audits\\addon-txst\\se-full\\addon-code.json"
+      },
+      {
+        "runtime": "1.5.97.0",
+        "site": "0x1cc735",
+        "capture": "C:\\Users\\yunha\\Desktop\\Body Change NG\\build\\audits\\addon-txst\\se-native-txst-refresh\\addon-code.json"
+      },
+      {
+        "runtime": "1.6.1170.0",
+        "site": "0x217dc8",
+        "capture": "C:\\Users\\yunha\\Desktop\\Body Change NG\\build\\audits\\addon-txst\\ae-full\\addon-code.json"
+      },
+      {
+        "runtime": "1.6.1170.0",
+        "site": "0x218ef3",
+        "capture": "C:\\Users\\yunha\\Desktop\\Body Change NG\\build\\audits\\addon-txst\\ae-full\\addon-code.json"
+      }
+    ],
+    "ownershipPatterns": 14
+  },
+  "raceMenuOfficialHistory": "8f58265b7019c162dec7a6199a20721e66398214 Update to 0.4.11 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n19fc48cb452c7a03bc742d01de079d31fc92198b 0.4.12 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n86c890a7f89a3d31f3f80362b0b44f1d83d76fe3 RM 0.4.12 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n7ffff9afb35ce9cae5e26f8bdbf86367b75e29b8 0.4.14 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n87a5cadd5c282e790ea6e9cf104bb7aa551fc4dc Register InterfaceExchangeMessage handler after all plugins have loaded v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n867458e0d6a9f45dea5599bf694d6198332e3b0b Skyrim AE 1.6.318 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n4cf6d628e7a74e1204fc5bdc0fc4885de6481a03 Refactor various things v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\ne779c68ce5449f713c7b551c7b7173208e7f83c0 Latest source update, misc cleanup, refactoring v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\nc1b408f363d645d354a8b548d064b3429ba1da5d Refactored various files for C++20 compliance, updated for 1.6.640 v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n8adc4b635ef2c6eef5befef3578ecabfb059a5ee Added more misc config toggles Added GOG macro Removed some unnecessary includes v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n7694eabfdf9e675cc28a8524afecb96aa5cd8a4b Interface update and API changes v2\r\n  Overlay 12 prefix slots match; called parameters/returns match\r\n  Override 36 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR* refr, bool isFemale, const char* nodeName, skee_u16 key, skee_u8 index, SetVariant& value) = 0\r\n   virtual bool GetNodeProperty(TESObjectREFR* refr, bool firstPerson, const char* nodeName, skee_u16 key, skee_u8 index, GetVariant& value) = 0\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n  v2 GetVariant/SetVariant virtual contracts match\r\n348607e9ae5f360ccab0d623e8b0d8f42e586fa6 Update to 1.6.1170 v2\r\n  Overlay 12 prefix slots match; called parameters/returns match\r\n  Override 36 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR* refr, bool isFemale, const char* nodeName, skee_u16 key, skee_u8 index, SetVariant& value) = 0\r\n   virtual bool GetNodeProperty(TESObjectREFR* refr, bool firstPerson, const char* nodeName, skee_u16 key, skee_u8 index, GetVariant& value) = 0\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n  v2 GetVariant/SetVariant virtual contracts match\r\n9ebcb733e17be695f994cd2e9cc383043446bc02 Update RM to 1.7.99 v2\r\n  Overlay 12 prefix slots match; called parameters/returns match\r\n  Override 36 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR* refr, bool isFemale, const char* nodeName, skee_u16 key, skee_u8 index, SetVariant& value) = 0\r\n   virtual bool GetNodeProperty(TESObjectREFR* refr, bool firstPerson, const char* nodeName, skee_u16 key, skee_u8 index, GetVariant& value) = 0\r\n  BodyMorph 21 prefix slots match; called parameters/returns match\r\n  v2 GetVariant/SetVariant virtual contracts match\r\nde08d7d97e7299f48dcbf946dc7de6c4cb3a1b3d Renamed directory to align with local dependencies v1\r\n  Overlay 10 prefix slots match; called parameters/returns match\r\n  Override 28 prefix slots match; called parameters/returns match\r\n   virtual void AddNodeOverride(TESObjectREFR * refr, bool isFemale, BSFixedString nodeName, OverrideVariant & value)\r\n   virtual void GetNodeProperty(TESObjectREFR * refr, bool firstPerson, BSFixedString nodeName, OverrideVariant * value)\r\n  BodyMorph 21 prefix slots match; called parameters/returns match",
+  "deployment": {
+    "tuleD": "66C8C241140B686EF5C38E290150B6412CC79EE1145DDC1849720914B9138FB1",
+    "takeALook": "66C8C241140B686EF5C38E290150B6412CC79EE1145DDC1849720914B9138FB1",
+    "gameStopped": true,
+    "filesChanged": "BodyChangeNG.dll only; DDS, saves and distribution JSON untouched"
+  }
+}

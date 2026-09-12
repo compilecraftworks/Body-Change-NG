@@ -2,45 +2,80 @@
 
 All notable public changes to Body Change NG are documented here.
 
-## 1.2.0 — 2026-09-08
+## 1.2.0 — final comparison with v1.1.4
 
-### Skin architecture
+This list describes the final v1.2.0 behavior, not the sequence of development experiments. Body presets, skins, tint editing, futanari skins, and NPC body/skin assignment already existed in v1.1.4; the changes below revise or extend those systems.
 
-- Separates catalog `SkinLayout` from runtime `BodyFamily`. Only an explicit `!UBE` atlas tree is UBE; every other conventional humanoid pack is Legacy regardless of folder labels or optional genital/anal DDS files.
-- Does not classify packs as CBBE/3BA versus UNP/BHUNP or vanilla/HIMBO/SAM. Runtime BodyFamily still selects the exact material route, UBE accepts only UBE, and optional genital/anal atlases route only through matching TXST/geometry roles.
-- Removes the regression that excluded metadata-free conventional packs as `unknown` and preserves every relative-path automatic ID.
-- Replaces general BodySkin NiOverride painting with a private deep clone of the current native TXST -> ARMA -> Skin Armor graph and an optional Face TXST. The clone preserves all source channels and overlays only the part/channel pairs declared by the selected profile.
-- Requires an exact TXST role only for parts the partial pack actually supplies. Missing body parts or DDS channels retain the current provider value; a declared part with no exact role aborts before attachment instead of being redirected to another part.
-- Models the shipped UBE 2.0 graph explicitly: its slot-53 torso and separate hand/foot ARMAs share `!UBE\Body\femalebody_1_{d,n,sk}` while their NAM1 fields are empty. BCNG synthesizes a private TXST only on clones of verified canonical UBE naked models when body-atlas layers are actually declared; face-only profiles, custom paths, and absent channels are never guessed.
-- Attaches the complete graph at the NPC ActorBase, so naked body, hand, and foot rebuilds use Skyrim's native skin source without tracking equipment. Outfit-owned hard-coded materials are not guessed or repainted.
-- Prevents Argonian and Khajiit feet from borrowing a body DDS when the pack does not supply a dedicated feet atlas.
-- Fixes a CTD that could abort the skin change before TXST attachment when a Korean, Chinese, or other Unicode skin-pack directory was compared with the actor's face-detail filename. Game-relative UTF-8 texture paths are now matched without an ANSI filesystem conversion.
-- Removes skin-pack `profile.json` parsing and the bundled manifest example. A stale manifest is ignored; folder-relative automatic identity and the texture namespace are the only catalog inputs. Settings and distribution-rule JSON are unchanged.
+### Selection and UI
+- Standardized single-click/list-navigation preview and explicit double-click/Enter/configured Activate confirmation. Closing without confirmation restores the previous committed selection instead of confirming the last preview. Keyboard/gamepad confirmation and closing now follow the game's Activate and menu Cancel bindings.
+- Final tab order: Body Presets, Body Skins, Tint Masks, conditional Futanari Skin, Overlays.
+- Added LT + RS horizontal character rotation alongside right-mouse dragging; improved face framing, input consumption, popup alignment, long-row clipping, and stable catalog layout.
+- Fixed the outfit/randomization popup jumping to the top of the screen on first open; supported popups remember their individual positions between openings.
+- Restored the character-rotation hint on the main title bar immediately left of X. Corrected its clip region and right alignment; long text scales to fit instead of disappearing or truncating.
+- Shortened catalog help and fitted it to the available width on one line, including the English overlay hint.
+- Moved NPC distribution entry into each supported catalog. Added checkbox selection and category-specific condition popups; selected candidates remain available when adding more rules.
+- Catalog scans/refreshes use queued work and reusable snapshots instead of rebuilding expensive lists each time a window opens. Performance-mode scheduling remains separate from manual selection.
+- Updated the in-game help and complete installation guides. Skin and futanari packs can be installed by copying the entire installed texture-mod folder into BodySkin or Futanari.
 
-### Ownership, distribution, and compatibility
+### Skin application and asset routing
+- Replaced the general live-material BodySkin pipeline with private native Skin Armor/ARMA/TXST routing for body, hands, and feet. Source provider forms remain separate from BCNG's clones.
+- Faces now use a dedicated NiOverride skin-channel path, with adapters for known old/new RaceMenu interfaces and a fallback where direct access is unavailable. The final implementation does not replace the face HeadPart or NIF.
+- Reworked face update ordering, stale-request cancellation, baseline restoration, and texture-path/cache handling to address delayed, wrong-pack, and purple-face failures during repeated selection.
+- Removed the superseded general skin/live-material code and obsolete face experiments from the runtime path.
+- Applies compatible available DDS channels from partial packs. Missing optional genital/anal targets no longer reject an otherwise usable skin pack, including BnP CBBE layouts.
+- Uses a matching recognized race/elder/vampire DDS first, then the selected pack's ordinary channel, then the underlying provider where the pack has neither. The same policy applies to male and female packs.
+- Corrected UBE skin/subsurface channel routing and kept conventional atlas routing separate. Body/hand/foot/face/addon roles are not treated as interchangeable.
+- Improved Unicode pack paths, mod-manager provider discovery, cached texture identity, and provider restoration including RSV-related baselines.
+- Removed skin profile.json parsing. Pack identity and supported texture paths drive discovery.
 
-- Keeps BodyMorph reference-scoped while making native skin distribution ActorBase-scoped. The existing 1.1.4 rule conditions, priorities, pools, JSON schema, and UI remain unchanged; every reference sharing one NPC base now converges on one stable skin-pool choice, including legacy reference-scoped results, and contradictory manual requests fail closed.
-- Allows ActorBase ownership to transfer to another reference only while no skin is active. The same active profile may be shared; a different active profile or a forced Default from a non-owner remains a conflict.
-- Treats the current RSV Skin Armor as a source provider, rebuilds BCNG's clone when RSV replaces body/far-skin/face pointers, and rebases an unattached face or far-skin component before a later profile starts using it. Only pointers BCNG still owns are restored. The bounded face bridge paints only channels currently owned by RSV as live, non-persistent values and never creates or removes a serialized key.
-- Preserves UBE 2.0's upstream requirement to exclude its player race from RSV (`PLAYER VANILLA`); only an already valid UBE/RSV provider graph is cloned.
-- Keeps male SOS/TNG slot-52 textures and optional female SOS/ERF/TRX futanari textures in independent reference-scoped adapters. Only those adapters and outfit morph correction observe equipment changes; general native skin does not.
-- Reapplies male SOS/TNG, female futanari, and the verified RSV face bridge independently when cell attachment recreates their external geometry; native base skin is not repainted on that path. Genital adapters compare the loaded Armor/ArmorAddon identity before equipment/cell reconciliation, so unrelated OStim/ODF/outfit events cannot repeatedly overwrite live third-party effects; removal clears the identity so the same Form is restored after re-equip.
-- Removes only BCNG-owned 1.1.x body/hand/foot/tail/face NiOverride keys once during migration. It excludes RSV, foreign providers, male genital, and futanari ownership.
-- Stores an optional language-neutral `nameKey` for built-in samples and untouched generated rule names, so they follow the Korean, English, or Simplified Chinese UI without translating or overwriting a user-edited name.
-- Recovers an exact legacy generated label whose saved rule sex was changed without its name, retargeting only that built-in Korean/English/Chinese label to the current sex while leaving arbitrary custom names untouched.
-- Makes starter samples editable, movable, and deletable like every other rule, allocates collision-free persistent IDs for new rows, and shows a localized warning when an earlier same-sex all-NPC rule makes the selected row unreachable.
-- Saves distribution rules and settings through a flushed, reparsed temporary file followed by an atomic Windows replace, so a failed write cannot delete the last valid file.
-- Logs every rejected automatic NPC body/skin submission with the actor, ActorBase, rule/manual source, selected ID, and exact rejection reason. Co-save completion remains recorded only after the BodyMorph or native TXST operation finishes successfully.
-- Preserves an automatic actor's serialized body/skin choice when a matched rule leaves that category unchanged; a selected asset and an explicit Default Body remain distinct outcomes. Private native form graphs are reused across save loads after restoring provider pointers and clearing ownership, avoiding per-load duplicate-form growth, and every TXST clone is reset to provider paths before applying the next profile.
-- Preserves every installed same-name BodySlide preset ID when importing OBody NG distribution rules, so CBBE/UBE or multi-source catalog order cannot pin an NPC rule to the wrong BodyFamily and leave the actor undistributed.
-- Routes OBody NG ORefit outfit name, plugin, and resolved FormID exclusions through one tested runtime policy. Registering the list now re-evaluates every loaded actor immediately, so a newly excluded outfit clears an already-applied BCNG Outfit Correction without waiting for another equip or cell event.
+### Futanari and male addon skins
+- Moved supported SOS/TNG male and female-addon textures to a native TXST construction path, including refresh of already attached supported addon geometry.
+- Female-addon installation/loading enables the futanari feature globally; merely having an ordinary male addon does not.
+- Manual eligibility is based on SOS/TNG registration of a supported female addon, not only currently visible geometry. Unregistered females and males are ineligible.
+- Added category-specific futanari distribution restricted to registered female futanari NPCs. Texture selection does not equip/register an addon.
+- Preserves an eligible actor's independent skin choice through temporary addon-geometry absence.
 
-### Appearance work coordination
+### Tint masks and overlays
+- Moved tint discovery from the old standalone TintMask root into each BodySkin pack's Textures tree. Skin scanning and tint scanning are independent; tint-only and combined skin/tint packs are supported.
+- Added sex and UBE/conventional tint filtering. Tint editing remains player-only, with no NPC distribution.
+- Added RaceMenu paint and SlaveTats collection discovery in one expandable Face/Body/Hands/Feet list.
+- Added multiple manual overlays per area; double-click toggles a committed item on/off. Per-area Default removes only BCNG-owned overlays.
+- Added overlay favorites and per-item color/opacity controls outside the scrolling list.
+- Remember preview RGBA per item while the main UI is open, and copy each selected overlay candidate's RGBA into NPC rules.
+- Enabled per-candidate color/opacity editing while the NPC-distribution checkbox list is open. Batch edits remain separate from the actor's committed overlays; either explicit distribution action saves the checked candidates with their individual colors.
+- Store original tint DDS/RGBA in the save-specific TINT v2 record. Keep committed tint intent separate from previews and batch pack/layer restoration into one composite refresh.
+- Reworked repeated selection, ownership, restore, and provider-key lifetime handling. Preview slots no longer count as committed selections.
+- The header now shows Applied X/Y: X is BCNG's confirmed count; Y is RaceMenu capacity minus foreign occupied/reserved slots. Removed the separate BCNG counter.
 
-- Splits actor state, event ownership, and latest-wins work channels across body, native skin, tint, male genital, futanari, RSV face, and outfit features. Resetting or superseding one feature cannot clear or cancel another.
-- Removes the 1.1.x distribution delay that coupled native skin to completion of a BodyMorph rebuild. A face-only profile owns only its Face TXST and never attaches the cloned body/far-skin graph.
-- Admits only the exact SE/AE runtime table and RaceMenu BodyMorph v4/v5 plus Override v0/v1/v2 routes. Unknown game patches and future ABIs fail closed; the build remains `EXCLUSIVE_SKYRIM_FLAT` with no VR target.
-- Adds dedicated skin architecture and OBody NG ORefit import regression suites plus feedback-audit coverage for distribution tri-state persistence and independent external-addon identities. The Release DLL and all 15 test executables pass.
+### Outfit correction and SFS
+
+- Added optional SFS Rendered Outfit API v1 integration for breast/nipple correction and ORefit exclusions, force-refit entries, and outfit-specific presets.
+- Visible actual equipment is evaluated by its own name/FormID/plugin; visible registered appearances use their own identity. Hidden armor is ignored, and hiding all correction-relevant clothing clears breast/nipple correction.
+- Re-evaluates changed actors from SFS notifications and discards stale queued corrections. Without SFS or its supported API, or for an actor SFS does not manage, the original actual-equipment path remains unchanged.
+
+### NPC rules and persistence
+- New installations ship an empty opt-in rule set. Removed the distribution/exclusion mode and legacy exclusion-only rules during schema-7 migration; retain eligible positive assignments.
+- All NPCs rules default to excluding custom followers and elder NPCs through checked target filters.
+- Removed OBody NPC-rule import. The optional OBody ORefit JSON reader remains only for explicit outfit-correction registration.
+- Changed v1.1.4's auto-save-on-close behavior: Close/X/Escape/main-window close now discards unsaved rule edits in every distribution-enabled tab.
+- Only Distribute to loaded NPCs now or Distribute next game launch saves conditions. Immediate activation occurs only after a successful save; next-launch saves leave active session rules unchanged.
+- Rule priority is evaluated independently per feature and per overlay area. Automatic overlays choose one candidate per configured area; manual stacks can contain multiple overlays.
+- Expanded save-state handling for confirmed manual selections, multi-overlay stacks/colors, defaults, and addon choices. Manual choices retain priority over automatic assignments.
+- Expanded Reset selected actor settings / Reset all actor settings to body, body skin plus supported male-addon skin, futanari skin, overlays, and player tint. Reset persists explicit Default intent and does not delete assets or the rule file.
+
+### Compatibility and verification
+- Explicit runtime targets: SE 1.5.97; AE 1.6.317, 1.6.318, 1.6.323, 1.6.342, 1.6.353, 1.6.629, 1.6.640, 1.6.659, 1.6.1130, 1.6.1170, 1.6.1179. No VR, Epic 1.6.678, or unlisted runtime support.
+- Audited known RaceMenu BodyMorph and Override/Overlay interface generations, including legacy ABI and provider slot counts. A matching RaceMenu/SKSE build is still required.
+- Replaced a two-runtime genital-backend address gate with version-aware Address Library resolution and runtime code/ownership verification; corrected the GOG import-resolution assumption.
+- Native genital ownership code was inspected on 1.5.97 and 1.6.1170 only. The other ten targets still depend on runtime code verification and are not claimed fully play-tested.
+- Reduced redundant scans, temporary diagnostics, and obsolete code while retaining actionable failure reporting and ownership/lifetime checks.
+- Final SE/AE-only Release build and 23 automated test executables passed. This is not proof of zero leaks, zero regressions, or complete in-game coverage of all combinations.
+
+### Upgrade notes
+- Back up .ess saves with their matching .skse co-saves, settings, custom distribution JSON, and asset packs before updating.
+- Keep your custom BodyChangeNGdistribution.json; do not replace it with the empty installer starter.
+- Keep installed skin-mod folders under Data\BodySkin\ and futanari-skin mod folders under Data\Futanari\. Preserve their full Textures trees.
+- Move old tint files to Data\BodySkin\Your Pack\Textures\actors\character\character assets\tintmasks\ and review migrated rule conditions before saving.
 
 ## 1.1.4 — 2026-09-06
 

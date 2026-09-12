@@ -1,17 +1,20 @@
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionOverlayColors.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/FrameTasks.h"
-#include "BodyChangeNG/OBodyDistributionImport.h"
+#include "BodyChangeNG/FutanariSupport.h"
+#include "BodyChangeNG/OverlayPolicy.h"
+#include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/PathMigration.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/Settings.h"
-#include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinApplication.h"
 #include "BodyChangeNG/SkinProfiles.h"
 
 #include <SKSE/Logger.h>
@@ -20,7 +23,6 @@
 #include <RE/T/TESCombatStyle.h>
 
 #include <algorithm>
-#include <charconv>
 #include <fstream>
 #include <optional>
 #include <ranges>
@@ -31,7 +33,7 @@
 
 namespace
 {
-    constexpr auto kSchemaVersion = 4;
+    constexpr auto kSchemaVersion = 7;
 
     [[nodiscard]] constexpr std::string_view BodyApplyResultLabel(
         const bcn::racemenu::ApplyResult result) noexcept
@@ -52,14 +54,12 @@ namespace
     }
 
     [[nodiscard]] constexpr std::string_view SkinApplyResultLabel(
-        const bcn::skin_override::ApplyResult result) noexcept
+        const bcn::skin_application::ApplyResult result) noexcept
     {
-        using Result = bcn::skin_override::ApplyResult;
+        using Result = bcn::skin_application::ApplyResult;
         switch (result) {
         case Result::queued: return "queued";
-        case Result::unavailable: return "backend-unavailable";
         case Result::invalidActor: return "invalid-actor";
-        case Result::actor3DUnavailable: return "actor-3d-unavailable";
         case Result::missingProfile: return "missing-profile";
         case Result::incompatibleSex: return "incompatible-sex";
         case Result::incompatibleRace: return "incompatible-race";
@@ -67,12 +67,9 @@ namespace
         case Result::ambiguousProfileLayout: return "ambiguous-profile-layout";
         case Result::ambiguousActorLayout: return "ambiguous-actor-layout";
         case Result::incompatibleFutanariType: return "incompatible-futanari-type";
-        case Result::futanariGeometryUnavailable: return "futanari-geometry-unavailable";
-        case Result::faceGeometryUnavailable: return "face-geometry-unavailable";
         case Result::noTaskInterface: return "task-interface-unavailable";
         case Result::unsupportedRuntime: return "unsupported-runtime";
         case Result::actorBaseUnavailable: return "actor-base-unavailable";
-        case Result::nativeCloneFailed: return "native-clone-failed";
         case Result::sharedActorBaseConflict: return "shared-actor-base-conflict";
         case Result::ownershipConflict: return "ownership-conflict";
         }
@@ -243,6 +240,8 @@ namespace
         if (!rule.enabled || !actor) return false;
         const auto base = actor->GetActorBase();
         if (!base || (base->GetSex() == RE::SEX::kFemale) != rule.female) return false;
+        if (!rule.includeCustomFollowers && IsCustomFollower(actor, base)) return false;
+        if (!rule.includeElderNPCs && bcn::IsElderActor(base)) return false;
         switch (rule.scope) {
         case bcn::DistributionScope::allNPCs:
             return true;
@@ -310,26 +309,38 @@ namespace
     struct RuleSelection final
     {
         bool matched{};
-        bool bodyExcluded{};
-        bool skinExcluded{};
         bool defaultBodyRequested{};
         std::string ruleId;
         std::optional<std::string> presetId;
         std::optional<std::string> skinProfileId;
+        std::optional<std::string> futanariSkinId;
+        std::array<std::optional<std::string>,
+            bcn::overlay::Index(bcn::overlay::Area::count)> overlayIds;
+        std::array<std::uint32_t, bcn::overlay::Index(bcn::overlay::Area::count)> overlayColors{};
 
         [[nodiscard]] bool HasSelection() const noexcept
         {
-            return presetId.has_value() || skinProfileId.has_value();
+            return presetId.has_value() || skinProfileId.has_value() ||
+                futanariSkinId.has_value() ||
+                std::ranges::any_of(overlayIds, [](const auto& id) { return id.has_value(); });
         }
     };
 
+    [[nodiscard]] bcn::DistributionFeature OverlayFeature(const bcn::overlay::Area area)
+    {
+        switch (area) {
+        case bcn::overlay::Area::face: return bcn::DistributionFeature::overlayFace;
+        case bcn::overlay::Area::hands: return bcn::DistributionFeature::overlayHands;
+        case bcn::overlay::Area::feet: return bcn::DistributionFeature::overlayFeet;
+        default: return bcn::DistributionFeature::overlayBody;
+        }
+    }
+
     [[nodiscard]] std::optional<std::string> ChooseFromPool(const bcn::DistributionRule& rule,
         const std::vector<std::string>& pool, RE::Actor* actor, const std::string_view kind,
-        const std::string_view previous)
+        const std::string_view previous, const bcn::DistributionFeature feature)
     {
         if (pool.empty()) return std::nullopt;
-        const auto feature = kind == "skin" ?
-            bcn::DistributionFeature::skin : bcn::DistributionFeature::body;
         if (bcn::MayRetainPreviousDistributionSelection(feature) &&
             !previous.empty() && std::ranges::find(pool, previous) != pool.end()) {
             return std::string{ previous };
@@ -350,9 +361,56 @@ namespace
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorFemale = base->GetSex() == RE::SEX::kFemale;
-        return bcn::SkinProfiles::Get().CompatibleIds(pool,
+        std::vector<std::string> legacyPool;
+        legacyPool.reserve(pool.size());
+        for (const auto& id : pool) {
+            const auto profile = bcn::SkinProfiles::Get().Find(id);
+            if (!profile || profile->layout != bcn::SkinLayout::legacy ||
+                profile->race != bcn::SkinRace::humanoid ||
+                (actorFemale ? profile->sex != bcn::SkinSex::female :
+                    profile->sex != bcn::SkinSex::male)) continue;
+            legacyPool.push_back(id);
+        }
+        return bcn::SkinProfiles::Get().CompatibleIds(legacyPool,
             actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, distributionFamily,
             bcn::ResolveActorSkinRace(actor));
+    }
+
+    [[nodiscard]] std::vector<std::string> CompatibleOverlayPool(
+        const std::vector<std::string>& pool, RE::Actor* actor,
+        const bcn::overlay::Area area)
+    {
+        if (!actor) return {};
+        const auto* base = actor->GetActorBase();
+        if (!base) return {};
+        const auto female = base->GetSex() == RE::SEX::kFemale;
+        const auto family = bcn::body_family::ResolveActor(actor);
+        std::vector<std::string> result;
+        result.reserve(pool.size());
+        for (const auto& id : pool) {
+            if (const auto entry = bcn::overlay::Find(id); entry && entry->area == area &&
+                entry->layout == bcn::overlay::Layout::legacy &&
+                bcn::overlay::EntryMatchesActor(
+                    entry->layout, entry->sex, family, female)) {
+                result.push_back(id);
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] std::vector<std::string> CompatibleFutanariPool(
+        const std::vector<std::string>& pool, RE::Actor* actor)
+    {
+        if (pool.empty() || !actor) return {};
+        const auto type = bcn::futanari_support::RegisteredType(actor);
+        if (!type || *type == bcn::FutanariSkinType::ubeTrx) return {};
+        std::vector<std::string> result;
+        result.reserve(pool.size());
+        for (const auto& id : pool) {
+            const auto profile = bcn::FutanariSkinProfiles::Get().Find(id);
+            if (profile && profile->type == *type) result.push_back(id);
+        }
+        return result;
     }
 
     [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
@@ -363,35 +421,103 @@ namespace
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorMale = base->GetSex() != RE::SEX::kFemale;
-        return bcn::PresetCatalog::Get().CompatibleIds(pool, actorMale, distributionFamily);
+        std::vector<std::string> legacyPool;
+        legacyPool.reserve(pool.size());
+        for (const auto& id : pool) {
+            const auto preset = bcn::PresetCatalog::Get().Find(id);
+            if (!preset || preset->male != actorMale ||
+                (bcn::body_family::PresetMask(preset->family, preset->male) &
+                    bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U) continue;
+            legacyPool.push_back(id);
+        }
+        return bcn::PresetCatalog::Get().CompatibleIds(
+            legacyPool, actorMale, distributionFamily);
     }
 
     [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
         RE::Actor* actor, const std::optional<bcn::ActorState>& previous,
         const bcn::body_family::Mask distributionFamily, const bool useBodyPreset)
     {
+        RuleSelection result;
+        const auto rememberRule = [&](const bcn::DistributionRule& rule) {
+            result.matched = true;
+            if (result.ruleId.empty()) result.ruleId = rule.id;
+        };
+
+        // Each feature owns its own ordered rule stream. A body-only rule must
+        // never shadow a later skin, overlay, or futanari rule merely because
+        // all channels used to share one editor row in 1.1.x.
         for (const auto& rule : rules) {
             if (!MatchesTarget(rule, actor)) continue;
-            const auto compatiblePresets = rule.bodyExcluded || !useBodyPreset ?
-                std::vector<std::string>{} :
-                CompatiblePresetPool(rule.presetIds, actor, distributionFamily);
-            const auto compatibleSkins = rule.skinExcluded ? std::vector<std::string>{} :
-                CompatibleSkinPool(rule.skinProfileIds, actor, distributionFamily);
-            return RuleSelection{
-                .matched = true,
-                .bodyExcluded = rule.bodyExcluded,
-                .skinExcluded = rule.skinExcluded,
-                .defaultBodyRequested = !rule.bodyExcluded && !useBodyPreset,
-                .ruleId = rule.id,
-                .presetId = rule.bodyExcluded ? std::nullopt : ChooseFromPool(rule, compatiblePresets,
-                    actor, "body", previous && !previous->body.selection.manual ?
-                        std::string_view{ previous->body.selection.selectedId } : std::string_view{}),
-                .skinProfileId = rule.skinExcluded ? std::nullopt : ChooseFromPool(rule, compatibleSkins,
-                    actor, "skin", previous && !previous->skin.selection.manual ?
-                        std::string_view{ previous->skin.selection.selectedId } : std::string_view{})
-            };
+            if (rule.presetIds.empty()) continue;
+            if (!useBodyPreset) {
+                result.defaultBodyRequested = true;
+                rememberRule(rule);
+                break;
+            }
+            const auto compatible = CompatiblePresetPool(
+                rule.presetIds, actor, distributionFamily);
+            result.presetId = ChooseFromPool(rule, compatible, actor, "body",
+                previous && !previous->body.selection.manual ?
+                    std::string_view{ previous->body.selection.selectedId } : std::string_view{},
+                bcn::DistributionFeature::body);
+            if (result.presetId) {
+                rememberRule(rule);
+                break;
+            }
         }
-        return {};
+
+        for (const auto& rule : rules) {
+            if (!MatchesTarget(rule, actor)) continue;
+            if (rule.skinProfileIds.empty()) continue;
+            const auto compatible = CompatibleSkinPool(
+                rule.skinProfileIds, actor, distributionFamily);
+            result.skinProfileId = ChooseFromPool(rule, compatible, actor, "skin",
+                previous && !previous->skin.selection.manual ?
+                    std::string_view{ previous->skin.selection.selectedId } : std::string_view{},
+                bcn::DistributionFeature::skin);
+            if (result.skinProfileId) {
+                rememberRule(rule);
+                break;
+            }
+        }
+
+        for (const auto& rule : rules) {
+            if (!rule.female || rule.futanariSkinIds.empty() || !MatchesTarget(rule, actor)) continue;
+            const auto compatible = CompatibleFutanariPool(rule.futanariSkinIds, actor);
+            result.futanariSkinId = ChooseFromPool(rule, compatible, actor, "futanari",
+                previous && !previous->futanari.manual ?
+                    std::string_view{ previous->futanari.selectedSkinId } : std::string_view{},
+                bcn::DistributionFeature::futanari);
+            if (result.futanariSkinId) {
+                rememberRule(rule);
+                break;
+            }
+        }
+
+        for (const auto area : bcn::overlay::kAreas) {
+            const auto index = bcn::overlay::Index(area);
+            for (const auto& rule : rules) {
+                if (!MatchesTarget(rule, actor)) continue;
+                if (rule.overlayIds[index].empty()) continue;
+                const auto compatible = CompatibleOverlayPool(rule.overlayIds[index], actor, area);
+                const auto& previousArea = previous ?
+                    previous->overlay.areas[index] : bcn::OverlayAreaState{};
+                const auto previousId = previous && !previousArea.manual &&
+                    !previousArea.items.empty() ?
+                    std::string_view{ previousArea.items.front().selectedId } :
+                    std::string_view{};
+                result.overlayIds[index] = ChooseFromPool(rule, compatible, actor,
+                    std::string{ "overlay-" } + std::string{ bcn::overlay::StableName(area) },
+                    previousId, OverlayFeature(area));
+                if (result.overlayIds[index]) {
+                    result.overlayColors[index] = bcn::DistributionOverlayColor(rule, area, *result.overlayIds[index]);
+                    rememberRule(rule);
+                    break;
+                }
+            }
+        }
+        return result;
     }
 
     [[nodiscard]] std::string GenerateRuleId(const std::size_t index)
@@ -399,91 +525,83 @@ namespace
         return "rule-" + std::to_string(index + 1U);
     }
 
-    [[nodiscard]] std::vector<bcn::DistributionRule> DefaultExclusionRules()
+    [[nodiscard]] std::vector<bcn::DistributionRule> DefaultDistributionRules()
     {
-        using bcn::DistributionRule;
-        using bcn::DistributionScope;
-        return {
-            DistributionRule{
-                .id = "default-exclude-mod-follower-female",
-                .name = "Exclude Body Distribution for Custom Followers (Female)",
-                .nameKey = "default-exclude-mod-follower-female",
-                .female = true,
-                .scope = DistributionScope::modInstalledFollower,
-                .bodyExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-mod-follower-male",
-                .name = "Exclude Body Distribution for Custom Followers (Male)",
-                .nameKey = "default-exclude-mod-follower-male",
-                .female = false,
-                .scope = DistributionScope::modInstalledFollower,
-                .bodyExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-elder-female",
-                .name = "Exclude Body Distribution for Elder NPCs (Female)",
-                .nameKey = "default-exclude-elder-female",
-                .female = true,
-                .scope = DistributionScope::elderNPC,
-                .bodyExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-elder-male",
-                .name = "Exclude Body Distribution for Elder NPCs (Male)",
-                .nameKey = "default-exclude-elder-male",
-                .female = false,
-                .scope = DistributionScope::elderNPC,
-                .bodyExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-skin-argonian-female",
-                .name = "Exclude Skin Distribution for Argonians (Female)",
-                .nameKey = "default-exclude-skin-argonian-female",
-                .female = true,
-                .scope = DistributionScope::raceEditorID,
-                .targetPlugin = "Skyrim.esm",
-                .targetLocalFormID = 0x13740U,
-                .target = "ArgonianRace",
-                .skinExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-skin-argonian-male",
-                .name = "Exclude Skin Distribution for Argonians (Male)",
-                .nameKey = "default-exclude-skin-argonian-male",
-                .female = false,
-                .scope = DistributionScope::raceEditorID,
-                .targetPlugin = "Skyrim.esm",
-                .targetLocalFormID = 0x13740U,
-                .target = "ArgonianRace",
-                .skinExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-skin-khajiit-female",
-                .name = "Exclude Skin Distribution for Khajiit (Female)",
-                .nameKey = "default-exclude-skin-khajiit-female",
-                .female = true,
-                .scope = DistributionScope::raceEditorID,
-                .targetPlugin = "Skyrim.esm",
-                .targetLocalFormID = 0x13745U,
-                .target = "KhajiitRace",
-                .skinExcluded = true },
-            DistributionRule{
-                .id = "default-exclude-skin-khajiit-male",
-                .name = "Exclude Skin Distribution for Khajiit (Male)",
-                .nameKey = "default-exclude-skin-khajiit-male",
-                .female = false,
-                .scope = DistributionScope::raceEditorID,
-                .targetPlugin = "Skyrim.esm",
-                .targetLocalFormID = 0x13745U,
-                .target = "KhajiitRace",
-                .skinExcluded = true }
-        };
+        // Distribution is opt-in: no hidden blacklist or default random pool
+        // exists until the user selects catalog rows and creates a rule.
+        return {};
+    }
+
+    [[nodiscard]] std::vector<bcn::DistributionRule> SplitRulesByFeature(
+        std::vector<bcn::DistributionRule> rules)
+    {
+        std::vector<bcn::DistributionRule> expanded;
+        expanded.reserve(rules.size());
+        for (const auto& source : rules) {
+            const auto append = [&](const std::string_view suffix, auto&& assign) {
+                auto rule = source;
+                rule.presetIds.clear();
+                rule.skinProfileIds.clear();
+                rule.futanariSkinIds.clear();
+                for (auto& ids : rule.overlayIds) ids.clear();
+                for (auto& colors : rule.overlayColors) colors.clear();
+                assign(rule);
+                if (!expanded.empty() && expanded.back().id == source.id) {
+                    rule.id += suffix;
+                } else if (std::ranges::any_of(expanded, [&](const auto& existing) {
+                               return existing.id == source.id;
+                           })) {
+                    rule.id += suffix;
+                }
+                expanded.push_back(std::move(rule));
+            };
+
+            auto channelCount = static_cast<unsigned>(!source.presetIds.empty()) +
+                static_cast<unsigned>(!source.skinProfileIds.empty()) +
+                static_cast<unsigned>(!source.futanariSkinIds.empty()) +
+                static_cast<unsigned>(std::ranges::any_of(source.overlayIds,
+                    [](const auto& ids) { return !ids.empty(); }));
+            if (channelCount == 0U) continue;
+            if (channelCount == 1U) {
+                expanded.push_back(source);
+                continue;
+            }
+            auto first = true;
+            const auto suffix = [&](const std::string_view value) {
+                if (first) {
+                    first = false;
+                    return std::string_view{};
+                }
+                return value;
+            };
+            if (!source.presetIds.empty()) append(suffix("-body"), [&](auto& rule) {
+                rule.presetIds = source.presetIds;
+            });
+            if (!source.skinProfileIds.empty()) append(suffix("-skin"), [&](auto& rule) {
+                rule.skinProfileIds = source.skinProfileIds;
+            });
+            if (!source.futanariSkinIds.empty()) append(suffix("-futanari"), [&](auto& rule) {
+                rule.futanariSkinIds = source.futanariSkinIds;
+            });
+            if (std::ranges::any_of(source.overlayIds,
+                    [](const auto& ids) { return !ids.empty(); })) {
+                append(suffix("-overlay"), [&](auto& rule) {
+                    rule.overlayIds = source.overlayIds;
+                    rule.overlayColors = source.overlayColors;
+                });
+            }
+        }
+        return expanded;
     }
 
     [[nodiscard]] std::vector<bcn::DistributionRule> NormalizeRules(std::vector<bcn::DistributionRule> rules)
     {
+        rules = SplitRulesByFeature(std::move(rules));
         if (rules.size() > 256U) rules.resize(256U);
         std::unordered_set<std::string> known;
         for (std::size_t index{}; index < rules.size(); ++index) {
             auto& rule = rules[index];
-            // There is deliberately no separate Use checkbox. Every row is
-            // an active condition whose Body/Skin channel independently says
-            // Distribute or Exclude.
+            // Every persisted row is a positive, opt-in distribution rule.
             rule.enabled = true;
             if (rule.id.empty() || !known.insert(rule.id).second) {
                 std::size_t suffix = index;
@@ -526,31 +644,17 @@ namespace
                 rule.targetPlugin.clear();
                 rule.targetLocalFormID = 0U;
             }
-            if (rule.excluded) {
-                rule.bodyExcluded = true;
-                rule.skinExcluded = true;
-                rule.excluded = false;
-            }
             if (rule.target.size() > 512U) rule.target.clear();
             rule.bodyFamily.clear();
             std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
             std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+            std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+            for (auto& pool : rule.overlayIds) {
+                std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+            }
+            bcn::PruneDistributionOverlayColors(rule);
         }
         return rules;
-    }
-
-    [[nodiscard]] bool ParseHex(const std::string_view text, std::uint32_t& value)
-    {
-        const auto result = std::from_chars(text.data(), text.data() + text.size(), value, 16);
-        return result.ec == std::errc{} && result.ptr == text.data() + text.size();
-    }
-
-    [[nodiscard]] bool ParseOBodyLocalFormID(std::string_view source, const bool lightPlugin, std::uint32_t& value)
-    {
-        if (source.starts_with("0x") || source.starts_with("0X")) source.remove_prefix(2);
-        const auto digits = lightPlugin ? 3U : 6U;
-        if (source.size() > digits) source.remove_prefix(source.size() - digits);
-        return !source.empty() && ParseHex(source, value);
     }
 
     [[nodiscard]] std::vector<std::string> StringsFromJsonArray(const nlohmann::json& value)
@@ -563,6 +667,19 @@ namespace
             }
         }
         return output;
+    }
+
+    [[nodiscard]] std::array<std::vector<std::string>,
+        bcn::overlay::Index(bcn::overlay::Area::count)> OverlayPoolsFromJson(
+        const nlohmann::json& source)
+    {
+        std::array<std::vector<std::string>,
+            bcn::overlay::Index(bcn::overlay::Area::count)> result;
+        if (!source.is_array()) return result;
+        for (std::size_t index{}; index < result.size() && index < source.size(); ++index) {
+            result[index] = StringsFromJsonArray(source[index]);
+        }
+        return result;
     }
 
     [[nodiscard]] bool WriteDistributionFile(const std::filesystem::path& path,
@@ -587,10 +704,11 @@ namespace
                     { "bodyFamily", rule.bodyFamily },
                     { "presetIds", rule.presetIds },
                     { "skinProfileIds", rule.skinProfileIds },
-                    { "excluded", rule.bodyExcluded && rule.skinExcluded },
-                    { "bodyExcluded", rule.bodyExcluded },
-                    { "skinExcluded", rule.skinExcluded },
-                    { "source", rule.importedFromOBody ? "obody" : "bodychangeng" }
+                    { "futanariSkinIds", rule.futanariSkinIds },
+                    { "overlayIds", rule.overlayIds },
+                    { "overlayColors", rule.overlayColors },
+                    { "includeCustomFollowers", rule.includeCustomFollowers },
+                    { "includeElderNPCs", rule.includeElderNPCs }
                 });
             }
             const nlohmann::json root{
@@ -662,25 +780,59 @@ namespace bcn
 
     bool Distribution::Load()
     {
+        {
+            std::scoped_lock lock(lock_);
+            savedRules_.reset();
+        }
         const auto path = Path();
         const auto sourcePath = path_migration::ResolveFile(path, LegacyDistributionPath());
         std::vector<DistributionRule> loaded;
         try {
             if (!std::filesystem::exists(sourcePath.path)) {
                 std::scoped_lock lock(lock_);
-                rules_ = DefaultExclusionRules();
+                rules_ = DefaultDistributionRules();
                 evaluationRules_.reset();
                 return false;
             }
             std::ifstream stream(sourcePath.path);
             const auto root = nlohmann::json::parse(stream);
             const auto schemaVersion = root.value("schemaVersion", 0);
-            if ((schemaVersion != 3 && schemaVersion != kSchemaVersion) ||
+            if ((schemaVersion < 3 || schemaVersion > kSchemaVersion) ||
                 !root.contains("rules") || !root["rules"].is_array()) {
                 throw std::runtime_error("unsupported distribution schema");
             }
             for (const auto& source : root["rules"]) {
                 if (!source.is_object() || loaded.size() >= 256U) continue;
+                // Versions that supported OBody distribution import tagged
+                // generated rows. Retire those rows once and never turn them
+                // into editable BCNG-owned rules.
+                const auto sourceId = source.value("id", std::string{});
+                if (source.value("source", std::string{}) == "obody" ||
+                    sourceId.starts_with("obody-import-")) {
+                    continue;
+                }
+                const auto legacyBoolean = [&](const std::string_view key) {
+                    const auto value = source.find(key);
+                    return value != source.end() && value->is_boolean() && value->get<bool>();
+                };
+                bool legacyOverlayExcluded{};
+                if (const auto values = source.find("overlayExcluded");
+                    values != source.end() && values->is_array()) {
+                    legacyOverlayExcluded = std::ranges::any_of(*values, [](const auto& value) {
+                        return value.is_boolean() && value.template get<bool>();
+                    });
+                }
+                const auto legacyExcluded = legacyBoolean("excluded") ||
+                    legacyBoolean("bodyExcluded") || legacyBoolean("skinExcluded") ||
+                    legacyOverlayExcluded;
+                const auto overlayPools = source.contains("overlayIds") ?
+                    OverlayPoolsFromJson(source["overlayIds"]) :
+                    decltype(DistributionRule::overlayIds){};
+                const auto hasPositivePool = !source.value("presetIds", std::vector<std::string>{}).empty() ||
+                    !source.value("skinProfileIds", std::vector<std::string>{}).empty() ||
+                    !source.value("futanariSkinIds", std::vector<std::string>{}).empty() ||
+                    std::ranges::any_of(overlayPools, [](const auto& pool) { return !pool.empty(); });
+                if (legacyExcluded && !hasPositivePool) continue;
                 DistributionRule rule{
                     .id = source.value("id", std::string{}),
                     .name = source.value("name", std::string{}),
@@ -696,18 +848,25 @@ namespace bcn
                     .bodyFamily = source.value("bodyFamily", std::string{}),
                     .presetIds = source.value("presetIds", std::vector<std::string>{}),
                     .skinProfileIds = source.value("skinProfileIds", std::vector<std::string>{}),
-                    .excluded = source.value("excluded", false),
-                    .bodyExcluded = source.value("bodyExcluded", false),
-                    .skinExcluded = source.value("skinExcluded", false),
-                    .importedFromOBody = source.value("source", std::string{}) == "obody"
+                    .futanariSkinIds = source.value("futanariSkinIds", std::vector<std::string>{}),
+                    .overlayIds = overlayPools,
+                    .overlayColors = source.contains("overlayColors") ?
+                        ReadDistributionOverlayColors(source["overlayColors"], overlayPools) :
+                        decltype(DistributionRule::overlayColors){},
+                    .includeCustomFollowers = source.value("includeCustomFollowers", false),
+                    .includeElderNPCs = source.value("includeElderNPCs", false)
                 };
                 if (rule.id.empty()) rule.id = GenerateRuleId(loaded.size());
                 if (!IsValidScope(rule.scope)) continue;
                 if (rule.target.size() > 512U) rule.target.clear();
-                // Read the legacy field above so old files remain valid, then
-                // NormalizeRules clears it in favor of Mod Settings.
+                // Legacy exclusion-only rows were discarded above. Positive
+                // pools survive migration without retaining exclusion state.
                 std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
                 std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                for (auto& pool : rule.overlayIds) {
+                    std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                }
                 loaded.push_back(std::move(rule));
             }
             loaded = NormalizeRules(std::move(loaded));
@@ -724,7 +883,7 @@ namespace bcn
             SKSE::log::error("Body Change NG could not load distribution rules from {}: {}",
                 bcn::path_text::Utf8(sourcePath.path), exception.what());
             std::scoped_lock lock(lock_);
-            rules_ = DefaultExclusionRules();
+            rules_ = DefaultDistributionRules();
             evaluationRules_.reset();
             return false;
         }
@@ -736,21 +895,13 @@ namespace bcn
         return true;
     }
 
-    bool Distribution::Save() const
-    {
-        const auto path = Path();
-        std::vector<DistributionRule> rules;
-        {
-            std::scoped_lock lock(lock_);
-            rules = rules_;
-        }
-        return WriteDistributionFile(path, rules);
-    }
-
     bool Distribution::SaveRulesForNextGame(std::vector<DistributionRule> rules) const
     {
         rules = NormalizeRules(std::move(rules));
-        return WriteDistributionFile(Path(), rules);
+        if (!WriteDistributionFile(Path(), rules)) return false;
+        std::scoped_lock lock(lock_);
+        savedRules_ = std::move(rules);
+        return true;
     }
 
     std::shared_ptr<const std::vector<DistributionRule>> Distribution::EvaluationRules() const
@@ -760,10 +911,10 @@ namespace bcn
         return evaluationRules_;
     }
 
-    std::vector<DistributionRule> Distribution::Snapshot() const
+    std::vector<DistributionRule> Distribution::SavedRulesSnapshot() const
     {
         std::scoped_lock lock(lock_);
-        return rules_;
+        return savedRules_ ? *savedRules_ : rules_;
     }
 
     void Distribution::SetRules(std::vector<DistributionRule> rules)
@@ -794,26 +945,6 @@ namespace bcn
         ActorRegistry::Get().SetManualSkin(actor, {}, true);
     }
 
-    bool Distribution::RemoveManualAssignment(RE::Actor* actor)
-    {
-        return ActorRegistry::Get().RemoveManual(actor);
-    }
-
-    bool Distribution::RemoveManualBodyAssignment(RE::Actor* actor)
-    {
-        return ActorRegistry::Get().RemoveManualBody(actor);
-    }
-
-    void Distribution::ClearManualAssignments()
-    {
-        ActorRegistry::Get().ClearManualSelections();
-    }
-
-    void Distribution::ClearManualBodyAssignments()
-    {
-        ActorRegistry::Get().ClearManualBodySelections();
-    }
-
     bool Distribution::HasManualAssignment(const RE::Actor* actor) const
     {
         return ActorRegistry::Get().HasManualSelection(actor);
@@ -839,35 +970,12 @@ namespace bcn
         return queued;
     }
 
-    std::size_t Distribution::ResetLoadedNPCs()
-    {
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        auto* processes = RE::ProcessLists::GetSingleton();
-        if (!player || !processes || !racemenu::IsReady()) return 0;
-
-        std::size_t queued{};
-        std::unordered_set<RE::FormID> seen;
-        processes->ForAllActors([&](RE::Actor* actor) {
-            if (!IsEligibleNPC(actor, player) || !seen.insert(actor->GetFormID()).second) {
-                return RE::BSContainer::ForEachResult::kContinue;
-            }
-            racemenu::QueueClearBodyChangeMorphs(actor);
-            ++queued;
-            return RE::BSContainer::ForEachResult::kContinue;
-        });
-        // Keep manual skin locks: a texture override has no mod-owner field in
-        // RaceMenu, so blindly removing it could erase another mod's override.
-        // The reset action intentionally concerns Body Change NG body morphs.
-        ClearManualBodyAssignments();
-        ActorRegistry::Get().InvalidateAllBodyResults();
-        return queued;
-    }
-
     bool Distribution::ApplyActor(RE::Actor* actor) const
     {
         // User preview owns this actor until confirm/close. Automatic
         // distribution must not replace the interactive body or skin.
-        if (racemenu::HasActivePreview(actor)) return false;
+        if (actor && (frame_tasks::HasPreview(actor->GetFormID()) ||
+            racemenu::HasActivePreview(actor) || overlay::HasActivePreview(actor))) return false;
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!IsEligibleNPC(actor, player)) return false;
         const auto manual = ActorRegistry::Get().ManualSelection(actor);
@@ -884,9 +992,10 @@ namespace bcn
         const auto selection = ChooseRuleSelection(
             *rules, actor, previous, distributionFamily, useBodyPreset);
         ActorRegistry::Get().SetRuleSelection(actor, selection.presetId,
-            selection.skinProfileId, selection.defaultBodyRequested);
-        // A matched exclusion/empty pool and the absence of a matching rule
-        // both mean "unchanged", not "forget the co-save choice".  Resolve
+            selection.skinProfileId, selection.defaultBodyRequested,
+            selection.futanariSkinId);
+        // The absence of a matching positive rule means "unchanged", not
+        // "forget the co-save choice". Resolve
         // the effective state after the tri-state update so a native skin
         // graph (which is intentionally detached at a load boundary) and an
         // unverified BodyMorph choice are actually restored in the new
@@ -896,6 +1005,8 @@ namespace bcn
             &effective->body.selection : nullptr;
         const auto* automaticSkin = effective && (!manual || !manual->hasSkin) ?
             &effective->skin.selection : nullptr;
+        const auto* automaticFutanari = effective && (!manual || !manual->hasFutanari) ?
+            &effective->futanari : nullptr;
         bool queued{};
         const auto ruleSource =
             (selection.ruleId.empty() ? std::string_view{ "none" } :
@@ -915,8 +1026,8 @@ namespace bcn
             return true;
         };
         const auto queueSkin = [&](const std::string_view profileId,
-                                   const skin_override::ApplyResult result) {
-            if (result != skin_override::ApplyResult::queued) {
+                                   const skin_application::ApplyResult result) {
+            if (result != skin_application::ApplyResult::queued) {
                 SKSE::log::warn(
                     "Body Change NG rejected NPC skin distribution actor={:08X} base={:08X} source='{}' profile='{}' result={}",
                     actor->GetFormID(), actor->GetActorBase()->GetFormID(), skinSource,
@@ -955,179 +1066,42 @@ namespace bcn
 
         if (manual && manual->hasSkin && manual->useDefaultSkin &&
             ActorRegistry::Get().NeedsSkinApply(actor, {}, true)) {
-            queued = queueSkin("<default>", skin_override::QueueClear(actor)) || queued;
+            queued = queueSkin("<default>", skin_application::QueueClear(actor)) || queued;
         } else if (manual && manual->hasSkin && !manual->skinId.empty() &&
             ActorRegistry::Get().NeedsSkinApply(actor, manual->skinId, false)) {
             queued = queueSkin(manual->skinId,
-                skin_override::QueueApply(actor, manual->skinId)) || queued;
+                skin_application::QueueApply(actor, manual->skinId)) || queued;
         } else if (automaticSkin && !automaticSkin->useDefault &&
             !automaticSkin->selectedId.empty() &&
             ActorRegistry::Get().NeedsSkinApply(actor, automaticSkin->selectedId, false)) {
             queued = queueSkin(automaticSkin->selectedId,
-                skin_override::QueueApply(actor, automaticSkin->selectedId)) || queued;
+                skin_application::QueueApply(actor, automaticSkin->selectedId)) || queued;
+        }
+        // ActorWorkQueue immediately follows this selection pass with the
+        // provider-rebuild reconciler. Keep futanari state selection here and
+        // let that single path perform the TXST mutation, avoiding two jobs
+        // for the same slot-52 ArmorAddon on one attach event.
+        queued = (selection.futanariSkinId.has_value() && automaticFutanari &&
+            !automaticFutanari->manual) || queued;
+        // Newly selected distribution overlays are applied independently by
+        // anatomical area. Existing saved selections are restored by the
+        // actor reconcile boundary even when this rule contributes no new ID.
+        for (const auto area : overlay::kAreas) {
+            const auto index = overlay::Index(area);
+            const auto effectiveArea = effective ?
+                std::addressof(effective->overlay.areas[index]) : nullptr;
+            if (!selection.overlayIds[index] || (effectiveArea && effectiveArea->manual)) continue;
+            const auto result = overlay::QueueApply(actor, area,
+                *selection.overlayIds[index], overlay::ApplyMode::automatic, selection.overlayColors[index]);
+            queued = result == overlay::ApplyResult::queued || queued;
+            if (result != overlay::ApplyResult::queued &&
+                result != overlay::ApplyResult::missingEntry) {
+                SKSE::log::warn("Body Change NG rejected NPC overlay distribution actor={:08X} source='{}' area={} id='{}' result={}",
+                    actor->GetFormID(), ruleSource, overlay::StableName(area),
+                    *selection.overlayIds[index], static_cast<std::uint32_t>(result));
+            }
         }
         return queued;
     }
 
-    OBodyImportReport Distribution::ImportOBodyDefaults()
-    {
-        const auto legacyPath = std::filesystem::current_path() / "Data" / "SKSE" / "Plugins" / "OBody_presetDistributionConfig.json";
-        try {
-            std::ifstream stream(legacyPath);
-            if (!stream) return {};
-            const auto root = nlohmann::json::parse(stream);
-            if (!root.is_object()) throw std::runtime_error("OBody configuration root is not an object");
-
-            const auto catalog = PresetCatalog::Get().Snapshot();
-            std::unordered_set<std::string> blacklisted;
-            if (const auto found = root.find("blacklistedPresetsFromRandomDistribution"); found != root.end() && found->is_array()) {
-                for (const auto& value : *found) if (value.is_string()) blacklisted.insert(value.get<std::string>());
-            }
-            std::vector<DistributionRule> imported;
-            std::size_t requestedPresetNames{};
-            std::unordered_set<std::string> missingPresetNames;
-            const auto matchingPresetIds = [&catalog, &requestedPresetNames, &missingPresetNames](
-                                               const std::vector<std::string>& names, const bool female) {
-                return obody_distribution::MatchingPresetIds(
-                    catalog, names, female, requestedPresetNames, missingPresetNames);
-            };
-            const auto addRule = [&](std::string name, const DistributionScope scope, const bool female,
-                                     std::string target, const std::uint32_t baseFormID,
-                                     const std::vector<std::string>& presetNames, const bool excluded = false) {
-                DistributionRule rule{
-                    .id = "obody-import-" + std::to_string(imported.size() + 1U),
-                    .name = std::move(name),
-                    .female = female,
-                    .scope = scope,
-                    .npcBaseFormID = baseFormID,
-                    .target = std::move(target),
-                    .presetIds = matchingPresetIds(presetNames, female),
-                    .bodyExcluded = excluded,
-                    .importedFromOBody = true
-                };
-                if (excluded || !rule.presetIds.empty()) {
-                    imported.push_back(std::move(rule));
-                }
-            };
-            const auto addForBothSexes = [&](const std::string& name, const DistributionScope scope,
-                                             const std::string& target, const std::uint32_t baseFormID,
-                                             const bool excluded) {
-                addRule(name + " (female)", scope, true, target, baseFormID, {}, excluded);
-                addRule(name + " (male)", scope, false, target, baseFormID, {}, excluded);
-            };
-            const auto importObjectRules = [&](const char* key, const DistributionScope scope, const bool female) {
-                const auto node = root.find(key);
-                if (node == root.end() || !node->is_object()) return;
-                for (auto entry = node->begin(); entry != node->end(); ++entry) {
-                    addRule(std::string("OBody ") + key + ": " + entry.key(), scope, female,
-                        entry.key(), 0U, StringsFromJsonArray(entry.value()));
-                }
-            };
-
-            // OBody tests these global exclusions before it evaluates individual
-            // distribution rules, so the imported exclusions must stay at the top.
-            if (const auto node = root.find("blacklistedNpcs"); node != root.end()) {
-                for (const auto& name : StringsFromJsonArray(*node)) {
-                    addForBothSexes("OBody excluded NPC: " + name, DistributionScope::npcName, name, 0U, true);
-                }
-            }
-            if (const auto node = root.find("blacklistedNpcsFormID"); node != root.end() && node->is_object()) {
-                auto* dataHandler = const_cast<RE::TESDataHandler*>(RE::TESDataHandler::GetSingleton());
-                for (auto plugin = node->begin(); plugin != node->end(); ++plugin) {
-                    const auto* file = dataHandler ? dataHandler->LookupModByName(plugin.key()) : nullptr;
-                    if (!file || !plugin.value().is_array()) continue;
-                    for (const auto& raw : plugin.value()) {
-                        if (!raw.is_string()) continue;
-                        std::uint32_t localFormID{};
-                        if (!ParseOBodyLocalFormID(raw.get_ref<const std::string&>(), file->IsLight(), localFormID)) continue;
-                        if (const auto* npc = dataHandler->LookupForm<RE::TESNPC>(localFormID, plugin.key())) {
-                            addForBothSexes("OBody excluded NPC FormID: " + plugin.key(), DistributionScope::npcBaseForm,
-                                {}, npc->GetFormID(), true);
-                        }
-                    }
-                }
-            }
-
-            // OBody first checks explicit FormIDs, then localized NPC-name rules.
-            if (const auto node = root.find("npcFormID"); node != root.end() && node->is_object()) {
-                auto* dataHandler = const_cast<RE::TESDataHandler*>(RE::TESDataHandler::GetSingleton());
-                for (auto plugin = node->begin(); plugin != node->end(); ++plugin) {
-                    const auto* file = dataHandler ? dataHandler->LookupModByName(plugin.key()) : nullptr;
-                    if (!file || !plugin.value().is_object()) continue;
-                    for (auto form = plugin.value().begin(); form != plugin.value().end(); ++form) {
-                        std::uint32_t localFormID{};
-                        if (!ParseOBodyLocalFormID(form.key(), file->IsLight(), localFormID)) continue;
-                        const auto* npc = dataHandler->LookupForm<RE::TESNPC>(localFormID, plugin.key());
-                        if (!npc) continue;
-                        const auto presets = StringsFromJsonArray(form.value());
-                        addRule("OBody NPC FormID: " + plugin.key() + ":" + form.key(), DistributionScope::npcBaseForm,
-                            true, {}, npc->GetFormID(), presets);
-                        addRule("OBody NPC FormID: " + plugin.key() + ":" + form.key(), DistributionScope::npcBaseForm,
-                            false, {}, npc->GetFormID(), presets);
-                    }
-                }
-            }
-            if (const auto node = root.find("npc"); node != root.end() && node->is_object()) {
-                for (auto entry = node->begin(); entry != node->end(); ++entry) {
-                    const auto presets = StringsFromJsonArray(entry.value());
-                    addRule("OBody NPC: " + entry.key(), DistributionScope::npcName, true, entry.key(), 0U, presets);
-                    addRule("OBody NPC: " + entry.key(), DistributionScope::npcName, false, entry.key(), 0U, presets);
-                }
-            }
-
-            // OBody's plugin/race blacklists occur after explicit NPC rules but
-            // before faction, plugin, and race distribution.
-            const auto importExclusionList = [&](const char* key, const DistributionScope scope, const bool female) {
-                const auto node = root.find(key);
-                if (node == root.end()) return;
-                for (const auto& value : StringsFromJsonArray(*node)) {
-                    addRule(std::string("OBody excluded ") + key + ": " + value, scope, female, value, 0U, {}, true);
-                }
-            };
-            importExclusionList("blacklistedNpcsPluginFemale", DistributionScope::pluginFile, true);
-            importExclusionList("blacklistedNpcsPluginMale", DistributionScope::pluginFile, false);
-            importExclusionList("blacklistedRacesFemale", DistributionScope::raceEditorID, true);
-            importExclusionList("blacklistedRacesMale", DistributionScope::raceEditorID, false);
-
-            importObjectRules("factionFemale", DistributionScope::factionEditorID, true);
-            importObjectRules("factionMale", DistributionScope::factionEditorID, false);
-            importObjectRules("npcPluginFemale", DistributionScope::pluginFile, true);
-            importObjectRules("npcPluginMale", DistributionScope::pluginFile, false);
-            importObjectRules("raceFemale", DistributionScope::raceEditorID, true);
-            importObjectRules("raceMale", DistributionScope::raceEditorID, false);
-
-            std::vector<std::string> femaleDefaultNames;
-            std::vector<std::string> maleDefaultNames;
-            for (const auto& preset : catalog) {
-                if (blacklisted.contains(preset.name)) continue;
-                (preset.male ? maleDefaultNames : femaleDefaultNames).push_back(preset.name);
-            }
-            addRule("Imported OBody female default", DistributionScope::allNPCs, true, {}, 0U, femaleDefaultNames);
-            addRule("Imported OBody male default", DistributionScope::allNPCs, false, {}, 0U, maleDefaultNames);
-            obody_distribution::RetainGloballyMissingPresetNames(catalog, missingPresetNames);
-            const auto importedRuleCount = imported.size();
-            auto merged = Snapshot();
-            std::erase_if(merged, [](const DistributionRule& rule) {
-                return rule.importedFromOBody || rule.id.starts_with("obody-import-");
-            });
-            merged.insert(merged.end(), std::make_move_iterator(imported.begin()),
-                std::make_move_iterator(imported.end()));
-            SetRules(std::move(merged));
-            SKSE::log::info(
-                "Body Change NG imported {} OBody distribution rules; preset references={} unique-missing={}",
-                importedRuleCount, requestedPresetNames, missingPresetNames.size());
-            for (const auto& name : missingPresetNames) {
-                SKSE::log::warn("Body Change NG could not match imported OBody preset '{}'", name);
-            }
-            return {
-                .loaded = true,
-                .importedRules = importedRuleCount,
-                .requestedPresetNames = requestedPresetNames,
-                .missingPresetNames = missingPresetNames.size()
-            };
-        } catch (const std::exception& exception) {
-            SKSE::log::error("Body Change NG could not import OBody defaults: {}", exception.what());
-            return {};
-        }
-    }
 }

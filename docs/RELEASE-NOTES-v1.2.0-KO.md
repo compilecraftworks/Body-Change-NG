@@ -1,48 +1,41 @@
-# Body Change NG 1.2.0 릴리스 노트
+# Body Change NG v1.2.0 — 최종 릴리스 노트
 
-1.2.0은 별도로 관리한 네이티브 스킨 아키텍처입니다. BodySlide 체형 변경은
-계속 RaceMenu BodyMorph를 사용하고, 일반 바디스킨은 액터의 현재 네이티브
-TXST → ArmorAddon → Skin Armor 그래프를 전용으로 복제해 NPC ActorBase에
-연결합니다.
+**v1.1.4 대비 최종 구현**을 2026-09-13 기준으로 정리했다. 개발 중간의 v1.2.0 실험 기록보다 이 문서를 우선한다. 이번 문서 갱신으로 새 압축파일이나 Git 태그를 게시했다는 뜻은 아니다.
 
-## 업데이트 주의사항
+- [영문 소개글 BBCode](NEXUS-DESCRIPTION-v1.2.0-EN.bbcode)
+- [한글 소개글 HTML](NEXUS-DESCRIPTION-v1.2.0-KO.html)
+- [전체 변경 내역 영문](NEXUS-CHANGELOG-v1.2.0-EN.txt)
+- [전체 변경 내역 한글 HTML](NEXUS-CHANGELOG-v1.2.0-KO.html)
 
-- 1.1.4와 1.2.0 DLL을 함께 두지 마세요.
-- 개인 `BodySkin`, `Futanari`, `TintMask`, BodySlide 프리셋 폴더를 메인 모드
-  안에 보관했다면 업데이트 전에 보존하세요.
-- 모드를 교체하기 전에 `SKSE\Plugins\BodyChangeNGdistribution.json`을
-  보존하세요. 설정·배포 규칙 JSON은 계속 지원합니다.
-- 스킨팩별 `profile.json`은 더 이상 지원하거나 읽지 않습니다. 스킨 ID는
-  기존 상대 폴더 기반 자동 ID입니다. 명시적인 `!UBE` 텍스처 구조만 UBE이고
-  나머지 일반 인간형 텍스처 트리는 Legacy입니다.
-- 바디 선택, 스킨 선택, 의상 변경, 저장·불러오기, NPC 배포를 사용할 세이브에서
-  확인할 때까지 이전 DLL 백업을 보관하세요.
+## 주요 동작 차이
 
-## 호환 범위
+- 의상·랜덤화 팝업은 처음에 중앙에 열리고 지원 팝업마다 이동 위치를 기억한다. 본창 회전 안내는 X 바로 왼쪽에 표시하며 문구를 생략하지 않고 폭에 맞춰 축소한다.
+- 키보드와 게임패드 각각 게임에 설정된 Activate로 확정하고 메뉴 Cancel로 닫는다.
+- NPC 배포 체크박스 목록에서도 후보별 오버레이 색상·투명도를 편집한다. 명시적 배포 버튼으로 체크한 후보와 각각의 색상을 규칙에 저장하며, 이 배포용 편집은 선택 액터의 확정 오버레이와 분리한다.
+- [Skyrim Fitting System SE-AE](https://www.nexusmods.com/skyrimspecialedition/mods/187128)는 실제 장비와 표시 의상을 분리한다. Rendered Outfit API v1 연동 시 가슴·유두 보정과 ORefit 규칙은 보이는 실제/등록 의상 각각의 정보를 사용한다. 숨겨진 항목은 제외하고 보정 대상 의상이 모두 숨겨지면 해제한다. SFS나 지원 API가 없으면 기존 실제 착용 장비 기준을 유지한다.
 
-- Skyrim SE 1.5.97과 검증된 Skyrim AE 1.6.x 레이아웃(1.6.1179까지)
-- 게임 버전에 맞는 SKSE64, Address Library, RaceMenu
-- CBBE 3BA, BHUNP/UNP, UBE 2.0, HIMBO, SAM, 바닐라 인간형 바디
-- 아르고니안·카짓 스킨 종족 경계
-- RSV 공급자 재기반과 제한된 얼굴 복구
-- 독립된 SOS/TNG/TRX/ERF 외부 성기 스킨 어댑터
-- Skyrim VR 빌드 없음
+한 번 클릭은 미리보기, 더블클릭/확정 입력은 적용이다. 확정하지 않고 닫으면 원래 확정 선택으로 돌아간다. NPC 조건은 두 명시적 배포 버튼으로만 저장하며, 닫으면 미저장 편집을 취소한다. v1.1.4의 닫을 때 자동 저장과 반대다.
 
-## 검증 결과
+몸·손·발은 전용 네이티브 Skin Armor/ARMA/TXST, 얼굴은 별도 NiOverride 피부 채널을 사용한다. 지원 SOS/TNG 남성·여성 애드온은 네이티브 TXST 생성 경로이며, 폐기한 일반 라이브 재질 방식을 되살리지 않았다. 수동 오버레이는 부위별 복수 적용, 자동 규칙은 부위별 후보 하나 선택이다.
 
-- Release 플러그인 빌드 통과
-- 자동 회귀 테스트 실행 파일 15종 전체 통과
-- 한글 스킨팩 폴더와 `FemaleHeadDetail_Age40.dds`가 함께 사용된 실제 툴레드
-  크래시 조건을 UTF-8 경로 회귀 테스트로 재현해 통과
-- 떼껄룩·툴레드에 설치된 OBody JSON 공급자 6개로 배포/OBody NG ORefit 파서를 점검했고,
-  읽힌 의상 이름·플러그인 제외와 강제 보정 항목 전체를 플러그인과 같은 판정
-  경로로 확인했습니다. 등록 시 현재 로드된 모든 액터를 즉시 다시 판정합니다.
-- 실제 TAKEALOOK 자산 트리에서 BodySkin 11개: Legacy 7개, UBE 4개
-- 스킨 DDS 139개 매핑, 무관 DDS 23개 제외, Tint 85개와 Futanari 10개 유지
-- 설치 ZIP 승인 항목만 포함, 스킨팩 `profile.json` 0개
+후타 기능은 지원 여성 애드온 설치·로드 여부로 활성화하지만 수동/NPC 대상에는 SOS/TNG 등록 조건도 필요하다. 틴트는 플레이어 전용이다. OBody NPC 조건 가져오기와 배포/배포 제외 모드를 제거했으며 명시적 ORefit 등록은 유지한다.
 
-## 배포 파일
+## 설치와 업데이트
 
-- `Body Change NG v1.2.0.zip` — MO2 설치용
-- `Body Change NG v1.2.0 Source.zip` — 대응하는 빌드 가능 소스, 고정 의존성,
-  스크립트, 라이선스, 릴리스 문서
+- **설치된 스킨 모드 폴더 전체**를 Data\BodySkin\ 안에 복사하고 Textures 하위 구조를 유지한다.
+- **설치된 후타스킨 모드 폴더 전체**를 Data\Futanari\ 안에 복사한다. 애드온 본체는 정상 설치한다.
+- 바디프리셋 XML 디렉터리: Data\CalienteTools\BodySlide\SliderPresets\
+- 틴트 디렉터리 예시: Data\BodySkin\팩 이름\Textures\actors\character\character assets\tintmasks\
+- MO2 모드 최상위가 Data에 해당하므로 모드 안에는 선행 Data\를 생략한다.
+- 세이브와 같은 이름의 .skse 코세이브, 설정, 사용자 배포 JSON, 팩을 백업한다. 사용자 규칙을 빈 시작 파일로 덮어쓰지 않는다.
+- schema 7 변환은 옛 제외 항목을 제거하고 적합한 양의 배포 규칙을 유지하므로 조건을 확인한다. 팩 이름·경로를 유지하며 다운그레이드 호환은 보장하지 않는다.
+
+## 필수 모드와 검증 한계
+
+명시적 대상: SE 1.5.97; AE 1.6.317 / 1.6.318 / 1.6.323 / 1.6.342 / 1.6.353 / 1.6.629 / 1.6.640 / 1.6.659 / 1.6.1130 / 1.6.1170 / 1.6.1179.
+
+게임에 맞는 SKSE64·Address Library·RaceMenu가 필요하다. VR·Epic 1.6.678·Store/Game Pass와 1.7.x를 포함한 목록 밖 런타임은 지원하지 않는다. 선행 DLL 최신판이 옛 게임에도 맞는다고 가정하지 않는다.
+
+[2026-09-12 점검](COMPATIBILITY-UI-20260912-KO.md)에서 최종 SE/AE 전용 Release 빌드와 자동 테스트 실행 파일 21개를 통과했다. [원시 결과](COMPATIBILITY-UI-20260912-TESTS.json). 성기 소유권의 실제 게임 코드 확인은 1.5.97·1.6.1170이며 다른 버전은 실행 시 코드 검사가 필요하다. 확인된 RaceMenu 인터페이스를 점검했지만 모든 미래·비공식 배포본의 보장은 아니다. 전체 조합의 인게임·장시간 누수 검증을 완료했다고 주장하지 않는다.
+
+2026-09-13 추가 수정 후 Release 빌드와 현재 테스트 실행 파일 23개를 모두 통과했다. 실제 SFS consumer 경계 테스트와 ImGui 팝업·타이틀바 좌표/표시 영역 검사를 포함한다. [SFS 연동 점검 기록](SFS-OREFIT-INTEGRATION-20260913-KO.md). 추가 인게임 검증을 완료했다는 뜻은 아니다.

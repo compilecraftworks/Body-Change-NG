@@ -1,6 +1,9 @@
 #pragma once
 
+#include "BodyChangeNG/OverlayTypes.h"
 #include "BodyChangeNG/Settings.h"
+
+#include <optional>
 
 namespace RE
 {
@@ -19,6 +22,7 @@ namespace bcn::menu_character
         void Apply(CharacterPosition a_side, RE::Actor* a_actor);
         void Restore();
         void SetTintFocus(bool a_tintTab);
+        void SetOverlayFocus(std::optional<overlay::Area> a_area);
         void UpdateRotationInteraction();
 
     private:

@@ -114,7 +114,7 @@ namespace bcn::skin_geometry
     // geometry under a biped entry other than slot 33/37. Cross-slot discovery
     // is safe only with exact limb evidence on a verified skin material. This
     // keeps fabric, glove, boot, body and genital materials out of limb
-    // texture overrides even when an outfit author reused a limb-like name.
+    // skin targets even when an outfit author reused a limb-like name.
     [[nodiscard]] constexpr bool IsSafeCrossSlotLimbCandidate(
         const std::uint32_t requestedSlotMask, const std::uint32_t handsSlotMask,
         const std::uint32_t feetSlotMask, const std::string_view nodeName,
@@ -169,6 +169,27 @@ namespace bcn::skin_geometry
             ContainsIgnoreAsciiCase(texturePath, "bakaunp/vaginalanalcanal2");
     }
 
+    [[nodiscard]] constexpr bool IsBodyChangeNgCachedTexture(
+        const std::string_view texturePath) noexcept
+    {
+        return ContainsIgnoreAsciiCase(texturePath, "bodychangeng\\cache\\") ||
+            ContainsIgnoreAsciiCase(texturePath, "bodychangeng/cache/") ||
+            ContainsIgnoreAsciiCase(texturePath, "bodychangerng\\cache\\") ||
+            ContainsIgnoreAsciiCase(texturePath, "bodychangerng/cache/");
+    }
+
+    [[nodiscard]] constexpr bool IsKnownGenitalAnalNode(
+        const std::string_view nodeName) noexcept
+    {
+        return EqualsIgnoreAsciiCase(nodeName, "3BA_Vagina") ||
+            EqualsIgnoreAsciiCase(nodeName, "3BBB_Vagina") ||
+            EqualsIgnoreAsciiCase(nodeName, "3BA_Anus") ||
+            EqualsIgnoreAsciiCase(nodeName, "3BBB_Anus") ||
+            EqualsIgnoreAsciiCase(nodeName, "BaseShapeVagina") ||
+            EqualsIgnoreAsciiCase(nodeName, "BaseShapeAnus") ||
+            EqualsIgnoreAsciiCase(nodeName, "BaseShapeCanal");
+    }
+
     [[nodiscard]] constexpr bool IsCBBEGenitalAnal(
         const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
     {
@@ -177,6 +198,12 @@ namespace bcn::skin_geometry
         // that path with Body Change NG's hashed runtime-cache alias.
         if (IsUNPGenitalAnalTexture(texturePath)) return false;
         if (IsCBBEGenitalAnalTexture(texturePath)) return true;
+        // A non-empty foreign atlas is authoritative too. In particular,
+        // some 3BA builds name a borrowed DW/UBE-anus mesh "3BA_Anus" even
+        // though its UV is not the CBBE femalebody_etc atlas. Routing the CBBE
+        // DDS into that shape both corrupts the material and used to abort the
+        // entire native Skin Armor transaction.
+        if (!texturePath.empty() && !IsBodyChangeNgCachedTexture(texturePath)) return false;
         return EqualsIgnoreAsciiCase(nodeName, "3BA_Vagina") ||
             EqualsIgnoreAsciiCase(nodeName, "3BBB_Vagina") ||
             EqualsIgnoreAsciiCase(nodeName, "3BA_Anus") ||
@@ -188,6 +215,7 @@ namespace bcn::skin_geometry
     {
         if (IsCBBEGenitalAnalTexture(texturePath)) return false;
         if (IsUNPGenitalAnalTexture(texturePath)) return true;
+        if (!texturePath.empty() && !IsBodyChangeNgCachedTexture(texturePath)) return false;
         // BHUNP BodySlide outputs observed in the base body and outfits use a
         // shared VaginalAnalCanal2 atlas on these three separate geometries.
         return EqualsIgnoreAsciiCase(nodeName, "BaseShapeVagina") ||
@@ -198,7 +226,12 @@ namespace bcn::skin_geometry
     [[nodiscard]] constexpr bool IsGenitalAnal(
         const std::string_view nodeName, const std::string_view texturePath = {}) noexcept
     {
-        return IsCBBEGenitalAnal(nodeName, texturePath) ||
+        // Recognition is intentionally broader than atlas compatibility.
+        // Unsupported/foreign genital meshes must remain excluded from the
+        // regular body route even when BCNG cannot safely assign them one of
+        // its known CBBE/BHUNP atlas roles.
+        return IsKnownGenitalAnalNode(nodeName) ||
+            IsCBBEGenitalAnal(nodeName, texturePath) ||
             IsUNPGenitalAnal(nodeName, texturePath);
     }
 

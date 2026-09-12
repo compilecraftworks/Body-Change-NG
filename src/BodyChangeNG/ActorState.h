@@ -1,9 +1,15 @@
 #pragma once
 
+#include "BodyChangeNG/OverlayTypes.h"
+
+#include <algorithm>
+#include <utility>
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace bcn
 {
@@ -45,6 +51,73 @@ namespace bcn
         // This is an optional, reference-scoped addon texture choice. It must
         // not be cleared when either the body or base-skin feature resets.
         std::string selectedSkinId;
+        // Direct UI choices own this channel until the user explicitly
+        // releases them. NPC distribution may update only non-manual state.
+        bool manual{};
+        // An explicit Default choice is different from an actor that BCNG has
+        // never managed. It must survive save/load and block a rule from
+        // silently selecting another futanari skin.
+        bool useDefault{};
+    };
+
+    struct OverlayItemState final
+    {
+        std::string selectedId;
+        // Keep the resolved packed RaceMenu texture string in the co-save so
+        // a selected overlay can be restored before the Scaleform catalog has
+        // answered in the new game session.
+        std::string texturePath;
+        std::uint8_t ownedSlot{ overlay::kNoOwnedSlot };
+        std::uint32_t color{ 0xFFFFFFFFU }; // AARRGGBB, independent per actor/overlay
+    };
+
+    struct OverlayAreaState final
+    {
+        std::vector<OverlayItemState> items;
+        // A direct edit locks only this anatomical area against automatic
+        // distribution. Each selected paint remains independently removable.
+        bool manual{};
+        bool useDefault{};
+        // Session-only transaction fence. Default + items denotes owned nodes
+        // awaiting removal, never selected paints. The value-only items survive
+        // saving/unloading until the exact native registrations are removed.
+        std::uint64_t resetRevision{};
+    };
+
+    inline bool CompleteOverlayTransaction(OverlayAreaState& area, OverlayItemState item,
+        overlay::ApplyMode mode, std::uint64_t resetRevision)
+    {
+        if (area.resetRevision != resetRevision) {
+            if (area.useDefault) {
+                const auto found = std::ranges::find(area.items, item.ownedSlot,
+                    &OverlayItemState::ownedSlot);
+                if (found == area.items.end()) area.items.push_back(std::move(item));
+                else *found = std::move(item);
+            }
+            return false; // A late completion cannot undo an explicit reset.
+        }
+        if (mode == overlay::ApplyMode::preview) return true;
+        if (mode == overlay::ApplyMode::automatic && !area.manual) {
+            area.items = { std::move(item) };
+            area.useDefault = false;
+        } else if (mode == overlay::ApplyMode::manualCommit) {
+            area.manual = true;
+            area.useDefault = false;
+            const auto found = std::ranges::find(area.items, item.selectedId,
+                &OverlayItemState::selectedId);
+            if (found == area.items.end()) area.items.push_back(std::move(item));
+            else *found = std::move(item);
+        } else if (!area.useDefault) {
+            const auto found = std::ranges::find(area.items, item.selectedId,
+                &OverlayItemState::selectedId);
+            if (found != area.items.end()) *found = std::move(item);
+        }
+        return true;
+    }
+
+    struct OverlayFeatureState final
+    {
+        std::array<OverlayAreaState, overlay::Index(overlay::Area::count)> areas{};
     };
 
     struct ActorState final
@@ -55,8 +128,28 @@ namespace bcn
 
         BodyFeatureState body;
         SkinFeatureState skin;
+        OverlayFeatureState overlay;
         FutanariFeatureState futanari;
     };
+
+    // A settings reset is an explicit, persistent Default choice for every
+    // actor-owned appearance channel.  Keeping the manual Default sentinel is
+    // intentional: an old automatic distribution result must not reappear on
+    // the next reconcile immediately after the user reset the actor.
+    inline void ResetActorSelectionsToDefaults(ActorState& state)
+    {
+        state.body.selection = { .manual = true, .useDefault = true };
+        state.body.application = {};
+        state.body.outfitSignature = 0U;
+        state.skin.selection = { .manual = true, .useDefault = true };
+        state.skin.application = {};
+        state.futanari = { .manual = true, .useDefault = true };
+        for (auto& area : state.overlay.areas) {
+            ++area.resetRevision;
+            area.manual = true;
+            area.useDefault = true;
+        }
+    }
 
     // Automatic distribution has three distinct outcomes for each feature:
     // preserve the previous choice (no value), select a new asset (value), or

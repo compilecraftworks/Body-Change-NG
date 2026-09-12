@@ -70,7 +70,8 @@ try {
         Copy-ReleaseFile (Join-Path 'package' $relative) $binary $relative
     }
     Copy-ReleaseFile "build\v$version\windows\x64\release\BodyChangeNG.dll" $binary 'SKSE\Plugins\BodyChangeNG.dll'
-    # MO2 needs runtime files and four folder-placement guides, not release/source docs.
+    # MO2 needs runtime files and the current folder-placement guides, not
+    # release/source docs. Tint masks share BodySkin packs in v1.2.0.
     # Required license terms are consolidated into these two files.
     foreach ($file in @('LICENSE', 'THIRD_PARTY_NOTICES.md')) {
         Copy-ReleaseFile $file $binary
@@ -82,8 +83,7 @@ try {
         'LICENSE',
         'SKSE/Plugins/BodyChangeNG.dll',
         'SKSE/Plugins/BodyChangeNGdistribution.json',
-        'THIRD_PARTY_NOTICES.md',
-        'TintMask/README.txt'
+        'THIRD_PARTY_NOTICES.md'
     )
     $actualBinaryFiles = @(Get-ChildItem -LiteralPath $binary -File -Recurse -Force | ForEach-Object {
         [IO.Path]::GetRelativePath($binary, $_.FullName).Replace('\', '/')
@@ -92,21 +92,8 @@ try {
         throw 'MO2 archive must contain only runtime files, asset-folder guidance, and two license documents.'
     }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
-    if ($starter.schemaVersion -ne 4 -or $starter.rules.Count -ne 8) { throw 'Unexpected starter rule schema/count.' }
-    $expectedRuleNameKeys = @(
-        'default-exclude-mod-follower-female',
-        'default-exclude-mod-follower-male',
-        'default-exclude-elder-female',
-        'default-exclude-elder-male',
-        'default-exclude-skin-argonian-female',
-        'default-exclude-skin-argonian-male',
-        'default-exclude-skin-khajiit-female',
-        'default-exclude-skin-khajiit-male'
-    )
-    $actualRuleNameKeys = @($starter.rules | ForEach-Object { $_.nameKey })
-    if ($actualRuleNameKeys.Count -ne 8 -or
-        (Compare-Object ($expectedRuleNameKeys | Sort-Object) ($actualRuleNameKeys | Sort-Object))) {
-        throw 'Starter rule localization keys are missing, duplicated, or unexpected.'
+    if ($starter.schemaVersion -ne 7 -or $starter.rules.Count -ne 0) {
+        throw 'NPC distribution must ship as an empty schema-7 opt-in rule set.'
     }
 
     $projectZip = Join-Path $stage 'project.zip'
@@ -132,8 +119,8 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path $source $required))) { throw "Missing source dependency: $required" }
     }
     $prohibited = Get-ChildItem -LiteralPath $source -Recurse -File -Force | Where-Object {
-        $_.Extension -in '.dll', '.exe', '.lib', '.obj', '.pdb', '.ilk', '.exp' -or
-        $_.FullName -match '[\\/](\.git|\.xmake|build)[\\/]'
+        $_.Extension -in '.dll', '.exe', '.lib', '.obj', '.pdb', '.ilk', '.exp', '.pyc', '.pyo' -or
+        $_.FullName -match '[\\/](\.git|\.xmake|build|__pycache__)[\\/]'
     }
     if ($prohibited) { throw 'Generated/private files found in source staging.' }
     [IO.File]::WriteAllLines((Join-Path $source 'SOURCE-REVISION.txt'), @("Body Change NG $version", "Git revision: $revision", 'Dependency pins: DEPENDENCIES.md and xmake-requires.lock'), [Text.UTF8Encoding]::new($false))

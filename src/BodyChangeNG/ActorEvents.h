@@ -19,6 +19,7 @@ namespace bcn
         // Invalidates deferred callbacks and releases per-actor coalescing
         // state whenever a new game/save session becomes active.
         void ResetSessionState();
+        void QueuePlayerLoadRestoration();
 
         RE::BSEventNotifyControl ProcessEvent(
             const RE::TESInitScriptEvent* a_event,

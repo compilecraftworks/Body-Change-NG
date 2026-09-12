@@ -56,14 +56,6 @@ namespace bcn::skin_target
         std::vector<LoadedPartTarget> targets;
     };
 
-    struct LoadedProfileBodyRoute final
-    {
-        RE::BGSBipedObjectForm::BipedObjectSlot slot{
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody };
-        skin_geometry::BodySelection selection{ skin_geometry::BodySelection::regular };
-        std::vector<LoadedPartTarget> targets;
-    };
-
     struct FaceNodeInfo final
     {
         std::string nodeName;
@@ -75,18 +67,15 @@ namespace bcn::skin_target
         RE::BSLightingShaderMaterialBase* material);
     [[nodiscard]] bool IsSkinGeometry(RE::BSGeometry* geometry, bool actorSkinArmor);
     [[nodiscard]] std::string_view GeometryDiffuseTexture(RE::BSGeometry* geometry);
-    [[nodiscard]] bool ViewContainsNode(
-        const LoadedPartView& view, std::string_view nodeName) noexcept;
-
     [[nodiscard]] std::vector<LoadedPartTarget> FindLoadedPartTargets(
         RE::Actor* actor, RE::BGSBipedObjectForm::BipedObjectSlot slot,
         skin_geometry::BodySelection selection = skin_geometry::BodySelection::all,
-        bool logTargets = true, bool allowExplicitLimbNode = false);
-    [[nodiscard]] LoadedProfileBodyRoute FindLoadedProfileBodyRoute(
-        RE::Actor* actor, const SkinProfile& profile, bool logTargets = true);
+        bool allowExplicitLimbNode = false);
     [[nodiscard]] LoadedFutanariRoute FindLoadedFutanariRoute(
-        RE::Actor* actor, bool logTargets = true);
+        RE::Actor* actor);
     [[nodiscard]] std::optional<FaceNodeInfo> FaceNode(RE::Actor* actor, RE::TESNPC* base);
     [[nodiscard]] std::string ActiveAddonModelPath(
+        RE::Actor* actor, RE::BGSBipedObjectForm::BipedObjectSlot slot, bool female);
+    [[nodiscard]] std::string ActiveAddonTextureEvidence(
         RE::Actor* actor, RE::BGSBipedObjectForm::BipedObjectSlot slot, bool female);
 }

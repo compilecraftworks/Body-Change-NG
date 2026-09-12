@@ -103,6 +103,12 @@ namespace bcn::async_work
         std::optional<Job> Take(bool reserveInput = false)
         {
             if (!active_) return {};
+            // Continuations have actor/channel zero and carry their original
+            // lease. CancelActor cannot find them by actor ID; discard them
+            // here instead of executing an old clear/registration later.
+            std::erase_if(jobs_, [](const Job& job) {
+                return job.actor == 0U && !ValidLease(job.lease);
+            });
             auto best = jobs_.end();
             // One reserved opportunity per pump, WITHIN its existing budget.
             // At most three consecutive reservations: a fourth pump uses the
@@ -166,26 +172,6 @@ namespace bcn::async_work
             }
             // Keep an already executing lease: cancellation is NOT completion.
         }
-        void CancelActorInteractive(std::uint32_t actor)
-        {
-            // Replace only user-visible appearance pipelines. Automatic
-            // distribution/equipment reconciliation must survive rapid UI
-            // input, and typed channels prevent unrelated user operations
-            // from sharing a replacement key.
-            std::erase_if(jobs_, [actor](const Job& job) {
-                return job.actor == actor &&
-                    bcn::appearance::IsInteractiveChannel(job.channel);
-            });
-            RebuildPendingActor(actor);
-            if (const auto found = busy_.find(actor);
-                found != busy_.end() &&
-                    bcn::appearance::IsInteractiveChannel(found->second.channel)) {
-                if (const auto lease = found->second.lease.lock()) lease->cancelled.store(true);
-            }
-            // A cancelled live lease remains busy through the ordinary quiet
-            // tick. Its actor-zero continuations see the cancelled lease and
-            // cannot mutate the replacement body/skin request.
-        }
         bool Active() const { return active_; }
         std::uint64_t Epoch() const { return epoch_; }
         std::size_t Pending() const { return jobs_.size(); }
@@ -218,17 +204,6 @@ namespace bcn::async_work
             return result;
         }
     private:
-        void RebuildPendingActor(std::uint32_t actor)
-        {
-            actorPending_.erase(actor);
-            for (const auto& job : jobs_) {
-                if (job.actor != actor) continue;
-                auto& pending = actorPending_[actor];
-                if (pending.count++ == 0) pending.since = job.requestedAt;
-                else pending.since = std::min(pending.since, job.requestedAt);
-                if (job.interactive) ++pending.interactive;
-            }
-        }
         struct Busy {
             std::weak_ptr<FrameLeaseState> lease;
             std::uint64_t released{};

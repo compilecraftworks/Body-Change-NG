@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/Hotkey.h"
+#include "BodyChangeNG/PopupPlacement.h"
 
 #include <array>
 #include <cstdint>
@@ -73,18 +74,6 @@ namespace bcn
         return type != MaleNpcBodyType::vanilla;
     }
 
-    // Captured once, immediately before Body Change NG changes a player tint
-    // layer. This is intentionally a texture path and RGBA value only: player
-    // tint masks are a RaceMenu/FaceGen feature and are never distributed to
-    // NPCs.
-    struct PlayerTintBackup
-    {
-        std::uint8_t type{};
-        std::string texturePath;
-        std::array<std::uint8_t, 3> color{};
-        float alpha{};
-    };
-
     struct SettingsData
     {
         input::HotkeyChord openHotkey{};
@@ -100,6 +89,7 @@ namespace bcn
         bool mainWindowPositionSet{};
         float mainWindowPositionX{};
         float mainWindowPositionY{};
+        popup_placement::Positions popupPositions{};
         bool pauseGameWhenOpen{ false };
         bool performanceMode{ true };
         FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
@@ -111,7 +101,7 @@ namespace bcn
         std::vector<std::string> favoriteBodyPresets;
         std::vector<std::string> favoriteSkinProfiles;
         std::vector<std::string> favoriteTintPacks;
-        std::vector<PlayerTintBackup> playerTintBackups;
+        std::vector<std::string> favoriteOverlays;
     };
 
     struct BodyMorphOptions
@@ -130,10 +120,14 @@ namespace bcn
         void Load();
         [[nodiscard]] bool Save() const;
         [[nodiscard]] SettingsData Snapshot() const;
+        [[nodiscard]] UiLanguage Language() const;
+        [[nodiscard]] float TextScale() const;
         [[nodiscard]] bool PerformanceMode() const;
         [[nodiscard]] bool OutfitCorrectionEnabled() const;
         [[nodiscard]] std::uint32_t RandomizationOptions() const;
         [[nodiscard]] BodyMorphOptions MorphOptions() const;
+        [[nodiscard]] popup_placement::Position PopupPosition(popup_placement::Kind kind) const;
+        [[nodiscard]] bool RememberPopupPosition(popup_placement::Kind kind, float x, float y);
         void Update(const SettingsData& a_data);
 
     private:

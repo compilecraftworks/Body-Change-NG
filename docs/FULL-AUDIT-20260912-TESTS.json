@@ -1,0 +1,158 @@
+{
+  "date": "2026-09-12",
+  "kind": "offline source/policy/regression audit; not game integration or heap profiling",
+  "build": {
+    "target": "Skyrim SE/AE EXCLUSIVE_SKYRIM_FLAT Release",
+    "xmake": "3.1.0",
+    "dllSha256": "398AF168E37AE606BFD69BDF5275C581DE6C555F64E6F0B239028E921AFE241F"
+  },
+  "tests": [
+    {
+      "name": "BodyChangeNGCatalogRefreshTests",
+      "exitCode": 0,
+      "elapsedMs": 21,
+      "output": "CatalogRefreshTests passed (10000 coalesced clicks, failure/retry, closure release)"
+    },
+    {
+      "name": "BodyChangeNGNativeAddonPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 7,
+      "output": "Native addon policy tests passed (not engine/render tests)"
+    },
+    {
+      "name": "BodyChangeNGHotkeyTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGPresetCatalogTests",
+      "exitCode": 0,
+      "elapsedMs": 10,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGAssetCatalogTests",
+      "exitCode": 0,
+      "elapsedMs": 265,
+      "output": "[2026-09-12 21:17:25.800] [info] [Settings.cpp:231] Body Change NG migrated legacy settings from C:\\Users\\yunha\\AppData\\Local\\Temp\\BodyChangeNGAssetCatalogTests\\Data\\SKSE\\Plugins\\BodyChangerNG\\settings.json to C:\\Users\\yunha\\AppData\\Local\\Temp\\BodyChangeNGAssetCatalogTests\\Data\\SKSE\\Plugins\\BodyChangeNG\\settings.json\r\n[2026-09-12 21:17:25.800] [info] [Settings.cpp:235] Body Change NG loaded opening shortcut Ctrl+F8"
+    },
+    {
+      "name": "BodyChangeNGSkinArchitectureTests",
+      "exitCode": 0,
+      "elapsedMs": 70,
+      "output": "Skin architecture tests passed"
+    },
+    {
+      "name": "BodyChangeNGFaceSkinPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 7,
+      "output": "Face skin policy / restoration serialization tests passed (not an engine integration test)"
+    },
+    {
+      "name": "BodyChangeNGFormDeletePolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "FormDeletePolicyTests passed (SE 1.5.97 verified encoding; no game lifecycle claim)"
+    },
+    {
+      "name": "BodyChangeNGCodePatternTests",
+      "exitCode": 0,
+      "elapsedMs": 10,
+      "output": "CodePatternTests passed: callback, PE bounds, face queue, and preview lifecycle"
+    },
+    {
+      "name": "BodyChangeNGTexturePathIsolationTests",
+      "exitCode": 0,
+      "elapsedMs": 25,
+      "output": "Texture path isolation tests passed"
+    },
+    {
+      "name": "BodyChangeNGOverlayPolicyTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "OverlayPolicyTests passed"
+    },
+    {
+      "name": "BodyChangeNGSkinSessionStateTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "Skin session state tests passed"
+    },
+    {
+      "name": "BodyChangeNGBodyFamilyTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "BodyFamilyTests passed"
+    },
+    {
+      "name": "BodyChangeNGOutfitRefitRulesTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGAsyncWorkGuardTests",
+      "exitCode": 0,
+      "elapsedMs": 7,
+      "output": "AsyncWorkGuardTests passed"
+    },
+    {
+      "name": "BodyChangeNGFrameTaskQueueTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": "FrameTaskQueueTests passed"
+    },
+    {
+      "name": "BodyChangeNGActorStateTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "ActorStateTests passed"
+    },
+    {
+      "name": "BodyChangeNGGenitalPersistenceTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "GenitalPersistenceTests passed (codec/session/common queue; engine integration not exercised)"
+    },
+    {
+      "name": "BodyChangeNGRuntimeLayoutTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": "Runtime layout boundary tests passed"
+    },
+    {
+      "name": "BodyChangeNGPathMigrationTests",
+      "exitCode": 0,
+      "elapsedMs": 8,
+      "output": ""
+    },
+    {
+      "name": "BodyChangeNGRaceMenuPresetMigrationTests",
+      "exitCode": 0,
+      "elapsedMs": 6,
+      "output": ""
+    }
+  ],
+  "realAssetCheck": {
+    "root": "D:\\TuLED13E\\File Mod Skyrim SE\\mods\\Body Changer NG Skin_Tint\\BodySkin",
+    "exitCode": 0,
+    "output": "VERIFIED_BNP BnP female skin 4k (CBBE Player and Replacer) face=4 vampire=4 details=6\r\nVERIFIED_BNP BnP female skin 4k (UNP Player and Replacer) face=4 vampire=4 details=6\r\nVERIFIED_BNP BnP male skin 4k (SOS full Player Replacer) face=4 vampire=2 details=6\r\nBnP real-folder catalog/plan verification passed: 96 combinations; tint masks excluded; no game writes\r\n"
+  },
+  "binaryChecks": {
+    "nativeAddonProduction": true,
+    "formDeleteGuardProduction": true,
+    "oldTrialGatePresent": false,
+    "faceGpuTracePresent": false,
+    "skinAuditTracePresent": false
+  },
+  "deployment": {
+    "gameRunning": false,
+    "onlyDllReplaced": true,
+    "sha256Matched": true,
+    "paths": [
+      "D:\\TuLED13E\\File Mod Skyrim SE\\mods\\Body Change NG\\SKSE\\Plugins\\BodyChangeNG.dll",
+      "C:\\TAKEALOOK\\mods\\Body Change NG\\SKSE\\Plugins\\BodyChangeNG.dll"
+    ]
+  }
+}

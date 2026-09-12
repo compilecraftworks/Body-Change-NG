@@ -16,38 +16,6 @@ namespace bcn::distribution_names
     };
 
     inline constexpr std::array kEntries{
-        Entry{ "default-exclude-mod-follower-female",
-            "커스텀 팔로워 바디 배포 제외 (여성)",
-            "Exclude Body Distribution for Custom Followers (Female)",
-            "排除自定义随从的身体分发（女性）" },
-        Entry{ "default-exclude-mod-follower-male",
-            "커스텀 팔로워 바디 배포 제외 (남성)",
-            "Exclude Body Distribution for Custom Followers (Male)",
-            "排除自定义随从的身体分发（男性）" },
-        Entry{ "default-exclude-elder-female",
-            "노인 NPC 바디 배포 제외 (여성)",
-            "Exclude Body Distribution for Elder NPCs (Female)",
-            "排除老年 NPC 的身体分发（女性）" },
-        Entry{ "default-exclude-elder-male",
-            "노인 NPC 바디 배포 제외 (남성)",
-            "Exclude Body Distribution for Elder NPCs (Male)",
-            "排除老年 NPC 的身体分发（男性）" },
-        Entry{ "default-exclude-skin-argonian-female",
-            "아르고니안 스킨 배포 제외 (여성)",
-            "Exclude Skin Distribution for Argonians (Female)",
-            "排除亚龙人的皮肤分发（女性）" },
-        Entry{ "default-exclude-skin-argonian-male",
-            "아르고니안 스킨 배포 제외 (남성)",
-            "Exclude Skin Distribution for Argonians (Male)",
-            "排除亚龙人的皮肤分发（男性）" },
-        Entry{ "default-exclude-skin-khajiit-female",
-            "카짓 스킨 배포 제외 (여성)",
-            "Exclude Skin Distribution for Khajiit (Female)",
-            "排除虎人的皮肤分发（女性）" },
-        Entry{ "default-exclude-skin-khajiit-male",
-            "카짓 스킨 배포 제외 (남성)",
-            "Exclude Skin Distribution for Khajiit (Male)",
-            "排除虎人的皮肤分发（男性）" },
         Entry{ "rule-new-female", "새 여성 NPC 규칙", "New female NPC rule", "新的女性 NPC 规则" },
         Entry{ "rule-new-male", "새 남성 NPC 규칙", "New male NPC rule", "新的男性 NPC 规则" },
         Entry{ "rule-all-female", "모든 여성 NPC", "All female NPCs", "所有女性 NPC" },
@@ -105,14 +73,9 @@ namespace bcn::distribution_names
         return {};
     }
 
-    [[nodiscard]] constexpr std::string_view RecognizeKey(const std::string_view ruleId,
+    [[nodiscard]] constexpr std::string_view RecognizeKey(const std::string_view,
         const std::string_view name, const bool female) noexcept
     {
-        if (const auto* builtIn = Find(ruleId);
-            builtIn && ruleId.starts_with("default-") &&
-            (name.empty() || IsLocalizedValue(ruleId, name))) {
-            return builtIn->key;
-        }
         for (const auto key : { NewRuleKey(female), DefaultRuleKey(female) }) {
             if (!name.empty() && IsLocalizedValue(key, name)) return key;
         }

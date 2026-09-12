@@ -26,6 +26,8 @@ namespace bcn::runtime
     // CommonLib relocations remain version-aware, but any raw member layout or
     // external ABI route must first resolve through this exact table. An
     // unlisted patch is intentionally unsupported until it has been audited.
+    // 1.6.678 is Epic, not GOG: upstream SKSE explicitly does not support it.
+    // A version constant in upstream headers is not a supported ABI/loader.
     [[nodiscard]] constexpr GameBranch ResolveGameBranch(const REL::Version version) noexcept
     {
         if (version == REL::Version{ 1, 5, 97, 0 }) return GameBranch::se;
@@ -40,7 +42,6 @@ namespace bcn::runtime
         case 629:
         case 640:
         case 659:
-        case 678:
         case 1130:
         case 1170:
         case 1179:
@@ -77,7 +78,6 @@ namespace bcn::runtime
         case 629:
         case 640:
         case 659:
-        case 678:
         case 1130:
         case 1170:
         case 1179:

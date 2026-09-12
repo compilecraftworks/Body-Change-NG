@@ -4,9 +4,8 @@
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OutfitRefit.h"
-#include "BodyChangeNG/SkinOverrides.h"
-#include <atomic>
-#include <chrono>
+#include "BodyChangeNG/RaceMenuOverlay.h"
+#include "BodyChangeNG/SkinApplication.h"
 #include <mutex>
 #include <unordered_map>
 
@@ -21,11 +20,9 @@ namespace
     std::mutex g_lock;
     std::unordered_map<RE::FormID, PendingActor> g_pending;
     std::uint64_t g_revision{};
-    std::atomic_uint64_t g_requests{}, g_coalesced{}, g_waiting{}, g_processed{}, g_changed{}, g_unchanged{}, g_processingMicros{};
-    std::atomic_size_t g_maxPending{};
-    void Schedule(RE::FormID id, PendingActor request, unsigned delay)
+    bool Schedule(RE::FormID id, PendingActor request, unsigned delay)
     {
-        bcn::frame_tasks::Queue(id, [id, request]() mutable {
+        const auto queued = bcn::frame_tasks::Queue(id, [id, request]() mutable {
             {
                 std::scoped_lock lock(g_lock);
                 const auto found = g_pending.find(id);
@@ -39,41 +36,44 @@ namespace
                 if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
                 return;
             }
+            if (bcn::frame_tasks::HasPreview(id)) {
+                Schedule(id, request, 1);
+                return; // One coalesced request resumes on confirm/cancel.
+            }
             if (!actor->Is3DLoaded()) {
-                ++g_waiting;
                 // Bounded retry across actual input updates, never a same-FIFO
                 // spin. Detach/new session cancels immediately. A later attach
                 // can restart after expiry; saved desired choices are untouched.
                 if (++request.retries <= 100) { Schedule(id, request, 6); return; }
             } else {
-                const auto started = std::chrono::steady_clock::now();
-                const auto changed = bcn::Distribution::Get().ApplyActor(actor.get());
+                (void)bcn::Distribution::Get().ApplyActor(actor.get());
                 bcn::OutfitRefit::Get().ProcessActor(actor.get());
+                // RaceMenu itself recreates standard overlay geometry. BCNG
+                // only restores its four persisted exact-slot selections at
+                // this actor-load boundary; no per-frame scan is used.
+                bcn::overlay::QueueReapplySaved(actor.get());
                 if (bcn::appearance::NeedsReconcile(
                         bcn::appearance::Feature::maleGenitalAddon,
                         bcn::appearance::Event::actor3DAttached)) {
-                    bcn::skin_override::QueueReapplyCurrentMaleGenitals(actor.get(), true);
+                    bcn::skin_application::QueueReapplyCurrentMaleGenitals(actor.get(), true);
                 }
                 if (bcn::appearance::NeedsReconcile(
                         bcn::appearance::Feature::futanariAddon,
                         bcn::appearance::Event::actor3DAttached)) {
-                    bcn::skin_override::QueueReapplyCurrentFutanari(actor.get(), true);
+                    bcn::skin_application::QueueReapplyCurrentFutanari(actor.get(), true);
                 }
-                if (bcn::appearance::NeedsReconcile(
-                        bcn::appearance::Feature::rsvFaceBridge,
-                        bcn::appearance::Event::actor3DAttached)) {
-                    bcn::skin_override::NotifyNiNodeUpdated(actor.get());
-                }
-                g_processingMicros += static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
-                    std::chrono::steady_clock::now() - started).count());
-                ++g_processed;
-                ++(changed ? g_changed : g_unchanged);
             }
             std::scoped_lock lock(g_lock);
             const auto found = g_pending.find(id);
             if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
         }, delay, bcn::appearance::WorkChannel::actorReconcile,
             request.reason != bcn::ActorWorkReason::bulkLoad);
+        if (!queued) {
+            std::scoped_lock lock(g_lock);
+            const auto found = g_pending.find(id);
+            if (found != g_pending.end() && found->second.revision == request.revision) g_pending.erase(found);
+        }
+        return queued;
     }
 }
 namespace bcn
@@ -83,7 +83,6 @@ namespace bcn
     {
         if (!frame_tasks::Active() || !actor || !actor->GetFormID() ||
             actor == RE::PlayerCharacter::GetSingleton()) return false;
-        ++g_requests;
         const auto id = actor->GetFormID();
         PendingActor request;
         {
@@ -91,15 +90,12 @@ namespace bcn
             auto found = g_pending.find(id);
             if (found == g_pending.end() && g_pending.size() >= 4096) return false;
             if (found != g_pending.end()) {
-                ++g_coalesced;
                 if (reason == ActorWorkReason::bulkLoad) reason = found->second.reason;
             }
             request = {actor->GetHandle(), reason, ++g_revision, ActorRegistry::Get().SessionGeneration(), 0};
             g_pending[id] = request;
-            g_maxPending.store(std::max(g_maxPending.load(), g_pending.size()));
         }
-        Schedule(id, request, 1);
-        return true;
+        return Schedule(id, request, 1);
     }
     void ActorWorkQueue::NotifyDetached(std::uint32_t id)
     {
@@ -111,11 +107,5 @@ namespace bcn
         std::scoped_lock lock(g_lock);
         g_pending.clear();
         ++g_revision;
-    }
-    ActorWorkMetrics ActorWorkQueue::Metrics() const
-    {
-        std::scoped_lock lock(g_lock);
-        return {g_requests.load(), g_coalesced.load(), g_waiting.load(), g_processed.load(),
-            g_changed.load(), g_unchanged.load(), g_processingMicros.load(), g_pending.size(), g_maxPending.load()};
     }
 }

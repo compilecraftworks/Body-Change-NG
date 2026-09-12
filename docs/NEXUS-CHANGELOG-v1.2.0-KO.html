@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Body Change NG v1.2.0 — 변경 내역</title>
+<style>
+:root{color-scheme:dark;--bg:#101419;--panel:#192129;--line:#33414f;--text:#e7edf3;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.85 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+main{max-width:1040px;margin:32px auto;padding:44px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+h1,h2,h3{line-height:1.4;font-weight:800}h1{color:var(--title);font-size:2.7rem;margin:8px 0 18px}h1 small{font-size:1.2rem;color:var(--accent);white-space:nowrap}h2{margin-top:2.8em;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--accent);font-size:1.55rem}h3{color:var(--sub);margin-top:1.8em;font-size:1.15rem}
+a{color:var(--accent)}p{margin:.9em 0}li+li{margin-top:.45em}ul,ol{padding-left:1.5em}strong{color:#fff}
+.eyebrow{color:var(--accent);font-size:.8rem;letter-spacing:.14em}.lead{font-size:1.13rem;font-weight:650;color:var(--sub)}.notice{border-left:4px solid var(--warn);padding:14px 20px;background:#28261f;border-radius:0 6px 6px 0}.note{color:var(--muted)}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:28px 0}nav a{text-decoration:none}
+code{font: .91em/1.65 Consolas,"Malgun Gothic",monospace;background:#10181f;color:#cff0fa;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:#10181f;border:1px solid var(--line);padding:16px;border-radius:8px;overflow:auto;line-height:1.65}pre code{padding:0;background:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);background:#141b22}
+footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+@media(max-width:700px){main{margin:0;border:0;border-radius:0;padding:24px 18px}h1{font-size:2rem}body{font-size:15px}th,td{padding:9px}nav{gap:8px 14px}}
+@media print{:root{color-scheme:light}body,main{background:#fff;color:#222}main{border:0;margin:0;padding:0}strong,h1,h2,h3,code,th,td,a,.lead,.note,footer{color:#222}pre,code,.notice{background:#f3f3f3}pre{white-space:pre-wrap}pre code{white-space:pre-wrap}nav{display:none}h2,h3{break-after:avoid}}
+</style></head><body><main>
+<header><h1>Body Change NG <small>v1.2.0</small></h1><p class="lead">v1.1.4 대비 최종 변경 내역</p></header>
+<p>개발 중간의 수정 시도 순서가 아니라 최종 v1.2.0의 동작을 정리한 내역입니다. 바디프리셋·스킨·틴트 편집·후타스킨·NPC 바디/스킨 배포는 v1.1.4에도 있던 기능이며, 아래는 이를 변경하거나 확장한 내용입니다.</p>
+<section><h2>선택 방식과 UI</h2><ul>
+<li>한 번 클릭/목록 이동은 미리보기, 더블클릭·Enter·게임에 설정된 Activate 입력은 적용으로 통일했습니다. 확정하지 않고 닫으면 마지막 미리보기를 적용하지 않고 기존 확정 선택을 복원합니다. 키보드·게임패드의 확정과 닫기는 게임의 Activate 및 메뉴 Cancel 설정을 따릅니다.</li>
+<li>탭 순서를 바디프리셋 → 바디스킨 → 틴트마스크 → 조건부 후타스킨 → 오버레이로 정리했습니다.</li>
+<li>마우스 오른쪽 드래그와 함께 LT + RS 좌우 캐릭터 회전을 지원합니다. 얼굴 카메라 위치, 입력 차단, 팝업 정렬, 긴 행 생략과 목록 높이 흔들림을 개선했습니다.</li>
+<li>의상·랜덤화 팝업을 처음 열 때 화면 위로 붙던 문제를 수정하고, 지원 팝업마다 이동한 위치를 기억해 다음 열기에 복원합니다.</li>
+<li>본창 타이틀바의 X 바로 왼쪽에 캐릭터 회전 안내를 복원했습니다. 표시 영역과 우측 정렬을 수정하고, 긴 문구는 숨기거나 자르지 않고 폭에 맞춰 축소합니다.</li>
+<li>탭 안내 문구를 줄이고 남은 폭에 맞춰 한 줄로 표시합니다. 영문 오버레이 안내도 간결하게 정리했습니다.</li>
+<li>NPC 배포 진입 버튼을 지원 탭별 목록으로 옮기고 체크박스 선택·종류별 조건 팝업을 추가했습니다. 팝업에서 규칙을 추가할 때도 선택 후보가 유지됩니다.</li>
+<li>창을 열 때마다 무거운 목록을 다시 구성하지 않도록 갱신 작업과 스냅샷을 사용합니다. 성능 모드의 자동 작업 간격은 수동 선택과 분리됩니다.</li>
+<li>UI 안내와 전체 설치 경로를 정리했습니다. 설치된 스킨/후타스킨 모드 폴더를 통째로 BodySkin/Futanari 안에 복사하는 방식으로 안내합니다.</li></ul></section>
+<section><h2>스킨 적용과 에셋 처리</h2><ul>
+<li>일반 BodySkin의 라이브 재질 덮어쓰기 경로를 몸·손·발용 전용 네이티브 Skin Armor/ARMA/TXST 경로로 바꿨습니다. 원래 제공자의 폼과 BCNG 복제본을 분리합니다.</li>
+<li>얼굴은 별도 NiOverride 피부 채널 경로를 사용합니다. 확인된 구형·신형 RaceMenu 어댑터와 직접 접근 불가 시 대안을 사용하며, 최종 구현은 얼굴 HeadPart나 NIF를 교체하지 않습니다.</li>
+<li>반복 선택 때 얼굴 지연·다른 팩 표시·보라색 얼굴을 일으키던 갱신 순서, 오래된 요청 취소, 기본값 복원과 텍스처 경로/캐시 처리를 정리했습니다.</li>
+<li>대체된 일반 스킨 라이브 재질 코드와 이전 얼굴 실험 경로를 런타임에서 제거했습니다.</li>
+<li>일부 파일만 있는 팩에서도 대상에 적용 가능한 DDS 채널을 반영합니다. BnP CBBE처럼 별도 성기·질·항문 대상이 없는 팩이 일반 피부 전체를 차단하지 않도록 했습니다.</li>
+<li>인식되는 종족·노인·흡혈귀용 DDS → 선택 팩의 일반 채널 → 팩에 둘 다 없을 때 원래 제공자 순으로 처리합니다. 남성·여성에 같은 정책을 사용합니다.</li>
+<li>UBE skin/subsurface 채널 배정을 바로잡고 일반 계열 아틀라스 경로와 분리했습니다. 몸·손·발·얼굴·애드온 역할을 서로 임의 대체하지 않습니다.</li>
+<li>한글 등 유니코드 경로, 모드 매니저 제공자 탐색, 텍스처 캐시 식별과 RSV를 포함한 원래 제공자 복원 처리를 개선했습니다.</li>
+<li>스킨 profile.json 해석을 제거했습니다. 팩 식별과 지원 텍스처 경로를 기준으로 읽습니다.</li></ul></section>
+<section><h2>후타스킨과 남성 성기 스킨</h2><ul>
+<li>지원 SOS/TNG 남성·여성 애드온 텍스처를 네이티브 TXST 생성 경로로 변경하고, 이미 부착된 지원 애드온의 갱신도 연결했습니다.</li>
+<li>지원 여성 애드온의 설치·로드 여부로 후타 기능을 활성화합니다. 일반 남성 애드온만으로 활성화하지 않습니다.</li>
+<li>현재 보이는 지오메트리만이 아니라 SOS/TNG의 지원 여성 애드온 등록을 기준으로 수동 변경 대상을 판단합니다. 미등록 여성과 남성은 대상이 아닙니다.</li>
+<li>등록된 여성 후타 NPC로 제한된 후타스킨 전용 배포를 추가했습니다. 텍스처 선택이 후타 등록이나 장비 장착을 대신하지 않습니다.</li>
+<li>대상 액터의 애드온 지오메트리가 일시적으로 사라져도 독립적인 후타스킨 선택을 유지합니다.</li></ul></section>
+<section><h2>틴트마스크와 오버레이</h2><ul>
+<li>틴트 검색을 옛 독립 TintMask 루트에서 각 BodySkin 팩의 Textures 구조로 옮겼습니다. 스킨과 틴트를 각각 읽으며 틴트 전용 팩과 스킨/틴트 혼합 팩을 지원합니다.</li>
+<li>틴트 성별 및 UBE/일반 계열 필터링을 추가했습니다. 틴트 편집은 계속 플레이어 전용이며 NPC 배포는 없습니다.</li>
+<li>RaceMenu 페인트와 SlaveTats 컬렉션을 한 목록의 얼굴·몸·손·발 펼침/접힘 구조로 표시합니다.</li>
+<li>부위별 수동 복수 오버레이와 더블클릭 적용/해제를 지원합니다. 부위 기본값은 BCNG 소유 오버레이만 제거합니다.</li>
+<li>오버레이 즐겨찾기와 항목별 색상·투명도 조절을 추가하고, 조절부는 스크롤 목록 밖에 고정했습니다.</li>
+<li>본체 UI를 열어 둔 동안 미리보기 색상·투명도를 항목별로 기억하고, 선택한 오버레이 후보마다 해당 RGBA를 NPC 배포 규칙에 복사합니다.</li>
+<li>NPC 배포 체크박스 목록에서도 후보별 색상·투명도를 편집할 수 있습니다. 배포용 편집은 액터의 확정 오버레이와 분리하며, 두 명시적 배포 버튼으로 체크한 후보와 각각의 색상을 규칙에 저장합니다.</li>
+<li>틴트 원본 DDS·색상 백업을 공용 설정에서 세이브별 TINT v2 기록으로 옮겼습니다. 확정 틴트 선택과 미리보기를 분리하고 팩·레이어 복원을 한 번의 합성 갱신으로 처리합니다.</li>
+<li>반복 선택, 소유권, 복원과 제공자 키 수명 처리를 정리했습니다. 미리보기 슬롯은 확정 적용 수에 포함하지 않습니다.</li>
+<li>부위 헤더는 적용 X/Y로 표시합니다. X는 BCNG 확정 수, Y는 RaceMenu 총수에서 외부 점유·예약 슬롯을 뺀 수입니다. 별도 BCNG 숫자는 삭제했습니다.</li></ul></section>
+<section><h2>의상 보정과 SFS</h2><ul>
+<li>SFS Rendered Outfit API v1을 통한 가슴·유두 보정 선택 연동을 추가했습니다. ORefit 제외·강제 적용·의상별 전용 프리셋에도 같은 기준을 사용합니다.</li>
+<li>보이는 실제 장비는 실제 장비의 이름·FormID·플러그인, 보이는 등록 외형은 해당 등록 외형의 정보로 판단합니다. 숨겨진 의상은 제외하고 보정 대상 의상이 모두 숨겨지면 가슴·유두 보정을 해제합니다.</li>
+<li>SFS 표시 변경 알림으로 해당 액터만 재평가하며 오래된 대기 보정을 폐기합니다. SFS나 지원 API가 없거나 SFS 관리 대상이 아닌 액터는 기존 실제 착용 장비 기준을 유지합니다.</li>
+</ul></section>
+
+<section><h2>NPC 조건과 저장</h2><ul>
+<li>새 설치의 규칙은 비어 있는 선택형 배포로 제공합니다. 배포/배포 제외 모드를 없애고 schema 7 변환에서 옛 제외 전용 항목을 제거하며 적합한 양의 배포 규칙은 유지합니다.</li>
+<li>전체 NPC 조건의 커스텀 팔로워 제외·노인 NPC 제외는 기본 체크된 대상 필터입니다.</li>
+<li>OBody NPC 조건 가져오기를 제거했습니다. OBody ORefit JSON 읽기는 명시적인 의상 보정 규칙 등록에만 남깁니다.</li>
+<li>v1.1.4의 닫을 때 자동 저장을 변경했습니다. 모든 배포 지원 탭에서 닫기·X·Esc·본체 창 닫기는 저장하지 않은 조건 편집을 취소합니다.</li>
+<li>로드된 NPC 즉시 배포 또는 다음 게임 실행 시 배포로만 저장합니다. 즉시 배포는 저장 성공 후 활성화하며, 다음 실행용 저장은 현재 활성 규칙을 바꾸지 않습니다.</li>
+<li>규칙 우선순위는 기능별·오버레이 부위별로 평가합니다. 자동 오버레이는 설정된 부위당 후보 하나를 고르고, 수동 선택은 복수 스택을 지원합니다.</li>
+<li>확정 수동 선택, 복수 오버레이/색상, 기본값과 애드온 선택의 세이브 처리를 확장했습니다. 수동 선택은 자동 배포보다 우선합니다.</li>
+<li>선택 액터 설정 값 초기화 / 전체 액터 설정 값 초기화를 바디·바디스킨과 지원 남성 성기·후타스킨·오버레이·플레이어 틴트 전체로 확장했습니다. 기본값 의도를 저장하며 에셋이나 규칙 파일은 삭제하지 않습니다.</li></ul></section>
+<section><h2>호환과 검증</h2><ul>
+<li>명시적 대상: SE 1.5.97; AE 1.6.317, 1.6.318, 1.6.323, 1.6.342, 1.6.353, 1.6.629, 1.6.640, 1.6.659, 1.6.1130, 1.6.1170, 1.6.1179. VR·Epic 1.6.678·목록 밖 버전은 지원하지 않습니다.</li>
+<li>확인된 RaceMenu BodyMorph·Override/Overlay 세대와 구형 ABI, 제공자의 실제 슬롯 수를 점검했습니다. 게임에 맞는 RaceMenu/SKSE는 여전히 필요합니다.</li>
+<li>성기 백엔드의 두 버전 고정 주소 제한을 버전별 Address Library 조회와 코드·소유권 검증으로 바꾸고 GOG의 import 조회 가정을 수정했습니다.</li>
+<li>성기 소유권 경로의 실제 게임 코드 확인은 1.5.97과 1.6.1170만 완료했습니다. 다른 10개는 실행 시 검증에 의존하며 전체 인게임 검증 완료를 주장하지 않습니다.</li>
+<li>중복 탐색·임시 진단·폐기 코드를 줄이되 필요한 실패 보고와 소유권·수명 검사를 유지했습니다.</li>
+<li>최종 SE/AE 전용 Release 빌드와 자동 테스트 실행 파일 23개를 통과했습니다. 모든 조합의 누수·회귀 없음이나 전체 인게임 검증을 증명하지는 않습니다.</li></ul></section>
+<section><h2>업데이트 주의</h2><ul>
+<li>.ess와 같은 이름의 .skse 코세이브, 설정, 사용자 배포 JSON, 에셋을 백업하세요.</li>
+<li>사용자의 BodyChangeNGdistribution.json을 빈 설치 시작 파일로 교체하지 마세요.</li>
+<li>스킨 모드 폴더는 Data\BodySkin\, 후타스킨 모드 폴더는 Data\Futanari\ 아래에 통째로 두고 원래 Textures 구조를 보존하세요.</li>
+<li>옛 틴트는 Data\BodySkin\팩 이름\Textures\actors\character\character assets\tintmasks\로 옮기고, 변환된 배포 조건을 확인한 뒤 저장하세요.</li></ul></section>
+<footer><a href="NEXUS-DESCRIPTION-v1.2.0-KO.html">전체 소개와 사용 안내</a><p>최종 구현 기준 정리 · 2026-09-13</p></footer></main></body></html>

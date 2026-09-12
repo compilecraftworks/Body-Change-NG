@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/CatalogRefreshQueue.h"
 #include "BodyChangeNG/ContentSignature.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
@@ -9,12 +10,19 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <condition_variable>
+#include <deque>
+#include <functional>
+#include <mutex>
 #include <ranges>
+#include <stop_token>
 #include <system_error>
+#include <thread>
 #include <unordered_set>
 
 namespace
 {
+
     constexpr std::size_t kMaxProfiles = 512;
     constexpr std::size_t kMaxPathLength = 1024;
     constexpr std::uint8_t kDiffuseTextureIndex = 0U;
@@ -337,9 +345,20 @@ namespace
     }
 
     [[nodiscard]] std::optional<bcn::HumanoidSkinRace> RaceFaceDirectory(
-        const std::filesystem::path& directory)
+        const std::filesystem::path& directory, const bcn::SkinSex sex)
     {
         const auto name = bcn::path_text::Utf8(directory.filename());
+        if (sex == bcn::SkinSex::male) {
+            if (EqualsIgnoreCase(name, "nordmale")) return bcn::HumanoidSkinRace::nord;
+            if (EqualsIgnoreCase(name, "bretonmale")) return bcn::HumanoidSkinRace::breton;
+            if (EqualsIgnoreCase(name, "darkelfmale")) return bcn::HumanoidSkinRace::darkElf;
+            if (EqualsIgnoreCase(name, "highelfmale")) return bcn::HumanoidSkinRace::highElf;
+            if (EqualsIgnoreCase(name, "imperialmale")) return bcn::HumanoidSkinRace::imperial;
+            if (EqualsIgnoreCase(name, "orcmale")) return bcn::HumanoidSkinRace::orc;
+            if (EqualsIgnoreCase(name, "redguardmale")) return bcn::HumanoidSkinRace::redguard;
+            if (EqualsIgnoreCase(name, "woodelfmale")) return bcn::HumanoidSkinRace::woodElf;
+            return std::nullopt;
+        }
         if (EqualsIgnoreCase(name, "nordfemale")) return bcn::HumanoidSkinRace::nord;
         if (EqualsIgnoreCase(name, "bretonfemale")) return bcn::HumanoidSkinRace::breton;
         if (EqualsIgnoreCase(name, "darkelffemale")) return bcn::HumanoidSkinRace::darkElf;
@@ -351,14 +370,19 @@ namespace
         return std::nullopt;
     }
 
-    [[nodiscard]] bool IsElderTextureDirectory(const std::filesystem::path& directory)
+    [[nodiscard]] bool IsElderTextureDirectory(
+        const std::filesystem::path& directory, const bcn::SkinSex sex)
     {
-        return EqualsIgnoreCase(bcn::path_text::Utf8(directory.filename()), "femaleold");
+        return EqualsIgnoreCase(bcn::path_text::Utf8(directory.filename()),
+            sex == bcn::SkinSex::male ? "maleold" : "femaleold");
     }
 
     [[nodiscard]] bool IsConditionalHumanoidDirectory(const std::filesystem::path& directory)
     {
-        return IsElderTextureDirectory(directory) || RaceFaceDirectory(directory).has_value();
+        for (const auto sex : { bcn::SkinSex::female, bcn::SkinSex::male }) {
+            if (IsElderTextureDirectory(directory, sex) || RaceFaceDirectory(directory, sex)) return true;
+        }
+        return false;
     }
 
     [[nodiscard]] std::vector<std::filesystem::path> FindConditionalHumanoidDirectories(
@@ -406,21 +430,23 @@ namespace
     void AttachConditionalHumanoidLayers(const std::filesystem::path& dataRoot,
         const std::filesystem::path& skinDirectory, bcn::SkinProfile& profile)
     {
-        if (profile.sex != bcn::SkinSex::female || profile.race != bcn::SkinRace::humanoid ||
+        if (profile.race != bcn::SkinRace::humanoid ||
             profile.layout == bcn::SkinLayout::ube) return;
 
+        const bool male = profile.sex == bcn::SkinSex::male;
         for (const auto& directory : FindConditionalHumanoidDirectories(skinDirectory)) {
-            if (IsElderTextureDirectory(directory)) {
-                OverlayChannels(profile.elderBody, AutoPart(dataRoot, directory, "femalebody_1"));
-                OverlayChannels(profile.elderHands, AutoPart(dataRoot, directory, "femalehands_1"));
-                OverlayChannels(profile.elderFace, AutoPart(dataRoot, directory, "femalehead"));
+            if (IsElderTextureDirectory(directory, profile.sex)) {
+                OverlayChannels(profile.elderBody, AutoPart(dataRoot, directory, male ? "malebody_1" : "femalebody_1"));
+                OverlayChannels(profile.elderHands, AutoPart(dataRoot, directory, male ? "malehands_1" : "femalehands_1"));
+                OverlayChannels(profile.elderFace, AutoPart(dataRoot, directory, male ? "malehead" : "femalehead"));
                 continue;
             }
-            const auto race = RaceFaceDirectory(directory);
+            const auto race = RaceFaceDirectory(directory, profile.sex);
             if (!race) continue;
             auto layers = *race == bcn::HumanoidSkinRace::orc ?
-                AutoPartAliases(dataRoot, directory, { "femaleheadorc", "femalehead" }) :
-                AutoPart(dataRoot, directory, "femalehead");
+                (male ? AutoPartAliases(dataRoot, directory, { "maleheadorc", "malehead" }) :
+                    AutoPartAliases(dataRoot, directory, { "femaleheadorc", "femalehead" })) :
+                AutoPart(dataRoot, directory, male ? "malehead" : "femalehead");
             OverlayChannels(profile.raceFace[static_cast<std::size_t>(*race)], layers);
         }
     }
@@ -708,109 +734,6 @@ namespace
         } };
     }
 
-    [[nodiscard]] std::string NormalizedGamePath(std::string path)
-    {
-        std::ranges::replace(path, '/', '\\');
-        std::ranges::transform(path, path.begin(), [](const unsigned char character) {
-            return static_cast<char>(std::tolower(character));
-        });
-        return path;
-    }
-
-    void AddMappedLayers(std::unordered_set<std::string>& paths,
-        const std::vector<bcn::SkinTextureLayer>& layers)
-    {
-        for (const auto& layer : layers) paths.insert(NormalizedGamePath(layer.path));
-    }
-
-    [[nodiscard]] std::optional<std::filesystem::path> ProfilePackRoot(
-        const std::filesystem::path& root, const bcn::SkinProfile& profile)
-    {
-        auto source = profile.source;
-        std::error_code error;
-        if (std::filesystem::is_regular_file(source, error)) source = source.parent_path();
-        const auto relative = RelativeWithin(source, root);
-        if (!relative) return std::nullopt;
-        const auto first = relative->begin();
-        if (first == relative->end()) return std::nullopt;
-        return root / *first;
-    }
-
-    void AuditProfileDds(const std::filesystem::path& dataRoot,
-        const std::filesystem::path& root, const bcn::SkinProfile& profile)
-    {
-        const auto packRoot = ProfilePackRoot(root, profile);
-        if (!packRoot) return;
-
-        std::unordered_set<std::string> activePaths;
-        AddMappedLayers(activePaths, profile.body);
-        AddMappedLayers(activePaths, profile.cbbeGenitalAnal);
-        AddMappedLayers(activePaths, profile.unpGenitalAnal);
-        AddMappedLayers(activePaths, profile.hands);
-        AddMappedLayers(activePaths, profile.feet);
-        AddMappedLayers(activePaths, profile.face);
-        std::unordered_set<std::string> conditionalPaths;
-        AddMappedLayers(conditionalPaths, profile.vampireFace);
-        AddMappedLayers(conditionalPaths, profile.faceDetails);
-        AddMappedLayers(conditionalPaths, profile.elderBody);
-        AddMappedLayers(conditionalPaths, profile.elderHands);
-        AddMappedLayers(conditionalPaths, profile.elderFace);
-        for (const auto& raceFace : profile.raceFace) AddMappedLayers(conditionalPaths, raceFace);
-        std::size_t maleGenitalCount{};
-        for (const auto& variant : profile.maleGenitals) {
-            AddMappedLayers(conditionalPaths, variant.humanoid);
-            AddMappedLayers(conditionalPaths, variant.argonian);
-            AddMappedLayers(conditionalPaths, variant.khajiit);
-            AddMappedLayers(conditionalPaths, variant.elder);
-            maleGenitalCount += variant.humanoid.size() + variant.argonian.size() +
-                variant.khajiit.size() + variant.elder.size();
-        }
-        for (const auto& path : activePaths) conditionalPaths.erase(path);
-
-        std::size_t total{};
-        std::size_t active{};
-        std::size_t conditional{};
-        std::size_t unmapped{};
-        std::error_code error;
-        for (std::filesystem::recursive_directory_iterator it(*packRoot,
-                 std::filesystem::directory_options::skip_permission_denied, error), end;
-             it != end; it.increment(error)) {
-            if (error) {
-                error.clear();
-                continue;
-            }
-            std::error_code statusError;
-            if (!it->is_regular_file(statusError) || statusError ||
-                !EqualsIgnoreCase(bcn::path_text::Utf8(it->path().extension()), ".dds")) continue;
-            ++total;
-            const auto relative = RelativeWithin(it->path(), dataRoot);
-            const auto gamePath = relative ?
-                NormalizedGamePath(bcn::path_text::GenericUtf8(*relative)) : std::string{};
-            const auto classification = activePaths.contains(gamePath) ? "active-material-slot" :
-                conditionalPaths.contains(gamePath) ? "conditional-actor-slot" : "unmapped-extra";
-            if (activePaths.contains(gamePath)) ++active;
-            else if (conditionalPaths.contains(gamePath)) ++conditional;
-            else ++unmapped;
-            // Per-file output is useful for diagnosis but extremely noisy for
-            // multi-gigabyte packs. Keep the compact per-profile summary at
-            // info level and emit individual paths only in debug logs.
-            SKSE::log::debug(
-                "SkinCatalogAudit pack='{}' sex={} file='{}' mapping={}",
-                profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
-                bcn::path_text::Utf8(it->path()), classification);
-        }
-        std::size_t raceFaceCount{};
-        for (const auto& raceFace : profile.raceFace) raceFaceCount += raceFace.size();
-        SKSE::log::info(
-            "SkinCatalogAudit pack='{}' sex={} race={} dds-total={} active-slot-dds={} conditional-dds={} unmapped-dds={} body={} cbbe-genital-anal={} unp-genital-anal={} sos-male-genitals={} hands={} feet={} face={} vampire={} elder-body={} elder-hands={} elder-face={} race-face={} details={}",
-            profile.name, profile.sex == bcn::SkinSex::female ? "female" : "male",
-            bcn::SkinRaceLabel(profile.race), total, active, conditional, unmapped,
-            profile.body.size(), profile.cbbeGenitalAnal.size(), profile.unpGenitalAnal.size(), maleGenitalCount,
-            profile.hands.size(), profile.feet.size(),
-            profile.face.size(), profile.vampireFace.size(), profile.elderBody.size(),
-            profile.elderHands.size(), profile.elderFace.size(), raceFaceCount,
-            profile.faceDetails.size());
-    }
 }
 
 namespace bcn
@@ -894,7 +817,9 @@ namespace bcn
     std::string SkinFamilyLabel(const SkinLayout layout, const SkinSex sex)
     {
         if (layout == SkinLayout::ube) return "UBE";
-        if (layout == SkinLayout::legacy) return "Legacy";
+        if (layout == SkinLayout::legacy) {
+            return sex == SkinSex::female ? "CBBE or UNP" : "HIMBO or SAM";
+        }
         if (sex == SkinSex::male) return "Male";
         return "Unclassified";
     }
@@ -938,10 +863,10 @@ namespace bcn
                 const auto skinDirectory = it->path();
                 std::vector<SkinProfile> packProfiles;
                 for (const auto& setDirectory : FindTextureSetDirectories(skinDirectory)) {
-                    // femaleold and race-named face folders are conditional
-                    // variants of the pack's conventional female row. They
+                    // Sex-specific elder and race-face folders are conditional
+                    // variants of the pack's conventional male/female row. They
                     // must not become an independent row or win the shared
-                    // pack id before the complete female directory is read.
+                    // pack id before the conventional directory is read.
                     if (IsConditionalHumanoidDirectory(setDirectory)) continue;
                     for (const auto sex : { SkinSex::female, SkinSex::male }) {
                         for (const auto& profile : AutoProfiles(dataRoot, root, skinDirectory, skinDirectory, setDirectory, sex)) {
@@ -972,7 +897,6 @@ namespace bcn
         }
         if (error) SKSE::log::warn("Body Change NG could not scan {}: {}", bcn::path_text::Utf8(root), error.message());
         for (auto& profile : loaded) {
-            AuditProfileDds(dataRoot, root, profile);
             ContentSignature hash;
             hash.Number(static_cast<unsigned>(profile.sex)); hash.Number(static_cast<unsigned>(profile.race));
             hash.Number(static_cast<unsigned>(profile.layout));
@@ -1019,6 +943,35 @@ namespace bcn
         contentHashes_.clear();
         for (const auto& profile : profiles_) contentHashes_[profile.id] = profile.contentHash;
         SKSE::log::info("Body Change NG loaded {} shared texture skin profiles from {}", profiles_.size(), bcn::path_text::Utf8(root));
+    }
+
+    bool SkinProfiles::RefreshAsync()
+    {
+        if (refreshing_.exchange(true, std::memory_order_acq_rel)) return false;
+        try {
+            if (catalog_refresh::Get().Submit(this, [this] {
+                    struct ClearRefreshFlag {
+                        std::atomic_bool& flag;
+                        ~ClearRefreshFlag() { flag.store(false, std::memory_order_release); }
+                    } clear{ refreshing_ };
+                    Refresh();
+                }, [](std::exception_ptr error) {
+                    try { std::rethrow_exception(error); }
+                    catch (const std::exception& exception) {
+                        SKSE::log::error("Body Change NG skin catalog refresh failed: {}", exception.what());
+                    }
+                    catch (...) {
+                        SKSE::log::error("Body Change NG skin catalog refresh failed with an unknown exception");
+                    }
+                })) return true;
+        } catch (...) {
+            // A failed allocation/worker submission must not leave Refresh blocked.
+            refreshing_.store(false, std::memory_order_release);
+            SKSE::log::error("Body Change NG could not queue skin catalog refresh");
+            return false;
+        }
+        refreshing_.store(false, std::memory_order_release);
+        return false;
     }
 
     std::vector<SkinProfile> SkinProfiles::Snapshot() const

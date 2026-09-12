@@ -19,12 +19,23 @@ namespace bcn::native_ui
     // ImGui so Backspace, Delete, navigation, and clipboard shortcuts keep
     // working while an editable field owns keyboard input.
     void SubmitTextInputKey(std::uint32_t a_scanCode, bool a_down) noexcept;
+    // Catalog navigation keys are removed before Skyrim and other hotkey mods
+    // receive them, then delivered directly to the native ImGui context.
+    void SubmitMenuNavigationKey(std::uint32_t a_scanCode, bool a_down) noexcept;
     // DirectInput reaches the SKSE input sink even when another UI menu has
     // intercepted the Scaleform key event.  Latch Escape here and consume it
     // once from the ImGui frame so every Body Change NG window can close
     // reliably with the same key.
     void SubmitEscape() noexcept;
     [[nodiscard]] bool ConsumeEscape() noexcept;
+    // Gameplay Activate and MenuMode Cancel, resolved from the live control
+    // map before the input event is removed from Skyrim's dispatcher.
+    void SubmitActivate() noexcept;
+    void SubmitCancel() noexcept;
+    void SetMenuActionHeld(bool a_held) noexcept;
+    [[nodiscard]] bool ActivatePressed() noexcept;
+    [[nodiscard]] bool CancelPressed() noexcept;
+    [[nodiscard]] bool MenuActionHeld() noexcept;
     // Automatic runtime baseline: 1.0 at 1080p, 1.25 at 1440p (2K), and 1.5
     // at 2160p (4K). The user's UI-size slider is applied on top.
     [[nodiscard]] float GetResolutionScale() noexcept;

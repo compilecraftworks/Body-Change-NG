@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 
@@ -103,6 +104,9 @@ namespace bcn::body_family
     [[nodiscard]] std::string PresetFamilyLabel(const PresetClassification& classification);
     [[nodiscard]] Mask PresetMask(std::string_view family, bool male);
     [[nodiscard]] Mask ResolveActor(RE::Actor* actor);
+    using SkinFamilyResolver = std::optional<Mask> (*)(const RE::Actor*);
+    // Optional source evidence; catalog-only consumers do not link a backend.
+    void SetSkinFamilyResolver(SkinFamilyResolver resolver);
     void ForgetActorState(std::uint32_t actorFormID);
     void ResetRuntimeCaches();
 

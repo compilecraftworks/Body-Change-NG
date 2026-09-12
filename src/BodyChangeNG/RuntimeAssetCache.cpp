@@ -121,12 +121,27 @@ namespace
                     jobs_.pop_front();
                 }
                 bool success = true;
-                for (const auto& path : job->paths) {
-                    if (stop.stop_requested()) return;
-                    if (bcn::runtime_assets::TexturePathFromGameRelative(
-                            path.path, path.nameSpace).empty()) success = false;
+                try {
+                    for (const auto& path : job->paths) {
+                        if (stop.stop_requested()) return;
+                        if (bcn::runtime_assets::TexturePathFromGameRelative(
+                                path.path, path.nameSpace).empty()) success = false;
+                    }
+                } catch (const std::exception& error) {
+                    success = false;
+                    SKSE::log::error("BCNG texture preparation failed: {}", error.what());
+                } catch (...) {
+                    success = false;
+                    SKSE::log::error("BCNG texture preparation failed with an unknown exception");
                 }
-                if (!stop.stop_requested()) job->completion(success);
+                if (!stop.stop_requested()) {
+                    try { job->completion(success); }
+                    catch (const std::exception& error) {
+                        SKSE::log::error("BCNG texture completion failed: {}", error.what());
+                    } catch (...) {
+                        SKSE::log::error("BCNG texture completion failed with an unknown exception");
+                    }
+                }
             }
         }
 
@@ -341,24 +356,31 @@ namespace bcn::runtime_assets
         // same backing file so a multi-gigabyte skin pack is hashed once per
         // refresh instead of once for every catalog root.
         const auto stableSource = FinalSourcePath(source).value_or(source.lexically_normal());
-        std::scoped_lock lock(g_registeredSourcesLock);
         const auto identity = SourceIdentity(stableSource);
-        if (!g_sourceHashes.contains(identity)) {
-            // Once per distinct source at catalog scan/refresh, not once per
-            // actor. Full bytes also detect replacements preserving size/time.
-            // Optional Mu companions participate in the same signature so a
-            // changed mask gets a fresh cache path and one normal-map refresh.
-            ContentSignature hash;
-            HashFile(hash, stableSource);
-            auto companions = TextureCompanions(stableSource);
-            for (const auto& companion : companions) HashFile(hash, companion);
-            g_sourceHashes[identity] = {
-                .value = hash.value,
-                .gamePath = NormalizeGamePath(path),
-                .textureCompanions = std::move(companions)
-            };
+        const auto normalizedPath = NormalizeGamePath(path);
+        {
+            std::scoped_lock lock(g_registeredSourcesLock);
+            if (g_sourceHashes.contains(identity)) {
+                g_registeredSources.insert_or_assign(normalizedPath, stableSource);
+                return;
+            }
         }
-        g_registeredSources.insert_or_assign(NormalizeGamePath(path), stableSource);
+
+        // File hashing is intentionally outside the registry mutex. A manual
+        // refresh may read several gigabytes of DDS data; holding this lock
+        // made otherwise unrelated actor texture lookups freeze the game.
+        ContentSignature hash;
+        HashFile(hash, stableSource);
+        auto companions = TextureCompanions(stableSource);
+        for (const auto& companion : companions) HashFile(hash, companion);
+
+        std::scoped_lock lock(g_registeredSourcesLock);
+        g_sourceHashes.try_emplace(identity, SourceHash{
+            .value = hash.value,
+            .gamePath = normalizedPath,
+            .textureCompanions = std::move(companions)
+        });
+        g_registeredSources.insert_or_assign(normalizedPath, stableSource);
     }
 
     std::uint64_t SourceContentHash(std::string_view path)

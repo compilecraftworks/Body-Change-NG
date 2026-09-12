@@ -9,6 +9,26 @@ int main()
 {
     try {
         FrameTaskQueue queue;
+        // A native face refresh completes an already-committed TXST change.
+        // A new body UI choice must not cancel it; repeated rebuild events
+        // coalesce, and unrelated equipment work keeps a different key.
+        const auto faceChannel = bcn::appearance::ChannelValue(bcn::appearance::WorkChannel::skinFaceRefresh);
+        const auto equipmentChannel = bcn::appearance::ChannelValue(bcn::appearance::WorkChannel::equipmentVerify);
+        int faceGeneration{};
+        queue.Submit(90, faceChannel, [&] { faceGeneration = 1; }, 2, true);
+        queue.Submit(90, faceChannel, [&] { faceGeneration = 2; }, 2, true);
+        queue.Submit(90, equipmentChannel, [] {}, 2);
+        Check(queue.Pending() == 2U, "UI cancellation lost native face completion or merged equipment work");
+        queue.Advance();
+        Check(!queue.Take(), "native face refresh ran before the rebuild boundary");
+        queue.Advance();
+        {
+            auto faceJob = queue.Take();
+            Check(faceJob && faceJob->channel == faceChannel, "native face completion missing");
+            faceJob->run();
+        }
+        Check(faceGeneration == 2, "old native face event ran instead of the newest event");
+        queue.Reset(true);
         int result{};
         queue.Submit(1, 1, [&] { result = 1; });
         queue.Submit(1, 1, [&] { result = 2; });
@@ -199,52 +219,28 @@ int main()
         Check(!queue.Status(60).busy && !queue.Status(60).queued && !FrameTaskQueue::ValidLease(detachedLease),
             "session reset leaked status or revived callback");
 
-        // A direct body selection may interrupt a long skin callback without
-        // deleting the actor's automatic distribution/equipment work. The
-        // cancelled skin continuation must not overlap the replacement body.
+        // Body choices supersede only body choices. A native texture lease
+        // must finish, and tint/overlay/genital work must survive rapid input.
         queue.Reset(true);
-        queue.Submit(70, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
-        auto interruptedSkinLease = job->lease; job.reset();
-        queue.Submit(70, 100, [&] { result = 700; });
-        queue.Submit(70, 201, [&] { result = 701; }, 1, true, true);
-        Check(queue.HasActorChannelWork(70, 204) && queue.HasActorChannelWork(70, 201),
-            "interactive skin/body channel status was not visible");
-        queue.CancelActorInteractive(70);
-        Check(!FrameTaskQueue::ValidLease(interruptedSkinLease) &&
-                !queue.HasActorChannelWork(70, 204) && !queue.HasActorChannelWork(70, 201),
-            "direct body supersede retained an old interactive skin/body job");
-        Check(queue.HasActorChannelWork(70, 100),
-            "direct body supersede deleted automatic actor work");
-        interruptedSkinLease.reset(); queue.Advance();
-        Check(!queue.Take(), "interactive cancellation skipped its quiet boundary");
-        queue.Advance(); job = queue.Take();
-        Check(job && job->actor == 70 && job->channel == 100,
-            "automatic actor work did not resume after interactive cancellation");
-        job->run();
-        Check(result == 700, "automatic actor work changed during interactive cancellation");
-
-        // Repeated body input while a skin callback is live must collapse to
-        // the final body followed by one final skin repaint.
-        queue.Reset(true);
-        queue.Submit(80, 204, [] {}, 1, true, true); queue.Advance(); job = queue.Take(true);
-        auto staleSkinLease = job->lease; job.reset();
-        queue.Submit(80, 200, [&] { result = 800; }, 1, true, true);
-        queue.Submit(80, 204, [&] { result = 804; }, 1, true, true);
-        queue.CancelActorInteractive(80);
-        queue.Submit(80, 200, [&] { result = 810; }, 1, true, true);
-        queue.Submit(80, 204, [&] { result = 814; }, 1, true, true);
-        Check(queue.HasActorChannelWork(80, 200) && queue.HasActorChannelWork(80, 204),
-            "final body/skin replacement was not queued");
-        staleSkinLease.reset(); queue.Advance();
-        Check(!queue.Take(true), "replacement body crossed the cancelled skin quiet boundary");
+        queue.Submit(80, 204, [] {}, 1, true, true);
         queue.Advance(); job = queue.Take(true);
-        Check(job && job->channel == 200, "final skin ran before the final body");
-        job->run(); Check(result == 810, "an obsolete body request survived rapid input");
-        job.reset(); queue.Advance();
-        Check(!queue.Take(true), "final skin crossed the body quiet boundary");
-        queue.Advance(); job = queue.Take(true);
-        Check(job && job->channel == 204, "final skin repaint was not retained");
-        job->run(); Check(result == 814, "an obsolete skin repaint survived rapid input");
+        auto skinLease = job->lease; job.reset();
+        std::vector<int> completed;
+        for (const auto channel : {206U, 207U, 208U, 209U, 210U, 211U})
+            queue.Submit(80, channel, [&, channel] { completed.push_back(channel); }, 1, true, true);
+        for (int click = 0; click < 10000; ++click)
+            queue.Submit(80, 200, [&, click] { result = click; }, 1, true, true);
+        Check(queue.Pending() == 7U && FrameTaskQueue::ValidLease(skinLease),
+            "rapid body input cancelled unrelated work or grew the queue");
+        queue.Advance(); Check(!queue.Take(true), "body overlapped active texture mutation");
+        skinLease.reset();
+        for (int tick = 0; tick < 30; ++tick) {
+            queue.Advance();
+            if (auto next = queue.Take(true)) next->run();
+        }
+        Check(completed == std::vector<int>{206,207,208,209,210,211} &&
+            result == 9999 && queue.Pending() == 0U && !queue.Status(80).busy,
+            "cross-feature work lost, stale body applied, or lease leaked");
         FrameTaskQueue::WorkStatus threshold{true, false, 1499};
         Check(!threshold.Delayed(), "delay indicator threshold too early");
         threshold.elapsedMs = 1500;

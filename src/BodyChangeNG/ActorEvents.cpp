@@ -3,18 +3,24 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/AppearanceEventPolicy.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FaceSkinOverrides.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/OutfitRefit.h"
+#include "BodyChangeNG/RenderedOutfit.h"
+#include "BodyChangeNG/NativeSkinBackend.h"
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/Settings.h"
-#include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinApplication.h"
 
 #include <RE/R/RaceSexMenu.h>
 #include <RE/T/TESCellAttachDetachEvent.h>
 #include <RE/T/TESContainerChangedEvent.h>
+#include <RE/T/TESObjectARMA.h>
+#include <RE/T/TESObjectARMO.h>
 #include <SKSE/Logger.h>
 
 namespace bcn
@@ -25,6 +31,22 @@ namespace bcn
         std::mutex g_equipmentLock;
         std::unordered_map<RE::FormID, std::uint64_t> g_equipmentGeneration;
         std::uint64_t g_nextEquipmentGeneration{};
+
+        [[nodiscard]] bool UsesGenitalSlot(const RE::TESForm* form)
+        {
+            if (!form) return false;
+            constexpr auto slot = static_cast<std::uint32_t>(
+                RE::BGSBipedObjectForm::BipedObjectSlot::kModPelvisSecondary);
+            if (form->GetFormType() == RE::FormType::Armor) {
+                const auto* armor = static_cast<const RE::TESObjectARMO*>(form);
+                return (static_cast<std::uint32_t>(armor->GetSlotMask().underlying()) & slot) != 0U;
+            }
+            if (form->GetFormType() == RE::FormType::Armature) {
+                const auto* addon = static_cast<const RE::TESObjectARMA*>(form);
+                return (static_cast<std::uint32_t>(addon->GetSlotMask().underlying()) & slot) != 0U;
+            }
+            return false;
+        }
 
         [[nodiscard]] std::uint64_t BeginEquipmentChange(const RE::FormID actorFormID)
         {
@@ -69,6 +91,10 @@ namespace bcn
                     FinishEquipmentChange(actorFormID, generation);
                     return;
                 }
+                if (frame_tasks::HasPreview(actorFormID)) {
+                    ReconcileEquipmentChange(handle, actorFormID, 1, generation, session, retries);
+                    return;
+                }
                 if (!actor->Is3DLoaded()) {
                     if (retries) {
                         ReconcileEquipmentChange(handle, actorFormID, 2, generation, session,
@@ -84,9 +110,9 @@ namespace bcn
                 // and optional external genital addons.
                 ActorRegistry::Get().InvalidateOutfit(actor.get());
                 OutfitRefit::Get().ProcessActor(actor.get());
-                skin_override::QueueReapplyCurrentMaleGenitals(actor.get(), true);
-                skin_override::InvalidateFutanariDetection(actorFormID);
-                skin_override::QueueReapplyCurrentFutanari(actor.get(), true);
+                skin_application::QueueReapplyCurrentMaleGenitals(actor.get(), true);
+                skin_application::InvalidateFutanariDetection(actorFormID);
+                skin_application::QueueReapplyCurrentFutanari(actor.get(), true);
                 FinishEquipmentChange(actorFormID, generation);
             }, std::max(1U, remainingHops),
                 appearance::WorkChannel::equipmentReconcile, true);
@@ -120,14 +146,20 @@ namespace bcn
                 // at close. The native Skin Armor graph remains authoritative
                 // for every new body clone; QueueApply only verifies or
                 // reattaches the already-owned graph after the rebuild settles.
-                if (racemenu::CurrentPresetId(actor.get())) {
+                const auto saved = ActorRegistry::Get().Snapshot(actor.get());
+                if (saved && saved->body.selection.manual && saved->body.selection.useDefault) {
+                    racemenu::QueueClearBodyChangeMorphs(actor.get());
+                } else if (racemenu::CurrentPresetId(actor.get())) {
                     racemenu::QueueReapplyCurrent(actor.get());
                 }
-                if (const auto skin = skin_override::CurrentProfileId(actor.get())) {
-                    [[maybe_unused]] const auto skinResult = skin_override::QueueApply(actor.get(), *skin);
+                if (saved && saved->skin.selection.manual && saved->skin.selection.useDefault) {
+                    [[maybe_unused]] const auto skinResult = skin_application::QueueClear(actor.get());
+                } else if (const auto skin = skin_application::CurrentProfileId(actor.get())) {
+                    [[maybe_unused]] const auto skinResult = skin_application::QueueApply(actor.get(), *skin);
                 }
-                skin_override::InvalidateFutanariDetection(actor->GetFormID());
-                skin_override::QueueReapplyCurrentFutanari(actor.get());
+                skin_application::InvalidateFutanariDetection(actor->GetFormID());
+                skin_application::QueueReapplyCurrentFutanari(actor.get());
+                overlay::QueueReapplySaved(actor.get());
                 [[maybe_unused]] const auto tintResult = player_tint::QueueReapplyCurrent();
                 SKSE::log::info("Body Change NG queued player body, skin and tint restoration after RaceMenu close "
                                 "generation={} verification-passes-left={}",
@@ -149,6 +181,16 @@ namespace bcn
     {
         static ActorEvents events;
         return events;
+    }
+
+    void ActorEvents::QueuePlayerLoadRestoration()
+    {
+        if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            const auto generation = g_raceMenuRestoreGeneration.load(std::memory_order_acquire);
+            // Use the existing skin/body restoration queue and its bounded
+            // readiness checks, not a second polling service for addons.
+            ReapplyPlayerSelectionsAfterRaceMenu(player->GetHandle(), 2U, 120U, 0U, generation);
+        }
     }
 
     void ActorEvents::Register()
@@ -186,6 +228,9 @@ namespace bcn
         }
         if (auto* actor = event->reference->As<RE::Actor>()) {
             if (event->attached) {
+                if (actor == RE::PlayerCharacter::GetSingleton()) {
+                    QueuePlayerLoadRestoration();
+                }
                 [[maybe_unused]] const auto requested =
                     ActorWorkQueue::Get().Request(actor, ActorWorkReason::cellAttached);
             } else if (actor != RE::PlayerCharacter::GetSingleton()) {
@@ -195,8 +240,10 @@ namespace bcn
                     g_equipmentGeneration.erase(actor->GetFormID());
                 }
                 body_family::ForgetActorState(actor->GetFormID());
+                rendered_outfit::Forget(actor->GetFormID());
                 racemenu::ForgetActorState(actor->GetFormID());
-                skin_override::ForgetActorState(actor->GetFormID());
+                overlay::ForgetActorState(actor->GetFormID());
+                skin_application::ForgetActorState(actor->GetFormID());
             }
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -227,9 +274,17 @@ namespace bcn
         }
         if (auto* actor = event->actor->As<RE::Actor>()) {
             if (!frame_tasks::Active()) return RE::BSEventNotifyControl::kContinue;
-            skin_override::InvalidateFutanariDetection(actor->GetFormID());
-            const auto hasFutanariSkin = skin_override::CurrentFutanariProfileId(actor).has_value();
-            const auto hasMaleGenitalSkin = skin_override::HasCurrentMaleGenitalSkin(actor);
+            skin_application::InvalidateFutanariDetection(actor->GetFormID());
+            // A saved Default may still need its private live-material
+            // baseline restored when an addon is re-equipped.
+            const auto tracked = ActorRegistry::Get().Snapshot(actor).has_value();
+            const auto* base = actor->GetActorBase();
+            const auto female = base && base->GetSex() == RE::SEX::kFemale;
+            const auto genitalSlotChanged = UsesGenitalSlot(form);
+            const auto hasFutanariSkin = genitalSlotChanged && female &&
+                (tracked || skin_application::CurrentFutanariProfileId(actor).has_value());
+            const auto hasMaleGenitalSkin = genitalSlotChanged && !female &&
+                (tracked || skin_application::HasCurrentMaleGenitalSkin(actor));
             const auto needsOutfit = Settings::Get().OutfitCorrectionEnabled() ||
                 racemenu::HasOutfitCorrection(actor);
             const auto needsFutanariReconcile = hasFutanariSkin && appearance::NeedsReconcile(
@@ -268,10 +323,10 @@ namespace bcn
         auto* actor = oldContainer ? oldContainer->As<RE::Actor>() : nullptr;
         const auto needsOutfit = actor && (Settings::Get().OutfitCorrectionEnabled() ||
             racemenu::HasOutfitCorrection(actor));
-        const auto needsMaleGenital = actor && skin_override::HasCurrentMaleGenitalSkin(actor);
+        const auto needsMaleGenital = actor && skin_application::HasCurrentMaleGenitalSkin(actor);
         if (!actor || !actor->IsDead() ||
             (!needsOutfit && !needsMaleGenital &&
-                !skin_override::CurrentFutanariProfileId(actor))) {
+                !skin_application::CurrentFutanariProfileId(actor))) {
             return RE::BSEventNotifyControl::kContinue;
         }
 
@@ -314,15 +369,33 @@ namespace bcn
         const SKSE::NiNodeUpdateEvent* event,
         RE::BSTEventSource<SKSE::NiNodeUpdateEvent>*)
     {
-        // Native BodySkin is form-backed and needs no general NiNode repaint.
-        // The only consumer is the isolated RSV face bridge: RSV deliberately
-        // restores its serialized FaceGen keys after a rebuild, so that
-        // bridge merges the selected BCNG face once after RSV settles.
-        if (event && event->reference && appearance::NeedsReconcile(
-                appearance::Feature::rsvFaceBridge,
-                appearance::Event::niNodeUpdated)) {
-            if (auto* actor = event->reference->As<RE::Actor>()) {
-                skin_override::NotifyNiNodeUpdated(actor);
+        // Biped skin consumes native forms during rebuild. Face skin uses
+        // NiOverride's public DDS API after rebuild. Slot-52 addons keep their
+        // independent native TXST reconciliation; no general skin repaint.
+        if (event && event->reference) {
+            if (auto* actor = event->reference->As<RE::Actor>();
+                actor && frame_tasks::Active()) {
+                // Notify before registry filtering: an addon-only rebuild can
+                // have a barrier without a general body-skin selection.
+                face_skin::OnNiNodeUpdate(actor);
+                if (!ActorRegistry::Get().Snapshot(actor) &&
+                    !skin_application::HasTrackedSelection(actor)) return RE::BSEventNotifyControl::kContinue;
+                const auto handle = actor->GetHandle();
+                frame_tasks::Queue(actor->GetFormID(), [handle] {
+                    const auto resolved = handle.get();
+                    auto* actor = resolved.get();
+                    if (!actor || !actor->Is3DLoaded()) return;
+                    if (appearance::NeedsReconcile(
+                            appearance::Feature::maleGenitalAddon,
+                            appearance::Event::niNodeUpdated)) {
+                        skin_application::QueueReapplyCurrentMaleGenitals(actor, true);
+                    }
+                    if (appearance::NeedsReconcile(
+                            appearance::Feature::futanariAddon,
+                            appearance::Event::niNodeUpdated)) {
+                        skin_application::QueueReapplyCurrentFutanari(actor, true);
+                    }
+                }, 2U, appearance::WorkChannel::equipmentVerify);
             }
         }
         return RE::BSEventNotifyControl::kContinue;

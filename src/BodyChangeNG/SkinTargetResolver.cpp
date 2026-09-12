@@ -1,8 +1,11 @@
 #include "BodyChangeNG/SkinTargetResolver.h"
 
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/NativeAddonSkinBackend.h"
 
 #include <RE/A/Actor.h>
+#include <RE/B/BGSListForm.h>
+#include <RE/B/BGSTextureSet.h>
 #include <RE/B/BipedAnim.h>
 #include <RE/B/BipedObjects.h>
 #include <RE/B/BSFaceGenNiNode.h>
@@ -14,7 +17,6 @@
 #include <RE/T/TESNPC.h>
 #include <RE/T/TESObjectARMA.h>
 #include <RE/T/TESObjectARMO.h>
-#include <SKSE/Logger.h>
 
 #include <algorithm>
 #include <bit>
@@ -28,21 +30,6 @@ namespace
 {
     using bcn::skin_target::LoadedPartTarget;
     using bcn::skin_target::LoadedPartView;
-
-    [[nodiscard]] constexpr std::string_view SkinPartName(
-        const RE::BGSBipedObjectForm::BipedObjectSlot slot) noexcept
-    {
-        using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
-        switch (slot) {
-        case Slot::kBody: return "body";
-        case Slot::kHands: return "hands";
-        case Slot::kFeet: return "feet";
-        case Slot::kTail: return "tail";
-        case bcn::skin_target::kUbeBodySlot: return "ube-body-slot-53";
-        case bcn::skin_target::kSosMaleGenitalSlot: return "sos-male-genitals-slot-52";
-        default: return "unknown";
-        }
-    }
 
     [[nodiscard]] std::string LowerAscii(std::string value)
     {
@@ -165,27 +152,31 @@ namespace
 
                 auto& target = FindOrAppendTarget(results, armor, addon,
                     armor->GetSlotMask().underlying() & addon->GetSlotMask().underlying());
-                AppendView(target, firstPerson, false, partClone, matchingNodes);
+                AppendView(target, firstPerson, armor == actor->GetSkin(),
+                    partClone, matchingNodes);
             }
         }
     }
 
-    void MergeLoadedPartTargets(
-        std::vector<LoadedPartTarget>& destination, std::vector<LoadedPartTarget> source)
+    [[nodiscard]] RE::TESObjectARMA* ActiveAddonRecord(RE::Actor* actor,
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot)
     {
-        for (auto& incoming : source) {
-            auto found = std::ranges::find_if(destination, [&](const LoadedPartTarget& target) {
-                return target.armor == incoming.armor && target.addon == incoming.addon;
-            });
-            if (found == destination.end()) {
-                destination.push_back(std::move(incoming));
-                continue;
-            }
-            found->slotMask |= incoming.slotMask;
-            for (const auto& view : incoming.views) {
-                AppendView(*found, view.firstPerson, view.actorSkinArmor, view.object, view.nodes);
+        if (!actor) return nullptr;
+        const auto requestedMask = static_cast<std::uint32_t>(slot);
+        if (requestedMask == 0U || !std::has_single_bit(requestedMask)) return nullptr;
+        const auto objectIndex = static_cast<std::size_t>(std::countr_zero(requestedMask));
+        if (objectIndex >= RE::BIPED_OBJECTS::kEditorTotal) return nullptr;
+        if (const auto& biped = actor->GetBiped(false)) {
+            if (auto* addon = biped->objects[objectIndex].addon) return addon;
+        }
+        if (auto* skin = actor->GetSkin()) {
+            for (auto* candidate : skin->armorAddons) {
+                if (candidate &&
+                    (static_cast<std::uint32_t>(candidate->GetSlotMask().underlying()) &
+                        requestedMask) != 0U) return candidate;
             }
         }
+        return nullptr;
     }
 }
 
@@ -224,14 +215,19 @@ namespace bcn::skin_target
         return path ? std::string_view{ path } : std::string_view{};
     }
 
-    bool ViewContainsNode(
-        const LoadedPartView& view, const std::string_view nodeName) noexcept
+    [[nodiscard]] std::string GenitalSourceDiffuse(RE::Actor* actor,
+        RE::TESObjectARMO* armor, RE::TESObjectARMA* addon, RE::BSGeometry* geometry)
     {
-        return view.nodes.empty() || std::ranges::any_of(view.nodes,
-            [nodeName](const std::string& candidate) { return candidate == nodeName; });
+        if (!actor || !geometry) return {};
+        const auto* base = actor->GetActorBase();
+        const auto channel = base && base->GetSex() == RE::SEX::kFemale ?
+            native_addon::Channel::futanari : native_addon::Channel::maleGenitals;
+        auto original = native_addon::SourceDiffuseTexture(actor->GetFormID(), channel,
+            armor ? armor->GetFormID() : 0U, addon ? addon->GetFormID() : 0U, *geometry);
+        return original.empty() ? std::string{ GeometryDiffuseTexture(geometry) } : original;
     }
 
-    LoadedFutanariRoute FindLoadedFutanariRoute(RE::Actor* actor, const bool logTargets)
+    LoadedFutanariRoute FindLoadedFutanariRoute(RE::Actor* actor)
     {
         LoadedFutanariRoute result;
         auto* base = actor ? actor->GetActorBase() : nullptr;
@@ -249,6 +245,10 @@ namespace bcn::skin_target
                 auto* addon = object.addon;
                 auto* partClone = object.partClone.get();
                 if (!armor || !addon || !addon->IsValidRace(actor->GetRace())) continue;
+
+                const auto slot52 = static_cast<std::uint32_t>(kSosMaleGenitalSlot);
+                if ((armor->GetSlotMask().underlying() & slot52) == 0U ||
+                    (addon->GetSlotMask().underlying() & slot52) == 0U) continue;
 
                 const auto modelKind = futanari::ClassifyEvidence(
                     AddonModelPath(addon, firstPerson));
@@ -272,7 +272,7 @@ namespace bcn::skin_target
                     const std::string name = rawName && rawName[0] != '\0' ? rawName : "";
                     if (name.empty()) return RE::BSVisit::BSVisitControl::kContinue;
                     const auto geometryKind = futanari::ClassifyEvidence(
-                        {}, name, GeometryDiffuseTexture(geometry));
+                        {}, name, GenitalSourceDiffuse(actor, armor, addon, geometry));
                     if (geometryKind == futanari::AddonKind::none ||
                         (modelKind != futanari::AddonKind::none && geometryKind != modelKind)) {
                         return RE::BSVisit::BSVisitControl::kContinue;
@@ -292,23 +292,19 @@ namespace bcn::skin_target
                 result.addonKind = targetKind;
                 auto& target = FindOrAppendTarget(result.targets, armor, addon,
                     armor->GetSlotMask().underlying() & addon->GetSlotMask().underlying());
-                AppendView(target, firstPerson, false, partClone, matchingNodes);
+                AppendView(target, firstPerson, armor == actor->GetSkin(),
+                    partClone, matchingNodes);
             }
         }
 
         result.type = FutanariTypeFor(result.addonKind, body_family::ResolveActor(actor));
         if (!result.type) result.targets.clear();
-        if (logTargets && result.type) {
-            SKSE::log::info(
-                "SkinAudit futanari target actor={:08X} type={} addon-targets={}",
-                actor->GetFormID(), FutanariSkinTypeLabel(*result.type), result.targets.size());
-        }
         return result;
     }
 
     std::vector<LoadedPartTarget> FindLoadedPartTargets(RE::Actor* actor,
         const RE::BGSBipedObjectForm::BipedObjectSlot slot,
-        const skin_geometry::BodySelection selection, const bool logTargets,
+        const skin_geometry::BodySelection selection,
         const bool allowExplicitLimbNode)
     {
         std::vector<LoadedPartTarget> results;
@@ -343,8 +339,10 @@ namespace bcn::skin_target
                         static_cast<std::uint32_t>(RE::BGSBipedObjectForm::BipedObjectSlot::kHands),
                         static_cast<std::uint32_t>(RE::BGSBipedObjectForm::BipedObjectSlot::kFeet),
                         geometryName);
-                const auto texturePath = explicitLimb ? std::string_view{} :
-                    GeometryDiffuseTexture(geometry);
+                const auto texturePath = explicitLimb ? std::string{} :
+                    (selection == skin_geometry::BodySelection::maleGenitals ?
+                        GenitalSourceDiffuse(actor, armor, addon, geometry) :
+                        std::string{ GeometryDiffuseTexture(geometry) });
                 if (!skin_geometry::MatchesRequestedPart(requestedMask,
                         static_cast<std::uint32_t>(RE::BGSBipedObjectForm::BipedObjectSlot::kBody),
                         static_cast<std::uint32_t>(RE::BGSBipedObjectForm::BipedObjectSlot::kHands),
@@ -430,48 +428,7 @@ namespace bcn::skin_target
             }
         }
 
-        if (logTargets) {
-            for (const auto& target : results) {
-                SKSE::log::info(
-                    "SkinAudit target actor={:08X} part={} armor={:08X} addon={:08X} addon-mask={:08X} source={} views={} skin-geometries={}",
-                    actor->GetFormID(), SkinPartName(slot), target.armor->GetFormID(),
-                    target.addon->GetFormID(), target.slotMask,
-                    target.armor == skinArmor ? "skin-armor" : "worn-armor",
-                    target.views.size(), target.immediateNodes.size());
-            }
-        }
         return results;
-    }
-
-    LoadedProfileBodyRoute FindLoadedProfileBodyRoute(
-        RE::Actor* actor, const SkinProfile& profile, const bool logTargets)
-    {
-        if (profile.layout != SkinLayout::ube) {
-            return {
-                .slot = RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-                .selection = skin_geometry::BodySelection::regular,
-                .targets = FindLoadedPartTargets(actor,
-                    RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-                    skin_geometry::BodySelection::regular, logTargets)
-            };
-        }
-
-        auto ubeTargets = FindLoadedPartTargets(
-            actor, kUbeBodySlot, skin_geometry::BodySelection::regular, logTargets);
-        auto standardTargets = FindLoadedPartTargets(actor,
-            RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
-            skin_geometry::BodySelection::regular, logTargets);
-        if (logTargets && ubeTargets.empty() && !standardTargets.empty()) {
-            SKSE::log::info(
-                "SkinAudit UBE body fallback actor={:08X} slot-53-targets=0 standard-body-targets={}",
-                actor ? actor->GetFormID() : 0U, standardTargets.size());
-        }
-        MergeLoadedPartTargets(ubeTargets, std::move(standardTargets));
-        return {
-            .slot = kUbeBodySlot,
-            .selection = skin_geometry::BodySelection::regular,
-            .targets = std::move(ubeTargets)
-        };
     }
 
     std::optional<FaceNodeInfo> FaceNode(RE::Actor* actor, RE::TESNPC* base)
@@ -540,18 +497,40 @@ namespace bcn::skin_target
     std::string ActiveAddonModelPath(RE::Actor* actor,
         const RE::BGSBipedObjectForm::BipedObjectSlot slot, const bool female)
     {
-        if (!actor) return {};
-        const auto requestedMask = static_cast<std::uint32_t>(slot);
-        if (requestedMask == 0U || !std::has_single_bit(requestedMask)) return {};
-        const auto objectIndex = static_cast<std::size_t>(std::countr_zero(requestedMask));
-        if (objectIndex >= RE::BIPED_OBJECTS::kEditorTotal) return {};
-        const auto& biped = actor->GetBiped(false);
-        if (!biped) return {};
-        auto* addon = biped->objects[objectIndex].addon;
+        auto* addon = ActiveAddonRecord(actor, slot);
         if (!addon) return {};
         const auto* rawPath = addon->bipedModels[female ? 1U : 0U].GetModel();
         auto path = rawPath ? std::string{ rawPath } : std::string{};
         std::ranges::replace(path, '/', '\\');
         return LowerAscii(std::move(path));
+    }
+
+    std::string ActiveAddonTextureEvidence(RE::Actor* actor,
+        const RE::BGSBipedObjectForm::BipedObjectSlot slot, const bool female)
+    {
+        auto* addon = ActiveAddonRecord(actor, slot);
+        const auto sexIndex = female ? 1U : 0U;
+        if (!addon || sexIndex >= RE::SEXES::kTotal) return {};
+        std::string result;
+        const auto append = [&result](RE::BGSTextureSet* textureSet) {
+            if (!textureSet) return;
+            for (std::size_t index{};
+                 index < RE::BSTextureSet::Textures::kUsedTotal; ++index) {
+                const auto* path = textureSet->GetTexturePath(
+                    static_cast<RE::BSTextureSet::Texture>(index));
+                if (!path || path[0] == '\0') continue;
+                if (!result.empty()) result.push_back('|');
+                result.append(path);
+            }
+        };
+        append(addon->skinTextures[sexIndex]);
+        if (const auto* list = addon->skinTextureSwapLists[sexIndex]) {
+            for (auto* form : list->forms) {
+                append(form && form->GetFormType() == RE::FormType::TextureSet ?
+                    static_cast<RE::BGSTextureSet*>(form) : nullptr);
+            }
+        }
+        std::ranges::replace(result, '/', '\\');
+        return LowerAscii(std::move(result));
     }
 }

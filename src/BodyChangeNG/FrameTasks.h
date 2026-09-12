@@ -21,12 +21,13 @@ namespace bcn::frame_tasks
     void OnInputTick();
     void Reset(bool active);
     bool Active();
+    bool InGameTask();
+    // One UI actor can own uncommitted previews; automatic reconciliation waits.
+    void SetPreviewActor(std::uint32_t actor);
+    bool HasPreview(std::uint32_t actor);
     std::uint64_t Epoch();
     bool IsCurrent(std::uint64_t epoch);
     void CancelActor(std::uint32_t actor);
-    // Supersedes only channels explicitly classified as interactive.
-    // Automatic actor, equipment and verification jobs remain queued.
-    void CancelActorInteractive(std::uint32_t actor);
     bool HasActorWork(std::uint32_t actor);
     bool HasActorChannelWork(std::uint32_t actor, appearance::WorkChannel channel);
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor);

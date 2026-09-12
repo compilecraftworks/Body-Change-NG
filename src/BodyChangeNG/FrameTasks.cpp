@@ -12,6 +12,7 @@ namespace
     std::mutex g_lock;
     bool g_scheduled{};
     bool g_available{};
+    std::uint32_t g_previewActor{};
     thread_local bcn::frame_tasks::Lease g_lease;
     thread_local bool g_inPump{}, g_urgent{}, g_interactive{};
 
@@ -31,6 +32,9 @@ namespace
                 job = g_queue.Take(count == 0);
             }
             if (!job) break;
+            // A UI/lifecycle cancellation can happen after Take releases the
+            // queue lock. Never run a cancelled continuation against live 3D.
+            if (!bcn::async_work::FrameTaskQueue::ValidLease(job->lease)) continue;
             if (job->actor) ++actorJobs;
             // RaceMenu owns the player's rebuilding geometry. Its close
             // handler restores desired selections; never mutate it mid-edit.
@@ -105,9 +109,21 @@ namespace bcn::frame_tasks
     {
         std::scoped_lock lock(g_lock);
         g_queue.Reset(active);
+        g_previewActor = 0U;
         g_scheduled = false;
     }
+    void SetPreviewActor(std::uint32_t actor)
+    {
+        std::scoped_lock lock(g_lock);
+        g_previewActor = g_queue.Active() ? actor : 0U;
+    }
+    bool HasPreview(std::uint32_t actor)
+    {
+        std::scoped_lock lock(g_lock);
+        return actor != 0U && g_previewActor == actor;
+    }
     bool Active() { std::scoped_lock lock(g_lock); return g_available && g_queue.Active(); }
+    bool InGameTask() { return g_inPump; }
     std::uint64_t Epoch() { std::scoped_lock lock(g_lock); return g_queue.Epoch(); }
     bool IsCurrent(std::uint64_t epoch)
     {
@@ -115,11 +131,6 @@ namespace bcn::frame_tasks
         return g_queue.Active() && epoch == g_queue.Epoch();
     }
     void CancelActor(std::uint32_t actor) { std::scoped_lock lock(g_lock); g_queue.CancelActor(actor); }
-    void CancelActorInteractive(std::uint32_t actor)
-    {
-        std::scoped_lock lock(g_lock);
-        g_queue.CancelActorInteractive(actor);
-    }
     bool HasActorWork(std::uint32_t actor) { std::scoped_lock lock(g_lock); return g_queue.HasActorWork(actor); }
     bool HasActorChannelWork(std::uint32_t actor, const appearance::WorkChannel channel)
     {

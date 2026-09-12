@@ -220,23 +220,6 @@ namespace bcn
             preset.cachedContentHash = preset.ContentHash();
             (preset.isRefit ? refit : normal).push_back(std::move(preset));
         }
-        std::array<std::size_t, 8> familyCounts{};
-        const auto count = [&familyCounts](const std::vector<BodyPreset>& values) {
-            for (const auto& preset : values) {
-                const auto index = preset.family == "CBBE 3BA" ? 0U : preset.family == "BHUNP / UNP" ? 1U :
-                    preset.family == "UBE" ? 2U : preset.family == "HIMBO" ? 3U : preset.family == "SAM" ? 4U :
-                    preset.family.contains(" / ") ? 5U : preset.male ? 6U : 7U;
-                ++familyCounts[index];
-            }
-        };
-        count(normal);
-        count(refit);
-#if defined(BODY_CHANGE_NG_RUNTIME)
-        SKSE::log::info("BodySlide preset families: CBBE/3BA={} BHUNP/UNP={} UBE={} HIMBO={} SAM={} "
-                        "combined={} unknown-male={} unknown-female={} (normal={}, refit={})",
-            familyCounts[0], familyCounts[1], familyCounts[2], familyCounts[3], familyCounts[4], familyCounts[5],
-            familyCounts[6], familyCounts[7], normal.size(), refit.size());
-#endif
         std::scoped_lock lock(lock_);
         presets_ = std::move(normal);
         refitPresets_ = std::move(refit);

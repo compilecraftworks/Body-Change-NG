@@ -75,6 +75,12 @@ namespace
 
 namespace bcn::catalog_roots
 {
+    std::optional<std::filesystem::path> ResolveProviderPath(
+        const std::filesystem::path& logicalPath)
+    {
+        return FinalPath(logicalPath);
+    }
+
     std::vector<std::filesystem::path> Discover(const std::filesystem::path& logicalRoot)
     {
         std::vector<std::filesystem::path> roots;

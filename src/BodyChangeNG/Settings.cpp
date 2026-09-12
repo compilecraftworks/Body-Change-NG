@@ -138,6 +138,20 @@ namespace bcn
                 }
             }
             ReadIfPresent(root, "pauseGameWhenOpen", data_.pauseGameWhenOpen);
+            if (const auto positions = root.find("popupPositions");
+                positions != root.end() && positions->is_object()) {
+                for (std::size_t index{}; index < popup_placement::keys.size(); ++index) {
+                    const auto entry = positions->find(popup_placement::keys[index]);
+                    if (entry == positions->end() || !entry->is_object()) continue;
+                    const auto x = entry->find("x");
+                    const auto y = entry->find("y");
+                    if (x == entry->end() || y == entry->end() ||
+                        !x->is_number() || !y->is_number()) continue;
+                    const auto px = x->get<float>();
+                    const auto py = y->get<float>();
+                    if (popup_placement::Valid(px, py)) data_.popupPositions[index] = { true, px, py };
+                }
+            }
             ReadIfPresent(root, "performanceMode", data_.performanceMode);
             int femaleNpcBodyType = static_cast<int>(data_.femaleNpcBodyType);
             int maleNpcBodyType = static_cast<int>(data_.maleNpcBodyType);
@@ -179,35 +193,20 @@ namespace bcn
                     }
                 }
             }
-            NormalizeFavorites(data_.favoriteBodyPresets, false);
-            NormalizeFavorites(data_.favoriteSkinProfiles, true);
-            NormalizeFavorites(data_.favoriteTintPacks, false);
-            if (const auto found = root.find("playerTintBackups"); found != root.end() && found->is_array()) {
+            if (const auto found = root.find("favoriteOverlays"); found != root.end() && found->is_array()) {
                 for (const auto& value : *found) {
-                    if (!value.is_object() || data_.playerTintBackups.size() >= 15U) continue;
-                    const auto type = value.value("type", -1);
-                    const auto texturePath = value.value("texturePath", std::string{});
-                    const auto red = value.value("red", -1);
-                    const auto green = value.value("green", -1);
-                    const auto blue = value.value("blue", -1);
-                    const auto alpha = value.value("alpha", -1.0F);
-                    if (type < 0 || type >= 15 || texturePath.empty() || texturePath.size() > 1024U ||
-                        red < 0 || red > 255 || green < 0 || green > 255 || blue < 0 || blue > 255 ||
-                        alpha < 0.0F || alpha > 1.0F) {
-                        continue;
-                    }
-                    const auto duplicate = std::ranges::find(data_.playerTintBackups, static_cast<std::uint8_t>(type),
-                                                             &PlayerTintBackup::type);
-                    if (duplicate == data_.playerTintBackups.end()) {
-                        data_.playerTintBackups.push_back({
-                            .type = static_cast<std::uint8_t>(type),
-                            .texturePath = texturePath,
-                            .color = { static_cast<std::uint8_t>(red), static_cast<std::uint8_t>(green), static_cast<std::uint8_t>(blue) },
-                            .alpha = alpha
-                        });
+                    if (value.is_string() && value.get_ref<const std::string&>().size() <= 1024U &&
+                        data_.favoriteOverlays.size() < 4096U) {
+                        data_.favoriteOverlays.push_back(value.get<std::string>());
                     }
                 }
             }
+            NormalizeFavorites(data_.favoriteBodyPresets, false);
+            NormalizeFavorites(data_.favoriteSkinProfiles, true);
+            NormalizeFavorites(data_.favoriteTintPacks, false);
+            NormalizeFavorites(data_.favoriteOverlays, false);
+            // Player tint baselines are save-specific (TINT co-save v2).
+            // Legacy global backups cannot be attributed to a character safely.
             if (source.legacy) {
                 std::error_code error;
                 std::filesystem::create_directories(path.parent_path(), error);
@@ -242,17 +241,6 @@ namespace bcn
 
         try {
             std::filesystem::create_directories(path.parent_path());
-            nlohmann::json tintBackups = nlohmann::json::array();
-            for (const auto& backup : copy.playerTintBackups) {
-                tintBackups.push_back({
-                    { "type", backup.type },
-                    { "texturePath", backup.texturePath },
-                    { "red", backup.color[0] },
-                    { "green", backup.color[1] },
-                    { "blue", backup.color[2] },
-                    { "alpha", backup.alpha }
-                });
-            }
             nlohmann::json root{
                 { "schemaVersion", kSchemaVersion },
                 { "openHotkey", {
@@ -275,7 +263,7 @@ namespace bcn
                 { "favoriteBodyPresets", copy.favoriteBodyPresets },
                 { "favoriteSkinProfiles", copy.favoriteSkinProfiles },
                 { "favoriteTintPacks", copy.favoriteTintPacks },
-                { "playerTintBackups", std::move(tintBackups) }
+                { "favoriteOverlays", copy.favoriteOverlays }
             };
             if (copy.mainWindowPositionSet) {
                 root["mainWindowPosition"] = {
@@ -284,6 +272,14 @@ namespace bcn
                 };
             }
             auto temporary = path;
+            for (std::size_t index{}; index < popup_placement::keys.size(); ++index) {
+                const auto position = copy.popupPositions[index];
+                if (position.set && popup_placement::Valid(position.x, position.y)) {
+                    root["popupPositions"][popup_placement::keys[index]] = {
+                        { "x", position.x }, { "y", position.y }
+                    };
+                }
+            }
             temporary += ".new";
             {
                 std::ofstream stream(temporary, std::ios::trunc | std::ios::binary);
@@ -321,6 +317,18 @@ namespace bcn
         return data_;
     }
 
+    UiLanguage Settings::Language() const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.language;
+    }
+
+    float Settings::TextScale() const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.textScale;
+    }
+
     bool Settings::PerformanceMode() const
     {
         std::scoped_lock lock(lock_);
@@ -356,5 +364,20 @@ namespace bcn
         std::scoped_lock lock(lock_);
         data_ = a_data;
         if (!data_.openHotkey.IsValid()) data_.openHotkey = {};
+    }
+
+    popup_placement::Position Settings::PopupPosition(const popup_placement::Kind kind) const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.popupPositions.at(static_cast<std::size_t>(kind));
+    }
+
+    bool Settings::RememberPopupPosition(const popup_placement::Kind kind, const float x, const float y)
+    {
+        std::scoped_lock lock(lock_);
+        auto& position = data_.popupPositions.at(static_cast<std::size_t>(kind));
+        if (!popup_placement::Changed(position, x, y)) return false;
+        position = { true, x, y };
+        return true;
     }
 }

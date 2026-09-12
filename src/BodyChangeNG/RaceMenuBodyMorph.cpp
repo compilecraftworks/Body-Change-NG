@@ -4,6 +4,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/AsyncWorkGuards.h"
 #include "BodyChangeNG/OutfitRefit.h"
+#include "BodyChangeNG/RenderedOutfit.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/RaceMenuCompatibility.h"
@@ -72,9 +73,9 @@ namespace
             IInterfaceMap* interfaceMap{};
         };
 
-        // This is the shared RaceMenu BodyMorph v4/v5 prefix. Version 5 only
-        // appends AddMorphShapeCallback, so every entry used here retains the
-        // same slot on SE v4 and AE v5.
+        // Shared BodyMorph v4/v5 prefix through VisitActors. Early v4 (0.4.12)
+        // does not yet declare ClearMorphCache. Do not include unused tail
+        // methods just because a later header reports the same ABI version.
         class IBodyMorphInterface : public IPluginInterface
         {
         public:
@@ -96,7 +97,8 @@ namespace
             virtual void ApplyVertexDiff(RE::TESObjectREFR*, RE::NiAVObject*, bool = false) = 0;
             virtual void ApplyBodyMorphs(RE::TESObjectREFR*, bool = true) = 0;
             virtual void UpdateModelWeight(RE::TESObjectREFR*, bool = false) = 0;
-            virtual void SetCacheLimit(std::size_t) = 0;
+            // Not called: old v4 takes UInt32, newer sources use skee_u64.
+            virtual void ReservedSetCacheLimit() = 0;
             virtual bool HasMorphs(RE::TESObjectREFR*) = 0;
             virtual std::uint32_t EvaluateBodyMorphs(RE::TESObjectREFR*) = 0;
             virtual bool HasBodyMorph(RE::TESObjectREFR*, const char*, const char*) = 0;
@@ -105,7 +107,6 @@ namespace
             virtual void ClearBodyMorphKeys(RE::TESObjectREFR*, const char*) = 0;
             virtual void VisitStrings(StringVisitor&) = 0;
             virtual void VisitActors(ActorVisitor&) = 0;
-            virtual std::size_t ClearMorphCache() = 0;
         };
     }
 
@@ -116,7 +117,7 @@ namespace
     constexpr auto kLegacyPreviewKey = "BodyChangerNGPreview";
     constexpr auto kLegacyOutfitKey = "BodyChangerNGOutfit";
     // OBody NG stores every body-slider contribution under this public
-    // NiOverride key (see OBodyNative.psc).  Clearing only this key is the
+    // RaceMenu BodyMorph key (see OBodyNative.psc). Clearing only this key is the
     // safe migration path for saves where OBody NG has been disabled: its old
     // values would otherwise be added to the new Body Change NG preset.
     constexpr auto kLegacyOBodyKey = "OBody";
@@ -181,8 +182,6 @@ namespace
         std::scoped_lock lock(g_applyGenerationLock);
         const auto generation = g_nextApplyGeneration.fetch_add(1U, std::memory_order_relaxed);
         g_applyGenerations.insert_or_assign(ApplyGenerationKey(actorFormID, mode), generation);
-        SKSE::log::debug("BodyAudit invalidated actor={:08X} mode={} generation={}",
-            actorFormID, static_cast<std::uint32_t>(mode), generation);
         return generation;
     }
 
@@ -273,42 +272,13 @@ namespace
         return previous;
     }
 
-    void LogBodyTriState(RE::Actor* actor, const std::string_view reason)
-    {
-        // Scene-graph traversal is intentionally a debug-only diagnostic.
-        // Running it twice for every automatically distributed NPC was more
-        // expensive than the rule lookup it was meant to observe.
-        const auto* logger = spdlog::default_logger_raw();
-        if (!actor || !logger || !logger->should_log(spdlog::level::debug)) return;
-        for (const bool firstPerson : { false, true }) {
-            if (firstPerson && actor != RE::PlayerCharacter::GetSingleton()) continue;
-            auto* root = actor->Get3D(firstPerson);
-            std::size_t count{};
-            if (root) {
-                RE::BSVisit::TraverseScenegraphObjects(root, [&](RE::NiAVObject* object) {
-                    if (!object) return RE::BSVisit::BSVisitControl::kContinue;
-                    const auto* data = object->GetExtraData<RE::NiStringExtraData>("BODYTRI");
-                    if (!data || !data->value || data->value[0] == '\0') {
-                        return RE::BSVisit::BSVisitControl::kContinue;
-                    }
-                    ++count;
-                    return RE::BSVisit::BSVisitControl::kContinue;
-                });
-            }
-            SKSE::log::debug("BodyAudit BODYTRI actor={:08X} view={} reason='{}' count={}",
-                actor->GetFormID(), firstPerson ? "first-person" : "third-person", reason, count);
-        }
-    }
-
     void ApplyVisibleMorphs(skee::IBodyMorphInterface& bodyMorph, RE::Actor* actor,
         const bool deferUpdate)
     {
-        LogBodyTriState(actor, "before apply");
         // Preserve the public RaceMenu refresh preference. On the main thread
         // RaceMenu may still do synchronous work even with deferUpdate=true;
         // frame_tasks owns BCNG's cadence/budget, not this API flag.
         bodyMorph.ApplyBodyMorphs(actor, deferUpdate);
-        LogBodyTriState(actor, "after apply");
     }
 
     void ClearPreviewNow(const RE::ActorHandle actorHandle)
@@ -321,7 +291,9 @@ namespace
         bodyMorph->ClearBodyMorphKeys(actor.get(), kPreviewKey);
         bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyPreviewKey);
         if (hadPreview) ApplyVisibleMorphs(*bodyMorph, actor.get(), false);
-        SKSE::log::debug("Body Change NG cleared preview morphs for actor {:08X}", actor->GetFormID());
+        // Display changes received during a body preview were intentionally
+        // deferred. Re-evaluate the final SFS outfit once preview ends.
+        bcn::rendered_outfit::Request(actor.get());
     }
 
     [[nodiscard]] std::uint64_t StableRandomSeed(const RE::FormID actorFormID, const std::string_view presetName,
@@ -372,7 +344,6 @@ namespace
     {
         const auto startedAt = std::chrono::steady_clock::now();
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
-            SKSE::log::debug("Body Change NG discarded a stale body preview task");
             return;
         }
         auto* bodyMorph = Interface();
@@ -395,10 +366,6 @@ namespace
             return;
         }
         if (!IsCurrentApply(actor->GetFormID(), mode, applyGeneration)) {
-            SKSE::log::debug(
-                "BodyAudit superseded preset='{}' actor={:08X} mode={} requested-generation={} current-generation={}",
-                preset.name, actor->GetFormID(), static_cast<std::uint32_t>(mode), applyGeneration,
-                CurrentApplyGeneration(actor->GetFormID(), mode));
             return;
         }
 
@@ -415,17 +382,24 @@ namespace
         const auto settings = bcn::Settings::Get().MorphOptions();
         const auto key = mode == bcn::racemenu::ApplyMode::preview ? kPreviewKey :
             mode == bcn::racemenu::ApplyMode::outfit ? kOutfitKey : kCommittedKey;
-        MigrateLegacyBodyChangeKeys(*bodyMorph, actor.get());
-        if (mode != bcn::racemenu::ApplyMode::outfit && bodyMorph->HasBodyMorphKey(actor.get(), kLegacyOBodyKey)) {
-            bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyOBodyKey);
-            SKSE::log::info("Body Change NG cleared legacy OBody NG morphs for actor {:08X}", actor->GetFormID());
-        }
-        if (mode != bcn::racemenu::ApplyMode::outfit && bodyMorph->HasBodyMorphKey(actor.get(), kLegacyOClotheKey)) {
-            bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyOClotheKey);
-            SKSE::log::info("Body Change NG cleared legacy OBody NG ORefit morphs for actor {:08X}", actor->GetFormID());
+        // A single-click preview must not migrate or delete persistent keys.
+        // Its correction is computed against every existing contribution and
+        // QueueCancelPreview removes only kPreviewKey. Migration belongs to an
+        // explicit commit.
+        if (mode == bcn::racemenu::ApplyMode::commit) {
+            MigrateLegacyBodyChangeKeys(*bodyMorph, actor.get());
+            if (bodyMorph->HasBodyMorphKey(actor.get(), kLegacyOBodyKey)) {
+                bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyOBodyKey);
+                SKSE::log::info("Body Change NG cleared legacy OBody NG morphs for actor {:08X}", actor->GetFormID());
+            }
+            if (bodyMorph->HasBodyMorphKey(actor.get(), kLegacyOClotheKey)) {
+                bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyOClotheKey);
+                SKSE::log::info("Body Change NG cleared legacy OBody NG ORefit morphs for actor {:08X}", actor->GetFormID());
+            }
         }
         std::unordered_map<std::string, float> desiredMorphs;
         if (mode == bcn::racemenu::ApplyMode::outfit) {
+            if (!bcn::rendered_outfit::ValidateApply(actor.get())) return;
             bodyMorph->ClearBodyMorphKeys(actor.get(), key);
             for (const auto& slider : preset.sliders) {
                 // A named -Refit preset is still governed by the UI's
@@ -556,7 +530,6 @@ namespace
             }
         }
         if (mode != bcn::racemenu::ApplyMode::outfit) {
-            std::size_t correctionCount{};
             for (const auto& [name, desired] : desiredMorphs) {
                 // Never delete another mod's key. Instead, store the exact
                 // compensating delta under Body Change NG's own key so the
@@ -568,39 +541,20 @@ namespace
                     desired, bodyMorph->GetBodyMorphs(actor.get(), name.c_str()), outfitValue);
                 if (std::abs(correction) <= 0.00001F) continue;
                 bodyMorph->SetMorph(actor.get(), name.c_str(), key, correction);
-                ++correctionCount;
             }
-            SKSE::log::debug(
-                "BodyAudit normalized preset='{}' actor={:08X} target-sliders={} stored-corrections={} family-mask={}",
-                preset.name, actor->GetFormID(), desiredMorphs.size(), correctionCount,
-                bcn::body_family::ResolveActor(actor.get()));
         }
-        const auto firstSliderValue = bodyMorph->GetMorph(
-            actor.get(), preset.sliders.front().name.c_str(), key);
-        SKSE::log::debug("BodyAudit stored preset='{}' key='{}' actor={:08X} generation={} sliders={} first='{}' value={}",
-            preset.name, key, actor->GetFormID(), applyGeneration, preset.sliders.size(),
-            preset.sliders.front().name, firstSliderValue);
         // UI requests keep RaceMenu's partition update synchronous so an older
         // internal morph job cannot arrive after a later list selection.
         // Automatic distribution and outfit correction explicitly select the
         // deferred policy to avoid blocking a dense-cell frame.
         ApplyVisibleMorphs(*bodyMorph, actor.get(),
             updatePolicy == bcn::racemenu::UpdatePolicy::deferred);
-        SKSE::log::debug("BodyAudit applied preset='{}' actor={:08X} generation={} key-present={} first-value={}",
-            preset.name, actor->GetFormID(), applyGeneration, bodyMorph->HasBodyMorphKey(actor.get(), key),
-            bodyMorph->GetMorph(actor.get(), preset.sliders.front().name.c_str(), key));
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
             ClearPreviewNow(actorHandle);
             return;
         }
-        SKSE::log::debug("Body Change NG {} {} sliders for preset '{}' to actor {:08X} ({})",
-            mode == bcn::racemenu::ApplyMode::preview ? "previewed" : "applied",
-            preset.sliders.size(), preset.name, actor->GetFormID(), "OBody-compatible refresh");
         const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now() - startedAt).count();
-        SKSE::log::debug("BodyAudit completed preset='{}' actor={:08X} generation={} elapsed-ms={} update={}",
-            preset.name, actor->GetFormID(), applyGeneration, elapsed,
-            updatePolicy == bcn::racemenu::UpdatePolicy::deferred ? "deferred" : "synchronous");
         if (elapsed >= 16) {
             SKSE::log::warn(
                 "Body Change NG body morph setup exceeded one 60-FPS frame: preset='{}' actor={:08X} sliders={} elapsed-ms={} update={}",
@@ -731,15 +685,24 @@ namespace bcn::racemenu
         std::scoped_lock lock(g_initializeLock);
         if (IsReady()) return;
 
-        const auto* messaging = SKSE::GetMessagingInterface();
-        if (!messaging) return;
-        skee::InterfaceExchangeMessage message{};
-        if (!messaging->Dispatch(skee::InterfaceExchangeMessage::kExchangeInterface, &message, sizeof(message), "skee") ||
-            !message.interfaceMap) {
-            SKSE::log::warn("Body Change NG could not exchange RaceMenu interfaces yet");
-            return;
+        auto* interfaceMap = g_interfaceMap.load(std::memory_order_acquire);
+        if (!interfaceMap) {
+            const auto* messaging = SKSE::GetMessagingInterface();
+            if (!messaging) return;
+            skee::InterfaceExchangeMessage message{};
+            if (!messaging->Dispatch(skee::InterfaceExchangeMessage::kExchangeInterface,
+                    &message, sizeof(message), "skee") || !message.interfaceMap) {
+                SKSE::log::warn("Body Change NG could not exchange RaceMenu interfaces yet");
+                return;
+            }
+            interfaceMap = message.interfaceMap;
+            // The interface map belongs to the provider, not to BodyMorph.
+            // Keep it available so overlays remain functional when BodyMorph
+            // is disabled or its revision is rejected.
+            g_interfaceMap.store(interfaceMap, std::memory_order_release);
         }
-        const auto bodyMorph = static_cast<skee::IBodyMorphInterface*>(message.interfaceMap->QueryInterface("BodyMorph"));
+        const auto bodyMorph = static_cast<skee::IBodyMorphInterface*>(
+            interfaceMap->QueryInterface("BodyMorph"));
         if (!bodyMorph) {
             SKSE::log::warn("Body Change NG could not obtain RaceMenu's BodyMorph interface");
             return;
@@ -755,8 +718,11 @@ namespace bcn::racemenu
             return;
         }
         g_version.store(version, std::memory_order_release);
-        g_interfaceMap.store(message.interfaceMap, std::memory_order_release);
         g_bodyMorph.store(bodyMorph, std::memory_order_release);
+        if (bcn::racemenu_compat::UsesBodyMorphFallback(version)) {
+            SKSE::log::warn("Body Change NG BodyMorph v{} is newer than audited: using the {} shared prefix; requires provider backward ABI compatibility",
+                version, bcn::racemenu_compat::BodyMorphAbiLabel(abi));
+        }
         SKSE::log::info("Body Change NG received RaceMenu {} on runtime {} ({})",
             bcn::racemenu_compat::BodyMorphAbiLabel(abi), runtimeVersion.string(),
             bcn::runtime::GameBranchLabel(branch));
@@ -788,8 +754,11 @@ namespace bcn::racemenu
     void* QueryInterface(const char* name) noexcept
     {
         if (!name || name[0] == '\0') return nullptr;
-        Initialize();
         auto* interfaceMap = g_interfaceMap.load(std::memory_order_acquire);
+        if (!interfaceMap) {
+            Initialize();
+            interfaceMap = g_interfaceMap.load(std::memory_order_acquire);
+        }
         return interfaceMap ? interfaceMap->QueryInterface(name) : nullptr;
     }
 
@@ -802,6 +771,9 @@ namespace bcn::racemenu
             if (found != g_currentPresetIds.end()) return found->second.empty() ?
                 std::nullopt : std::optional<std::string>(found->second);
         }
+        if (const auto state = bcn::ActorRegistry::Get().Snapshot(actor);
+            state && state->body.selection.useDefault) return std::nullopt;
+        if (const auto selected = bcn::ActorRegistry::Get().SelectedBodyId(actor)) return selected;
         return bcn::ActorRegistry::Get().AppliedBodyId(actor);
     }
 
@@ -870,9 +842,6 @@ namespace bcn::racemenu
             bcn::body_family::ResolveActor(actor))) return ApplyResult::incompatibleBodyFamily;
         const auto actorHandle = actor->GetHandle();
         const auto applyGeneration = BeginApply(actor->GetFormID(), mode);
-        SKSE::log::debug("BodyAudit requested preset='{}' id='{}' actor={:08X} mode={} generation={} sliders={}",
-            found->name, found->PersistentId(), actor->GetFormID(), static_cast<std::uint32_t>(mode),
-            applyGeneration, found->sliders.size());
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             if (mode == ApplyMode::commit) {
                 // Commit clears the outfit key even if the preset ID did not
@@ -921,12 +890,63 @@ namespace bcn::racemenu
         return ApplyResult::noTaskInterface;
     }
 
+    ApplyResult QueuePreviewDefault(RE::Actor* actor)
+    {
+        if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
+        if (!IsReady()) return ApplyResult::unavailable;
+        if (!actor) return ApplyResult::invalidActor;
+        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
+        if (!SKSE::GetTaskInterface()) return ApplyResult::noTaskInterface;
+
+        const auto actorHandle = actor->GetHandle();
+        const auto applyGeneration = BeginApply(actor->GetFormID(), ApplyMode::preview);
+        const auto [previousActor, previewGeneration] = BeginPreview(actorHandle);
+        const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+        if (previousActor && previousActor != actorHandle) {
+            QueueActorTask(previousActor,
+                bcn::appearance::WorkChannel::bodyPreviewCleanup, [previousActor, session] {
+                    if (bcn::ActorRegistry::Get().SessionGeneration() == session) {
+                        ClearPreviewNow(previousActor);
+                    }
+                });
+        }
+        QueueActorTask(actorHandle, bcn::appearance::WorkChannel::bodyPreview,
+            [actorHandle, applyGeneration, previewGeneration, session] {
+                if (bcn::ActorRegistry::Get().SessionGeneration() != session ||
+                    !IsCurrentPreview(actorHandle, previewGeneration)) return;
+                auto* bodyMorph = Interface();
+                const auto resolved = actorHandle.get();
+                if (!bodyMorph || !resolved || !resolved->Is3DLoaded() ||
+                    !IsCurrentApply(resolved->GetFormID(), ApplyMode::preview,
+                        applyGeneration)) return;
+
+                bodyMorph->ClearBodyMorphKeys(resolved.get(), kPreviewKey);
+                bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyPreviewKey);
+                std::unordered_map<std::string, float> ownedValues;
+                for (const auto* key : { kCommittedKey, kOutfitKey,
+                         kLegacyCommittedKey, kLegacyOutfitKey,
+                         kLegacyOBodyKey, kLegacyOClotheKey }) {
+                    OwnedMorphCollector collector{ key };
+                    bodyMorph->VisitMorphValues(resolved.get(), collector);
+                    for (const auto& [name, value] : collector.values) {
+                        ownedValues[name] += value;
+                    }
+                }
+                for (const auto& [name, value] : ownedValues) {
+                    if (std::abs(value) > 0.00001F) {
+                        bodyMorph->SetMorph(resolved.get(), name.c_str(),
+                            kPreviewKey, -value);
+                    }
+                }
+                ApplyVisibleMorphs(*bodyMorph, resolved.get(), false);
+            });
+        return ApplyResult::queued;
+    }
+
     void QueueReapplyCurrent(RE::Actor* actor)
     {
         const auto presetId = CurrentPresetId(actor);
         if (!presetId) return;
-        SKSE::log::debug("BodyAudit rebuild-reapply requested id='{}' actor={:08X}",
-            *presetId, actor ? actor->GetFormID() : 0U);
         if (QueueApply(actor, *presetId, ApplyMode::commit) == ApplyResult::queued) {
             bcn::OutfitRefit::Get().ProcessActor(actor);
         }
@@ -964,6 +984,7 @@ namespace bcn::racemenu
                 const auto actor = actorHandle.get();
                 if (actor && bcn::ActorRegistry::Get().SessionGeneration() == session &&
                     IsCurrentApply(actor->GetFormID(), ApplyMode::outfit, generation)) {
+                    if (!bcn::rendered_outfit::ValidateApply(actor.get())) return;
                     ApplyProceduralOutfitNow(actorHandle, outfitSignature);
                 }
             });
@@ -987,6 +1008,7 @@ namespace bcn::racemenu
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved || !resolved->Is3DLoaded()) return;
                 if (!IsCurrentApply(resolved->GetFormID(), ApplyMode::outfit, generation)) return;
+                if (!bcn::rendered_outfit::ValidateApply(resolved.get())) return;
                 const auto hadOutfitMorph =
                     bodyMorph->HasBodyMorphKey(resolved.get(), kOutfitKey) ||
                     bodyMorph->HasBodyMorphKey(resolved.get(), kLegacyOutfitKey);
@@ -999,6 +1021,11 @@ namespace bcn::racemenu
                 bcn::ActorRegistry::Get().MarkOutfitApplied(resolved.get(), outfitSignature);
             });
         }
+    }
+
+    void CancelPendingOutfit(RE::Actor* actor)
+    {
+        if (actor) InvalidateApply(actor->GetFormID(), ApplyMode::outfit);
     }
 
     void QueueClearBodyChangeMorphs(RE::Actor* actor)
@@ -1042,7 +1069,7 @@ namespace bcn::racemenu
         }
     }
 
-    bool QueueClearAllBodyChangeMorphs()
+    bool QueueClearAllBodyChangeMorphs(std::vector<std::uint32_t> alreadyReset)
     {
         if (!bcn::frame_tasks::Active() || !IsReady()) return false;
         const auto* tasks = SKSE::GetTaskInterface();
@@ -1053,7 +1080,9 @@ namespace bcn::racemenu
         }
         [[maybe_unused]] const auto previousActor = CancelPreviewTracking();
         const auto session = bcn::ActorRegistry::Get().SessionGeneration();
-        bcn::frame_tasks::Queue(0, [session] {
+        const auto resetCutoff = g_nextApplyGeneration.load(std::memory_order_relaxed);
+        std::ranges::sort(alreadyReset);
+        return bcn::frame_tasks::Queue(0, [session, resetCutoff, alreadyReset = std::move(alreadyReset)] {
             if (bcn::ActorRegistry::Get().SessionGeneration() != session) return;
             auto* bodyMorph = Interface();
             if (!bodyMorph) return;
@@ -1065,6 +1094,9 @@ namespace bcn::racemenu
                 collector.actorFormIDs.end());
             std::size_t cleared{};
             for (const auto formID : collector.actorFormIDs) {
+                if (std::ranges::binary_search(alreadyReset, formID) ||
+                    CurrentApplyGeneration(formID, ApplyMode::commit) >= resetCutoff ||
+                    CurrentApplyGeneration(formID, ApplyMode::preview) >= resetCutoff) continue;
                 auto* actor = RE::TESForm::LookupByID<RE::Actor>(formID);
                 if (!actor) continue;
                 const auto owned = bodyMorph->HasBodyMorphKey(actor, kPreviewKey) ||
@@ -1091,6 +1123,5 @@ namespace bcn::racemenu
             }
             SKSE::log::info("Body Change NG queued owned body morph reset for {} saved actors", cleared);
         });
-        return true;
     }
 }

@@ -1,13 +1,18 @@
 #pragma once
 
+#include "BodyChangeNG/OverlayTypes.h"
+
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <memory>
+#include <map>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace RE
@@ -21,7 +26,12 @@ namespace bcn
     enum class DistributionFeature : std::uint8_t
     {
         body,
-        skin
+        skin,
+        futanari,
+        overlayFace,
+        overlayBody,
+        overlayHands,
+        overlayFeet
     };
 
     // BodyMorph is reference-scoped, while native TXST skin is ActorBase-
@@ -40,7 +50,7 @@ namespace bcn
         // values could leave two references of the same ActorBase with
         // conflicting native selections forever. BodyMorph remains reference-
         // scoped and keeps its established per-save selection.
-        return feature == DistributionFeature::body;
+        return feature != DistributionFeature::skin;
     }
 
     [[nodiscard]] constexpr bool IsDistributionActorStateEligible(const bool isPlayer,
@@ -100,31 +110,51 @@ namespace bcn
         // clears this obsolete per-rule filter while retaining JSON compatibility.
         std::string bodyFamily;
         std::vector<std::string> presetIds;
-        // Shared native TXST texture-profile pool. A rule may contain body
-        // presets, skin profiles, or both; each pool is sampled independently
-        // but uses the same rule scope and priority.
+        // Native TXST texture-profile pool. Schema-7 normalization keeps this
+        // in a skin-only rule so changing one feature cannot alter another.
         std::vector<std::string> skinProfileIds;
-        // Legacy full-rule exclusion used while reading/importing OBody and
-        // schema-1 data. Normalization expands it into both channel flags.
-        bool excluded{};
-        bool bodyExcluded{};
-        bool skinExcluded{};
-        // Source tagging lets repeated OBody imports replace only their own
-        // generated rows while preserving Body Change NG user rules.
-        bool importedFromOBody{};
+        // Female-only SOS/TNG futanari addon texture profiles. Runtime
+        // registration is checked independently, so merely being female is
+        // never enough to receive this channel.
+        std::vector<std::string> futanariSkinIds;
+        // RaceMenu paints are reference-scoped. Each anatomical area owns an
+        // independent pool so one rule cannot accidentally route a hand
+        // texture into a body node. Overlay areas may share one overlay-only
+        // condition row, but never a row with Body, Skin, or Futanari.
+        std::array<std::vector<std::string>, overlay::Index(overlay::Area::count)> overlayIds;
+        // Optional schema-7 extension, keyed by the exact candidate ID in its area.
+        // Absent values retain legacy opaque white; alpha is the high byte (AARRGGBB).
+        std::array<std::map<std::string, std::uint32_t, std::less<>>,
+            overlay::Index(overlay::Area::count)> overlayColors;
+        // Positive all-NPC rules may narrow their target set without creating
+        // a separate blacklist/exclusion rule.
+        // All-NPC distribution is conservative by default. The editor exposes
+        // these as checked "Exclude" options and stores the inverse here to
+        // preserve the existing on-disk schema and evaluator semantics.
+        bool includeCustomFollowers{ false };
+        bool includeElderNPCs{ false };
     };
 
-    struct OBodyImportReport final
+    [[nodiscard]] inline std::uint32_t DistributionOverlayColor(const DistributionRule& rule,
+        const overlay::Area area, const std::string_view id)
     {
-        bool loaded{};
-        std::size_t importedRules{};
-        std::size_t requestedPresetNames{};
-        std::size_t missingPresetNames{};
-    };
+        const auto& colors = rule.overlayColors[overlay::Index(area)];
+        const auto found = colors.find(id);
+        return found == colors.end() ? 0xFFFFFFFFU : found->second;
+    }
 
-    // Changing a rule's sex invalidates every catalog choice made under the
-    // previous sex. Keep this transition in one place so hidden preset/skin
-    // IDs can never leak through the editor into runtime distribution.
+    inline void PruneDistributionOverlayColors(DistributionRule& rule)
+    {
+        for (const auto area : overlay::kAreas) {
+            const auto index = overlay::Index(area);
+            std::erase_if(rule.overlayColors[index], [&](const auto& item) {
+                return std::ranges::find(rule.overlayIds[index], item.first) == rule.overlayIds[index].end();
+            });
+        }
+    }
+
+    // Every catalog shown by the rule editor is sex-specific. A sex change
+    // must not leave now-hidden IDs in any persisted distribution channel.
     [[nodiscard]] inline bool SetDistributionRuleSex(DistributionRule& rule, const bool female)
     {
         if (rule.female == female) return false;
@@ -132,6 +162,9 @@ namespace bcn
         rule.bodyFamily.clear();
         rule.presetIds.clear();
         rule.skinProfileIds.clear();
+        rule.futanariSkinIds.clear();
+        for (auto& pool : rule.overlayIds) pool.clear();
+        for (auto& colors : rule.overlayColors) colors.clear();
         return true;
     }
 
@@ -173,20 +206,6 @@ namespace bcn
         }
     }
 
-    [[nodiscard]] inline std::optional<std::size_t> EarlierCatchAllRule(
-        const std::vector<DistributionRule>& rules, const std::size_t index)
-    {
-        if (index >= rules.size()) return std::nullopt;
-        for (std::size_t earlier{}; earlier < index; ++earlier) {
-            if (rules[earlier].enabled &&
-                rules[earlier].female == rules[index].female &&
-                rules[earlier].scope == DistributionScope::allNPCs) {
-                return earlier;
-            }
-        }
-        return std::nullopt;
-    }
-
     // Accepts either an NPC base form or an actor reference and normalizes it
     // to a persistent plugin + local NPC BaseID rule target.
     [[nodiscard]] bool SetDistributionRuleNPC(DistributionRule& a_rule, RE::TESForm* a_form);
@@ -201,36 +220,29 @@ namespace bcn
         static Distribution& Get();
 
         // Returns true only when Body Change NG's own rule file was present
-        // and accepted. OBody's distribution file is imported only through an
-        // explicit editor action and is never a startup fallback.
+        // and accepted.
         [[nodiscard]] bool Load();
-        [[nodiscard]] bool Save() const;
         // Writes editor rules for the next game without replacing the active
         // rules used by actors in the current session.
         [[nodiscard]] bool SaveRulesForNextGame(std::vector<DistributionRule> a_rules) const;
-        [[nodiscard]] std::vector<DistributionRule> Snapshot() const;
+        [[nodiscard]] std::vector<DistributionRule> SavedRulesSnapshot() const;
         void SetRules(std::vector<DistributionRule> a_rules);
         void SetManualAssignment(RE::Actor* a_actor, std::string a_presetId);
         void SetManualSkinAssignment(RE::Actor* a_actor, std::string a_profileId);
         void SetManualDefaultBody(RE::Actor* a_actor);
         void SetManualDefaultSkin(RE::Actor* a_actor);
-        [[nodiscard]] bool RemoveManualAssignment(RE::Actor* a_actor);
-        [[nodiscard]] bool RemoveManualBodyAssignment(RE::Actor* a_actor);
-        void ClearManualAssignments();
-        void ClearManualBodyAssignments();
         [[nodiscard]] bool HasManualAssignment(const RE::Actor* a_actor) const;
         // Returns true if a body morph or texture-profile application was
         // accepted by the SKSE task queue for this actor.
         [[nodiscard]] bool ApplyActor(RE::Actor* a_actor) const;
         [[nodiscard]] std::size_t ApplyLoadedNPCs();
-        [[nodiscard]] std::size_t ResetLoadedNPCs();
-        [[nodiscard]] OBodyImportReport ImportOBodyDefaults();
-
     private:
         [[nodiscard]] static std::filesystem::path Path();
         mutable std::mutex lock_;
         [[nodiscard]] std::shared_ptr<const std::vector<DistributionRule>> EvaluationRules() const;
         mutable std::shared_ptr<const std::vector<DistributionRule>> evaluationRules_;
         std::vector<DistributionRule> rules_;
+        // Explicitly saved next-launch rules can differ from this session's rules.
+        mutable std::optional<std::vector<DistributionRule>> savedRules_;
     };
 }

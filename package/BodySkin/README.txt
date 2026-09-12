@@ -1,155 +1,60 @@
-Body Change NG - 스킨팩 설치 안내
+Body Change NG v1.2.0 — BodySkin 설치 안내
 
-이 폴더 아래에 스킨팩마다 별도의 폴더를 만드세요.
+[한국어]
+일반적인 스킨팩은 설치된 스킨 모드 폴더를 통째로 이 BodySkin 폴더 안에
+복사하면 됩니다. 개별 DDS를 골라 옮길 필요 없이 기존 Textures 구조를 유지하세요.
+FOMOD를 사용하는 팩은 모드 매니저에서 원하는 옵션을 설치한 결과 폴더를 사용합니다.
 
-중요: 선택할 스킨마다 최상위 폴더를 따로 만드세요. 일반 인간형 Legacy
-텍스처와 UBE 텍스처를 하나의 BodySkin\<스킨팩 이름> 폴더에 섞지 마세요.
+게임 Data 기준 전체 DDS 경로 예시:
+Data\BodySkin\BnP female skin 4k (CBBE Player and Replacer)\Textures\actors\character\female\femalehead.dds
+Data\BodySkin\My Male Skin\Textures\actors\character\male\malebody_1.dds
+Data\BodySkin\My UBE Skin\Textures\!UBE\Body\femalebody_1_d.dds
+Data\BodySkin\My UBE Skin\Textures\!UBE\Head\femalehead_d.dds
 
-예시:
-BodySkin\CBBE 3BA - Skin A\Textures\actors\character\female\...
-BodySkin\BHUNP UNP - Skin B\Textures\actors\character\female\...
-BodySkin\UBE - Skin C\Textures\!UBE\Body\...
-BodySkin\UBE - Skin C\Textures\!UBE\Head\...
-BodySkin\HIMBO - Skin D\Textures\actors\character\male\...
-BodySkin\HIMBO - Skin D\Textures\actors\character\SOS\<애드온 이름>\...
-BodySkin\SAM - Skin E\Textures\actors\character\male\...
-BodySkin\SAM - Skin E\Textures\actors\character\SOS\<애드온 이름>\...
+MO2에서는 모드 최상위가 Data에 해당합니다.
+mods\Body Change NG\BodySkin\스킨 모드 폴더\Textures
+구조로 두며, 모드 안에 Data를 한 겹 더 만들지 마세요.
+별도 에셋 모드 최상위에 BodySkin을 두어도 됩니다.
 
-같은 계열의 한 스킨을 구성하는 몸·손·발·얼굴과 선택적 종족/노인 파일은
-같은 폴더에 둡니다. 남성 SOS 파일도 해당 HIMBO/SAM 스킨팩 폴더에 함께
-두되, 서로 다른 스킨팩이나 바디 계열의 파일은 섞지 않습니다.
+- 여러 스킨의 내용물을 한 팩에 합치지 말고 모드 폴더별로 구분합니다.
+- 여성 CBBE/UNP, 남성, UBE는 실제 바디 메시와 맞는 파일을 사용합니다.
+- 몸·손·발·얼굴의 normal/skin/specular와 조건부 하위 폴더도 보존합니다.
+- 일부 DDS만 있어도 적용 가능한 채널을 사용하며, 없는 채널은 원래 제공자를 유지합니다.
+- 종족·노인·흡혈귀용 파일이 없으면 선택 팩의 일반 같은 채널을 먼저 사용합니다.
+- 일반 발은 원래 레이아웃에 따라 몸 아틀라스를 사용할 수 있습니다.
+- 남성 SOS/TNG 성기 스킨은 BodySkin 팩에 함께 둡니다. 여성 후타스킨은 Futanari입니다.
+- 스킨 profile.json은 필요하지 않습니다.
 
-일반 CBBE 3BA/BHUNP/UNP 구조:
-BodySkin\<스킨팩 이름>\Textures\actors\character\...
+틴트마스크도 같은 스킨팩 안에서 읽습니다. 전체 경로 예시:
+Data\BodySkin\My Skin\Textures\actors\character\character assets\tintmasks\FemaleHeadLips.dds
+위 이름은 입술 틴트 예시입니다. 원래 팩의 인식 가능한 파일 이름을 유지하세요.
+스킨과 틴트는 각 탭에서 독립적으로 선택합니다. 옛 Data\TintMask 루트는 사용하지 않습니다.
 
-일반 여성 스킨팩의 선택적 노인·종족 얼굴 구조(원본 경로 그대로):
-BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleBody_1_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleHands_1_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\femaleold\FemaleHead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\nordfemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\bretonfemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\darkelffemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\highelffemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\imperialfemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\femaleorc\femaleheadorc_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\redguardfemale\femalehead_msn.dds
-BodySkin\<스킨팩 이름>\Textures\actors\character\woodelffemale\femalehead_msn.dds
+각 탭의 새로고침은 게임에 보이는 파일 목록을 다시 읽습니다.
+새 ESP/DLL이나 MO2 모드를 활성화한 경우에는 게임을 다시 실행해야 할 수 있습니다.
+BodySkin 안에 복사된 ESP·메시·스크립트는 원래 모드로 활성화되지 않습니다.
+필요한 바디·애드온 본체는 일반 모드 설치 경로에 정상 설치하세요.
 
-아르고니안·카짓 구조(한 팩에 필요한 폴더를 함께 넣어도 됩니다):
-BodySkin\<스킨팩 이름>\Textures\actors\character\argonianfemale\...
-BodySkin\<스킨팩 이름>\Textures\actors\character\argonianmale\...
-BodySkin\<스킨팩 이름>\Textures\actors\character\khajiitfemale\...
-BodySkin\<스킨팩 이름>\Textures\actors\character\khajiitmale\...
+[English]
+Copy the entire installed skin-mod folder into BodySkin. Preserve its existing
+Textures tree; no need to extract DDS files individually. Use the installed
+FOMOD result, not an archive containing several competing installer options.
 
-UBE 2.0 구조:
-BodySkin\<스킨팩 이름>\Textures\!UBE\Body\femalebody_1_d.dds
-BodySkin\<스킨팩 이름>\Textures\!UBE\Body\femalebody_1_n.dds
-BodySkin\<스킨팩 이름>\Textures\!UBE\Body\femalebody_1_sk.dds
-BodySkin\<스킨팩 이름>\Textures\!UBE\Head\femalehead_d.dds
-BodySkin\<스킨팩 이름>\Textures\!UBE\Head\femalehead_n.dds
-BodySkin\<스킨팩 이름>\Textures\!UBE\Head\femalehead_sk.dds
+The complete example paths above are relative to the game installation.
+In MO2, the mod root is Data: do not add another Data directory inside the mod.
+A separate asset mod with BodySkin at its top level is also valid.
 
-스킨 모드의 textures 폴더 내용을 <스킨팩 이름>\Textures 아래에 원래
-폴더 구조 그대로 넣으면 됩니다. 완전한 세트일 필요는 없습니다. 몸·손·발·
-얼굴 중 실제로 들어 있는 부위만 바뀌고, 없는 부위는 액터의 기존 텍스처를
-유지합니다. diffuse·normal·subsurface·specular 채널도 같은 원칙이며,
-몸 파일을 발이나 손에 대신 쓰지 않습니다.
+Keep packs separate and choose files compatible with your actual body UVs.
+Keep all companion maps and conditional folders. Partial packs apply compatible
+available channels; a missing conditional channel falls back to the selected
+pack's ordinary channel, then to the underlying provider if absent there too.
+Conventional feet can use a native body atlas. Male addon skins belong here;
+female futanari skins belong under Futanari. No profile.json is required.
 
-노인·종족 폴더의 파일은 별도 스킨 항목이 아니라 같은 스킨팩의 조건부
-레이어입니다. 선택한 NPC의 종족·성별·노인 여부에 맞을 때만 실제 존재하는
-채널을 적용합니다. 해당 폴더나 파일이 없으면 같은 팩의 기본 female 채널을
-사용하고, 기본 채널도 없으면 액터가 원래 쓰던 텍스처를 유지합니다.
-Astrid 전용 astridbody/astridhands/astridhead 파일과 Afflicted 전용 파일은
-일반 NPC 스킨으로 등록하지 않습니다. character assets\tintmasks 아래 DDS도
-바디스킨 목록·미리보기·NPC 배포에 포함하지 않으며 TintMask 팩으로 따로
-설치해야 합니다.
+Tint masks share the pack's Textures\actors\character\character assets\tintmasks
+directory and are selected independently in the player-only Tint Masks tab.
+Do not use the obsolete Data\TintMask root.
 
-CBBE 3BA 여성 스킨팩에 아래 파일이 있으면 여성 성기·항문 공용 채널로 함께
-등록합니다. 네 파일은 같은 아틀라스를 참조하는 3BA/3BBB의 Vagina와 Anus
-지오메트리에만 적용되며 일반 몸, 손, 발, 얼굴에는 적용하지 않습니다.
-femalebody_etc_v2_1.dds
-femalebody_etc_v2_1_msn.dds
-femalebody_etc_v2_1_sk.dds
-femalebody_etc_v2_1_s.dds
-
-BHUNP/UNP 여성 스킨팩은 원본 경로의 아래 네 파일을 함께 등록합니다.
-이 아틀라스는 BaseShapeVagina, BaseShapeAnus, BaseShapeCanal에만 적용됩니다.
-BakaUNP\VaginalAnalCanal2.dds
-BakaUNP\VaginalAnalCanal2_msn.dds
-BakaUNP\VaginalAnalCanal2_sk.dds
-BakaUNP\VaginalAnalCanal2_s.dds
-
-SOS 남성 성기 스킨도 원본 애드온 폴더 구조를 그대로 유지합니다.
-BodySkin\<스킨팩 이름>\Textures\actors\character\SOS\<애드온 이름>\malegenitals_1.dds
-같은 폴더의 _msn, _sk, _s 및 malegenitals_argonian_1*,
-malegenitals_khajiit_1*, malegenitals_old_1*도 존재하는 파일만 등록됩니다.
-현재 액터가 슬롯 52에 착용한 Smurf Average, VectorPlexus Regular 또는
-VectorPlexus Muscular ArmorAddon 경로와 종족·노인 상태에 맞는 채널만
-성기 지오메트리에 적용합니다. 빠진 채널은 현재 텍스처를 유지하며 몸·손·
-발 텍스처를 대신 복제하지 않습니다.
-남성 몸·손·발·얼굴의 male 폴더와 SOS 폴더는 반드시 같은
-BodySkin\<스킨팩 이름> 안에 두어 하나의 스킨 항목으로 묶습니다. 서로 다른
-스킨팩 폴더의 남성 몸과 SOS 파일은 합치지 않습니다. 폴더명은 표시 이름일
-뿐이며, 일반 남성팩은 Legacy로 등록되고 실제 바닐라/HIMBO/SAM 재질 경로는
-선택한 액터의 런타임 바디 계열에서 결정합니다.
-
-아르고니안·카짓은 액터별 종족과 성별을 함께 감지하며 맞는 스킨만
-표시·미리보기·재적용·NPC 배포합니다. 두 종족의 꼬리 NIF는 원래 같은
-성별의 몸 아틀라스를 사용하므로 몸 텍스처 채널을 꼬리 슬롯에도 적용합니다.
-
-!UBE\Body 및 !UBE\Head 구조는 UBE 스킨으로 자동 분류하며 UBE의 슬롯 53
-바디와 얼굴에 적용합니다. 일반 스킨과 UBE 스킨은 선택한 액터의 실제
-바디 계열에 맞는 것만 목록에 표시됩니다.
-
-스킨팩용 profile.json은 사용하지 않습니다. 기존 파일이 남아 있어도 무시하며
-폴더 상대경로 기반 자동 ID와 실제 텍스처 구조만 사용합니다. Body Change NG의
-설정 및 NPC 배포 규칙 JSON은 별개이며 그대로 사용합니다.
-
-게임 실행 중 폴더를 추가했다면 Body Change NG의 바디스킨 탭에서
-새로고침을 누르세요. 아르고니안·카짓의 각 종족·성별 조합은 별도로
-감지하며, 인간형 여성의 노인·종족 얼굴은 같은 팩 안에서 자동 선택합니다.
-
-English:
-Create one folder per skin pack and keep the original texture tree under
-BodySkin\<pack name>\Textures. Press Refresh on the Body Skins tab after adding a
-pack while the game is running. Conventional skins use
-Textures\actors\character\..., while UBE 2.0 skins keep their
-Textures\!UBE\Body and Textures\!UBE\Head d/n/sk atlases. The catalog shows
-only skin packs compatible with the selected actor's race, sex, and detected
-body family. Argonian and Khajiit packs preserve their argonianfemale,
-argonianmale, khajiitfemale, and khajiitmale folders; their body atlas also
-targets the live tail geometry.
-Skin packs may be partial: only supplied body parts and material channels are
-overridden, while missing ones retain the actor's underlying textures. Files
-are never substituted across body, hands, feet, or face slots.
-Optional femaleold body/hand/face channels and the original nordfemale,
-bretonfemale, darkelffemale, highelffemale, imperialfemale, femaleorc,
-redguardfemale, and woodelffemale face-normal paths remain part of the same
-skin-pack row. They are selected per actor; a missing conditional channel falls
-back to the pack's base female channel, then to the actor's original texture.
-Astrid/Afflicted-specific files and DDS files under character assets\tintmasks
-are not registered as Body Skin assets.
-For CBBE 3BA female packs, femalebody_etc_v2_1 with its _msn, _sk, and _s
-companions is mapped to the matching 3BA/3BBB vagina and anus geometries that
-share this atlas, never to another body part. BHUNP/UNP packs keep the
-BakaUNP\VaginalAnalCanal2 atlas for their vagina, anus, and canal geometries.
-SOS male-genital packs preserve
-Textures\actors\character\SOS\<addon name>\malegenitals_1* plus any supplied
-malegenitals_argonian_1*, malegenitals_khajiit_1*, or malegenitals_old_1*
-files. The live slot-52 ArmorAddon selects the matching Smurf Average or
-VectorPlexus Regular/Muscular material. Missing variants and channels retain
-the currently loaded texture and never borrow a body, hand, or foot map.
-Keep the male body/hand/foot/face files and SOS folders under the same
-BodySkin\<pack name>; BCNG never combines them across pack folders. The folder
-name is display text only. Every conventional male pack is Legacy, while the
-selected actor's runtime BodyFamily chooses vanilla, HIMBO, or SAM routing.
-
-Create a separate top-level folder for every selectable skin. Never combine
-conventional Legacy and UBE assets under one pack name. Keep matching body
-parts and optional race/elder variants together. A male pack may include its
-own matching SOS folders; never mix them with another skin pack.
-
-Skin-pack profile.json is unsupported and ignored. Catalog IDs always come
-from the relative pack folder and detected sex; the texture namespace decides
-Legacy versus UBE. Settings and NPC distribution-rule JSON are separate and
-remain supported.
+Refresh re-reads files visible to the running game. New plugins or mod-manager
+providers may require a restart. Copying a plugin/mesh/script inside a BodySkin
+pack does not activate it as a normal mod; install required bodies/addons normally.

@@ -1,7 +1,14 @@
 #include "BodyChangeNG/UI.h"
+#include "BodyChangeNG/AppearanceColorDrafts.h"
+#include "BodyChangeNG/CatalogRefreshQueue.h"
+#include "BodyChangeNG/UiText.h"
+#include "BodyChangeNG/PopupPlacementUI.h"
+#include "BodyChangeNG/FittedTextUI.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FutanariSupport.h"
 
 #include "BodyChangeNG/ActorCatalog.h"
+#include "BodyChangeNG/ActorSettingsReset.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
@@ -13,9 +20,12 @@
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include "BodyChangeNG/RaceMenuOverlay.h"
+#include "BodyChangeNG/OverlayColor.h"
 #include "BodyChangeNG/Settings.h"
-#include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinApplication.h"
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/UiCatalogPolicy.h"
 
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
@@ -34,18 +44,14 @@ namespace
 {
     std::atomic_uint64_t g_uiSessionEpoch{};
     std::mutex g_uiLifecycleLock;
-    enum class ActiveTab
-    {
-        body,
-        skin,
-        futanari,
-        tint
-    };
+    using ActiveTab = bcn::ui_catalog::Tab;
 
     enum class DistributionPool
     {
         body,
-        skin
+        skin,
+        futanari,
+        overlay
     };
 
     struct CatalogItem
@@ -94,8 +100,12 @@ namespace
 
     ActiveTab g_activeTab{ ActiveTab::body };
     DistributionPool g_distributionPool{ DistributionPool::body };
-    std::array<bool, 4> g_favoritesOnlyByTab{};
+    std::array<bool, static_cast<std::size_t>(ActiveTab::count)> g_favoritesOnlyByTab{};
     bool g_showDistribution{};
+    bool g_distributionSelectionMode{};
+    std::unordered_set<std::string> g_distributionSelectedIds;
+    std::array<std::unordered_set<std::string>,
+        bcn::overlay::Index(bcn::overlay::Area::count)> g_distributionSelectedOverlayIds;
     bool g_showOutfit{};
     bool g_orefitRulesRegistered{};
     bool g_showSettings{};
@@ -106,8 +116,6 @@ namespace
     std::size_t g_selectedDistributionRule{};
     std::uint32_t g_nextDraftRuleID{ 1U };
     std::optional<bcn::UiLanguage> g_distributionRuleNameLanguage;
-    std::string g_distributionBodySearch;
-    std::string g_distributionSkinSearch;
     std::vector<DistributionTargetOption> g_distributionFactionOptions;
     std::vector<std::string> g_distributionPluginOptions;
     std::vector<DistributionTargetOption> g_distributionRaceOptions;
@@ -121,11 +129,33 @@ namespace
     std::string g_currentTintPack;
     std::string g_selectedTintAssetID;
     std::array<float, 4> g_tintColor{ 1.0F, 1.0F, 1.0F, 1.0F };
+    std::array<float, 4> g_overlayColor{ 1.0F, 1.0F, 1.0F, 1.0F };
+    bool g_showOverlayDetails{};
+    std::uint32_t g_overlayColorActor{};
+    bcn::overlay::Area g_overlayColorArea{ bcn::overlay::Area::body };
+    std::string g_overlayColorEntryId;
+    bool g_overlayColorDistributionDraft{};
+    std::chrono::steady_clock::time_point g_lastOverlayColorApply{};
     std::chrono::steady_clock::time_point g_lastTintDetailApply{};
+    bcn::ui::AppearanceColorDrafts<std::uint32_t> g_overlayColorDrafts;
+    bcn::ui::AppearanceColorDrafts<bcn::player_tint::PersistedLayerState> g_tintColorDrafts;
+    std::array<std::optional<bcn::player_tint::Color>,
+        static_cast<std::size_t>(bcn::player_tint::Layer::dirt) + 1U> g_tintSessionColors;
     std::optional<PendingChoice> g_pendingBody;
     std::optional<PendingChoice> g_pendingSkin;
+    std::optional<PendingChoice> g_pendingFutanari;
     std::optional<PendingChoice> g_pendingTint;
-    std::array<CatalogNavigationState, 4> g_catalogNavigation{};
+    std::optional<bcn::player_tint::PersistedState> g_pendingTintBaseline;
+    std::array<std::optional<PendingChoice>, bcn::overlay::Index(bcn::overlay::Area::count)>
+        g_pendingOverlays;
+    std::optional<bcn::overlay::Area> g_overlayArea;
+    std::array<std::string, bcn::overlay::Index(bcn::overlay::Area::count)>
+        g_overlayFocusedIds;
+    std::array<bool, bcn::overlay::Index(bcn::overlay::Area::count)> g_overlaySectionsOpen{
+        true, false, false, false
+    };
+    std::array<CatalogNavigationState, static_cast<std::size_t>(ActiveTab::count)>
+        g_catalogNavigation{};
     std::string g_notification;
     std::chrono::steady_clock::time_point g_notificationUntil{};
     std::mutex g_notificationLock;
@@ -140,8 +170,22 @@ namespace
     constexpr ImU32 kCardText = IM_COL32(238, 238, 238, 255);
     constexpr ImU32 kCardSubtext = IM_COL32(170, 170, 170, 255);
     constexpr ImU32 kCardIncompatible = IM_COL32(192, 145, 120, 255);
-    constexpr auto kSkinApplyChannel = bcn::appearance::WorkChannel::skinApply;
-    constexpr auto kFutanariApplyChannel = bcn::appearance::WorkChannel::futanariSkinApply;
+
+    [[nodiscard]] const char* Text(const char* korean, const char* english, const char* chinese);
+    template<class Catalog>
+    void RefreshFileCatalog(Catalog& catalog)
+    {
+        [[maybe_unused]] const auto queued = bcn::catalog_refresh::Get().Submit(
+            &catalog, [&catalog] { catalog.Refresh(); }, [](std::exception_ptr error) {
+                try { std::rethrow_exception(error); }
+                catch (const std::exception& exception) {
+                    SKSE::log::error("BCNG catalog refresh failed: {}", exception.what());
+                } catch (...) {
+                    SKSE::log::error("BCNG catalog refresh failed with an unknown exception");
+                }
+                bcn::ui::Notify(Text("목록 새로고침에 실패했습니다.", "Catalog refresh failed.", "列表刷新失败。"));
+            });
+    }
 
     [[nodiscard]] bcn::UiLanguage WindowsLanguage()
     {
@@ -153,7 +197,7 @@ namespace
 
     [[nodiscard]] bcn::UiLanguage CurrentLanguage()
     {
-        const auto configured = bcn::Settings::Get().Snapshot().language;
+        const auto configured = bcn::Settings::Get().Language();
         return configured == bcn::UiLanguage::automatic ? WindowsLanguage() : configured;
     }
 
@@ -168,7 +212,7 @@ namespace
 
     [[nodiscard]] float LayoutScale()
     {
-        const auto configured = bcn::Settings::Get().Snapshot().textScale;
+        const auto configured = bcn::Settings::Get().TextScale();
         return bcn::native_ui::GetResolutionScale() * std::clamp(configured, 0.75F, 1.50F);
     }
 
@@ -239,12 +283,14 @@ namespace
     {
         return ImGui::GetIO().WantTextInput || bcn::InputSink::Get().IsCapturingHotkey() ||
             g_showDistribution || g_showOutfit || g_showSettings || g_showTintDetails ||
-            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+            g_showOverlayDetails || ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
     }
 
     [[nodiscard]] bool NavigationKeyPressed(const ImGuiKey first, const ImGuiKey second,
         const ImGuiKey gamepad, const bool repeat)
     {
+        if (bcn::native_ui::MenuActionHeld() || bcn::native_ui::ActivatePressed() ||
+            bcn::native_ui::CancelPressed()) return false;
         return ImGui::IsKeyPressed(first, repeat) || ImGui::IsKeyPressed(second, repeat) ||
             ImGui::IsKeyPressed(gamepad, repeat);
     }
@@ -280,8 +326,9 @@ namespace
         }
         command.focused = state.index;
         command.confirm = ImGui::IsKeyPressed(ImGuiKey_Enter, false) ||
-            ImGui::IsKeyPressed(ImGuiKey_Space, false) ||
-            ImGui::IsKeyPressed(ImGuiKey_GamepadFaceDown, false);
+            ImGui::IsKeyPressed(ImGuiKey_KeypadEnter, false) ||
+            bcn::native_ui::ActivatePressed();
+        if (bcn::native_ui::CancelPressed()) command.confirm = false;
         return command;
     }
 
@@ -308,6 +355,14 @@ namespace
             return static_cast<char>(std::tolower(character));
         });
         return result;
+    }
+
+    [[nodiscard]] std::string EllipsizeText(
+        const std::string_view value, const float maximumWidth)
+    {
+        return bcn::ui_text::Ellipsize(value, maximumWidth, [](std::string_view text) {
+            return ImGui::CalcTextSize(text.data(), text.data() + text.size()).x;
+        });
     }
 
     [[nodiscard]] std::string ActorLabel(const bcn::ActorEntry& entry)
@@ -399,6 +454,36 @@ namespace
         return ImGui::IsItemClicked();
     }
 
+    [[nodiscard]] bool CenteredCheckbox(const char* id, bool& value,
+        const ImVec2 rowCursor, const float rowHeight)
+    {
+        const auto checkboxY = rowCursor.y +
+            (std::max)(0.0F, (rowHeight - ImGui::GetFrameHeight()) * 0.5F);
+        ImGui::SetCursorScreenPos(ImVec2(rowCursor.x, checkboxY));
+        const auto changed = ImGui::Checkbox(id, &value);
+        const auto cardX = ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::SetCursorScreenPos(ImVec2(cardX, rowCursor.y));
+        return changed;
+    }
+
+    [[nodiscard]] bool RightAlignedButton(const char* label)
+    {
+        const auto width = ImGui::CalcTextSize(label).x +
+            ImGui::GetStyle().FramePadding.x * 2.0F;
+        ImGui::SetCursorPosX((std::max)(ImGui::GetCursorPosX(),
+            ImGui::GetWindowContentRegionMax().x - width));
+        return ImGui::Button(label);
+    }
+
+    void DrawTitleBarRotationHint()
+    {
+        const auto* hint = Text(
+            "캐릭터 회전: 마우스 우클릭 드래그 / LT+RS 좌우",
+            "Rotate: right-mouse drag / LT+RS left/right",
+            "角色旋转：鼠标右键拖动 / LT+RS 左右");
+        bcn::ui_text::TitleBarRightHint("Body Change NG", hint);
+    }
+
     [[nodiscard]] bool EscapePressed()
     {
         static int cachedFrame = -1;
@@ -412,11 +497,11 @@ namespace
             // popup and then the main window on consecutive frames.
             const auto directInput = bcn::native_ui::ConsumeEscape();
             const auto scaleform = ImGui::IsKeyPressed(ImGuiKey_Escape, false);
-            const auto gamepad = ImGui::IsKeyPressed(ImGuiKey_GamepadFaceRight, false);
+            const auto mappedCancel = bcn::native_ui::CancelPressed();
             // Consume Escape while typing, but never turn that same key-up into
             // a delayed window close after the text field releases focus.
-            available = !ImGui::GetIO().WantTextInput &&
-                !bcn::InputSink::Get().IsCapturingHotkey() && (directInput || scaleform || gamepad);
+            available = !bcn::InputSink::Get().IsCapturingHotkey() &&
+                (mappedCancel || (!ImGui::GetIO().WantTextInput && (directInput || scaleform)));
             consumed = false;
         }
         if (!available || consumed) return false;
@@ -437,9 +522,9 @@ namespace
 
     [[nodiscard]] float CatalogListHeight()
     {
-        // Keep the three catalog rectangles identical. Tint uses the reserved
-        // row for its value controls; Body and Skin intentionally retain the
-        // same lower edge so switching tabs never changes the list geometry.
+        // Keep every catalog rectangle identical. Tint and Overlay use the
+        // reserved row for fixed value/color controls; the other tabs retain
+        // the same lower edge so switching tabs never changes list geometry.
         const auto footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetStyle().ItemSpacing.y;
         return (std::max)(Scaled(120.0F), ImGui::GetContentRegionAvail().y - footer);
     }
@@ -447,12 +532,17 @@ namespace
     // Keep popup input modal, but do not wash the running game or the main
     // picker with ImGui's modal dim overlay. The popup itself remains opaque
     // and still blocks accidental clicks behind it.
-    [[nodiscard]] bool BeginUndimmedPopupModal(const char* title, bool* open, const ImGuiWindowFlags flags)
+    [[nodiscard]] bool BeginUndimmedPopupModal(const char* title, bool* open, const ImGuiWindowFlags flags,
+        const bcn::popup_placement::Kind placement)
     {
-        ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0.0F, 0.0F, 0.0F, 0.0F));
-        const auto began = ImGui::BeginPopupModal(title, open, flags);
-        ImGui::PopStyleColor();
-        return began;
+        auto& settings = bcn::Settings::Get();
+        static bcn::popup_placement::Modals modals;
+        const auto result = modals.Begin(title, open, flags, placement, settings.PopupPosition(placement));
+        const auto position = result.settledPosition;
+        if (position.set && settings.RememberPopupPosition(placement, position.x, position.y) && !settings.Save()) {
+            bcn::ui::Notify(Text("창 위치를 저장하지 못했습니다.", "Could not save the window position.", "无法保存窗口位置。"));
+        }
+        return result.began;
     }
 
     void TextDisabledWrapped(const char* text)
@@ -552,17 +642,7 @@ namespace
         }
     }
 
-    [[nodiscard]] bcn::body_family::Mask CatalogActorFamily(
-        RE::Actor* actor, const bcn::SettingsData& settings)
-    {
-        const auto detected = bcn::body_family::ResolveActor(actor);
-        if (detected != 0U || !actor || actor == RE::PlayerCharacter::GetSingleton()) return detected;
-        const auto* base = actor->GetActorBase();
-        if (!base) return 0U;
-        return base->GetSex() == RE::SEX::kFemale ?
-            bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
-            bcn::NpcDistributionFamily(settings.maleNpcBodyType);
-    }
+    [[nodiscard]] bool IsDistributionSelectionFor(DistributionPool pool) noexcept;
 
     [[nodiscard]] std::vector<CatalogItem> BodyItems()
     {
@@ -571,14 +651,18 @@ namespace
         const auto actorBase = actor ? actor->GetActorBase() : nullptr;
         const auto selectedMale = actorBase && actorBase->GetSex() == RE::SEX::kMale;
         const auto settings = bcn::Settings::Get().Snapshot();
-        const auto actorFamily = CatalogActorFamily(actor, settings);
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto currentPreset = bcn::racemenu::CurrentPresetId(actor);
         std::vector<CatalogItem> items;
         items.reserve(presets.size());
         for (const auto& preset : presets) {
             if (preset.male != selectedMale) continue;
-            if (!bcn::body_family::Matches(
-                    bcn::body_family::PresetMask(preset.family, preset.male), actorFamily)) continue;
+            const auto presetMask = bcn::body_family::PresetMask(preset.family, preset.male);
+            if (IsDistributionSelectionFor(DistributionPool::body)) {
+                if ((presetMask & bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U) continue;
+            } else if (!bcn::body_family::Matches(presetMask, actorFamily)) {
+                continue;
+            }
             const auto id = preset.PersistentId();
             items.push_back(CatalogItem{
                 .id = id,
@@ -599,27 +683,24 @@ namespace
         return bcn::ActorCatalog::Get().Resolve(g_selectedActorFormID);
     }
 
-    void CommitPendingSelections();
+    void RollbackPendingSelections(RE::Actor* actor);
 
     void SelectActor(const RE::FormID formID)
     {
         if (formID == 0) return;
         if (g_selectedActorFormID != formID) {
-            CommitPendingSelections();
-            // A transient runtime NPC can disappear before its pending choice
-            // is committed. Never let that stale FormID selection leak into a
-            // later actor that reuses the same dynamic ID.
-            g_pendingBody.reset();
-            g_pendingSkin.reset();
-            g_pendingTint.reset();
+            RollbackPendingSelections(SelectedActor());
             bcn::menu_character::Presentation::Get().Restore();
             g_selectedActorFormID = formID;
-            bcn::skin_override::InvalidateFutanariDetection(formID);
+            bcn::skin_application::InvalidateFutanariDetection(formID);
             ResetCatalogNavigation();
         }
         g_actorSearch.clear();
         const auto settings = bcn::Settings::Get().Snapshot();
         bcn::menu_character::Presentation::Get().Apply(settings.characterPosition, SelectedActor());
+        if (g_activeTab == ActiveTab::overlay) {
+            [[maybe_unused]] const auto requested = bcn::overlay::RequestCatalog(SelectedActor());
+        }
     }
 
     void ResetDistributionEditor()
@@ -628,13 +709,73 @@ namespace
         g_distributionRules.clear();
         g_selectedDistributionRule = 0;
         g_distributionPool = DistributionPool::body;
-        g_distributionBodySearch.clear();
-        g_distributionSkinSearch.clear();
         g_distributionFactionOptions.clear();
         g_distributionPluginOptions.clear();
         g_distributionRaceOptions.clear();
         g_distributionKeywordOptions.clear();
         g_distributionClassOptions.clear();
+    }
+
+    void ClearDistributionCatalogSelection()
+    {
+        g_distributionSelectedIds.clear();
+        for (auto& ids : g_distributionSelectedOverlayIds) ids.clear();
+    }
+
+    [[nodiscard]] bool IsDistributionSelectionFor(const DistributionPool pool) noexcept
+    {
+        return g_distributionSelectionMode && g_distributionPool == pool;
+    }
+
+    [[nodiscard]] std::size_t DistributionSelectionCount() noexcept
+    {
+        if (g_distributionPool != DistributionPool::overlay) {
+            return g_distributionSelectedIds.size();
+        }
+        std::size_t count{};
+        for (const auto& ids : g_distributionSelectedOverlayIds) count += ids.size();
+        return count;
+    }
+
+    void BeginDistributionCatalogSelection(const DistributionPool pool)
+    {
+        g_distributionPool = pool;
+        g_distributionSelectionMode = true;
+        ClearDistributionCatalogSelection();
+        ResetCatalogNavigation();
+    }
+
+    void CancelDistributionCatalogSelection()
+    {
+        g_distributionSelectionMode = false;
+        ClearDistributionCatalogSelection();
+        ResetCatalogNavigation();
+    }
+
+    [[nodiscard]] bool DistributionItemSelected(const std::string_view id)
+    {
+        return g_distributionSelectedIds.contains(std::string{ id });
+    }
+
+    void SetDistributionItemSelected(const std::string& id, const bool selected)
+    {
+        if (selected) g_distributionSelectedIds.insert(id);
+        else g_distributionSelectedIds.erase(id);
+    }
+
+    [[nodiscard]] bool DistributionOverlaySelected(
+        const bcn::overlay::Area area, const std::string_view id)
+    {
+        return g_distributionSelectedOverlayIds[bcn::overlay::Index(area)].contains(
+            std::string{ id });
+    }
+
+    void SetDistributionOverlaySelected(const bcn::overlay::Area area,
+        const std::string& id, const bool selected)
+    {
+        auto& ids = g_distributionSelectedOverlayIds[bcn::overlay::Index(area)];
+        if (selected) ids.insert(id);
+        else ids.erase(id);
     }
 
     void AddUniqueTargetOption(std::vector<std::string>& options,
@@ -736,7 +877,7 @@ namespace
     void EnsureDistributionEditor()
     {
         if (g_distributionEditorLoaded) return;
-        g_distributionRules = bcn::Distribution::Get().Snapshot();
+        g_distributionRules = bcn::Distribution::Get().SavedRulesSnapshot();
         g_selectedDistributionRule = 0;
         RefreshDistributionTargetOptions();
         g_distributionEditorLoaded = true;
@@ -767,6 +908,154 @@ namespace
             .nameKey = std::string{ bcn::distribution_names::NewRuleKey(female) },
             .female = female
         };
+    }
+
+    [[nodiscard]] const char* DistributionPoolLabel(const DistributionPool pool)
+    {
+        switch (pool) {
+        case DistributionPool::body:
+            return Text("바디프리셋", "Body Presets", "身体预设");
+        case DistributionPool::skin:
+            return Text("바디스킨", "Body Skins", "身体皮肤");
+        case DistributionPool::futanari:
+            return Text("후타스킨", "Futanari Skin", "扶她皮肤");
+        default:
+            return Text("오버레이", "Overlays", "叠加层");
+        }
+    }
+
+    [[nodiscard]] bool RuleUsesDistributionPool(const bcn::DistributionRule& rule,
+        const DistributionPool pool)
+    {
+        switch (pool) {
+        case DistributionPool::body:
+            return !rule.presetIds.empty();
+        case DistributionPool::skin:
+            return !rule.skinProfileIds.empty();
+        case DistributionPool::futanari:
+            return !rule.futanariSkinIds.empty();
+        default:
+            return std::ranges::any_of(rule.overlayIds,
+                [](const auto& ids) { return !ids.empty(); });
+        }
+    }
+
+    [[nodiscard]] bool RuleHasAnyDistributionPool(const bcn::DistributionRule& rule)
+    {
+        return !rule.presetIds.empty() || !rule.skinProfileIds.empty() ||
+            !rule.futanariSkinIds.empty() ||
+            std::ranges::any_of(rule.overlayIds,
+                [](const auto& ids) { return !ids.empty(); });
+    }
+
+    [[nodiscard]] std::size_t RuleDistributionPoolCount(const bcn::DistributionRule& rule,
+        const DistributionPool pool)
+    {
+        switch (pool) {
+        case DistributionPool::body: return rule.presetIds.size();
+        case DistributionPool::skin: return rule.skinProfileIds.size();
+        case DistributionPool::futanari: return rule.futanariSkinIds.size();
+        default: {
+            std::size_t count{};
+            for (const auto& ids : rule.overlayIds) count += ids.size();
+            return count;
+        }
+        }
+    }
+
+    void SetRuleDistributionSelection(bcn::DistributionRule& rule)
+    {
+        switch (g_distributionPool) {
+        case DistributionPool::body:
+            rule.presetIds.assign(g_distributionSelectedIds.begin(),
+                g_distributionSelectedIds.end());
+            break;
+        case DistributionPool::skin:
+            rule.skinProfileIds.assign(g_distributionSelectedIds.begin(),
+                g_distributionSelectedIds.end());
+            break;
+        case DistributionPool::futanari:
+            rule.female = true;
+            rule.name = Text("새 여성 후타 NPC 규칙", "New female futanari NPC rule",
+                "新的女性扶她 NPC 规则");
+            rule.nameKey.clear();
+            rule.futanariSkinIds.assign(g_distributionSelectedIds.begin(),
+                g_distributionSelectedIds.end());
+            break;
+        case DistributionPool::overlay:
+            for (const auto area : bcn::overlay::kAreas) {
+                const auto index = bcn::overlay::Index(area);
+                rule.overlayIds[index].assign(g_distributionSelectedOverlayIds[index].begin(),
+                    g_distributionSelectedOverlayIds[index].end());
+                auto* actor = SelectedActor();
+                rule.overlayColors[index] = g_overlayColorDrafts.CopySelection(g_selectedActorFormID,
+                    static_cast<std::uint8_t>(area), rule.overlayIds[index],
+                    [actor, area](const std::string& id) {
+                        return bcn::overlay::CurrentColor(actor, area, id).value_or(0xFFFFFFFFU);
+                    });
+            }
+            break;
+        }
+    }
+
+    void OpenDistributionEditorFromCatalog()
+    {
+        if (DistributionSelectionCount() == 0U) {
+            bcn::ui::Notify(Text("배포할 항목을 하나 이상 선택하세요.",
+                "Select at least one item to distribute.", "请至少选择一个要分发的项目。"));
+            return;
+        }
+        EnsureDistributionEditor();
+        auto rule = NewDistributionRule();
+        SetRuleDistributionSelection(rule);
+        g_distributionRules.push_back(std::move(rule));
+        g_selectedDistributionRule = g_distributionRules.size() - 1U;
+        g_showDistribution = true;
+        // The popup owns this catalog-selection snapshot until it closes.
+        // Hiding the checkboxes must not erase the IDs that + Add rule copies.
+        g_distributionSelectionMode = false;
+        ResetCatalogNavigation();
+    }
+
+    template <class Refresh, class SelectAll>
+    void DrawCatalogCommandRow(const DistributionPool pool, Refresh&& refresh,
+        SelectAll&& selectAll, const char* help)
+    {
+        const auto selecting = IsDistributionSelectionFor(pool);
+        if (ImGui::BeginTable("##catalogCommandRow", 2,
+                ImGuiTableFlags_SizingStretchProp | ImGuiTableFlags_NoSavedSettings)) {
+            ImGui::TableSetupColumn("##catalogCommands", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("##catalogDistribution", ImGuiTableColumnFlags_WidthFixed);
+            ImGui::TableNextRow();
+            ImGui::TableSetColumnIndex(0);
+            if (selecting) {
+                if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) selectAll();
+                ImGui::SameLine();
+                if (ImGui::Button(Text("선택 해제", "Clear selection", "清除选择"))) {
+                    ClearDistributionCatalogSelection();
+                }
+                ImGui::SameLine();
+                ImGui::TextDisabled("%s %zu", Text("선택", "Selected", "已选"),
+                    DistributionSelectionCount());
+            } else {
+                if (ImGui::Button(Text("새로고침", "Refresh", "刷新"))) refresh();
+                ImGui::SameLine();
+                bcn::ui_text::FittedDisabledLine(help);
+            }
+            ImGui::TableSetColumnIndex(1);
+            if (selecting) {
+                if (ImGui::Button(Text("배포 NPC 조건", "Distribution NPC conditions", "分发 NPC 条件"))) {
+                    OpenDistributionEditorFromCatalog();
+                }
+                ImGui::SameLine();
+                if (ImGui::Button(Text("배포 취소", "Cancel distribution", "取消分发"))) {
+                    CancelDistributionCatalogSelection();
+                }
+            } else if (ImGui::Button(Text("NPC 배포", "NPC distribution", "NPC 分发"))) {
+                BeginDistributionCatalogSelection(pool);
+            }
+            ImGui::EndTable();
+        }
     }
 
     void FillRuleTargetFromSelectedActor(bcn::DistributionRule& rule)
@@ -839,7 +1128,7 @@ namespace
         case bcn::DistributionScope::combatStyle:
             return Text("전투 스타일", "Combat style", "战斗风格");
         case bcn::DistributionScope::npcName:
-            return Text("이름이 같은 NPC", "NPCs with the same name", "同名 NPC");
+            return Text("이름", "Name", "名称");
         case bcn::DistributionScope::npcBaseForm:
             return "FormID";
         }
@@ -850,8 +1139,6 @@ namespace
     {
         constexpr std::array order{
             bcn::DistributionScope::allNPCs,
-            bcn::DistributionScope::modInstalledFollower,
-            bcn::DistributionScope::elderNPC,
             bcn::DistributionScope::pluginFile,
             bcn::DistributionScope::raceEditorID,
             bcn::DistributionScope::factionEditorID,
@@ -952,42 +1239,86 @@ namespace
 
     [[nodiscard]] bool SaveActiveDistributionRules()
     {
+        // Never activate an unsaved draft when the disk write fails.
+        if (!bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules)) return false;
         bcn::Distribution::Get().SetRules(g_distributionRules);
-        return bcn::Distribution::Get().Save();
+        return true;
     }
 
-    [[nodiscard]] bool SaveDistributionDraft()
+    void DiscardDistributionDraft()
     {
-        if (!g_distributionEditorLoaded) return true;
-        // Closing the editor confirms the JSON draft for the next game, but
-        // deliberately does not replace the rules already active in this
-        // session.  The explicit immediate-distribution button remains the
-        // only action that changes both active rules and the saved file.
-        return bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules);
+        // Keep catalog metadata cached. Discarding edits must not trigger a
+        // new faction/race/keyword scan on the next popup in this menu session.
+        g_distributionRules = g_distributionEditorLoaded ?
+            bcn::Distribution::Get().SavedRulesSnapshot() : std::vector<bcn::DistributionRule>{};
+        g_selectedDistributionRule = 0U;
+        ClearDistributionCatalogSelection();
     }
 
-    [[nodiscard]] bool ContainsPreset(const bcn::DistributionRule& rule, const std::string_view presetId)
+    [[nodiscard]] const char* OverlayAreaLabel(const bcn::overlay::Area area)
     {
-        return std::ranges::find(rule.presetIds, presetId) != rule.presetIds.end();
+        switch (area) {
+        case bcn::overlay::Area::face: return Text("얼굴", "Face", "脸部");
+        case bcn::overlay::Area::body: return Text("몸", "Body", "身体");
+        case bcn::overlay::Area::hands: return Text("손", "Hands", "手部");
+        case bcn::overlay::Area::feet: return Text("발", "Feet", "脚部");
+        default: return Text("알 수 없음", "Unknown", "未知");
+        }
     }
 
-    void ToggleRulePreset(bcn::DistributionRule& rule, const std::string& presetId)
+    void ToggleOverlayFavorite(const std::string& id)
     {
-        const auto found = std::ranges::find(rule.presetIds, presetId);
-        if (found == rule.presetIds.end()) rule.presetIds.push_back(presetId);
-        else rule.presetIds.erase(found);
+        auto settings = bcn::Settings::Get().Snapshot();
+        const auto found = std::ranges::find(settings.favoriteOverlays, id);
+        if (found == settings.favoriteOverlays.end()) settings.favoriteOverlays.push_back(id);
+        else settings.favoriteOverlays.erase(found);
+        bcn::Settings::Get().Update(settings);
+        if (!bcn::Settings::Get().Save()) {
+            bcn::ui::Notify(Text("즐겨찾기를 저장하지 못했습니다.", "Could not save favorites.", "无法保存收藏。"));
+        }
     }
 
-    [[nodiscard]] bool ContainsSkinProfile(const bcn::DistributionRule& rule, const std::string_view profileId)
+    [[nodiscard]] const char* OverlayApplyResultMessage(const bcn::overlay::ApplyResult result)
     {
-        return std::ranges::find(rule.skinProfileIds, profileId) != rule.skinProfileIds.end();
-    }
-
-    void ToggleRuleSkinProfile(bcn::DistributionRule& rule, const std::string& profileId)
-    {
-        const auto found = std::ranges::find(rule.skinProfileIds, profileId);
-        if (found == rule.skinProfileIds.end()) rule.skinProfileIds.push_back(profileId);
-        else rule.skinProfileIds.erase(found);
+        switch (result) {
+        case bcn::overlay::ApplyResult::queued:
+            return Text("오버레이를 즉시 반영했습니다.", "Applied the overlay immediately.", "已立即应用叠加层。");
+        case bcn::overlay::ApplyResult::unavailable:
+        case bcn::overlay::ApplyResult::unsupportedInterface:
+            return Text("RaceMenu Overlay/Override 인터페이스를 찾지 못했습니다.",
+                "RaceMenu's Overlay/Override interfaces are unavailable.",
+                "RaceMenu 的叠加层/覆盖接口不可用。");
+        case bcn::overlay::ApplyResult::actor3DUnavailable:
+            return Text("액터의 3D가 로드되지 않아 즉시 적용할 수 없습니다.",
+                "The actor's 3D is not loaded, so the overlay cannot be applied immediately.",
+                "角色的 3D 尚未加载，无法立即应用叠加层。");
+        case bcn::overlay::ApplyResult::missingEntry:
+            return Text("RaceMenu 목록에서 사라졌거나 텍스처가 비어 있는 오버레이입니다.",
+                "The overlay disappeared from RaceMenu's catalog or has no texture.",
+                "该叠加层已从 RaceMenu 列表中消失或没有纹理。");
+        case bcn::overlay::ApplyResult::noFreeSlot:
+            return Text("이 부위에 비어 있는 RaceMenu 오버레이 슬롯이 없습니다.",
+                "There is no free RaceMenu overlay slot for this area.",
+                "此部位没有可用的 RaceMenu 叠加层槽位。");
+        case bcn::overlay::ApplyResult::ownershipConflict:
+            return Text("다른 모드가 해당 슬롯을 바꿔 BCNG가 덮어쓰지 않았습니다.",
+                "Another mod changed that slot, so BCNG did not overwrite it.",
+                "其他模组已更改该槽位，因此 BCNG 未覆盖它。");
+        case bcn::overlay::ApplyResult::unsupportedFace:
+            return Text("현재 얼굴 지오메트리에서 안전한 FaceGen 오버레이 대상을 찾지 못했습니다.",
+                "No safe FaceGen overlay target was found on the current face geometry.",
+                "在当前脸部几何体上找不到安全的 FaceGen 叠加层目标。");
+        case bcn::overlay::ApplyResult::incompatibleActor:
+            return Text("선택한 오버레이는 이 액터의 성별 또는 UBE/일반 바디 구조와 맞지 않습니다.",
+                "The overlay does not match this actor's sex or UBE/conventional-body layout.",
+                "该叠加层与此角色的性别或 UBE/常规身体结构不匹配。");
+        case bcn::overlay::ApplyResult::noTaskInterface:
+            return Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.",
+                "The SKSE game-task interface is unavailable.",
+                "SKSE 游戏任务接口不可用。");
+        default:
+            return Text("적용할 액터가 없습니다.", "No actor is available.", "没有可应用的角色。");
+        }
     }
 
     [[nodiscard]] const char* ApplyResultMessage(const bcn::racemenu::ApplyResult result)
@@ -1014,114 +1345,51 @@ namespace
         }
     }
 
-    [[nodiscard]] const char* SkinApplyResultMessage(const bcn::skin_override::ApplyResult result)
+    [[nodiscard]] const char* SkinApplyResultMessage(const bcn::skin_application::ApplyResult result)
     {
         switch (result) {
-        case bcn::skin_override::ApplyResult::queued:
+        case bcn::skin_application::ApplyResult::queued:
             return Text("스킨을 즉시 반영했습니다.", "Applied the skin immediately.", "已立即应用皮肤。");
-        case bcn::skin_override::ApplyResult::missingProfile:
+        case bcn::skin_application::ApplyResult::missingProfile:
             return Text("새로고침 후 사라진 스킨팩입니다.", "The skin pack disappeared after refresh.", "刷新后该皮肤包已不存在。");
-        case bcn::skin_override::ApplyResult::actor3DUnavailable:
-            return Text("액터의 3D가 로드되지 않아 스킨을 즉시 적용할 수 없습니다.", "The actor's 3D is not loaded, so the skin cannot be applied immediately.", "角色的 3D 尚未加载，无法立即应用皮肤。");
-        case bcn::skin_override::ApplyResult::incompatibleSex:
+        case bcn::skin_application::ApplyResult::incompatibleSex:
             return Text("선택한 스킨팩은 이 액터의 성별과 맞지 않습니다.", "The selected skin pack does not match this actor's sex.", "所选皮肤包与该角色的性别不匹配。");
-        case bcn::skin_override::ApplyResult::incompatibleRace:
+        case bcn::skin_application::ApplyResult::incompatibleRace:
             return Text("선택한 스킨팩은 이 액터의 종족과 맞지 않습니다.", "The selected skin pack does not match this actor's race.", "所选皮肤包与该角色的种族不匹配。");
-        case bcn::skin_override::ApplyResult::incompatibleBodyFamily:
+        case bcn::skin_application::ApplyResult::incompatibleBodyFamily:
             return Text("선택한 스킨팩은 이 액터의 바디 계열과 맞지 않습니다.", "The selected skin pack does not match this actor's body family.", "所选皮肤包与该角色的身体系列不匹配。");
-        case bcn::skin_override::ApplyResult::ambiguousProfileLayout:
+        case bcn::skin_application::ApplyResult::ambiguousProfileLayout:
             return Text("스킨팩의 텍스처 구조를 지원되는 레이아웃으로 확정할 수 없습니다.", "The skin pack's texture structure does not identify a supported layout.", "无法根据皮肤包的纹理结构确定受支持的布局。");
-        case bcn::skin_override::ApplyResult::ambiguousActorLayout:
+        case bcn::skin_application::ApplyResult::ambiguousActorLayout:
             return Text("액터의 바디 UV 레이아웃을 안전하게 판별하지 못해 적용을 중단했습니다.", "The actor's body UV layout could not be identified safely, so the skin was not applied.", "无法安全识别角色的身体 UV 布局，因此未应用皮肤。");
-        case bcn::skin_override::ApplyResult::incompatibleFutanariType:
+        case bcn::skin_application::ApplyResult::incompatibleFutanariType:
             return Text("선택한 후타나리 스킨은 현재 성기 유형과 맞지 않습니다.", "The selected futanari skin does not match the active genital type.", "所选扶她皮肤与当前生殖器类型不匹配。");
-        case bcn::skin_override::ApplyResult::futanariGeometryUnavailable:
-            return Text("현재 액터에서 지원되는 UBE SOS/TNG, TRX 또는 ERF 성기 메시를 찾지 못했습니다.", "No supported UBE SOS/TNG, TRX, or ERF genital geometry is currently loaded on this actor.", "当前角色未加载受支持的 UBE SOS/TNG、TRX 或 ERF 生殖器几何体。");
-        case bcn::skin_override::ApplyResult::faceGeometryUnavailable:
-            return Text("이 스킨팩의 얼굴 텍스처를 적용할 현재 얼굴 지오메트리를 찾지 못했습니다.", "The live face geometry required by this skin pack's face textures was not found.", "未找到应用此皮肤包脸部纹理所需的当前脸部几何体。");
-        case bcn::skin_override::ApplyResult::noTaskInterface:
+        case bcn::skin_application::ApplyResult::noTaskInterface:
             return Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。");
-        case bcn::skin_override::ApplyResult::unsupportedRuntime:
+        case bcn::skin_application::ApplyResult::unsupportedRuntime:
             return Text("검증되지 않은 Skyrim 버전이라 스킨 적용을 안전하게 중단했습니다.", "Skin application was stopped safely on an unaudited Skyrim runtime.", "由于 Skyrim 运行时版本未经验证，已安全停止皮肤应用。");
-        case bcn::skin_override::ApplyResult::actorBaseUnavailable:
+        case bcn::skin_application::ApplyResult::actorBaseUnavailable:
             return Text("이 액터의 기본 Skin Armor를 찾지 못했습니다.", "The actor's native Skin Armor is unavailable.", "找不到该角色的原生皮肤护甲。");
-        case bcn::skin_override::ApplyResult::nativeCloneFailed:
-            return Text("TXST·ARMA·Skin Armor 복제에 실패해 원본을 변경하지 않았습니다.", "TXST/ARMA/Skin Armor cloning failed; the originals were left unchanged.", "TXST、ARMA、皮肤护甲克隆失败；原始数据未更改。");
-        case bcn::skin_override::ApplyResult::sharedActorBaseConflict:
+        case bcn::skin_application::ApplyResult::sharedActorBaseConflict:
             return Text("같은 ActorBase를 공유하는 다른 NPC가 이미 다른 스킨을 사용 중입니다.", "Another NPC sharing this ActorBase already owns a different skin selection.", "共享此 ActorBase 的另一个 NPC 已使用不同的皮肤选择。");
-        case bcn::skin_override::ApplyResult::ownershipConflict:
-            return Text("다른 모드가 Skin Armor 또는 얼굴 TXST를 교체해 덮어쓰지 않았습니다.", "Another mod replaced the Skin Armor or face TXST, so Body Change NG did not overwrite it.", "其他模组已替换皮肤护甲或脸部 TXST，因此 Body Change NG 未覆盖它。");
-        case bcn::skin_override::ApplyResult::unavailable:
-            return Text("필요한 외형 적용 백엔드를 사용할 수 없습니다.", "The required appearance backend is unavailable.", "所需的外观应用后端不可用。");
+        case bcn::skin_application::ApplyResult::ownershipConflict:
+            return Text("다른 모드가 Skin Armor를 교체해 덮어쓰지 않았습니다.", "Another mod replaced the Skin Armor, so Body Change NG did not overwrite it.", "其他模组已替换皮肤护甲，因此 Body Change NG 未覆盖它。");
         default:
             return Text("적용할 액터가 없습니다.", "No actor is available.", "没有可应用的角色。");
-        }
-    }
-
-    struct InterruptedTextureWork
-    {
-        bool skin{};
-        bool futanari{};
-        std::optional<std::string> skinProfileId;
-        std::optional<std::string> futanariProfileId;
-    };
-
-    [[nodiscard]] InterruptedTextureWork BeginDirectBodyInteraction(RE::Actor* actor)
-    {
-        InterruptedTextureWork interrupted;
-        if (!actor) return interrupted;
-
-        const auto actorFormID = actor->GetFormID();
-        interrupted.skin = bcn::frame_tasks::HasActorChannelWork(actorFormID, kSkinApplyChannel);
-        interrupted.futanari = bcn::frame_tasks::HasActorChannelWork(actorFormID, kFutanariApplyChannel);
-        if (interrupted.skin) {
-            interrupted.skinProfileId = bcn::skin_override::CurrentProfileId(actor);
-        }
-        if (interrupted.futanari) {
-            interrupted.futanariProfileId = bcn::skin_override::CurrentFutanariProfileId(actor);
-        }
-
-        // A direct body choice is latest-wins across the UI pipeline. Keep
-        // automatic distribution/equipment channels, but invalidate obsolete
-        // body, skin and futanari work before the replacement is queued.
-        bcn::frame_tasks::CancelActorInteractive(actorFormID);
-        return interrupted;
-    }
-
-    void RestoreInterruptedTextureWork(RE::Actor* actor, const InterruptedTextureWork& interrupted)
-    {
-        if (!actor) return;
-        if (interrupted.skin) {
-            if (interrupted.skinProfileId) {
-                [[maybe_unused]] const auto restored =
-                    bcn::skin_override::QueueApply(actor, *interrupted.skinProfileId);
-            } else {
-                [[maybe_unused]] const auto restored = bcn::skin_override::QueueClear(actor);
-            }
-        }
-        if (interrupted.futanari) {
-            if (interrupted.futanariProfileId) {
-                [[maybe_unused]] const auto restored =
-                    bcn::skin_override::QueueApplyFutanari(actor, *interrupted.futanariProfileId);
-            } else {
-                [[maybe_unused]] const auto restored = bcn::skin_override::QueueClearFutanari(actor);
-            }
         }
     }
 
     [[nodiscard]] bool QueuePreset(const CatalogItem& item, const bcn::racemenu::ApplyMode mode)
     {
         auto* actor = SelectedActor();
-        const auto interrupted = BeginDirectBodyInteraction(actor);
         const auto result = bcn::racemenu::QueueApply(actor, item.id, mode);
         if (result == bcn::racemenu::ApplyResult::queued && mode == bcn::racemenu::ApplyMode::commit) {
-            auto* player = RE::PlayerCharacter::GetSingleton();
-            if (actor && actor != player) {
-                bcn::Distribution::Get().SetManualAssignment(actor, item.id);
-            }
+            // Direct choices are save-specific for the player and NPCs alike.
+            // Distribution ignores the player, but ActorRegistry is also the
+            // single ASTR co-save owner used by player load restoration.
+            bcn::Distribution::Get().SetManualAssignment(actor, item.id);
             bcn::OutfitRefit::Get().ProcessActor(actor);
         }
-        RestoreInterruptedTextureWork(actor, interrupted);
         if (result != bcn::racemenu::ApplyResult::queued) {
             bcn::ui::Notify(std::string(item.name) + " · " + ApplyResultMessage(result));
         }
@@ -1130,22 +1398,19 @@ namespace
 
     void SaveManualSkinIfNeeded(RE::Actor* actor, const std::string& profileId)
     {
-        const auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || actor == player) return;
+        if (!actor) return;
         bcn::Distribution::Get().SetManualSkinAssignment(actor, profileId);
     }
 
     void SaveManualDefaultBodyIfNeeded(RE::Actor* actor)
     {
-        const auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || actor == player) return;
+        if (!actor) return;
         bcn::Distribution::Get().SetManualDefaultBody(actor);
     }
 
     void SaveManualDefaultSkinIfNeeded(RE::Actor* actor)
     {
-        const auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || actor == player) return;
+        if (!actor) return;
         bcn::Distribution::Get().SetManualDefaultSkin(actor);
     }
 
@@ -1168,9 +1433,14 @@ namespace
             bcn::ui::Notify(Text("SKSE 게임 작업 인터페이스를 사용할 수 없습니다.", "The SKSE game-task interface is unavailable.", "SKSE 游戏任务接口不可用。"));
             return false;
         }
-        const auto interrupted = BeginDirectBodyInteraction(actor);
+        if (!persistSelection) {
+            const auto result = bcn::racemenu::QueuePreviewDefault(actor);
+            if (result != bcn::racemenu::ApplyResult::queued) {
+                bcn::ui::Notify(ApplyResultMessage(result));
+            }
+            return result == bcn::racemenu::ApplyResult::queued;
+        }
         bcn::racemenu::QueueClearBodyChangeMorphs(actor);
-        RestoreInterruptedTextureWork(actor, interrupted);
         if (persistSelection) SaveManualDefaultBodyIfNeeded(actor);
         return true;
     }
@@ -1178,19 +1448,20 @@ namespace
     [[nodiscard]] bool QueueDefaultSkin(const bool persistSelection)
     {
         auto* actor = SelectedActor();
-        const auto result = bcn::skin_override::QueueClear(actor);
-        if (result == bcn::skin_override::ApplyResult::queued && persistSelection) {
+        const auto result = bcn::skin_application::QueueClear(actor);
+        if (result == bcn::skin_application::ApplyResult::queued && persistSelection) {
             SaveManualDefaultSkinIfNeeded(actor);
         } else {
-            if (result != bcn::skin_override::ApplyResult::queued) bcn::ui::Notify(SkinApplyResultMessage(result));
+            if (result != bcn::skin_application::ApplyResult::queued) bcn::ui::Notify(SkinApplyResultMessage(result));
         }
-        return result == bcn::skin_override::ApplyResult::queued;
+        return result == bcn::skin_application::ApplyResult::queued;
     }
 
     void RememberPending(std::optional<PendingChoice>& pending, RE::Actor* actor,
         std::string id, const bool useDefault, std::string originalId)
     {
         if (!actor) return;
+        bcn::frame_tasks::SetPreviewActor(actor->GetFormID());
         if (!pending || pending->actorFormID != actor->GetFormID()) {
             pending = PendingChoice{
                 .actorFormID = actor->GetFormID(),
@@ -1204,35 +1475,98 @@ namespace
         pending->useDefault = useDefault;
     }
 
-    void CommitPendingSelections()
+    void RollbackPendingSelections(RE::Actor* actor)
     {
         if (!bcn::frame_tasks::IsCurrent(g_uiSessionEpoch.load())) return;
-        auto* actor = SelectedActor();
-        if (!actor) return;
-        const auto actorFormID = actor->GetFormID();
-        if (g_pendingBody && g_pendingBody->actorFormID == actorFormID) {
-            if (g_pendingBody->useDefault) {
-                [[maybe_unused]] const auto committed = QueueDefaultBody(true);
-            } else {
-                CatalogItem item{ .id = g_pendingBody->id, .name = g_pendingBody->id, .body = true };
-                [[maybe_unused]] const auto committed = QueuePreset(item, bcn::racemenu::ApplyMode::commit);
+        if (actor) {
+            const auto actorFormID = actor->GetFormID();
+            if (g_pendingSkin && g_pendingSkin->actorFormID == actorFormID) {
+                const auto result = g_pendingSkin->originalId.empty() ?
+                    bcn::skin_application::QueueClear(actor) :
+                    bcn::skin_application::QueueApply(actor, g_pendingSkin->originalId);
+                if (result != bcn::skin_application::ApplyResult::queued) {
+                    bcn::ui::Notify(SkinApplyResultMessage(result));
+                }
             }
-            g_pendingBody.reset();
-        }
-        if (g_pendingSkin && g_pendingSkin->actorFormID == actorFormID) {
-            if (g_pendingSkin->useDefault) {
-                [[maybe_unused]] const auto committed = QueueDefaultSkin(true);
-            } else {
-                const auto result = bcn::skin_override::QueueApply(actor, g_pendingSkin->id);
-                if (result == bcn::skin_override::ApplyResult::queued) SaveManualSkinIfNeeded(actor, g_pendingSkin->id);
-                else bcn::ui::Notify(SkinApplyResultMessage(result));
+            if (g_pendingFutanari && g_pendingFutanari->actorFormID == actorFormID) {
+                const auto result = g_pendingFutanari->originalId.empty() ?
+                    bcn::skin_application::QueueClearFutanari(actor,
+                        bcn::skin_application::FutanariSelectionMode::restore) :
+                    bcn::skin_application::QueueApplyFutanari(actor,
+                        g_pendingFutanari->originalId,
+                        bcn::skin_application::FutanariSelectionMode::restore);
+                if (result != bcn::skin_application::ApplyResult::queued) {
+                    bcn::ui::Notify(SkinApplyResultMessage(result));
+                }
             }
-            g_pendingSkin.reset();
+            bcn::overlay::QueueCancelPreviews(actor);
+        } else {
+            bcn::overlay::QueueCancelPreviews();
         }
-        if (g_pendingTint && g_pendingTint->actorFormID == actorFormID) {
-            // Tint previews already replace the live player layers. Confirming
-            // only changes the UI selection state; the current pack remains.
+        // Body previews live in a dedicated RaceMenu morph key, so cancelling
+        // that key restores the exact last committed body without another
+        // persistent write.
+        bcn::racemenu::QueueCancelPreview();
+
+        if (g_pendingTintBaseline) {
+            const auto baseline = *g_pendingTintBaseline;
+            bcn::player_tint::RestorePersistedState(baseline, false);
+            const auto result = !baseline.pack && baseline.layers.empty() ?
+                bcn::player_tint::QueueRestoreAll() :
+                bcn::player_tint::QueueReapplyCurrent();
+            if (result != bcn::player_tint::ApplyResult::queued) {
+                bcn::ui::Notify(TintResultText(result));
+            }
+            g_currentTintPack = baseline.pack.value_or(std::string{});
+            g_selectedTintPack = g_currentTintPack;
+            g_selectedTintAssetID.clear();
+        }
+
+        g_pendingBody.reset();
+        g_pendingSkin.reset();
+        g_pendingFutanari.reset();
+        g_pendingTint.reset();
+        g_pendingTintBaseline.reset();
+        for (auto& pending : g_pendingOverlays) pending.reset();
+        bcn::frame_tasks::SetPreviewActor(0U);
+    }
+
+    void UpdatePreviewOwnership()
+    {
+        RE::FormID owner{};
+        const auto observe = [&owner](const auto& pending) {
+            if (pending) owner = pending->actorFormID;
+        };
+        observe(g_pendingBody); observe(g_pendingSkin); observe(g_pendingFutanari);
+        observe(g_pendingTint);
+        for (const auto& pending : g_pendingOverlays) observe(pending);
+        bcn::frame_tasks::SetPreviewActor(owner);
+    }
+
+    void DiscardPendingSelectionsAfterReset(const bool allActors)
+    {
+        const auto* actor = SelectedActor();
+        const auto id = actor ? actor->GetFormID() : 0U;
+        if (allActors) {
+            g_overlayColorDrafts.Clear();
+            g_tintColorDrafts.Clear();
+        } else {
+            g_overlayColorDrafts.EraseActor(id);
+            g_tintColorDrafts.EraseActor(id);
+        }
+        const auto discard = [allActors, id](auto& pending) {
+            if (pending && (allActors || pending->actorFormID == id)) pending.reset();
+        };
+        discard(g_pendingBody);
+        discard(g_pendingSkin);
+        discard(g_pendingFutanari);
+        for (auto& pending : g_pendingOverlays) discard(pending);
+        if (allActors || (actor && actor->IsPlayerRef())) {
             g_pendingTint.reset();
+            g_pendingTintBaseline.reset();
+            g_currentTintPack.clear();
+            g_selectedTintPack.clear();
+            g_selectedTintAssetID.clear();
         }
     }
 
@@ -1245,23 +1579,29 @@ namespace
             ImGuiKey_RightArrow, ImGuiKey_D, ImGuiKey_GamepadDpadRight, false);
         if (left == right) return;
 
-        std::vector<ActiveTab> tabs{ ActiveTab::body, ActiveTab::skin };
-        if (futanariAvailable) tabs.push_back(ActiveTab::futanari);
-        if (playerSelected) tabs.push_back(ActiveTab::tint);
+        const auto previousTab = g_activeTab;
+        const auto tabs = bcn::ui_catalog::ResolveAvailableTabs(playerSelected, futanariAvailable);
         const auto move = [&](const auto& availableTabs) {
-            auto found = std::ranges::find(availableTabs, g_activeTab);
-            auto index = found == availableTabs.end() ? std::size_t{} :
-                static_cast<std::size_t>(found - availableTabs.begin());
-            if (left) index = index == 0U ? availableTabs.size() - 1U : index - 1U;
-            else index = (index + 1U) % availableTabs.size();
-            g_activeTab = availableTabs[index];
+            const auto begin = availableTabs.values.begin();
+            const auto end = begin + static_cast<std::ptrdiff_t>(availableTabs.size);
+            const auto found = std::find(begin, end, g_activeTab);
+            auto index = found == end ? std::size_t{} :
+                static_cast<std::size_t>(found - begin);
+            if (left) index = index == 0U ? availableTabs.size - 1U : index - 1U;
+            else index = (index + 1U) % availableTabs.size;
+            g_activeTab = availableTabs.values[index];
         };
         move(tabs);
+        if (g_activeTab != previousTab && g_activeTab == ActiveTab::overlay) {
+            [[maybe_unused]] const auto requested = bcn::overlay::RequestCatalog(SelectedActor());
+        }
     }
 
     void DrawCatalog(std::vector<CatalogItem>& items, const bool body)
     {
         auto* actor = SelectedActor();
+        const auto distributionSelecting = body &&
+            IsDistributionSelectionFor(DistributionPool::body);
         const auto backendCurrentBody = bcn::racemenu::CurrentPresetId(actor);
         const auto confirmedBodyId = g_pendingBody && actor && g_pendingBody->actorFormID == actor->GetFormID() ?
             g_pendingBody->originalId : backendCurrentBody.value_or(std::string{});
@@ -1272,19 +1612,23 @@ namespace
             if ((FavoritesOnly() && !item.favorite) || !MatchSearch(item)) continue;
             visibleItems.push_back(&item);
         }
+        const auto hasDefaultRow = body && !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedBodyId.empty()) {
             const auto current = std::ranges::find(visibleItems, confirmedBodyId,
                 [](const CatalogItem* item) -> const std::string& { return item->id; });
-            if (current != visibleItems.end()) preferredIndex = 1U + static_cast<std::size_t>(current - visibleItems.begin());
+            if (current != visibleItems.end()) preferredIndex =
+                (hasDefaultRow ? 1U : 0U) + static_cast<std::size_t>(current - visibleItems.begin());
         }
-        const auto navigation = HandleCatalogNavigation(visibleItems.size() + (body ? 1U : 0U), preferredIndex);
+        const auto navigation = HandleCatalogNavigation(
+            visibleItems.size() + (hasDefaultRow ? 1U : 0U), preferredIndex);
         const auto previewRow = [&](const std::size_t row) {
-            if (body && row == 0U) {
+            if (distributionSelecting) return;
+            if (hasDefaultRow && row == 0U) {
                 if (QueueDefaultBody(false)) RememberPending(g_pendingBody, actor, {}, true, confirmedBodyId);
                 return;
             }
-            auto& item = *visibleItems[row - (body ? 1U : 0U)];
+            auto& item = *visibleItems[row - (hasDefaultRow ? 1U : 0U)];
             if (item.compatible && body && QueuePreset(item, bcn::racemenu::ApplyMode::preview)) {
                 RememberPending(g_pendingBody, actor, item.id, false, confirmedBodyId);
             } else if (!item.compatible) {
@@ -1292,11 +1636,16 @@ namespace
             }
         };
         const auto confirmRow = [&](const std::size_t row) {
-            if (body && row == 0U) {
+            if (distributionSelecting) {
+                auto& item = *visibleItems[row];
+                SetDistributionItemSelected(item.id, !DistributionItemSelected(item.id));
+                return;
+            }
+            if (hasDefaultRow && row == 0U) {
                 if (QueueDefaultBody(true)) g_pendingBody.reset();
                 return;
             }
-            auto& item = *visibleItems[row - (body ? 1U : 0U)];
+            auto& item = *visibleItems[row - (hasDefaultRow ? 1U : 0U)];
             if (item.compatible) {
                 if (body && QueuePreset(item, bcn::racemenu::ApplyMode::commit)) g_pendingBody.reset();
             } else {
@@ -1309,7 +1658,7 @@ namespace
         if (ImGui::BeginChild("Catalog", ImVec2(0.0F, CatalogListHeight()), true,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
             std::size_t row{};
-            if (body) {
+            if (hasDefaultRow) {
                 ImGui::PushID("DefaultBody");
                 const auto cursor = ImGui::GetCursorScreenPos();
                 const auto width = ImGui::GetContentRegionAvail().x;
@@ -1353,9 +1702,17 @@ namespace
             for (auto* itemPointer : visibleItems) {
                 auto& item = *itemPointer;
                 ImGui::PushID(item.id.c_str());
+                const auto rowCursor = ImGui::GetCursorScreenPos();
+                const auto cardHeight = Scaled(48.0F);
+                if (distributionSelecting) {
+                    auto selected = DistributionItemSelected(item.id);
+                    if (CenteredCheckbox("##distributionSelected", selected,
+                            rowCursor, cardHeight)) {
+                        SetDistributionItemSelected(item.id, selected);
+                    }
+                }
                 const auto cursor = ImGui::GetCursorScreenPos();
                 const auto width = ImGui::GetContentRegionAvail().x;
-                const auto cardHeight = Scaled(48.0F);
                 const auto favoriteWidth = Scaled(46.0F);
                 // The favorite star is a separate interactive control. Do not
                 // let the card-wide apply button claim its mouse-down.
@@ -1377,7 +1734,10 @@ namespace
                     item.compatible ? kCardSubtext : kCardIncompatible, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(item.favorite, cardHeight)) ToggleFavorite(item);
-                if (doubleClicked) {
+                if (distributionSelecting && clicked) {
+                    SetDistributionItemSelected(item.id, !DistributionItemSelected(item.id));
+                    FocusCatalogRow(row);
+                } else if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
                 } else if (clicked) {
@@ -1385,7 +1745,7 @@ namespace
                     previewRow(row);
                 }
                 ScrollFocusedCatalogRow(row);
-                ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + cardHeight + Scaled(5.0F)));
+                ImGui::SetCursorScreenPos(ImVec2(rowCursor.x, cursor.y + cardHeight + Scaled(5.0F)));
                 ImGui::Dummy(ImVec2(0.0F, 0.0F));
                 ImGui::PopID();
                 ++row;
@@ -1404,13 +1764,7 @@ namespace
         const auto* base = actor->GetActorBase();
         const bool female = !base || base->GetSex() == RE::SEX::kFemale;
         const auto actorRace = bcn::ResolveActorSkinRace(actor);
-
-        const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##skinCatalogRefresh";
-        if (ImGui::Button(refreshLabel.c_str())) {
-            bcn::SkinProfiles::Get().Refresh();
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("%s", Text("BodySkin\\의 Skin 폴더를 읽습니다.", "Reads Skin folders under BodySkin\\.", "读取 BodySkin\\ 下的 Skin 文件夹。"));
+        const auto distributionSelecting = IsDistributionSelectionFor(DistributionPool::skin);
 
         const auto skins = bcn::SkinProfiles::Get().Snapshot();
         const auto settings = bcn::Settings::Get().Snapshot();
@@ -1419,14 +1773,20 @@ namespace
         // but must never make an unknown actor look safe for a DDS write.
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto actorSex = female ? bcn::SkinSex::female : bcn::SkinSex::male;
-        const auto backendCurrentSkin = bcn::skin_override::CurrentProfileId(actor);
+        const auto backendCurrentSkin = bcn::skin_application::CurrentProfileId(actor);
         const auto confirmedSkinId = g_pendingSkin && g_pendingSkin->actorFormID == actor->GetFormID() ?
             g_pendingSkin->originalId : backendCurrentSkin.value_or(std::string{});
 
         std::vector<const bcn::SkinProfile*> visibleSkins;
         visibleSkins.reserve(skins.size());
         for (const auto& skin : skins) {
-            if (!bcn::SkinProfileCompatibility(skin, actorSex, actorRace, actorFamily).Compatible()) continue;
+            if (distributionSelecting) {
+                if (skin.sex != actorSex || skin.race != bcn::SkinRace::humanoid ||
+                    skin.layout != bcn::SkinLayout::legacy) continue;
+            } else if (!bcn::SkinProfileCompatibility(
+                           skin, actorSex, actorRace, actorFamily).Compatible()) {
+                continue;
+            }
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(skin.id).find(Lower(g_search)) == std::string::npos) continue;
             const auto favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
@@ -1434,40 +1794,56 @@ namespace
             if (FavoritesOnly() && !favorite) continue;
             visibleSkins.push_back(&skin);
         }
+        DrawCatalogCommandRow(DistributionPool::skin,
+            [] { [[maybe_unused]] const auto started = bcn::SkinProfiles::Get().RefreshAsync(); },
+            [&visibleSkins] {
+                g_distributionSelectedIds.clear();
+                for (const auto* skin : visibleSkins) g_distributionSelectedIds.insert(skin->id);
+            },
+            bcn::SkinProfiles::Get().Refreshing() ?
+                Text("BodySkin\\<스킨팩>에서 바디스킨을 새로고침하는 중입니다. 기존 목록은 계속 사용할 수 있습니다.",
+                    "Refreshing body skins from BodySkin\\<skin pack> in the background. The current list remains available.",
+                    "正在后台从 BodySkin\\<皮肤包> 刷新身体皮肤。当前列表仍可继续使用。") :
+                Text("BodySkin\\<스킨팩>\\textures\\~에서 바디스킨을 읽습니다.(더블클릭 적용)",
+                    "Reads body skins from BodySkin\\<skin pack>\\textures\\~. (Double-click to apply)",
+                    "从 BodySkin\\<皮肤包>\\textures\\~ 读取身体皮肤。（双击应用）"));
+        const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedSkinId.empty()) {
             const auto current = std::ranges::find(visibleSkins, confirmedSkinId,
                 [](const bcn::SkinProfile* skin) -> const std::string& { return skin->id; });
-            if (current != visibleSkins.end()) preferredIndex = 1U + static_cast<std::size_t>(current - visibleSkins.begin());
+            if (current != visibleSkins.end()) preferredIndex =
+                (hasDefaultRow ? 1U : 0U) + static_cast<std::size_t>(current - visibleSkins.begin());
         }
-        const auto navigation = HandleCatalogNavigation(visibleSkins.size() + 1U, preferredIndex);
+        const auto navigation = HandleCatalogNavigation(
+            visibleSkins.size() + (hasDefaultRow ? 1U : 0U), preferredIndex);
         const auto previewRow = [&](const std::size_t row) {
-            if (row == 0U) {
-                if (QueueDefaultSkin(true)) RememberPending(g_pendingSkin, actor, {}, true, confirmedSkinId);
+            if (distributionSelecting) return;
+            if (hasDefaultRow && row == 0U) {
+                if (QueueDefaultSkin(false)) RememberPending(g_pendingSkin, actor, {}, true, confirmedSkinId);
                 return;
             }
-            const auto& skin = *visibleSkins[row - 1U];
-            const auto result = bcn::skin_override::QueueApply(actor, skin.id);
-            if (result == bcn::skin_override::ApplyResult::queued) {
-                // Unlike body previews, skin previews attach the same native
-                // Skin Armor graph used by the confirmed result. Record the
-                // NPC's manual lock immediately so an attach/init
-                // distribution event cannot flash the preview and restore a
-                // rule-selected or default skin before the UI closes.
-                SaveManualSkinIfNeeded(actor, skin.id);
+            const auto& skin = *visibleSkins[row - (hasDefaultRow ? 1U : 0U)];
+            const auto result = bcn::skin_application::QueueApply(actor, skin.id);
+            if (result == bcn::skin_application::ApplyResult::queued) {
                 RememberPending(g_pendingSkin, actor, skin.id, false, confirmedSkinId);
             } else {
                 bcn::ui::Notify(skin.name + " · " + SkinApplyResultMessage(result));
             }
         };
         const auto confirmRow = [&](const std::size_t row) {
-            if (row == 0U) {
+            if (distributionSelecting) {
+                const auto& skin = *visibleSkins[row];
+                SetDistributionItemSelected(skin.id, !DistributionItemSelected(skin.id));
+                return;
+            }
+            if (hasDefaultRow && row == 0U) {
                 if (QueueDefaultSkin(true)) g_pendingSkin.reset();
                 return;
             }
-            const auto& skin = *visibleSkins[row - 1U];
-            const auto result = bcn::skin_override::QueueApply(actor, skin.id);
-            if (result == bcn::skin_override::ApplyResult::queued) {
+            const auto& skin = *visibleSkins[row - (hasDefaultRow ? 1U : 0U)];
+            const auto result = bcn::skin_application::QueueApply(actor, skin.id);
+            if (result == bcn::skin_application::ApplyResult::queued) {
                 SaveManualSkinIfNeeded(actor, skin.id);
                 g_pendingSkin.reset();
             } else {
@@ -1480,6 +1856,7 @@ namespace
         if (ImGui::BeginChild("SkinCatalog", ImVec2(0.0F, CatalogListHeight()), true,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
             std::size_t row{};
+            if (hasDefaultRow) {
             ImGui::PushID("DefaultSkin");
             const auto defaultCursor = ImGui::GetCursorScreenPos();
             const auto defaultWidth = ImGui::GetContentRegionAvail().x;
@@ -1496,7 +1873,7 @@ namespace
             defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(7.0F)), kCardText,
                 Text("기본 스킨", "Default skin", "默认皮肤"));
             defaultDraw->AddText(ImVec2(defaultCursor.x + Scaled(10.0F), defaultCursor.y + Scaled(27.0F)), kCardSubtext,
-                Text("몸 · 손 · 발 · 얼굴을 원래 TXST로 복원", "Restore the original body · hands · feet · face TXST", "恢复身体、手、脚和脸部的原始 TXST"));
+                Text("몸 · 손 · 발 · 얼굴을 기본 스킨으로 복원", "Restore the original body · hands · feet · face skin", "恢复身体、手、脚和脸部的默认皮肤"));
             if (defaultDoubleClicked) {
                 FocusCatalogRow(row);
                 confirmRow(row);
@@ -1508,6 +1885,7 @@ namespace
             ImGui::Dummy(ImVec2(0.0F, Scaled(5.0F)));
             ImGui::PopID();
             ++row;
+            }
             const auto hasMatchingSkin = std::ranges::any_of(skins, [actorSex, actorFamily, actorRace](const auto& skin) {
                 return bcn::SkinProfileCompatibility(
                     skin, actorSex, actorRace, actorFamily).Compatible();
@@ -1528,9 +1906,17 @@ namespace
                 const bool favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
                     settings.favoriteSkinProfiles.end();
                 ImGui::PushID(skin.id.c_str());
+                const auto rowCursor = ImGui::GetCursorScreenPos();
+                const auto height = Scaled(48.0F);
+                if (distributionSelecting) {
+                    auto selected = DistributionItemSelected(skin.id);
+                    if (CenteredCheckbox("##distributionSelected", selected,
+                            rowCursor, height)) {
+                        SetDistributionItemSelected(skin.id, selected);
+                    }
+                }
                 const auto cursor = ImGui::GetCursorScreenPos();
                 const auto width = ImGui::GetContentRegionAvail().x;
-                const auto height = Scaled(48.0F);
                 const auto favoriteWidth = Scaled(46.0F);
                 ImGui::InvisibleButton("item", ImVec2((std::max)(0.0F, width - favoriteWidth), height));
                 const auto hovered = ImGui::IsItemHovered();
@@ -1562,7 +1948,6 @@ namespace
                 collectPaths(skin.faceDetails);
                 const auto textureCount = texturePaths.size();
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
-                    " · " + bcn::SkinRaceLabel(skin.race) +
                     " · " + bcn::SkinFamilyLabel(skin.layout, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
                     (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
@@ -1570,7 +1955,10 @@ namespace
                     kCardSubtext, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(favorite, height)) ToggleSkinFavorite(skin.id);
-                if (doubleClicked) {
+                if (distributionSelecting && clicked) {
+                    SetDistributionItemSelected(skin.id, !DistributionItemSelected(skin.id));
+                    FocusCatalogRow(row);
+                } else if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
                 } else if (clicked) {
@@ -1587,41 +1975,412 @@ namespace
         ImGui::EndChild();
     }
 
-    void DrawFutanariCatalog()
+    void DrawOverlayCatalog()
     {
         auto* actor = SelectedActor();
         if (!actor) {
             ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
             return;
         }
-        const auto actorType = bcn::skin_override::CurrentFutanariType(actor);
-        if (!actorType) {
-            ImGui::TextUnformatted(Text(
-                "현재 액터에 지원되는 후타나리 성기 메시가 없습니다.",
-                "The selected actor has no supported futanari genital geometry.",
-                "所选角色没有受支持的扶她生殖器几何体。"));
+        const auto distributionSelecting = IsDistributionSelectionFor(DistributionPool::overlay);
+
+        if (!bcn::overlay::IsReady()) {
+            ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s", Text(
+                "RaceMenu Overlay/Override 인터페이스를 기다리는 중입니다.",
+                "Waiting for RaceMenu's Overlay/Override interfaces.",
+                "正在等待 RaceMenu 的叠加层/覆盖接口。"));
             return;
         }
 
-        const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } +
-            "##futanariCatalogRefresh";
-        if (ImGui::Button(refreshLabel.c_str())) bcn::FutanariSkinProfiles::Get().Refresh();
+        constexpr auto areaCount = bcn::overlay::Index(bcn::overlay::Area::count);
+        struct EntriesCache {
+            std::uint64_t revision{}, epoch{};
+            bcn::body_family::Mask family{};
+            bool female{}, distribution{}, initialized{};
+            std::array<std::vector<bcn::overlay::Entry>, areaCount> entries;
+        };
+        static EntriesCache cache;
+        auto& entriesByArea = cache.entries;
+        std::array<std::vector<const bcn::overlay::Entry*>, areaCount> visibleByArea;
+        std::array<std::unordered_set<std::string>, areaCount> confirmedIds;
+        const auto settings = bcn::Settings::Get().Snapshot();
+        const std::unordered_set<std::string_view> favorites(settings.favoriteOverlays.begin(),
+            settings.favoriteOverlays.end());
+        const auto needle = Lower(g_search);
+        const auto* base = actor->GetActorBase();
+        const auto female = !base || base->GetSex() == RE::SEX::kFemale;
+        const auto family = bcn::body_family::ResolveActor(actor);
+        const auto revision = bcn::overlay::CatalogRevision();
+        const auto epoch = bcn::frame_tasks::Epoch();
+        const auto rebuildEntries = !cache.initialized || cache.revision != revision || cache.epoch != epoch ||
+            cache.family != family || cache.female != female || cache.distribution != distributionSelecting;
+        cache.revision = revision; cache.epoch = epoch; cache.family = family;
+        cache.female = female; cache.distribution = distributionSelecting; cache.initialized = true;
+        for (const auto area : bcn::overlay::kAreas) {
+            const auto areaIndex = bcn::overlay::Index(area);
+            if (rebuildEntries) entriesByArea[areaIndex] = distributionSelecting ?
+                bcn::overlay::SnapshotLegacy(area, female) :
+                bcn::overlay::SnapshotForActor(area, actor);
+            auto& visible = visibleByArea[areaIndex];
+            visible.reserve(entriesByArea[areaIndex].size());
+            for (const auto& entry : entriesByArea[areaIndex]) {
+                const auto favorite = favorites.contains(entry.id);
+                if (FavoritesOnly() && !favorite) continue;
+                if (!needle.empty() && Lower(entry.name).find(needle) == std::string::npos &&
+                    Lower(entry.id).find(needle) == std::string::npos) continue;
+                visible.push_back(std::addressof(entry));
+            }
+            for (auto& id : bcn::overlay::CurrentSelectionIds(actor, area)) {
+                confirmedIds[areaIndex].insert(std::move(id));
+            }
+        }
+        DrawCatalogCommandRow(DistributionPool::overlay,
+            [actor] { [[maybe_unused]] const auto requested = bcn::overlay::RefreshCatalog(actor); },
+            [&visibleByArea] {
+                for (auto& ids : g_distributionSelectedOverlayIds) ids.clear();
+                for (const auto area : bcn::overlay::kAreas) {
+                    auto& selected = g_distributionSelectedOverlayIds[bcn::overlay::Index(area)];
+                    for (const auto* entry : visibleByArea[bcn::overlay::Index(area)]) {
+                        selected.insert(entry->id);
+                    }
+                }
+            },
+            Text("설치된 모드에서 오버레이를 읽습니다.(더블클릭 복수 적용/해제)",
+                "Reads installed mods. (Double-click to apply/remove multiple)",
+                "从已安装的模组读取叠加层。（双击应用/移除多个）"));
+
+        struct OverlayRow
+        {
+            bcn::overlay::Area area{};
+            const bcn::overlay::Entry* entry{};
+        };
+        std::vector<OverlayRow> rows;
+        for (const auto area : bcn::overlay::kAreas) {
+            const auto areaIndex = bcn::overlay::Index(area);
+            if (!g_overlaySectionsOpen[areaIndex]) continue;
+            if (!distributionSelecting) rows.push_back({ area, nullptr });
+            for (const auto* entry : visibleByArea[areaIndex]) rows.push_back({ area, entry });
+        }
+
+        const auto applyRow = [&](const OverlayRow& row, const bool confirm) {
+            if (distributionSelecting) {
+                if (row.entry) {
+                    g_overlayArea = row.area;
+                    g_overlayFocusedIds[bcn::overlay::Index(row.area)] = row.entry->id;
+                }
+                if (confirm && row.entry) {
+                    SetDistributionOverlaySelected(row.area, row.entry->id,
+                        !DistributionOverlaySelected(row.area, row.entry->id));
+                }
+                return;
+            }
+            const auto areaIndex = bcn::overlay::Index(row.area);
+            auto& pending = g_pendingOverlays[areaIndex];
+            if (!confirm && row.entry && confirmedIds[areaIndex].contains(row.entry->id)) {
+                g_overlayArea = row.area;
+                return;
+            }
+            const auto mode = confirm ?
+                bcn::overlay::ApplyMode::manualCommit : bcn::overlay::ApplyMode::preview;
+            const auto result = row.entry ?
+                bcn::overlay::QueueApply(actor, row.area, row.entry->id, mode,
+                    g_overlayColorDrafts.Find(actor->GetFormID(),
+                        static_cast<std::uint8_t>(row.area), row.entry->id)) :
+                bcn::overlay::QueueClear(actor, row.area, mode);
+            if (result == bcn::overlay::ApplyResult::queued) {
+                g_overlayArea = row.area;
+                if (confirm) pending.reset();
+                else RememberPending(pending, actor, row.entry ? row.entry->id : std::string{},
+                    row.entry == nullptr, confirmedIds[areaIndex].empty() ?
+                        std::string{} : *confirmedIds[areaIndex].begin());
+            } else {
+                const auto prefix = row.entry ? row.entry->name + " · " : std::string{};
+                bcn::ui::Notify(prefix + OverlayApplyResultMessage(result));
+            }
+        };
+
+        std::size_t preferredIndex{};
+        if (g_overlayArea) {
+            const auto preferredArea = *g_overlayArea;
+            const auto& preferredId = g_overlayFocusedIds[bcn::overlay::Index(preferredArea)];
+            const auto found = std::ranges::find_if(rows, [&](const OverlayRow& row) {
+                return row.area == preferredArea && (preferredId.empty() ?
+                    row.entry == nullptr : row.entry && row.entry->id == preferredId);
+            });
+            if (found != rows.end()) {
+                preferredIndex = static_cast<std::size_t>(found - rows.begin());
+            }
+        }
+        const auto navigation = HandleCatalogNavigation(rows.size(), preferredIndex);
+        if (navigation.hasFocus && navigation.focused < rows.size() &&
+            (navigation.preview || navigation.confirm)) {
+            applyRow(rows[navigation.focused], navigation.confirm);
+        }
+
+        if (ImGui::BeginChild("OverlayCatalog", ImVec2(0.0F, CatalogListHeight()), true,
+                ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
+            std::size_t row{};
+            for (const auto area : bcn::overlay::kAreas) {
+                const auto areaIndex = bcn::overlay::Index(area);
+                const auto& visible = visibleByArea[areaIndex];
+                const auto& confirmed = confirmedIds[areaIndex];
+                const char* paintLabel = "";
+                switch (area) {
+                case bcn::overlay::Area::face: paintLabel = "Face Paint"; break;
+                case bcn::overlay::Area::body: paintLabel = "Body Paint"; break;
+                case bcn::overlay::Area::hands: paintLabel = "Hand Paint"; break;
+                case bcn::overlay::Area::feet: paintLabel = "Feet Paint"; break;
+                default: break;
+                }
+
+                const auto wasOpen = g_overlaySectionsOpen[areaIndex];
+                const auto usage = bcn::overlay::CurrentSlotUsage(actor, area);
+                ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
+                const auto headerId = std::string{ "###overlayArea_" } +
+                    std::string{ bcn::overlay::StableName(area) };
+                const auto open = ImGui::TreeNodeEx(headerId.c_str(),
+                    ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding,
+                    "%s · %s  (%zu)  ·  %s %u/%u",
+                    OverlayAreaLabel(area), paintLabel, visible.size(),
+                    Text("적용", "Applied", "已应用"), usage.applied, usage.capacity);
+                if (ImGui::IsItemClicked()) g_overlayArea = area;
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("%s", Text(
+                        "앞: BCNG 확정 적용 수 · 뒤: 전체 슬롯에서 다른 모드가 차지한 슬롯을 뺀 수\n미리보기는 두 숫자에 포함하지 않습니다.",
+                        "Applied: BCNG confirmed selections / total slots minus slots occupied by other mods.\nPreview does not change either number.",
+                        "已应用：BCNG 已确认数量 / 总槽位减去其他模组占用的槽位。\n预览不改变两个数值。"));
+                }
+                g_overlaySectionsOpen[areaIndex] = open;
+                if (open != wasOpen) NavigationState() = {};
+                if (!open) continue;
+
+                ImGui::PushID(bcn::overlay::StableName(area).data());
+                auto renderedRowBottom = ImGui::GetCursorScreenPos().y;
+                const auto drawRow = [&](const OverlayRow& overlayRow, const std::size_t globalRow) {
+                    const auto* entry = overlayRow.entry;
+                    ImGui::PushID(entry ? entry->id.c_str() : "DefaultOverlay");
+                    const auto rowCursor = ImGui::GetCursorScreenPos();
+                    const auto height = Scaled(48.0F);
+                    if (distributionSelecting && entry) {
+                        auto selected = DistributionOverlaySelected(area, entry->id);
+                        if (CenteredCheckbox("##distributionSelected", selected,
+                                rowCursor, height)) {
+                            SetDistributionOverlaySelected(area, entry->id, selected);
+                            g_overlayArea = area;
+                            g_overlayFocusedIds[areaIndex] = entry->id;
+                            FocusCatalogRow(globalRow);
+                        }
+                    }
+                    const auto cursor = ImGui::GetCursorScreenPos();
+                    const auto width = ImGui::GetContentRegionAvail().x;
+                    const auto favoriteWidth = entry ? Scaled(46.0F) : 0.0F;
+                    ImGui::InvisibleButton("item", ImVec2(width - favoriteWidth, height));
+                    const auto hovered = ImGui::IsItemHovered();
+                    const auto clicked = ImGui::IsItemClicked();
+                    const auto doubleClicked = hovered &&
+                        ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
+                    auto* draw = ImGui::GetWindowDrawList();
+                    const auto current = entry ? confirmed.contains(entry->id) : confirmed.empty();
+                    draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
+                        current ? kCardSelected :
+                        hovered || (navigation.hasFocus && navigation.focused == globalRow) ?
+                        kCardHovered : kCardNormal, Scaled(4.0F));
+                    draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)),
+                        kCardText, entry ? entry->name.c_str() :
+                            Text("기본값 복원", "Restore default", "恢复默认值"));
+                    const auto subtitle = entry ?
+                        std::string{ OverlayAreaLabel(area) } + " · " + entry->texturePath :
+                        std::string{ Text("이 부위의 Body Change NG 오버레이 제거",
+                            "Remove the Body Change NG overlay from this area",
+                            "移除此部位的 Body Change NG 叠加层") };
+                    const auto subtitleWidth = (std::max)(0.0F,
+                        width - favoriteWidth - Scaled(20.0F));
+                    const auto visibleSubtitle = EllipsizeText(subtitle, subtitleWidth);
+                    draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
+                        kCardSubtext, visibleSubtitle.c_str());
+                    if (hovered && visibleSubtitle != subtitle) ImGui::SetTooltip("%s", subtitle.c_str());
+                    if (entry) {
+                        const auto favorite = std::ranges::find(settings.favoriteOverlays, entry->id) !=
+                            settings.favoriteOverlays.end();
+                        ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
+                        if (FavoriteButton(favorite, height)) ToggleOverlayFavorite(entry->id);
+                    }
+                    if (distributionSelecting && entry && clicked) {
+                        SetDistributionOverlaySelected(area, entry->id,
+                            !DistributionOverlaySelected(area, entry->id));
+                        g_overlayArea = area;
+                        g_overlayFocusedIds[areaIndex] = entry->id;
+                        FocusCatalogRow(globalRow);
+                    } else if (doubleClicked) {
+                        g_overlayFocusedIds[areaIndex] = entry ? entry->id : std::string{};
+                        FocusCatalogRow(globalRow);
+                        applyRow(overlayRow, true);
+                    } else if (clicked) {
+                        g_overlayFocusedIds[areaIndex] = entry ? entry->id : std::string{};
+                        FocusCatalogRow(globalRow);
+                        applyRow(overlayRow, false);
+                    }
+                    ScrollFocusedCatalogRow(globalRow);
+                    renderedRowBottom = (std::max)(renderedRowBottom,
+                        cursor.y + height + Scaled(5.0F));
+                    ImGui::SetCursorScreenPos(ImVec2(rowCursor.x, renderedRowBottom));
+                    ImGui::Dummy(ImVec2(0.0F, 0.0F));
+                    ImGui::PopID();
+                };
+
+                if (!distributionSelecting) {
+                    drawRow({ area, nullptr }, row);
+                    ++row;
+                }
+                const auto entryRowBegin = row;
+                ImGuiListClipper clipper;
+                clipper.Begin(static_cast<int>(visible.size()), Scaled(53.0F));
+                if (navigation.hasFocus && navigation.focused >= entryRowBegin &&
+                    navigation.focused < entryRowBegin + visible.size()) {
+                    clipper.IncludeItemByIndex(static_cast<int>(navigation.focused - entryRowBegin));
+                }
+                while (clipper.Step()) {
+                    for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
+                        drawRow({ area, visible[static_cast<std::size_t>(index)] },
+                            entryRowBegin + static_cast<std::size_t>(index));
+                    }
+                }
+                const auto sectionCursor = ImGui::GetCursorScreenPos();
+                if (renderedRowBottom > sectionCursor.y) {
+                    ImGui::SetCursorScreenPos(ImVec2(sectionCursor.x, renderedRowBottom));
+                    ImGui::Dummy(ImVec2(0.0F, 0.0F));
+                }
+                row += visible.size();
+
+                if (visible.empty()) {
+                    ImGui::TextWrapped("%s", bcn::overlay::CatalogRequested() ? Text(
+                        "RaceMenuBase·SlaveTats 목록을 불러오는 중입니다. RaceMenu 화면을 열 필요는 없습니다.",
+                        "Loading RaceMenuBase and SlaveTats entries; opening RaceMenu is not required.",
+                        "正在加载 RaceMenuBase 与 SlaveTats 条目；无需打开 RaceMenu。") : Text(
+                        "이 액터의 성별과 바디 구조에 맞는 페인트가 없습니다.",
+                        "No paints match this actor's sex and body layout.",
+                        "没有符合此角色性别与身体结构的绘制。"));
+                }
+
+                ImGui::PopID();
+                ImGui::TreePop();
+            }
+        }
+        ImGui::EndChild();
+
+        // Keep color controls outside the scrolling catalog. A large
+        // RaceMenuBase/SlaveTats section must never push them thousands of
+        // rows below the viewport. The last clicked, previewed, or confirmed
+        // area owns this footer; Face is the deterministic initial area.
+        const auto colorArea = g_overlayArea.value_or(bcn::overlay::Area::face);
+        const auto& colorEntryId = g_overlayFocusedIds[bcn::overlay::Index(colorArea)];
+        const auto color = bcn::overlay::CurrentColor(actor, colorArea, colorEntryId);
+        const auto draft = g_overlayColorDrafts.Find(actor->GetFormID(),
+            static_cast<std::uint8_t>(colorArea), colorEntryId);
+        // Distribution colors belong to the catalog selection, not to paint
+        // already installed on this actor. Even unpreviewable legacy entries
+        // can be configured when the selected player uses another body layout.
+        const auto distributionColorTarget = distributionSelecting &&
+            std::ranges::any_of(entriesByArea[bcn::overlay::Index(colorArea)],
+                [&](const auto& entry) { return entry.id == colorEntryId; });
+        ImGui::AlignTextToFramePadding();
+        ImGui::Text("%s: %s", Text("색상 부위", "Color area", "颜色部位"),
+            OverlayAreaLabel(colorArea));
         ImGui::SameLine();
-        ImGui::TextDisabled("%s", Text(
-            "Futanari\\<스킨팩>에서 현재 UBE SOS/TNG·CBBE TRX·ERF 유형만 표시합니다.",
-            "Shows only the active UBE SOS/TNG, CBBE TRX, or ERF type from Futanari\\<skin pack>.",
-            "仅显示 Futanari\\<皮肤包> 中当前适用的 UBE SOS/TNG、CBBE TRX 或 ERF 类型。"));
+        ImGui::BeginDisabled(!color.has_value() && !distributionColorTarget);
+        const auto values = bcn::overlay::UnpackColor(draft.value_or(color.value_or(0xFFFFFFFFU)));
+        const auto openColor = [&] {
+            g_overlayArea = colorArea;
+            g_overlayColor = values;
+            g_overlayColorActor = actor->GetFormID();
+            g_overlayColorArea = colorArea;
+            g_overlayColorEntryId = colorEntryId;
+            g_overlayColorDistributionDraft = distributionSelecting;
+            g_showOverlayDetails = true;
+        };
+        if (ImGui::ColorButton("##overlayColorPreview",
+                ImVec4(values[0], values[1], values[2], values[3]),
+                ImGuiColorEditFlags_AlphaPreviewHalf,
+                ImVec2(ImGui::GetFrameHeight(), ImGui::GetFrameHeight()))) openColor();
+        ImGui::SameLine();
+        if (ImGui::Button(Text("색상·투명도 조절", "Adjust color and opacity", "调整颜色与不透明度"))) {
+            openColor();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button(Text("색상 복원", "Reset color", "还原颜色"))) {
+            g_overlayColorDrafts.Set(actor->GetFormID(), static_cast<std::uint8_t>(colorArea),
+                colorEntryId, 0xFFFFFFFFU);
+            if (!distributionSelecting) {
+                const auto result = bcn::overlay::QueueColor(actor, colorArea,
+                    colorEntryId, 0xFFFFFFFFU);
+                if (result != bcn::overlay::ApplyResult::queued) {
+                    bcn::ui::Notify(OverlayApplyResultMessage(result));
+                }
+            }
+        }
+        ImGui::EndDisabled();
+    }
+
+    void DrawFutanariCatalog()
+    {
+        auto* actor = SelectedActor();
+        if (!bcn::futanari_support::Available()) {
+            ImGui::TextUnformatted(Text(
+                "지원되는 여성 후타 애드온이 설치되어 있지 않습니다.",
+                "No supported female futanari addon is installed.",
+                "未安装受支持的女性扶她附加组件。"));
+            return;
+        }
+        const auto distributionSelecting = IsDistributionSelectionFor(DistributionPool::futanari);
+        const auto actorType = actor ?
+            bcn::futanari_support::RegisteredType(actor) : std::nullopt;
 
         const auto profiles = bcn::FutanariSkinProfiles::Get().Snapshot();
-        const auto currentID = bcn::skin_override::CurrentFutanariProfileId(actor).value_or(std::string{});
+        const auto actorFamily = actor ?
+            bcn::body_family::ResolveActor(actor) : bcn::body_family::Mask{};
+        const auto backendCurrentID = actor && !distributionSelecting ?
+            bcn::skin_application::CurrentFutanariProfileId(actor).value_or(std::string{}) :
+            std::string{};
+        const auto currentID = actor && g_pendingFutanari &&
+            g_pendingFutanari->actorFormID == actor->GetFormID() ?
+            g_pendingFutanari->originalId : backendCurrentID;
         std::vector<const bcn::FutanariSkinProfile*> visible;
         visible.reserve(profiles.size());
         for (const auto& profile : profiles) {
-            if (profile.type != *actorType) continue;
+            if (distributionSelecting) {
+                if (profile.type == bcn::FutanariSkinType::ubeTrx) continue;
+            } else if (!actorType || profile.type != *actorType ||
+                !bcn::FutanariSkinTypeMatchesActor(profile.type, actorFamily)) {
+                continue;
+            }
             if (!g_search.empty() && Lower(profile.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(profile.id).find(Lower(g_search)) == std::string::npos) continue;
             visible.push_back(&profile);
         }
+        DrawCatalogCommandRow(DistributionPool::futanari,
+            [] { RefreshFileCatalog(bcn::FutanariSkinProfiles::Get()); },
+            [&visible] {
+                g_distributionSelectedIds.clear();
+                for (const auto* profile : visible) g_distributionSelectedIds.insert(profile->id);
+            },
+            Text("Futanari\\<스킨명>\\Textures\\~ 에서 후타스킨을 읽습니다.(더블클릭 적용)",
+                "Reads futanari skins from Futanari\\<skin name>\\Textures\\~. (Double-click to apply)",
+                "从 Futanari\\<皮肤名称>\\Textures\\~ 读取扶她皮肤。（双击应用）"));
+        // Installing a supported female addon enables the feature and its NPC
+        // rule editor globally. Manual preview/apply is a separate actor-level
+        // concern and must not prevent the user from configuring distribution.
+        if (!distributionSelecting && !actor) {
+            ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
+            return;
+        }
+        if (!distributionSelecting && !actorType) {
+            ImGui::TextUnformatted(Text(
+                "이 액터는 SOS 또는 TNG에 여성 후타 액터로 등록되지 않아 대상이 아닙니다.",
+                "This actor is not registered as a female futanari actor by SOS or TNG.",
+                "该角色未被 SOS 或 TNG 注册为女性扶她角色，因此不是目标。"));
+            return;
+        }
+        const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!currentID.empty()) {
             const auto current = std::ranges::find(visible, currentID,
@@ -1629,29 +2388,57 @@ namespace
                     return profile->id;
                 });
             if (current != visible.end()) {
-                preferredIndex = 1U + static_cast<std::size_t>(current - visible.begin());
+                preferredIndex = (hasDefaultRow ? 1U : 0U) +
+                    static_cast<std::size_t>(current - visible.begin());
             }
         }
-        const auto navigation = HandleCatalogNavigation(visible.size() + 1U, preferredIndex);
-        const auto applyRow = [&](const std::size_t row) {
-            const auto result = row == 0U ?
-                bcn::skin_override::QueueClearFutanari(actor) :
-                bcn::skin_override::QueueApplyFutanari(actor, visible[row - 1U]->id);
-            if (result != bcn::skin_override::ApplyResult::queued) {
+        const auto navigation = HandleCatalogNavigation(
+            visible.size() + (hasDefaultRow ? 1U : 0U), preferredIndex);
+        const auto applyRow = [&](const std::size_t row, const bool confirm) {
+            if (distributionSelecting) {
+                if (confirm) {
+                    const auto& selectedID = visible[row]->id;
+                    SetDistributionItemSelected(selectedID,
+                        !DistributionItemSelected(selectedID));
+                }
+                return;
+            }
+            const auto selectedID = hasDefaultRow && row == 0U ?
+                std::string{} : visible[row - (hasDefaultRow ? 1U : 0U)]->id;
+            const auto mode = confirm ?
+                bcn::skin_application::FutanariSelectionMode::manual :
+                bcn::skin_application::FutanariSelectionMode::preview;
+            const auto result = hasDefaultRow && row == 0U ?
+                bcn::skin_application::QueueClearFutanari(actor, mode) :
+                bcn::skin_application::QueueApplyFutanari(actor, selectedID, mode);
+            if (result == bcn::skin_application::ApplyResult::queued) {
+                if (confirm) g_pendingFutanari.reset();
+                else RememberPending(g_pendingFutanari, actor, selectedID,
+                    hasDefaultRow && row == 0U, currentID);
+            } else {
                 bcn::ui::Notify(SkinApplyResultMessage(result));
             }
         };
-        if (navigation.preview || navigation.confirm) applyRow(navigation.focused);
+        if (navigation.preview) applyRow(navigation.focused, false);
+        if (navigation.confirm) applyRow(navigation.focused, true);
 
         if (ImGui::BeginChild("FutanariCatalog", ImVec2(0.0F, CatalogListHeight()), true,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
             std::size_t row{};
-            const auto drawRow = [&](const std::string& id, const std::string& name,
+                const auto drawRow = [&](const std::string& id, const std::string& name,
                 const std::string& subtitle, const bool current) {
                 ImGui::PushID(id.c_str());
+                const auto rowCursor = ImGui::GetCursorScreenPos();
+                const auto height = Scaled(48.0F);
+                if (distributionSelecting) {
+                    auto selected = DistributionItemSelected(id);
+                    if (CenteredCheckbox("##distributionSelected", selected,
+                            rowCursor, height)) {
+                        SetDistributionItemSelected(id, selected);
+                    }
+                }
                 const auto cursor = ImGui::GetCursorScreenPos();
                 const auto width = ImGui::GetContentRegionAvail().x;
-                const auto height = Scaled(48.0F);
                 ImGui::InvisibleButton("item", ImVec2(width, height));
                 const auto hovered = ImGui::IsItemHovered();
                 const auto clicked = ImGui::IsItemClicked();
@@ -1666,22 +2453,35 @@ namespace
                     kCardText, name.c_str());
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
                     kCardSubtext, subtitle.c_str());
-                if (doubleClicked || clicked) {
+                if (distributionSelecting && clicked) {
+                    SetDistributionItemSelected(id, !DistributionItemSelected(id));
                     FocusCatalogRow(row);
-                    applyRow(row);
+                } else switch (bcn::ui_catalog::MouseIntent(clicked, doubleClicked)) {
+                case bcn::ui_catalog::ChoiceIntent::confirm:
+                    FocusCatalogRow(row);
+                    applyRow(row, true);
+                    break;
+                case bcn::ui_catalog::ChoiceIntent::preview:
+                    FocusCatalogRow(row);
+                    applyRow(row, false);
+                    break;
+                default:
+                    break;
                 }
                 ScrollFocusedCatalogRow(row);
-                ImGui::SetCursorScreenPos(ImVec2(cursor.x, cursor.y + height + Scaled(5.0F)));
+                ImGui::SetCursorScreenPos(ImVec2(rowCursor.x, cursor.y + height + Scaled(5.0F)));
                 ImGui::Dummy(ImVec2(0.0F, 0.0F));
                 ImGui::PopID();
                 ++row;
             };
 
-            drawRow("DefaultFutanariSkin",
-                Text("기본 후타나리 스킨", "Default futanari skin", "默认扶她皮肤"),
-                Text("BCNG 성기 텍스처 오버라이드 제거",
-                    "Remove only BCNG genital texture overrides",
-                    "仅移除 BCNG 生殖器纹理覆盖"), currentID.empty());
+            if (hasDefaultRow) {
+                drawRow("DefaultFutanariSkin",
+                    Text("기본 후타나리 스킨", "Default futanari skin", "默认扶她皮肤"),
+                    Text("성기 애드온의 기본 텍스처로 복원",
+                        "Restore the genital addon's default textures",
+                        "恢复生殖器附加组件的默认纹理"), currentID.empty());
+            }
 
             if (visible.empty()) {
                 ImGui::TextWrapped("%s", Text(
@@ -1703,6 +2503,39 @@ namespace
         ImGui::EndChild();
     }
 
+    [[nodiscard]] std::vector<bcn::player_tint::PersistedLayerState> TintDraftsForPack(
+        const std::string_view pack)
+    {
+        std::vector<bcn::player_tint::PersistedLayerState> result;
+        for (auto& entry : g_tintColorDrafts.Entries(g_selectedActorFormID)) {
+            if (entry.id.starts_with(pack) && entry.id.size() > pack.size() &&
+                (entry.id[pack.size()] == '\\' || entry.id[pack.size()] == '/')) {
+                result.push_back(std::move(entry.color));
+            }
+        }
+        return result;
+    }
+
+    void RememberTintColor(const bool restored = false)
+    {
+        g_tintColorDrafts.Set(g_selectedActorFormID,
+            static_cast<std::uint8_t>(g_selectedTintLayer), g_selectedTintAssetID,
+            bcn::player_tint::PersistedLayerState{
+                .layer = g_selectedTintLayer, .restored = restored,
+                .assetID = g_selectedTintAssetID,
+                .color = { g_tintColor[0], g_tintColor[1], g_tintColor[2], g_tintColor[3] }
+            });
+    }
+
+    void ReadTintColorDraft()
+    {
+        const auto draft = g_tintColorDrafts.Find(g_selectedActorFormID,
+            static_cast<std::uint8_t>(g_selectedTintLayer), g_selectedTintAssetID);
+        const auto color = draft ? std::optional{ draft->color } :
+            bcn::player_tint::CurrentColor(g_selectedTintLayer);
+        if (color) g_tintColor = { color->red, color->green, color->blue, color->alpha };
+    }
+
     void DrawPlayerTintCatalog()
     {
         auto* selectedActor = SelectedActor();
@@ -1715,14 +2548,13 @@ namespace
 
         const auto refreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##tintCatalogRefresh";
         if (ImGui::Button(refreshLabel.c_str())) {
-            bcn::player_tint::Catalog::Get().Refresh();
+            RefreshFileCatalog(bcn::player_tint::Catalog::Get());
         }
         ImGui::SameLine();
-        ImGui::TextDisabled("%s", Text("TintMask\\의 Tint 폴더를 읽습니다.", "Reads Tint folders under TintMask\\.", "读取 TintMask\\ 下的 Tint 文件夹。"));
-        ImGui::TextWrapped("%s", Text(
-            "틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.",
-            "Only tint-mask-based tints are supported; overlay-based tints are not supported.",
-            "仅支持色调蒙版方式；不支持叠加层方式。"));
+        bcn::ui_text::FittedDisabledLine(Text(
+            "BodySkin\\<스킨팩>\\textures\\~에서 틴트마스크를 읽습니다.(더블클릭 적용)",
+            "Reads tint masks from BodySkin\\<skin pack>\\textures\\~. (Double-click to apply)",
+            "从 BodySkin\\<皮肤包>\\textures\\~ 读取色调蒙版。（双击应用）"));
 
         const auto* base = selectedActor->GetActorBase();
         const bool female = base && base->GetSex() == RE::SEX::kFemale;
@@ -1737,11 +2569,8 @@ namespace
         };
         std::vector<TintPackRow> packs;
         for (const auto& asset : assets) {
-            if ((asset.sex == bcn::player_tint::Sex::female && !female) ||
-                (asset.sex == bcn::player_tint::Sex::male && female)) {
-                continue;
-            }
-            if (!bcn::player_tint::TintMatchesActor(asset.bodyFamilies, actorFamily)) continue;
+            if (!bcn::player_tint::TintAssetMatchesActor(asset.sex,
+                    asset.bodyFamilies, actorFamily, female)) continue;
             const auto found = std::ranges::find(packs, asset.pack, &TintPackRow::name);
             if (found == packs.end()) packs.push_back({ asset.pack, 1U, asset.bodyFamilies });
             else {
@@ -1772,25 +2601,59 @@ namespace
         }
         const auto navigation = HandleCatalogNavigation(visiblePacks.size() + 1U, preferredIndex);
         const auto selectDefault = [&](const bool confirm) {
-            const auto result = bcn::player_tint::QueueRestoreAll();
+            const auto baseline = !confirm && !g_pendingTintBaseline ?
+                std::optional{ bcn::player_tint::SnapshotPersistedState() } : std::nullopt;
+            if (baseline) bcn::player_tint::BeginPreview();
+            const auto result = bcn::player_tint::QueueRestoreAll(confirm);
             if (result == bcn::player_tint::ApplyResult::queued) {
-                if (confirm) g_pendingTint.reset();
-                else RememberPending(g_pendingTint, selectedActor, {}, true, confirmedTintPack);
+                if (confirm) {
+                    g_pendingTint.reset();
+                    g_pendingTintBaseline.reset();
+                } else {
+                    if (baseline) g_pendingTintBaseline = *baseline;
+                    RememberPending(g_pendingTint, selectedActor, {}, true, confirmedTintPack);
+                }
                 g_currentTintPack.clear();
                 g_selectedTintPack.clear();
             } else {
+                if (baseline) bcn::player_tint::RestorePersistedState(*baseline, false);
                 bcn::ui::Notify(TintResultText(result));
             }
         };
         const auto selectPack = [&](const std::size_t row, const bool confirm) {
             const auto& pack = *visiblePacks[row - 1U];
             g_selectedTintPack = pack.name;
-            const auto result = bcn::player_tint::QueueApplyPack(pack.name);
+            const auto baseline = !confirm && !g_pendingTintBaseline ?
+                std::optional{ bcn::player_tint::SnapshotPersistedState() } : std::nullopt;
+            if (baseline) bcn::player_tint::BeginPreview();
+            const auto committedState = bcn::player_tint::SnapshotPersistedState();
+            for (const auto& asset : assets) {
+                if (asset.pack != pack.name) continue;
+                const auto layer = static_cast<std::uint8_t>(asset.layer);
+                if (!g_tintColorDrafts.Find(g_selectedActorFormID, layer, asset.id)) {
+                    if (const auto color = g_tintSessionColors[layer]) {
+                        const auto restored = committedState.pack == pack.name &&
+                            std::ranges::any_of(committedState.layers, [&](const auto& value) {
+                                return value.layer == asset.layer && value.restored;
+                            });
+                        g_tintColorDrafts.Set(g_selectedActorFormID, layer, asset.id,
+                            bcn::player_tint::PersistedLayerState{
+                                .layer = asset.layer, .restored = restored, .assetID = asset.id, .color = *color });
+                    }
+                }
+            }
+            const auto result = bcn::player_tint::QueueApplyPack(pack.name, TintDraftsForPack(pack.name), confirm);
             if (result == bcn::player_tint::ApplyResult::queued) {
-                if (confirm) g_pendingTint.reset();
-                else RememberPending(g_pendingTint, selectedActor, pack.name, false, confirmedTintPack);
+                if (confirm) {
+                    g_pendingTint.reset();
+                    g_pendingTintBaseline.reset();
+                } else {
+                    if (baseline) g_pendingTintBaseline = *baseline;
+                    RememberPending(g_pendingTint, selectedActor, pack.name, false, confirmedTintPack);
+                }
                 g_currentTintPack = pack.name;
             } else {
+                if (baseline) bcn::player_tint::RestorePersistedState(*baseline, false);
                 bcn::ui::Notify(pack.name + " · " + TintResultText(result));
             }
         };
@@ -1842,13 +2705,9 @@ namespace
                     "No tint-mask packs are available for the player.",
                     "未找到可供玩家使用的色调蒙版包。"));
                 ImGui::TextWrapped("%s", Text(
-                    "TintMask\\<틴트팩>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds에 RaceMenu 얼굴 틴트마스크 DDS를 넣고 새로고침하세요.",
-                    "Place RaceMenu facial tint-mask DDS files in TintMask\\<tint pack>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds, then press Refresh.",
-                    "请将 RaceMenu 面部色调蒙版 DDS 文件放入 TintMask\\<色调包>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds，然后点击‘刷新’。"));
-                ImGui::TextWrapped("%s", Text(
-                    "틴트마스크 방식만 호환되며, 오버레이 방식은 호환되지 않습니다.",
-                    "Only tint-mask-based tints are supported; overlay-based tints are not supported.",
-                    "仅支持色调蒙版方式；不支持叠加层方式。"));
+                    "BodySkin\\<스킨팩>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds에 RaceMenu 얼굴 틴트마스크 DDS를 넣고 새로고침하세요.",
+                    "Place RaceMenu facial tint-mask DDS files in BodySkin\\<skin pack>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds, then press Refresh.",
+                    "请将 RaceMenu 面部色调蒙版 DDS 文件放入 BodySkin\\<皮肤包>\\textures\\actors\\character\\character assets\\tintmasks\\*.dds，然后点击‘刷新’。"));
                 ImGui::Spacing();
             }
 
@@ -1920,9 +2779,7 @@ namespace
             std::string{} : selectedLayer->second.id;
         if (g_selectedTintAssetID != nextAssetID) {
             g_selectedTintAssetID = nextAssetID;
-            if (const auto color = bcn::player_tint::CurrentColor(g_selectedTintLayer)) {
-                g_tintColor = { color->red, color->green, color->blue, color->alpha };
-            }
+            ReadTintColorDraft();
         }
 
         if (!availableLayers.empty()) {
@@ -1935,9 +2792,7 @@ namespace
                     if (ImGui::Selectable(TintLayerText(layer), isSelected)) {
                         g_selectedTintLayer = layer;
                         g_selectedTintAssetID = asset.id;
-                        if (const auto color = bcn::player_tint::CurrentColor(layer)) {
-                            g_tintColor = { color->red, color->green, color->blue, color->alpha };
-                        }
+                        ReadTintColorDraft();
                     }
                     if (isSelected) ImGui::SetItemDefaultFocus();
                     ImGui::PopID();
@@ -1954,7 +2809,12 @@ namespace
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("틴트 값 복원", "Restore tint values", "还原色调值"))) {
-                const auto result = bcn::player_tint::QueueRestore(g_selectedTintLayer, g_selectedTintPack);
+                if (const auto color = bcn::player_tint::OriginalColor(g_selectedTintLayer)) {
+                    g_tintColor = { color->red, color->green, color->blue, color->alpha };
+                    RememberTintColor(true);
+                }
+                const auto result = bcn::player_tint::QueueApplyPack(g_selectedTintPack,
+                    TintDraftsForPack(g_selectedTintPack), !g_pendingTint.has_value());
                 if (result == bcn::player_tint::ApplyResult::queued) {
                     if (const auto color = bcn::player_tint::OriginalColor(g_selectedTintLayer)) {
                         g_tintColor = { color->red, color->green, color->blue, color->alpha };
@@ -1978,36 +2838,87 @@ namespace
         }
     }
 
+    void DrawOverlayDetailPopup()
+    {
+        if (!g_showOverlayDetails) return;
+        const auto title = std::string{ Text("오버레이 색상", "Overlay color", "覆盖层颜色") } + "###OverlayDetails";
+        if (!ImGui::IsPopupOpen(title.c_str())) ImGui::OpenPopup(title.c_str());
+        ImGui::SetNextWindowSize(ImVec2(Scaled(360.0F), 0.0F), ImGuiCond_Appearing);
+        if (BeginUndimmedPopupModal(title.c_str(), &g_showOverlayDetails, ImGuiWindowFlags_AlwaysAutoResize,
+                bcn::popup_placement::Kind::overlayColor)) {
+            auto* actor = SelectedActor();
+            if (EscapePressed() || !actor || actor->GetFormID() != g_overlayColorActor ||
+                g_activeTab != ActiveTab::overlay) {
+                g_showOverlayDetails = false;
+                ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+                return;
+            }
+            ImGui::Text("%s", OverlayAreaLabel(g_overlayColorArea));
+            ImGui::SetNextItemWidth(Scaled(300.0F));
+            const auto changed = ImGui::ColorPicker4(Text("색상 및 강도", "Color and opacity", "颜色与不透明度"),
+                g_overlayColor.data(), ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
+            const auto finished = ImGui::IsItemDeactivatedAfterEdit();
+            const auto done = RightAlignedButton(Text("완료", "Done", "完成"));
+            const auto now = std::chrono::steady_clock::now();
+            if (changed || finished || done) {
+                g_overlayColorDrafts.Set(g_overlayColorActor, static_cast<std::uint8_t>(g_overlayColorArea),
+                    g_overlayColorEntryId, bcn::overlay::PackColor(g_overlayColor));
+            }
+            // Batch selection edits only its per-entry draft. Do not mutate a
+            // confirmed player paint (or allocate a preview slot) just to pick
+            // the color that a future NPC distribution rule will use.
+            if (!g_overlayColorDistributionDraft &&
+                ((changed && now - g_lastOverlayColorApply >= std::chrono::milliseconds(100)) || finished || done)) {
+                const auto result = bcn::overlay::QueueColor(actor, g_overlayColorArea,
+                    g_overlayColorEntryId, bcn::overlay::PackColor(g_overlayColor));
+                if (result == bcn::overlay::ApplyResult::queued) g_lastOverlayColorApply = now;
+                else bcn::ui::Notify(OverlayApplyResultMessage(result));
+            }
+            if (done) {
+                g_showOverlayDetails = false;
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::EndPopup();
+        }
+    }
+
     void DrawTintDetailPopup()
     {
         if (!g_showTintDetails) return;
         const auto title = std::string{ Text("틴트 상세 값", "Tint details", "色调详情") } + "###TintDetails";
-        ImGui::OpenPopup(title.c_str());
-        if (BeginUndimmedPopupModal(title.c_str(), &g_showTintDetails, ImGuiWindowFlags_AlwaysAutoResize)) {
+        if (!ImGui::IsPopupOpen(title.c_str())) ImGui::OpenPopup(title.c_str());
+        ImGui::SetNextWindowSize(ImVec2(Scaled(360.0F), 0.0F), ImGuiCond_Appearing);
+        if (BeginUndimmedPopupModal(title.c_str(), &g_showTintDetails, ImGuiWindowFlags_AlwaysAutoResize,
+                bcn::popup_placement::Kind::tintColor)) {
             if (EscapePressed()) {
                 g_showTintDetails = false;
                 ImGui::CloseCurrentPopup();
                 ImGui::EndPopup();
                 return;
             }
+            ImGui::SetNextItemWidth(Scaled(300.0F));
             const auto colorChanged = ImGui::ColorPicker4(Text("색상 및 강도", "Color and opacity", "颜色与不透明度"),
                 g_tintColor.data(), ImGuiColorEditFlags_AlphaBar | ImGuiColorEditFlags_AlphaPreviewHalf);
             const auto colorFinished = ImGui::IsItemDeactivatedAfterEdit();
+            const auto done = RightAlignedButton(Text("완료", "Done", "完成"));
+            if (colorChanged || colorFinished) RememberTintColor();
             const auto now = std::chrono::steady_clock::now();
             const auto liveUpdateDue = colorChanged &&
                 now - g_lastTintDetailApply >= std::chrono::milliseconds(100);
-            if ((liveUpdateDue || colorFinished) && !g_selectedTintAssetID.empty()) {
-                const auto result = bcn::player_tint::QueueApply(g_selectedTintAssetID, {
-                    .red = g_tintColor[0], .green = g_tintColor[1],
-                    .blue = g_tintColor[2], .alpha = g_tintColor[3]
-                });
+            if ((liveUpdateDue || colorFinished || done) && !g_selectedTintAssetID.empty()) {
+                const auto result = bcn::player_tint::QueueApplyPack(g_selectedTintPack,
+                    TintDraftsForPack(g_selectedTintPack), !g_pendingTint.has_value());
                 if (result == bcn::player_tint::ApplyResult::queued) {
                     g_lastTintDetailApply = now;
                 } else {
                     bcn::ui::Notify(TintResultText(result));
                 }
             }
-            if (ImGui::Button(Text("완료", "Done", "完成"))) g_showTintDetails = false;
+            if (done) {
+                g_showTintDetails = false;
+                ImGui::CloseCurrentPopup();
+            }
             ImGui::EndPopup();
         }
     }
@@ -2017,456 +2928,319 @@ namespace
         if (!g_showDistribution) return;
         EnsureDistributionEditor();
         SynchronizeDistributionRuleNames();
-        const auto popupTitle = std::string{ Text("NPC 배포 규칙", "NPC distribution rules", "NPC 分发规则") } + "###DistributionPopup";
+
+        const auto popupTitle = std::string{ DistributionPoolLabel(g_distributionPool) } + " · " +
+            Text("NPC 배포 조건", "NPC distribution conditions", "NPC 分发条件") +
+            "###DistributionPopup";
         ImGui::OpenPopup(popupTitle.c_str());
-        const std::array footerLabels{
-            Text("+ 규칙 추가", "+ Add rule", "+ 添加规则"),
-            Text("- 규칙 삭제", "- Delete rule", "- 删除规则"),
-            Text("위 우선순위", "Move priority up", "提高优先级"),
-            Text("아래 우선순위", "Move priority down", "降低优先级"),
-            Text("저장 값 불러오기", "Load saved values", "加载保存值"),
-            Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"),
-            Text("다음 게임 실행 시 배포", "Distribute on next game launch", "下次启动游戏时分发")
-        };
-        const auto& style = ImGui::GetStyle();
-        auto footerContentWidth = style.ItemSpacing.x * static_cast<float>(footerLabels.size() - 1U);
-        for (const auto* label : footerLabels) {
-            footerContentWidth += ImGui::CalcTextSize(label).x + style.FramePadding.x * 2.0F;
-        }
-        auto popupSize = DefaultWindowSize(920.0F, 520.0F);
-        const auto footerWindowWidth = footerContentWidth + style.WindowPadding.x * 2.0F;
-        popupSize.x = (std::max)(popupSize.x, footerWindowWidth);
-        auto maximumSize = ImVec2(FLT_MAX, FLT_MAX);
+        auto popupSize = DefaultWindowSize(760.0F, 700.0F);
         if (const auto* viewport = ImGui::GetMainViewport()) {
-            maximumSize = ImVec2(viewport->WorkSize.x * 0.96F, viewport->WorkSize.y * 0.94F);
-            popupSize.x = (std::min)(popupSize.x, maximumSize.x);
+            popupSize.x = (std::min)(popupSize.x, viewport->WorkSize.x * 0.94F);
+            popupSize.y = (std::min)(popupSize.y, viewport->WorkSize.y * 0.92F);
         }
-        // The footer is deliberately one unbroken row.  Prevent manual popup
-        // resizing from making it narrower than the seven localized buttons.
-        ImGui::SetNextWindowSizeConstraints(
-            ImVec2(popupSize.x, Scaled(360.0F)), maximumSize);
         ImGui::SetNextWindowSize(popupSize, ImGuiCond_Appearing);
+        constexpr std::array distributionPlacements{
+            bcn::popup_placement::Kind::distributionBody, bcn::popup_placement::Kind::distributionSkin,
+            bcn::popup_placement::Kind::distributionFutanari, bcn::popup_placement::Kind::distributionOverlay
+        };
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showDistribution,
                 ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar |
-                ImGuiWindowFlags_NoScrollWithMouse)) {
-            if (EscapePressed()) {
-                if (!SaveDistributionDraft()) {
-                    bcn::ui::Notify(Text("NPC 배포 규칙 편집값을 저장하지 못했습니다.",
-                        "Could not save the edited NPC distribution rules.",
-                        "无法保存编辑后的 NPC 分发规则。"));
-                }
+                ImGuiWindowFlags_NoScrollWithMouse,
+                distributionPlacements[static_cast<std::size_t>(g_distributionPool)])) {
+            const auto closeEditor = [&] {
+                DiscardDistributionDraft();
                 g_showDistribution = false;
                 ImGui::CloseCurrentPopup();
+            };
+            if (EscapePressed()) {
+                closeEditor();
                 ImGui::EndPopup();
                 return;
             }
-            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-            ImGui::TextWrapped("%s", Text("위에서부터 평가합니다. 처음 일치한 배포 규칙의 바디·스킨만 사용하며, 비어 있는 경우 해당 항목을 바꾸지 않습니다.", "Rules are evaluated top-down. Only the body and skin settings from the first matching rule are used; an empty item is left unchanged.", "规则从上至下评估。只使用第一条匹配规则的身体与皮肤设置；空项目保持不变。"));
-            ImGui::PopStyleColor();
+
+            ImGui::TextWrapped("%s", (std::string{ Text(
+                "선택한 ", "Only the selected ", "仅将所选") } +
+                DistributionPoolLabel(g_distributionPool) +
+                Text("만 이 조건에 맞는 NPC에게 배포합니다. 비어 있는 다른 기능은 건드리지 않습니다.",
+                    " items are distributed to matching NPCs. Other empty features are left unchanged.",
+                    "项目分发给符合条件的 NPC；其他空白功能保持不变。")).c_str());
             ImGui::Separator();
-            const auto ruleListWidth = std::clamp(ImGui::GetContentRegionAvail().x * 0.36F,
-                Scaled(280.0F), Scaled(380.0F));
-            // Reserve one complete footer row. Without NoHostExtendY, a table
-            // row containing zero-height children may grow to the host window's
-            // bottom and permanently push the action buttons out of view even
-            // when the popup itself is resized.
-            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() + Scaled(2.0F);
-            const auto editorHeight = (std::max)(Scaled(220.0F),
-                ImGui::GetContentRegionAvail().y - footerHeight);
-            if (ImGui::BeginTable("DistributionEditor", 2,
-                ImGuiTableFlags_SizingFixedFit | ImGuiTableFlags_BordersInnerV |
-                    ImGuiTableFlags_Resizable | ImGuiTableFlags_NoHostExtendY,
-                    ImVec2(0.0F, editorHeight))) {
-                ImGui::TableSetupColumn(Text("규칙 우선순위", "Rule priority", "规则优先级"),
-                    ImGuiTableColumnFlags_WidthFixed, ruleListWidth);
-                ImGui::TableSetupColumn(Text("선택한 규칙", "Selected rule", "当前规则"), ImGuiTableColumnFlags_WidthStretch);
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                if (ImGui::BeginChild("RuleList", ImVec2(0.0F, 0.0F), false)) {
-                    for (std::size_t index{}; index < g_distributionRules.size(); ++index) {
-                        const auto& rule = g_distributionRules[index];
-                        ImGui::PushID(rule.id.c_str());
-                        std::string summary;
-                        if (rule.bodyExcluded && rule.skinExcluded) {
-                            summary = Text("배포 제외", "Excluded from distribution", "排除分发");
-                        } else if (rule.bodyExcluded) {
-                            summary = Text("바디 배포 제외 · ", "Body excluded · ", "身体排除 · ") +
-                                std::to_string(rule.skinProfileIds.size()) + Text("개 스킨", " skins", " 个皮肤");
-                        } else if (rule.skinExcluded) {
-                            summary = std::to_string(rule.presetIds.size()) + Text("개 바디 · 스킨 배포 제외", " bodies · Skin excluded", " 个身体 · 皮肤排除");
-                        } else {
-                            summary = std::to_string(rule.presetIds.size()) + Text("개 바디 · ", " bodies · ", " 个身体 · ") +
-                                std::to_string(rule.skinProfileIds.size()) + Text("개 스킨", " skins", " 个皮肤");
-                        }
-                        const auto detail = std::to_string(index + 1U) + "  " + rule.name + "\n    " + summary;
-                        const auto rowStart = ImGui::GetCursorScreenPos();
-                        const auto rowWidth = ImGui::GetContentRegionAvail().x;
-                        const auto padding = Scaled(7.0F);
-                        const auto textSize = ImGui::CalcTextSize(detail.c_str(), nullptr, false,
-                            (std::max)(1.0F, rowWidth - padding * 2.0F));
-                        const auto rowHeight = (std::max)(Scaled(52.0F), textSize.y + padding * 2.0F);
-                        ImGui::InvisibleButton("rule", ImVec2(rowWidth, rowHeight));
-                        const auto hovered = ImGui::IsItemHovered();
-                        if (ImGui::IsItemClicked()) {
-                            g_selectedDistributionRule = index;
-                        }
-                        auto* draw = ImGui::GetWindowDrawList();
-                        if (index == g_selectedDistributionRule || hovered) {
-                            draw->AddRectFilled(rowStart,
-                                ImVec2(rowStart.x + rowWidth, rowStart.y + rowHeight),
-                                index == g_selectedDistributionRule ? kCardSelected :
-                                kCardHovered, Scaled(3.0F));
-                        }
-                        draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
-                            ImVec2(rowStart.x + padding, rowStart.y + padding),
-                            ImGui::GetColorU32(ImGuiCol_Text), detail.c_str(), nullptr,
-                            (std::max)(1.0F, rowWidth - padding * 2.0F));
-                        ImGui::PopID();
-                    }
-                    if (g_distributionRules.empty()) {
-                        ImGui::TextDisabled("%s", Text("규칙이 없습니다.", "No rules yet.", "尚无规则。"));
+
+            const auto relevantIndices = [&] {
+                std::vector<std::size_t> result;
+                result.reserve(g_distributionRules.size());
+                for (std::size_t index{}; index < g_distributionRules.size(); ++index) {
+                    if (RuleUsesDistributionPool(g_distributionRules[index], g_distributionPool) ||
+                        (index == g_selectedDistributionRule &&
+                            !RuleHasAnyDistributionPool(g_distributionRules[index]))) {
+                        result.push_back(index);
                     }
                 }
-                ImGui::EndChild();
+                return result;
+            };
 
-                ImGui::TableSetColumnIndex(1);
-                if (g_selectedDistributionRule < g_distributionRules.size()) {
-                    auto& rule = g_distributionRules[g_selectedDistributionRule];
-                    ImGui::PushID(rule.id.c_str());
-                    ImGui::SetNextItemWidth(-1.0F);
-                    if (ImGui::InputText("##ruleName", &rule.name)) rule.nameKey.clear();
+            if (g_selectedDistributionRule >= g_distributionRules.size() &&
+                !g_distributionRules.empty()) {
+                const auto visible = relevantIndices();
+                g_selectedDistributionRule = visible.empty() ? 0U : visible.front();
+            }
 
+            if (g_selectedDistributionRule < g_distributionRules.size()) {
+                auto& rule = g_distributionRules[g_selectedDistributionRule];
+                ImGui::PushID(rule.id.c_str());
+                ImGui::TextUnformatted(Text("규칙 이름", "Rule name", "规则名称"));
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-1.0F);
+                if (ImGui::InputText("##ruleName", &rule.name)) rule.nameKey.clear();
+
+                ImGui::TextUnformatted(Text("성별", "Sex", "性别"));
+                ImGui::SameLine();
+                if (g_distributionPool == DistributionPool::futanari) {
+                    rule.female = true;
+                    ImGui::TextDisabled("%s", Text("여성 후타 NPC (고정)",
+                        "Female futanari NPCs (fixed)", "女性扶她 NPC（固定）"));
+                } else {
                     int sex = rule.female ? 0 : 1;
-                    ImGui::TextUnformatted(Text("성별", "Sex", "性别"));
-                    ImGui::SetNextItemWidth(Scaled(180.0F));
+                    ImGui::SetNextItemWidth(Scaled(170.0F));
                     PrepareResizableDropdown(2U);
-                    if (ImGui::Combo("##ruleSex", &sex, Text("여성\0남성\0", "Female\0Male\0", "女性\0男性\0"))) {
+                    if (ImGui::Combo("##ruleSex", &sex,
+                            Text("여성\0남성\0", "Female\0Male\0", "女性\0男性\0"))) {
                         const auto oldNameKey = rule.nameKey;
                         if (bcn::SetDistributionRuleSex(rule, sex == 0)) {
-                            if (const auto retargeted = bcn::distribution_names::RetargetGeneratedRuleKey(
-                                    oldNameKey, rule.female); !retargeted.empty()) {
+                            if (const auto retargeted =
+                                    bcn::distribution_names::RetargetGeneratedRuleKey(
+                                        oldNameKey, rule.female);
+                                !retargeted.empty()) {
                                 rule.nameKey = retargeted;
-                                rule.name = bcn::distribution_names::Localized(retargeted, CurrentLanguage());
+                                rule.name = bcn::distribution_names::Localized(
+                                    retargeted, CurrentLanguage());
                             } else {
                                 rule.nameKey.clear();
                             }
+                            bcn::ui::Notify(Text(
+                                "성별이 바뀌어 이전 성별의 배포 항목 선택을 비웠습니다. 해당 성별 액터 목록에서 항목을 다시 선택하세요.",
+                                "Changing sex cleared the previous sex's selected items. Select items again from an actor of that sex.",
+                                "性别已更改，原性别的分发项目已清空。请从该性别角色的列表中重新选择项目。"));
                         }
                     }
-                    ImGui::SameLine();
-                    ImGui::TextUnformatted(Text("대상 범위", "Scope", "目标范围"));
-                    ImGui::SetNextItemWidth(-1.0F);
-                    if (DistributionScopeCombo(rule.scope)) {
-                        rule.target.clear();
-                        rule.npcBaseFormID = 0;
-                        rule.npcPlugin.clear();
-                        rule.npcLocalFormID = 0;
-                        rule.targetFormID = 0;
-                        rule.targetPlugin.clear();
-                        rule.targetLocalFormID = 0;
-                        if (rule.scope == bcn::DistributionScope::modInstalledFollower ||
-                            rule.scope == bcn::DistributionScope::elderNPC) {
-                            rule.bodyExcluded = true;
-                        } else {
-                            FillRuleTargetFromSelectedActor(rule);
-                        }
-                    }
-                    if (rule.scope == bcn::DistributionScope::npcBaseForm) {
-                        ImGui::TextUnformatted(Text("NPC BaseID 또는 RefID", "NPC BaseID or RefID", "NPC BaseID 或 RefID"));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        if (ImGui::InputScalar("##ruleFormID", ImGuiDataType_U32, &rule.npcBaseFormID,
-                            nullptr, nullptr, "%08X", ImGuiInputTextFlags_CharsHexadecimal |
-                            ImGuiInputTextFlags_CharsUppercase)) {
-                            if (auto* form = RE::TESForm::LookupByID(rule.npcBaseFormID);
-                                !bcn::SetDistributionRuleNPC(rule, form)) {
-                                rule.npcPlugin.clear();
-                                rule.npcLocalFormID = 0U;
-                            }
-                        }
-                        if (!rule.npcPlugin.empty()) {
-                            ImGui::TextDisabled("%s · %06X", rule.npcPlugin.c_str(), rule.npcLocalFormID);
-                        } else if (rule.npcBaseFormID != 0U) {
-                            ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s",
-                                Text("NPC Base 또는 Ref를 찾지 못했습니다.", "No NPC base or reference was found.", "找不到 NPC 基础或引用。"));
-                        }
-                    } else if (rule.scope == bcn::DistributionScope::npcName) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        ImGui::InputText("##ruleTarget", &rule.target);
-                    } else if (rule.scope == bcn::DistributionScope::factionEditorID) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionFormTargetCombo("##ruleFaction", rule, g_distributionFactionOptions);
-                    } else if (rule.scope == bcn::DistributionScope::pluginFile) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionTargetCombo("##rulePlugin", rule.target, g_distributionPluginOptions);
-                    } else if (rule.scope == bcn::DistributionScope::raceEditorID) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionFormTargetCombo("##ruleRace", rule, g_distributionRaceOptions);
-                    } else if (rule.scope == bcn::DistributionScope::keyword) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionFormTargetCombo("##ruleKeyword", rule, g_distributionKeywordOptions);
-                    } else if (rule.scope == bcn::DistributionScope::npcClass) {
-                        ImGui::TextUnformatted(TargetLabel(rule.scope));
-                        ImGui::SetNextItemWidth(-1.0F);
-                        [[maybe_unused]] const auto changed =
-                            DistributionFormTargetCombo("##ruleClass", rule, g_distributionClassOptions);
-                    }
-
-                    if (const auto shadowing = bcn::EarlierCatchAllRule(
-                            g_distributionRules, g_selectedDistributionRule)) {
-                        ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s",
-                            (std::string{ Text(
-                                "이 규칙은 위의 전체 NPC 규칙 #",
-                                "This rule is unreachable because the earlier all-NPC rule #",
-                                "此规则无法生效，因为上方的全部 NPC 规则 #") } +
-                                std::to_string(*shadowing + 1U) + Text(
-                                    "에서 먼저 일치합니다. 이 규칙을 위로 옮기거나 앞 규칙의 범위를 좁히세요.",
-                                    " matches first. Move this rule above it or narrow the earlier rule.",
-                                    " 会先匹配。请将此规则上移，或缩小前一规则的范围。")
-                            ).c_str());
-                    }
-
-                    if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
-                            g_distributionPool == DistributionPool::body)) {
-                        g_distributionPool = DistributionPool::body;
-                    }
-                    ImGui::SameLine();
-                    if (TabButton(Text("바디스킨", "Body Skins", "身体皮肤"),
-                            g_distributionPool == DistributionPool::skin)) {
-                        g_distributionPool = DistributionPool::skin;
-                    }
-                    ImGui::SameLine();
-                    auto& channelExcluded = g_distributionPool == DistributionPool::body ?
-                        rule.bodyExcluded : rule.skinExcluded;
-                    const auto channelMode = channelExcluded ? 1 : 0;
-                    if (ImGui::RadioButton(Text("배포", "Distribute", "分发"), channelMode == 0)) {
-                        channelExcluded = false;
-                        rule.enabled = true;
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::RadioButton(Text("배포 제외", "Exclude from distribution", "排除分发"), channelMode == 1)) {
-                        channelExcluded = true;
-                        rule.enabled = true;
-                    }
-                    ImGui::Separator();
-                    if (channelExcluded) {
-                        ImGui::TextColored(ImVec4(1.0F, .74F, .35F, 1.0F), "%s",
-                            g_distributionPool == DistributionPool::body ?
-                                Text("이 규칙에 맞는 NPC의 바디는 배포하지 않습니다.", "Body distribution is disabled for NPCs matching this rule.", "不向匹配此规则的 NPC 分发身体。") :
-                                Text("이 규칙에 맞는 NPC의 스킨은 배포하지 않습니다.", "Skin distribution is disabled for NPCs matching this rule.", "不向匹配此规则的 NPC 分发皮肤。"));
-                    } else if (g_distributionPool == DistributionPool::skin) {
-                    const auto skins = bcn::SkinProfiles::Get().Snapshot();
-                    const auto settings = bcn::Settings::Get().Snapshot();
-                    const auto distributionFamily = rule.female ?
-                        bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
-                        bcn::NpcDistributionFamily(settings.maleNpcBodyType);
-                    const auto matchesDistributionFamily = [distributionFamily](const bcn::SkinProfile& skin) {
-                        return skin.race != bcn::SkinRace::humanoid ||
-                            bcn::SkinLayoutMatchesActor(skin.layout, distributionFamily);
-                    };
-                    ImGui::TextDisabled("%s", Text("이 규칙 전용 스킨 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's skin pool — one skin pack is fixed; multiple skin packs are stably randomized per matching NPC.", "本规则专用皮肤池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
-                    if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
-                        rule.skinProfileIds.clear();
-                        for (const auto& skin : skins) {
-                            if ((skin.sex == bcn::SkinSex::female && !rule.female) ||
-                                (skin.sex == bcn::SkinSex::male && rule.female) ||
-                                !matchesDistributionFamily(skin)) continue;
-                            rule.skinProfileIds.push_back(skin.id);
-                        }
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Text("전체 해제", "Clear all", "全部清除"))) {
-                        rule.skinProfileIds.clear();
-                    }
-                    ImGui::SetNextItemWidth(-1.0F);
-                    ImGui::InputTextWithHint("##skinPoolSearch",
-                        Text("스킨명 검색", "Search skin names", "搜索皮肤名称"), &g_distributionSkinSearch);
-                    const auto poolHeight = (std::max)(1.0F, ImGui::GetContentRegionAvail().y);
-                    if (ImGui::BeginChild("SkinProfilePool", ImVec2(0.0F, poolHeight), true,
-                            ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
-                        for (const auto& skin : skins) {
-                            if ((skin.sex == bcn::SkinSex::female && !rule.female) || (skin.sex == bcn::SkinSex::male && rule.female)) continue;
-                            if (!matchesDistributionFamily(skin)) continue;
-                            if (!g_distributionSkinSearch.empty() &&
-                                Lower(skin.name).find(Lower(g_distributionSkinSearch)) == std::string::npos) continue;
-                            bool selected = ContainsSkinProfile(rule, skin.id);
-                            ImGui::PushID(skin.id.c_str());
-                            if (ImGui::Checkbox(skin.name.c_str(), &selected)) ToggleRuleSkinProfile(rule, skin.id);
-                            ImGui::SameLine();
-                            ImGui::TextDisabled("%s", skin.id.c_str());
-                            ImGui::PopID();
-                        }
-                        if (skins.empty()) {
-                            ImGui::TextDisabled("%s", Text("스킨팩이 없습니다. 스킨 탭에서 폴더 위치를 확인하세요.", "No skin packs. Check the folder location on the Skin tab.", "没有皮肤包。请在皮肤标签中查看文件夹位置。"));
-                        }
-                    }
-                    ImGui::EndChild();
-                    } else {
-                    const auto presets = bcn::PresetCatalog::Get().Snapshot();
-                    const auto settings = bcn::Settings::Get().Snapshot();
-                    const auto distributionFamily = rule.female ?
-                        bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
-                        bcn::NpcDistributionFamily(settings.maleNpcBodyType);
-                    const auto useBodyPreset = rule.female ?
-                        bcn::UsesNpcBodyPreset(settings.femaleNpcBodyType) :
-                        bcn::UsesNpcBodyPreset(settings.maleNpcBodyType);
-                    const auto* familyLabel = rule.female ?
-                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba ? "CBBE 3BA" :
-                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::bhunpUnp ? "BHUNP / UNP" :
-                        settings.femaleNpcBodyType == bcn::FemaleNpcBodyType::ube ? "UBE" :
-                        Text("바닐라", "Vanilla", "原版") :
-                        settings.maleNpcBodyType == bcn::MaleNpcBodyType::himbo ? "HIMBO" :
-                        settings.maleNpcBodyType == bcn::MaleNpcBodyType::sam ? "SAM" :
-                        Text("바닐라", "Vanilla", "原版");
-                    ImGui::Text("%s · %s", Text("바디 계열", "Body family", "身体系列"), familyLabel);
-                    ImGui::TextDisabled("%s", Text("이 규칙 전용 바디 풀 — 하나면 고정, 여러 개면 이 규칙의 NPC마다 안정적으로 랜덤 배포됩니다.", "This rule's body pool — one preset is fixed; multiple presets are stably randomized per matching NPC.", "本规则专用身体池 — 选择一个则固定，多个则按匹配 NPC 稳定随机分发。"));
-                    if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
-                        rule.presetIds.clear();
-                        if (useBodyPreset) {
-                            for (const auto& preset : presets) {
-                                if (preset.male != !rule.female ||
-                                    !bcn::body_family::Matches(
-                                        bcn::body_family::PresetMask(preset.family, preset.male),
-                                        distributionFamily)) continue;
-                                rule.presetIds.push_back(preset.PersistentId());
-                            }
-                        }
-                    }
-                    ImGui::SameLine();
-                    if (ImGui::Button(Text("전체 해제", "Clear all", "全部清除"))) {
-                        rule.presetIds.clear();
-                    }
-                    ImGui::SetNextItemWidth(-1.0F);
-                    ImGui::InputTextWithHint("##bodyPoolSearch",
-                        Text("바디 프리셋명 검색", "Search body presets", "搜索身体预设"), &g_distributionBodySearch);
-                    const auto poolHeight = (std::max)(1.0F, ImGui::GetContentRegionAvail().y);
-                    if (ImGui::BeginChild("PresetPool", ImVec2(0.0F, poolHeight), true,
-                            ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
-                        for (const auto& preset : presets) {
-                            if (!useBodyPreset || preset.male != !rule.female ||
-                                !bcn::body_family::Matches(
-                                    bcn::body_family::PresetMask(preset.family, preset.male),
-                                    distributionFamily)) continue;
-                            if (!g_distributionBodySearch.empty()) {
-                                const auto needle = Lower(g_distributionBodySearch);
-                                if (Lower(preset.name).find(needle) == std::string::npos &&
-                                    Lower(preset.family).find(needle) == std::string::npos) continue;
-                            }
-                            const auto id = preset.PersistentId();
-                            bool selected = ContainsPreset(rule, id);
-                            ImGui::PushID(id.c_str());
-                            if (ImGui::Checkbox(preset.name.c_str(), &selected)) ToggleRulePreset(rule, id);
-                            ImGui::SameLine();
-                            ImGui::TextDisabled("%s", preset.family.c_str());
-                            ImGui::PopID();
-                        }
-                        if (!useBodyPreset) {
-                            ImGui::TextDisabled("%s", Text(
-                                "모드 설정에서 이 성별의 NPC 바디 타입이 바닐라로 지정되어 바디 프리셋을 배포하지 않습니다.",
-                                "This sex uses the Vanilla NPC body type in Mod Settings, so body presets are not distributed.",
-                                "模组设置中该性别的 NPC 身体类型为原版，因此不会分发身体预设。"));
-                        }
-                    }
-                    ImGui::EndChild();
-                    }
-                    ImGui::PopID();
-                } else {
-                    ImGui::TextDisabled("%s", Text("왼쪽에서 규칙을 추가하거나 선택하세요.", "Add or select a rule on the left.", "请在左侧添加或选择规则。"));
                 }
+
+                ImGui::SameLine();
+                ImGui::TextUnformatted(Text("대상", "Target", "目标"));
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(-1.0F);
+                if (DistributionScopeCombo(rule.scope)) {
+                    rule.target.clear();
+                    rule.npcBaseFormID = 0U;
+                    rule.npcPlugin.clear();
+                    rule.npcLocalFormID = 0U;
+                    rule.targetFormID = 0U;
+                    rule.targetPlugin.clear();
+                    rule.targetLocalFormID = 0U;
+                    FillRuleTargetFromSelectedActor(rule);
+                }
+
+                if (rule.scope == bcn::DistributionScope::allNPCs) {
+                    auto excludeCustomFollowers = !rule.includeCustomFollowers;
+                    if (ImGui::Checkbox(Text("커스텀 팔로워 제외", "Exclude custom followers",
+                            "排除自定义随从"), &excludeCustomFollowers)) {
+                        rule.includeCustomFollowers = !excludeCustomFollowers;
+                    }
+                    ImGui::SameLine();
+                    auto excludeElderNPCs = !rule.includeElderNPCs;
+                    if (ImGui::Checkbox(Text("노인 NPC 제외", "Exclude elder NPCs",
+                            "排除老年 NPC"), &excludeElderNPCs)) {
+                        rule.includeElderNPCs = !excludeElderNPCs;
+                    }
+                } else if (rule.scope == bcn::DistributionScope::npcBaseForm) {
+                    ImGui::TextUnformatted("FormID");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.0F);
+                    if (ImGui::InputScalar("##ruleFormID", ImGuiDataType_U32,
+                            &rule.npcBaseFormID, nullptr, nullptr, "%08X",
+                            ImGuiInputTextFlags_CharsHexadecimal |
+                                ImGuiInputTextFlags_CharsUppercase)) {
+                        if (auto* form = RE::TESForm::LookupByID(rule.npcBaseFormID);
+                            !bcn::SetDistributionRuleNPC(rule, form)) {
+                            rule.npcPlugin.clear();
+                            rule.npcLocalFormID = 0U;
+                        }
+                    }
+                } else if (rule.scope == bcn::DistributionScope::npcName) {
+                    ImGui::TextUnformatted(TargetLabel(rule.scope));
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.0F);
+                    ImGui::InputText("##ruleTarget", &rule.target);
+                } else {
+                    ImGui::TextUnformatted(TargetLabel(rule.scope));
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(-1.0F);
+                    switch (rule.scope) {
+                    case bcn::DistributionScope::factionEditorID: {
+                        [[maybe_unused]] const auto factionChanged =
+                            DistributionFormTargetCombo("##ruleFaction", rule,
+                                g_distributionFactionOptions);
+                        break;
+                    }
+                    case bcn::DistributionScope::pluginFile: {
+                        [[maybe_unused]] const auto pluginChanged =
+                            DistributionTargetCombo("##rulePlugin", rule.target,
+                                g_distributionPluginOptions);
+                        break;
+                    }
+                    case bcn::DistributionScope::raceEditorID: {
+                        [[maybe_unused]] const auto raceChanged =
+                            DistributionFormTargetCombo("##ruleRace", rule,
+                                g_distributionRaceOptions);
+                        break;
+                    }
+                    case bcn::DistributionScope::keyword: {
+                        [[maybe_unused]] const auto keywordChanged =
+                            DistributionFormTargetCombo("##ruleKeyword", rule,
+                                g_distributionKeywordOptions);
+                        break;
+                    }
+                    case bcn::DistributionScope::npcClass: {
+                        [[maybe_unused]] const auto classChanged =
+                            DistributionFormTargetCombo("##ruleClass", rule,
+                                g_distributionClassOptions);
+                        break;
+                    }
+                    default:
+                        ImGui::TextDisabled("%s", DistributionScopeLabel(rule.scope));
+                        break;
+                    }
+                }
+
+                ImGui::TextDisabled("%s: %zu", DistributionPoolLabel(g_distributionPool),
+                    RuleDistributionPoolCount(rule, g_distributionPool));
+                ImGui::PopID();
+            } else {
+                ImGui::TextDisabled("%s", Text(
+                    "규칙을 추가하세요.", "Add a rule.", "请添加规则。"));
             }
-            ImGui::EndTable();
+
             ImGui::Separator();
             if (ImGui::Button(Text("+ 규칙 추가", "+ Add rule", "+ 添加规则"))) {
-                g_distributionRules.push_back(NewDistributionRule());
+                auto rule = NewDistributionRule();
+                SetRuleDistributionSelection(rule);
+                g_distributionRules.push_back(std::move(rule));
                 g_selectedDistributionRule = g_distributionRules.size() - 1U;
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("- 규칙 삭제", "- Delete rule", "- 删除规则"))) {
-                [[maybe_unused]] const auto erased = bcn::EraseDistributionRule(
-                    g_distributionRules, g_selectedDistributionRule);
+            if (ImGui::Button(Text("- 규칙 삭제", "- Delete rule", "- 删除规则")) &&
+                g_selectedDistributionRule < g_distributionRules.size()) {
+                g_distributionRules.erase(g_distributionRules.begin() +
+                    static_cast<std::ptrdiff_t>(g_selectedDistributionRule));
+                const auto visible = relevantIndices();
+                g_selectedDistributionRule = visible.empty() ? 0U : visible.front();
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("위 우선순위", "Move priority up", "提高优先级"))) {
-                [[maybe_unused]] const auto moved = bcn::MoveDistributionRule(
-                    g_distributionRules, g_selectedDistributionRule, -1);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(Text("아래 우선순위", "Move priority down", "降低优先级"))) {
-                [[maybe_unused]] const auto moved = bcn::MoveDistributionRule(
-                    g_distributionRules, g_selectedDistributionRule, 1);
-            }
-            ImGui::SameLine();
-            if (ImGui::Button(Text("저장 값 불러오기", "Load saved values", "加载保存值"))) {
-                const auto loaded = bcn::Distribution::Get().Load();
-                const auto importReport = bcn::Distribution::Get().ImportOBodyDefaults();
-                const auto imported = importReport.loaded;
-                g_distributionRules = bcn::Distribution::Get().Snapshot();
-                g_selectedDistributionRule = 0;
-                g_distributionRuleNameLanguage.reset();
-                std::string message = loaded ?
-                    (imported ?
-                        Text("저장값과 OBody 호환 규칙을 함께 불러왔습니다.", "Loaded saved values and OBody-compatible rules.", "已加载保存值和 OBody 兼容规则。") :
-                        Text("저장값을 불러왔습니다.", "Loaded saved values.", "已加载保存值。")) :
-                    (imported ?
-                        Text("기본 샘플 조건과 OBody 호환 규칙을 불러왔습니다.", "Loaded the default sample rules and OBody-compatible rules.", "已加载默认示例规则和 OBody 兼容规则。") :
-                        Text("저장값이 없어 기본 샘플 조건을 불러왔습니다.", "No saved values were found; the default sample rules were loaded.", "未找到保存值，已加载默认示例规则。"));
-                if (imported) {
-                    message += " ";
-                    message += std::to_string(importReport.importedRules);
-                    message += Text(
-                        "개의 OBody 배포 규칙을 BCNG 목록으로 치환했습니다.",
-                        " OBody distribution rules were converted into the BCNG list.",
-                        " 条 OBody 分发规则已转换到 BCNG 列表。");
+            if (ImGui::Button(Text("위로", "Up", "上移"))) {
+                const auto visible = relevantIndices();
+                const auto current = std::ranges::find(visible,
+                    g_selectedDistributionRule);
+                if (current != visible.end() && current != visible.begin()) {
+                    const auto other = *(current - 1);
+                    std::swap(g_distributionRules[g_selectedDistributionRule],
+                        g_distributionRules[other]);
+                    g_selectedDistributionRule = other;
                 }
-                if (importReport.missingPresetNames != 0U) {
-                    message += " ";
-                    message += std::to_string(importReport.missingPresetNames);
-                    message += Text(
-                        "개의 OBody 프리셋 이름이 설치 목록에 없어 해당 지정 규칙을 건너뛰었습니다. SKSE 로그를 확인하세요.",
-                        " OBody preset names were not installed, so their assignment rules were skipped. See the SKSE log.",
-                        " 个 OBody 预设名称未安装，因此已跳过对应分配规则。请查看 SKSE 日志。");
-                }
-                bcn::ui::Notify(std::move(message));
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("로드된 NPC 즉시 배포", "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"))) {
+            if (ImGui::Button(Text("아래로", "Down", "下移"))) {
+                const auto visible = relevantIndices();
+                const auto current = std::ranges::find(visible,
+                    g_selectedDistributionRule);
+                if (current != visible.end() && current + 1 != visible.end()) {
+                    const auto other = *(current + 1);
+                    std::swap(g_distributionRules[g_selectedDistributionRule],
+                        g_distributionRules[other]);
+                    g_selectedDistributionRule = other;
+                }
+            }
+
+            ImGui::TextUnformatted(Text("지정한 조건", "Configured conditions", "已设置条件"));
+            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() + Scaled(12.0F);
+            const auto listHeight = (std::max)(Scaled(150.0F),
+                ImGui::GetContentRegionAvail().y - footerHeight);
+            if (ImGui::BeginChild("DistributionRuleList", ImVec2(0.0F, listHeight), true,
+                    ImGuiWindowFlags_AlwaysVerticalScrollbar)) {
+                const auto visible = relevantIndices();
+                for (const auto index : visible) {
+                    const auto& rule = g_distributionRules[index];
+                    const auto detail = std::to_string(index + 1U) + "  " + rule.name +
+                        "\n    " + DistributionScopeLabel(rule.scope) + " · " +
+                        std::to_string(RuleDistributionPoolCount(rule,
+                            g_distributionPool)) +
+                        Text("개 선택", " selected", " 个已选");
+                    if (ImGui::Selectable(detail.c_str(),
+                            index == g_selectedDistributionRule,
+                            ImGuiSelectableFlags_AllowDoubleClick)) {
+                        g_selectedDistributionRule = index;
+                    }
+                }
+                if (visible.empty()) {
+                    ImGui::TextDisabled("%s", Text("이 기능의 규칙이 없습니다.",
+                        "No rules exist for this feature.", "此功能没有规则。"));
+                }
+            }
+            ImGui::EndChild();
+
+            if (ImGui::Button(Text("로드된 NPC 즉시 배포",
+                    "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"))) {
                 if (SaveActiveDistributionRules()) {
                     const auto queued = bcn::Distribution::Get().ApplyLoadedNPCs();
-                    bcn::ui::Notify(std::to_string(queued) + Text("명의 변경 대상 NPC를 확인하고 규칙을 저장했습니다.", " changed loaded NPCs were checked and the rules were saved.", " 名已加载 NPC 的变更已检查，规则也已保存。"));
+                    bcn::ui::Notify(std::to_string(queued) + Text(
+                        "명의 변경 대상 NPC를 확인하고 규칙을 저장했습니다.",
+                        " changed loaded NPCs were checked and the rules were saved.",
+                        " 名已加载 NPC 的变更已检查，规则也已保存。"));
                 } else {
-                    bcn::ui::Notify(Text("NPC 배포 규칙을 저장하지 못해 즉시 배포하지 않았습니다.", "The rules could not be saved, so immediate distribution was not started.", "无法保存 NPC 分发规则，因此未开始立即分发。"));
+                    bcn::ui::Notify(Text(
+                        "NPC 배포 규칙을 저장하지 못해 즉시 배포하지 않았습니다.",
+                        "The rules could not be saved, so immediate distribution was not started.",
+                        "无法保存 NPC 分发规则，因此未开始立即分发。"));
                 }
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("다음 게임 실행 시 배포", "Distribute on next game launch", "下次启动游戏时分发"))) {
+            if (ImGui::Button(Text("다음 게임 실행 시 배포",
+                    "Distribute on next game launch", "下次启动游戏时分发"))) {
                 if (bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules)) {
-                    bcn::ui::Notify(Text("현재 편집 값을 저장했습니다. 현재 게임의 배포 규칙은 바꾸지 않습니다.", "Saved the edited values without changing this session's active distribution rules.", "已保存当前编辑值，不更改本次游戏的有效分发规则。"));
+                    bcn::ui::Notify(Text(
+                        "현재 편집 값을 다음 게임 실행용으로 저장했습니다.",
+                        "Saved the edited values for the next game launch.",
+                        "已保存当前编辑值，供下次启动游戏时使用。"));
                 } else {
-                    bcn::ui::Notify(Text("다음 게임 실행용 배포 규칙을 저장하지 못했습니다.", "Could not save the distribution rules for the next game start.", "无法保存下次启动游戏时使用的分发规则。"));
+                    bcn::ui::Notify(Text(
+                        "다음 게임 실행용 배포 규칙을 저장하지 못했습니다.",
+                        "Could not save the distribution rules for the next game start.",
+                        "无法保存下次启动游戏时使用的分发规则。"));
                 }
             }
+            const auto* closeLabel = Text("닫기", "Close", "关闭");
+            const auto closeWidth = ImGui::CalcTextSize(closeLabel).x +
+                ImGui::GetStyle().FramePadding.x * 2.0F;
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - closeWidth);
+            if (ImGui::Button(closeLabel)) closeEditor();
             ImGui::EndPopup();
         }
-        if (!g_showDistribution && !SaveDistributionDraft()) {
-            bcn::ui::Notify(Text("NPC 배포 규칙 편집값을 저장하지 못했습니다.",
-                "Could not save the edited NPC distribution rules.",
-                "无法保存编辑后的 NPC 分发规则。"));
+        if (!g_showDistribution) {
+            DiscardDistributionDraft();
         }
     }
-
     void DrawOutfitPopup()
     {
         if (!g_showOutfit) return;
         const auto popupTitle = std::string{ Text("의상·랜덤화", "Outfit · randomization", "服装·随机化") } + "###OutfitPopup";
         ImGui::OpenPopup(popupTitle.c_str());
-        if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showOutfit, ImGuiWindowFlags_AlwaysAutoResize)) {
+        // Give wrapped text its final width in the first measuring frame.
+        // Fully automatic width starts almost at zero, creating a very tall
+        // temporary popup whose centered Y would then be saved near the top.
+        const auto outfitBounds = DefaultWindowSize(700.0F, 1200.0F);
+        ImGui::SetNextWindowSizeConstraints(
+            ImVec2(outfitBounds.x, 0.0F), outfitBounds);
+        if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showOutfit, ImGuiWindowFlags_AlwaysAutoResize,
+                bcn::popup_placement::Kind::outfit)) {
             if (EscapePressed()) {
                 g_showOutfit = false;
                 ImGui::CloseCurrentPopup();
@@ -2549,6 +3323,10 @@ namespace
             } else {
                 ImGui::TextDisabled("%s", Text("OBody NG 의상 보정 규칙", "OBody NG outfit-correction rules", "OBody NG 服装修正规则"));
             }
+            TextDisabledWrapped(Text(
+                "파일 경로: Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json",
+                "File path: Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json",
+                "文件路径：Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json"));
             ImGui::Separator();
             const auto nippleRandomizationChanged = ImGui::Checkbox(
                 Text("NPC 유두 형태 무작위화", "Randomize NPC nipple shape", "随机 NPC 乳头形态"),
@@ -2605,7 +3383,7 @@ namespace
             ImVec2(settingsWidth, 0.0F), ImVec2(settingsWidth, FLT_MAX));
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showSettings,
                 ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar |
-                ImGuiWindowFlags_NoScrollWithMouse)) {
+                ImGuiWindowFlags_NoScrollWithMouse, bcn::popup_placement::Kind::settings)) {
             if (EscapePressed()) {
                 g_showSettings = false;
                 bcn::InputSink::Get().CancelHotkeyCapture();
@@ -2644,7 +3422,7 @@ namespace
                 settingsChanged = true;
                 bcn::menu_character::Presentation::Get().Apply(settings.characterPosition, SelectedActor());
             }
-            TextDisabledWrapped(Text("3인칭에서 선택한 액터를 창 옆에 임시 배치합니다. 캐릭터가 있는 화면 바깥쪽을 우클릭 드래그하면 회전하며, 대상 변경·창 닫기 때 카메라와 방향을 복원합니다.", "In third person, temporarily frames the selected actor beside the window. Right-drag the outer character area to rotate; camera and facing restore when the target changes or the window closes.", "第三人称下会临时将所选角色置于窗口旁。右键拖动角色所在的外侧区域可旋转；切换目标或关闭窗口时会恢复镜头和朝向。"));
+            TextDisabledWrapped(Text("3인칭에서 선택한 액터를 창 옆에 임시 배치합니다. 캐릭터가 있는 화면 바깥쪽을 우클릭 드래그하거나 게임패드 LT를 누른 채 RS를 좌우로 움직이면 회전하며, 대상 변경·창 닫기 때 카메라와 방향을 복원합니다.", "In third person, temporarily frames the selected actor beside the window. Right-drag the outer character area, or hold gamepad LT and move RS left or right, to rotate; camera and facing restore when the target changes or the window closes.", "第三人称下会临时将所选角色置于窗口旁。右键拖动角色所在的外侧区域，或按住手柄 LT 并左右推动 RS，即可旋转；切换目标或关闭窗口时会恢复镜头和朝向。"));
             settingsChanged |= ImGui::Checkbox(Text("게임 일시정지", "Pause game while open", "打开时暂停游戏"), &settings.pauseGameWhenOpen);
             TextDisabledWrapped(Text("창은 항상 플레이어를 선택한 상태로 열립니다. 일시정지 변경은 다음에 창을 열 때 적용됩니다.", "The window always opens with Player selected. Pause changes apply the next time it opens.", "窗口始终以玩家为当前选择打开。暂停设置会在下次打开窗口时生效。"));
             ImGui::Separator();
@@ -2695,22 +3473,26 @@ namespace
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
             }
-            if (ImGui::Button(Text("선택 액터 바디 모프 초기화", "Reset selected actor body morphs", "重置所选角色身体形态"))) {
-                auto* actor = SelectedActor();
-                [[maybe_unused]] const auto removedManualLock = bcn::Distribution::Get().RemoveManualBodyAssignment(actor);
-                bcn::racemenu::QueueClearBodyChangeMorphs(actor);
-                bcn::ui::Notify(Text("선택 액터의 Body Change NG 모프와 직접 선택을 초기화했습니다.", "Cleared Body Change NG morphs and the direct selection on the selected actor.", "已清除所选角色的 Body Change NG 形态及直接选择。"));
+            if (ImGui::Button(Text("선택 액터 설정 값 초기화", "Reset selected actor settings", "重置所选角色设置值"))) {
+                const auto reset = bcn::actor_settings_reset::QueueActor(SelectedActor());
+                if (reset.accepted) DiscardPendingSelectionsAfterReset(false);
+                bcn::ui::Notify(reset.accepted ?
+                    Text("선택 액터의 바디·바디스킨·성기·후타스킨·오버레이·틴트마스크 초기화를 시작했습니다.", "Started resetting the selected actor's body, body skin, genitals, futanari skin, overlays, and tint masks.", "已开始重置所选角色的身体、身体皮肤、生殖器、扶她皮肤、覆盖层和色调遮罩。") :
+                    Text("선택 액터 설정 값 초기화를 시작하지 못했습니다.", "Could not start resetting the selected actor settings.", "无法开始重置所选角色设置值。"));
             }
             ImGui::SameLine();
-            if (ImGui::Button(Text("전체 배포 바디 결과 초기화", "Reset all distributed body results", "重置全部已分发身体结果"))) {
-                bcn::Distribution::Get().ClearManualBodyAssignments();
-                const auto started = bcn::racemenu::QueueClearAllBodyChangeMorphs();
-                bcn::ui::Notify(started ?
-                    Text("저장에 남아 있는 모든 Body Change NG 바디 모프와 NPC 직접 선택 값의 초기화를 시작했습니다.", "Started clearing all saved Body Change NG body morphs and direct NPC selections.", "已开始清除存档中全部 Body Change NG 身体形态及 NPC 直接选择。") :
-                    Text("전체 바디 결과 초기화를 시작하지 못했습니다.", "Could not start the full body reset.", "无法开始完整身体重置。"));
+            if (ImGui::Button(Text("전체 액터 설정 값 초기화", "Reset all actor settings", "重置全部角色设置值"))) {
+                const auto reset = bcn::actor_settings_reset::QueueAll();
+                if (reset.accepted) DiscardPendingSelectionsAfterReset(true);
+                bcn::ui::Notify(reset.accepted ?
+                    Text("저장에 남아 있는 전체 액터의 바디·바디스킨·성기·후타스킨·오버레이와 플레이어 틴트마스크 초기화를 시작했습니다.", "Started resetting body, body skin, genitals, futanari skin, and overlays for all saved actors, plus player tint masks.", "已开始重置全部已保存角色的身体、身体皮肤、生殖器、扶她皮肤和覆盖层，以及玩家色调遮罩。") :
+                    Text("전체 액터 설정 값 초기화를 시작하지 못했습니다.", "Could not start resetting all actor settings.", "无法开始重置全部角色设置值。"));
             }
-            ImGui::SameLine();
-            if (ImGui::Button(Text("닫기", "Close", "关闭"))) g_showSettings = false;
+            const auto* closeLabel = Text("닫기", "Close", "关闭");
+            const auto closeWidth = ImGui::CalcTextSize(closeLabel).x +
+                ImGui::GetStyle().FramePadding.x * 2.0F;
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - closeWidth);
+            if (ImGui::Button(closeLabel)) g_showSettings = false;
             ImGui::EndPopup();
         }
         if (!g_showSettings) {
@@ -2740,35 +3522,66 @@ namespace bcn::ui
     {
         std::scoped_lock lifecycle(g_uiLifecycleLock);
         g_uiSessionEpoch = frame_tasks::Epoch();
+        g_overlayColorDrafts.Clear();
+        g_tintColorDrafts.Clear();
+        for (std::size_t layer{}; layer < g_tintSessionColors.size(); ++layer) {
+            g_tintSessionColors[layer] = player_tint::CurrentColor(static_cast<player_tint::Layer>(layer));
+        }
         // The actor list is deliberately refreshed only once at menu open.
         // A previous menu session must not retain an NPC camera target. Start
         // from Player every time. Nearby actors are still rebuilt at open and
         // by the explicit refresh button, but never replace that initial row.
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             g_selectedActorFormID = player->GetFormID();
-            bcn::skin_override::InvalidateFutanariDetection(g_selectedActorFormID);
+            bcn::skin_application::InvalidateFutanariDetection(g_selectedActorFormID);
         } else {
             g_selectedActorFormID = 0;
         }
         g_actorSearch.clear();
         g_currentTintPack = player_tint::CurrentPack().value_or(std::string{});
         g_selectedTintPack = g_currentTintPack;
+        for (const auto& layer : player_tint::SnapshotPersistedState().layers) {
+            if (!layer.assetID.empty()) {
+                g_tintColorDrafts.Set(g_selectedActorFormID,
+                    static_cast<std::uint8_t>(layer.layer), layer.assetID, layer);
+            }
+        }
         g_selectedTintAssetID.clear();
         g_showTintDetails = false;
+        g_showOverlayDetails = false;
+        g_overlayArea.reset();
+        g_pendingBody.reset();
+        g_pendingSkin.reset();
+        g_pendingFutanari.reset();
+        g_pendingTint.reset();
+        g_pendingTintBaseline.reset();
+        for (auto& pending : g_pendingOverlays) pending.reset();
         ResetCatalogNavigation();
         g_initializeActorSelection = true;
         g_activeTab = ActiveTab::body;
+        if (auto* actor = SelectedActor()) {
+            [[maybe_unused]] const auto requested = overlay::RequestCatalog(actor);
+        }
     }
 
     void OnLoadStart()
     {
         std::scoped_lock lifecycle(g_uiLifecycleLock);
         g_uiSessionEpoch = 0;
+        g_overlayColorDrafts.Clear();
+        g_tintColorDrafts.Clear();
+        g_tintSessionColors = {};
         // A load is not a user confirmation. Do not let a delayed kHide
         // commit the old save's UI preview into the newly loaded actor.
         g_pendingBody.reset();
         g_pendingSkin.reset();
+        g_pendingFutanari.reset();
         g_pendingTint.reset();
+        g_pendingTintBaseline.reset();
+        for (auto& pending : g_pendingOverlays) pending.reset();
+        racemenu::QueueCancelPreview();
+        overlay::QueueCancelPreviews();
+        g_overlayArea.reset();
         g_showDistribution = false;
         // Loading another save is not a confirmation of the previous save's
         // in-memory editor draft.  OnClosed runs as part of the native close,
@@ -2781,18 +3594,16 @@ namespace bcn::ui
     void OnClosed()
     {
         std::scoped_lock lifecycle(g_uiLifecycleLock);
-        // Closing confirms the last live selections for the exact actor that
-        // owns them. Commit before removing the BodyMorph preview layer.
-        CommitPendingSelections();
-        g_pendingBody.reset();
-        g_pendingSkin.reset();
-        g_pendingTint.reset();
+        // A preview is never a selection. Only an explicit double click or
+        // activation command commits; closing restores the entry state.
+        RollbackPendingSelections(SelectedActor());
+        g_overlayColorDrafts.Clear();
+        g_tintColorDrafts.Clear();
+        g_tintSessionColors = {};
         g_showTintDetails = false;
-        if (!SaveDistributionDraft()) {
-            SKSE::log::error("Body Change NG could not save the NPC distribution editor draft while closing the menu");
-        }
+        g_showOverlayDetails = false;
+        DiscardDistributionDraft();
         g_showDistribution = false;
-        racemenu::QueueCancelPreview();
         InputSink::Get().ResetTransientState();
         [[maybe_unused]] const auto settingsSaved = Settings::Get().Save();
         bcn::menu_character::Presentation::Get().Restore();
@@ -2861,6 +3672,7 @@ namespace bcn::ui
             ImGui::End();
             return;
         }
+        DrawTitleBarRotationHint();
         SaveMainWindowPosition();
         if (!open) native_ui::Close();
         // Let the active popup consume Escape first.  Checking the popup state
@@ -2896,7 +3708,6 @@ namespace bcn::ui
         const auto selected = std::ranges::find(actors, g_selectedActorFormID, &ActorEntry::formID);
         const auto selectedName = selected != actors.end() ? ActorLabel(*selected) : ActorLabel(SelectedActor());
         const auto* refreshActorsLabel = Text("액터 새로고침", "Refresh actors", "刷新角色");
-        const auto* distributionLabel = Text("NPC 배포", "NPC distribution", "NPC 分发");
         const auto* outfitLabel = Text("의상·랜덤화", "Outfit · randomization", "服装·随机化");
         const auto* settingsLabel = Text("모드 설정", "Mod settings", "模组设置");
         ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing,
@@ -2906,8 +3717,8 @@ namespace bcn::ui
         const auto buttonWidth = [](const char* label) {
             return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0F;
         };
-        const auto reservedWidth = buttonWidth(refreshActorsLabel) + buttonWidth(distributionLabel) +
-            buttonWidth(outfitLabel) + buttonWidth(settingsLabel) + ImGui::GetStyle().ItemSpacing.x * 4.0F;
+        const auto reservedWidth = buttonWidth(refreshActorsLabel) + buttonWidth(outfitLabel) +
+            buttonWidth(settingsLabel) + ImGui::GetStyle().ItemSpacing.x * 3.0F;
         const auto actorWidth = (std::max)(Scaled(150.0F), ImGui::GetContentRegionAvail().x - reservedWidth);
         ImGui::SetNextItemWidth(actorWidth);
         PrepareResizableDropdown(actors.size() + 2U);
@@ -2959,8 +3770,6 @@ namespace bcn::ui
             }
         }
         ImGui::SameLine();
-        if (ImGui::Button(distributionLabel)) g_showDistribution = true;
-        ImGui::SameLine();
         if (ImGui::Button(outfitLabel)) g_showOutfit = true;
         ImGui::SameLine();
         if (ImGui::Button(settingsLabel)) g_showSettings = true;
@@ -2970,10 +3779,10 @@ namespace bcn::ui
         auto* player = RE::PlayerCharacter::GetSingleton();
         const auto playerSelected = selectedActor && player &&
             selectedActor->GetFormID() == player->GetFormID();
-        const auto futanariType = selectedActor ?
-            bcn::skin_override::CurrentFutanariType(const_cast<RE::Actor*>(selectedActor)) :
-            std::optional<bcn::FutanariSkinType>{};
-        const auto futanariAvailable = futanariType.has_value();
+        // Feature availability belongs to the installed female addon forms,
+        // not to the number of currently registered or visibly equipped
+        // actors. Actor eligibility is explained inside the tab itself.
+        const auto futanariAvailable = bcn::futanari_support::Available();
         if (!playerSelected && g_activeTab == ActiveTab::tint) {
             // Applying a tint is already immediate, so dropping this transient
             // UI confirmation does not alter the saved/current tint state.
@@ -2982,6 +3791,7 @@ namespace bcn::ui
             g_selectedTintAssetID.clear();
             g_showTintDetails = false;
             bcn::menu_character::Presentation::Get().SetTintFocus(false);
+            g_showOverlayDetails = false;
         }
         if (!futanariAvailable && g_activeTab == ActiveTab::futanari) {
             g_activeTab = ActiveTab::skin;
@@ -2990,6 +3800,7 @@ namespace bcn::ui
         bcn::menu_character::Presentation::Get().Apply(runtimeSettings.characterPosition, SelectedActor());
 
         ImGui::Separator();
+        const auto activeTabBeforeControls = g_activeTab;
         HandleTabNavigation(playerSelected, futanariAvailable);
         if (TabButton(Text("바디프리셋", "Body Presets", "身体预设"),
                 g_activeTab == ActiveTab::body)) g_activeTab = ActiveTab::body;
@@ -2997,18 +3808,27 @@ namespace bcn::ui
         if (TabButton(Text("바디스킨", "Body Skins", "身体皮肤"), g_activeTab == ActiveTab::skin)) {
             g_activeTab = ActiveTab::skin;
         }
-        if (futanariAvailable) {
-            ImGui::SameLine();
-            if (TabButton(Text("후타나리", "Futanari", "扶她"),
-                    g_activeTab == ActiveTab::futanari)) {
-                g_activeTab = ActiveTab::futanari;
-            }
-        }
         if (playerSelected) {
             ImGui::SameLine();
             if (TabButton(Text("틴트마스크", "Tint Masks", "色调蒙版"), g_activeTab == ActiveTab::tint)) {
                 g_activeTab = ActiveTab::tint;
             }
+        }
+        if (futanariAvailable) {
+            ImGui::SameLine();
+            if (TabButton(Text("후타스킨", "Futanari Skin", "扶她皮肤"),
+                    g_activeTab == ActiveTab::futanari)) {
+                g_activeTab = ActiveTab::futanari;
+            }
+        }
+        ImGui::SameLine();
+        if (TabButton(Text("오버레이", "Overlays", "叠加层"),
+                g_activeTab == ActiveTab::overlay)) {
+            g_activeTab = ActiveTab::overlay;
+            [[maybe_unused]] const auto requested = bcn::overlay::RequestCatalog(SelectedActor());
+        }
+        if (g_activeTab != activeTabBeforeControls && g_distributionSelectionMode) {
+            CancelDistributionCatalogSelection();
         }
         ImGui::SameLine();
         const auto* favoritesLabel = Text("즐겨찾기", "Favorites", "收藏");
@@ -3025,40 +3845,10 @@ namespace bcn::ui
             ImGui::SameLine();
             ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
         }
-        const auto workStatus = selectedActor ? frame_tasks::Status(selectedActor->GetFormID()) :
-            async_work::FrameTaskQueue::WorkStatus{};
-        if (workStatus.queued || workStatus.busy) {
-            // Reuse the help line: no extra row or list-height jump. Queue
-            // status is not proof of engine completion or successful apply.
-            const auto* statusText = workStatus.Delayed() ?
-                Text("선택 액터 갱신 지연 · 작업 완료 대기 중", "Selected actor update delayed · Waiting for work to finish", "所选角色更新延迟 · 等待任务完成") :
-                workStatus.busy ? Text("선택 액터 적용 중…", "Applying to selected actor…", "正在应用于所选角色…") :
-                Text("선택 액터 적용 대기 중…", "Selected actor update queued…", "所选角色更新排队中…");
-            ImGui::TextColored(workStatus.Delayed() ? ImVec4(1.0F, .76F, .42F, 1.0F) :
-                ImVec4(.48F, .82F, .96F, 1.0F), "%s", statusText);
-            if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", Text(
-                "목록의 선택 표시는 요청한 값입니다. 이전 갱신이 끝나면 최신 선택을 처리합니다. 지연 중에는 같은 액터에 갱신을 겹쳐 실행하지 않습니다.",
-                "The list shows your requested selection. The latest request is processed after prior updates finish. Delayed work is not forced to overlap on the same actor.",
-                "列表显示请求的选择。先前更新完成后处理最新请求。延迟时不会强制同时更新同一角色。"));
-        } else if (g_activeTab == ActiveTab::body) {
-            ImGui::TextDisabled("%s", racemenu::IsReady() ?
-                Text("선택 액터에게 RaceMenu BodyMorph로 즉시 적용", "Applies immediately to the selected actor through RaceMenu BodyMorph", "通过 RaceMenu BodyMorph 立即应用于所选角色") :
-                Text("RaceMenu BodyMorph 인터페이스를 기다리는 중", "Waiting for RaceMenu's BodyMorph interface", "正在等待 RaceMenu 的 BodyMorph 接口"));
-        } else if (g_activeTab == ActiveTab::skin) {
-            ImGui::TextDisabled("%s", Text("ActorBase의 TXST · ARMA · Skin Armor로 적용", "Applies through the ActorBase TXST · ARMA · Skin Armor chain", "通过 ActorBase 的 TXST、ARMA、皮肤护甲链应用"));
-        } else if (g_activeTab == ActiveTab::futanari) {
-            ImGui::TextDisabled("%s", Text(
-                "현재 장착된 후타나리 성기 메시의 텍스처에만 즉시 적용",
-                "Applies immediately only to the currently equipped futanari genital mesh textures",
-                "仅立即应用于当前装备的扶她生殖器网格纹理"));
-        } else {
-            ImGui::TextDisabled("%s", Text("플레이어의 현재 RaceMenu 틴트 레이어에만 적용", "Applies only to the player's current RaceMenu tint layers", "仅应用于玩家当前的 RaceMenu 色调图层"));
-        }
         if (const auto* actor = SelectedActor(); actor && actor != RE::PlayerCharacter::GetSingleton() &&
             bcn::Distribution::Get().HasManualAssignment(actor)) {
-            ImGui::SameLine();
             ImGui::TextColored(ImVec4(.48F, .82F, .96F, 1.0F), "%s", Text(
-                "직접 선택 유지 · 자동 배포 제외", "Direct selection kept · Excluded from auto distribution", "保留直接选择 · 不参与自动分发"));
+                "직접 선택 우선", "Direct selection takes priority", "优先使用直接选择"));
         }
 
         std::string notification;
@@ -3071,17 +3861,21 @@ namespace bcn::ui
         }
 
         if (g_activeTab == ActiveTab::body) {
-            const auto bodyRefreshLabel = std::string{ Text("새로고침", "Refresh", "刷新") } + "##bodyCatalogRefresh";
-            if (ImGui::Button(bodyRefreshLabel.c_str())) PresetCatalog::Get().Refresh();
-            ImGui::SameLine();
-            ImGui::TextDisabled("%s", Text(
-                "CalienteTools\\BodySlide\\SliderPresets의 XML 프리셋을 읽습니다.",
-                "Reads XML presets from CalienteTools\\BodySlide\\SliderPresets.",
-                "读取 CalienteTools\\BodySlide\\SliderPresets 中的 XML 预设。"));
             auto items = BodyItems();
+            DrawCatalogCommandRow(DistributionPool::body,
+                [] { RefreshFileCatalog(PresetCatalog::Get()); },
+                [&items] {
+                    g_distributionSelectedIds.clear();
+                    for (const auto& item : items) g_distributionSelectedIds.insert(item.id);
+                },
+                Text("CalienteTools\\~에서 바디프리셋을 읽습니다.(더블클릭 적용)",
+                    "Reads body presets from CalienteTools\\~. (Double-click to apply)",
+                    "从 CalienteTools\\~ 读取身体预设。（双击应用）"));
             DrawCatalog(items, true);
         } else if (g_activeTab == ActiveTab::skin) {
             DrawSkinCatalog();
+        } else if (g_activeTab == ActiveTab::overlay) {
+            DrawOverlayCatalog();
         } else if (g_activeTab == ActiveTab::futanari) {
             DrawFutanariCatalog();
         } else {
@@ -3092,9 +3886,17 @@ namespace bcn::ui
         DrawOutfitPopup();
         DrawSettingsPopup();
         DrawTintDetailPopup();
+        DrawOverlayDetailPopup();
+        UpdatePreviewOwnership();
         // Tint and its detailed value popup deliberately share one face view;
         // leaving Tint restores the normal left/right presentation.
-        bcn::menu_character::Presentation::Get().SetTintFocus(g_activeTab == ActiveTab::tint);
+        if (g_activeTab == ActiveTab::tint) {
+            bcn::menu_character::Presentation::Get().SetTintFocus(true);
+        } else if (g_activeTab == ActiveTab::overlay) {
+            bcn::menu_character::Presentation::Get().SetOverlayFocus(g_overlayArea);
+        } else {
+            bcn::menu_character::Presentation::Get().SetTintFocus(false);
+        }
         bcn::menu_character::Presentation::Get().UpdateRotationInteraction();
         ImGui::End();
     }

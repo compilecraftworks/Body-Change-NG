@@ -15,6 +15,7 @@ namespace RE
 #include <RE/RTTI.h>
 
 #include <imgui.h>
+#include <imgui_internal.h>
 
 #include <cmath>
 
@@ -30,19 +31,23 @@ namespace
     constexpr auto kRightFacingCorrection = -0.35F;
     // The Tint tab and its detail popup intentionally share one close-up. Keep
     // FOV fixed and scale the lateral offset with distance so both presentation
-    // sides remain symmetric. Use a separate positive vertical offset for the
-    // close-up: lowering camera PosZ moves the rendered actor upward, while a
-    // higher PosZ brings the player's face down into the visible frame.
+    // sides remain symmetric. The face focus sits below the former positive
+    // offset so the actor's face is centered vertically in the visible frame.
     constexpr auto kTintCameraDistance = 80.0F;
-    constexpr auto kTintCameraScale = kTintCameraDistance / kCameraDistance;
     constexpr auto kTintWorldFov = kMenuWorldFov;
-    constexpr auto kTintVerticalOffset = 10.0F;
-    constexpr auto kLeftTintCameraHorizontalOffset = kLeftCameraHorizontalOffset * kTintCameraScale;
-    constexpr auto kRightTintCameraHorizontalOffset = kRightCameraHorizontalOffset * kTintCameraScale;
+    constexpr auto kTintVerticalOffset = -5.0F;
     constexpr auto kNormalPitchZoomOffset = 0.1F;
     constexpr auto kTintPitchZoomOffset = kNormalPitchZoomOffset;
+    constexpr auto kBodyCameraDistance = 155.0F;
+    constexpr auto kBodyVerticalOffset = -42.0F;
+    constexpr auto kHandsCameraDistance = 115.0F;
+    constexpr auto kHandsVerticalOffset = -12.0F;
+    constexpr auto kFeetCameraDistance = 115.0F;
+    constexpr auto kFeetVerticalOffset = -105.0F;
     constexpr auto kMouseRotationRadiansPerPixel = 0.003F;
     constexpr auto kMaxMouseRotationRadiansPerFrame = 0.060F;
+    constexpr auto kGamepadRotationRadiansPerSecond = 2.4F;
+    constexpr auto kGamepadTriggerThreshold = 0.35F;
 
     enum class CameraZoomUpdate : std::uint8_t
     {
@@ -160,10 +165,8 @@ namespace
 
     [[nodiscard]] RE::ThirdPersonState* GetThirdPersonState(RE::PlayerCamera* camera)
     {
-        // SFS itself is SE/AE-only. The menu camera presentation deliberately
-        // fails closed on VR until its separate camera-state layout has been
-        // validated; the rest of Body Change NG remains usable on VR.
-        if (!camera || REL::Module::IsVR()) return nullptr;
+        // This plugin is built with the SE/AE-exclusive layout.
+        if (!camera) return nullptr;
         const auto& state = camera->GetRuntimeData().cameraStates[RE::CameraState::kThirdPerson];
         return state ? static_cast<RE::ThirdPersonState*>(state.get()) : nullptr;
     }
@@ -236,7 +239,7 @@ namespace
 
     void SetCameraHandle(RE::ThirdPersonState* state, RE::RefHandle& handle)
     {
-        if (!state || REL::Module::IsVR()) return;
+        if (!state) return;
         // Verified CommonLibSSE-NG slots: SE/AE 0x09; VR has the extra
         // TESCameraState slot at 0x0A. Do not emit an unconditional virtual call.
         using SetCameraHandle = void (RE::ThirdPersonState::*)(RE::RefHandle&);
@@ -246,7 +249,7 @@ namespace
     [[nodiscard]] bool CanPresentActor(RE::PlayerCharacter* player, RE::Actor* actor,
         RE::PlayerCamera* camera, RE::ThirdPersonState* thirdPersonState)
     {
-        if (REL::Module::IsVR() || !player || !actor || !camera || !thirdPersonState || !player->Is3DLoaded() ||
+        if (!player || !actor || !camera || !thirdPersonState || !player->Is3DLoaded() ||
             !actor->Is3DLoaded() || player->IsOnMount() || camera->IsInFreeCameraMode()) {
             return false;
         }
@@ -260,11 +263,14 @@ namespace bcn::menu_character
 {
     struct Presentation::State
     {
-        enum class TintFocus : std::uint8_t
+        enum class ViewFocus : std::uint8_t
         {
             uninitialized,
             normal,
-            tint
+            face,
+            body,
+            hands,
+            feet
         };
 
         struct SavedSetting
@@ -275,7 +281,7 @@ namespace bcn::menu_character
 
         bool active{};
         bool rotating{};
-        TintFocus tintFocus{ TintFocus::uninitialized };
+        ViewFocus viewFocus{ ViewFocus::uninitialized };
         CharacterPosition side{ CharacterPosition::disabled };
         CharacterPosition requestedSide{ CharacterPosition::disabled };
         RE::ActorHandle presentedActorHandle{};
@@ -383,7 +389,7 @@ namespace bcn::menu_character
         g_presentationProjectionActive.store(true, std::memory_order_release);
         state_->rotating = false;
         // Force the normal framing branch below on the first activation.
-        state_->tintFocus = State::TintFocus::uninitialized;
+        state_->viewFocus = State::ViewFocus::uninitialized;
 
         camera->cameraTarget = requestedHandle;
         auto cameraTargetHandle = requestedHandle.native_handle();
@@ -408,21 +414,53 @@ namespace bcn::menu_character
 
     void Presentation::SetTintFocus(const bool tintTab)
     {
+        SetOverlayFocus(tintTab ? std::optional{ overlay::Area::face } : std::nullopt);
+    }
+
+    void Presentation::SetOverlayFocus(const std::optional<overlay::Area> area)
+    {
         if (!state_ || !state_->active) return;
-        const auto focus = tintTab ? State::TintFocus::tint : State::TintFocus::normal;
-        if (state_->tintFocus == focus) return;
-        state_->tintFocus = focus;
+        auto focus = State::ViewFocus::normal;
+        if (area) {
+            switch (*area) {
+            case overlay::Area::face: focus = State::ViewFocus::face; break;
+            case overlay::Area::body: focus = State::ViewFocus::body; break;
+            case overlay::Area::hands: focus = State::ViewFocus::hands; break;
+            case overlay::Area::feet: focus = State::ViewFocus::feet; break;
+            default: break;
+            }
+        }
+        if (state_->viewFocus == focus) return;
+        state_->viewFocus = focus;
         auto* camera = RE::PlayerCamera::GetSingleton();
         auto* thirdPersonState = GetThirdPersonState(camera);
         auto presentedActor = state_->presentedActorHandle.get();
         if (!camera || !thirdPersonState || !presentedActor) return;
 
         const auto normalHorizontal = state_->side == CharacterPosition::left ? kLeftCameraHorizontalOffset : kRightCameraHorizontalOffset;
-        const auto tintHorizontal = state_->side == CharacterPosition::left ?
-            kLeftTintCameraHorizontalOffset : kRightTintCameraHorizontalOffset;
-        const auto horizontal = focus == State::TintFocus::tint ? tintHorizontal : normalHorizontal;
-        const auto vertical = focus == State::TintFocus::tint ? kTintVerticalOffset : kCameraVerticalOffset;
-        const auto distance = focus == State::TintFocus::tint ? kTintCameraDistance : kCameraDistance;
+        auto distance = kCameraDistance;
+        auto vertical = kCameraVerticalOffset;
+        switch (focus) {
+        case State::ViewFocus::face:
+            distance = kTintCameraDistance;
+            vertical = kTintVerticalOffset;
+            break;
+        case State::ViewFocus::body:
+            distance = kBodyCameraDistance;
+            vertical = kBodyVerticalOffset;
+            break;
+        case State::ViewFocus::hands:
+            distance = kHandsCameraDistance;
+            vertical = kHandsVerticalOffset;
+            break;
+        case State::ViewFocus::feet:
+            distance = kFeetCameraDistance;
+            vertical = kFeetVerticalOffset;
+            break;
+        default:
+            break;
+        }
+        const auto horizontal = normalHorizontal * (distance / kCameraDistance);
         state_->desiredPosOffset = { horizontal, 0.0F, vertical };
         if (auto* ini = RE::INISettingCollection::GetSingleton()) {
             const std::array settings{
@@ -445,8 +483,9 @@ namespace bcn::menu_character
         }
         thirdPersonState->posOffsetExpected = state_->desiredPosOffset;
         thirdPersonState->posOffsetActual = state_->desiredPosOffset;
-        thirdPersonState->pitchZoomOffset = focus == State::TintFocus::tint ? kTintPitchZoomOffset : kNormalPitchZoomOffset;
-        const auto presentationFov = focus == State::TintFocus::tint ? kTintWorldFov : kMenuWorldFov;
+        thirdPersonState->pitchZoomOffset = focus == State::ViewFocus::face ?
+            kTintPitchZoomOffset : kNormalPitchZoomOffset;
+        const auto presentationFov = focus == State::ViewFocus::face ? kTintWorldFov : kMenuWorldFov;
         ApplyPresentationWorldFov(camera, presentationFov);
         if (auto* activeCamera = GetActiveNiCamera(camera);
             state_->viewFrustumSaved && state_->fovCamera.get() == activeCamera) {
@@ -529,7 +568,7 @@ namespace bcn::menu_character
         state_->fovCamera.reset();
         state_->viewFrustum = {};
         state_->viewFrustumSaved = false;
-        state_->tintFocus = State::TintFocus::uninitialized;
+        state_->viewFocus = State::ViewFocus::uninitialized;
         state_->active = false;
         smoothcam::ReleaseCameraControl();
         SKSE::log::debug("Body Change NG restored menu character presentation");
@@ -572,15 +611,32 @@ namespace bcn::menu_character
             auto handle = state_->presentedActorHandle.native_handle();
             SetCameraHandle(thirdPersonState, handle);
         }
-        const auto presentationFov = state_->tintFocus == State::TintFocus::tint ?
+        const auto presentationFov = state_->viewFocus == State::ViewFocus::face ?
             kTintWorldFov : kMenuWorldFov;
         ApplyPresentationWorldFov(camera, presentationFov);
         if (auto* activeCamera = GetActiveNiCamera(camera);
             state_->viewFrustumSaved && state_->fovCamera.get() == activeCamera) {
             static_cast<void>(ApplyPresentationViewFrustum(activeCamera, presentationFov));
         }
-        if (!state_->rotating || io.MouseDelta.x == 0.0F) return;
-        const auto delta = std::clamp(-io.MouseDelta.x * kMouseRotationRadiansPerPixel,
+        const auto analog = [](const ImGuiKey key) {
+            const auto* data = ImGui::GetKeyData(key);
+            return data && data->Down ? data->AnalogValue : 0.0F;
+        };
+        const auto leftTrigger = analog(ImGuiKey_GamepadL2);
+        const auto rightStickX = analog(ImGuiKey_GamepadRStickRight) -
+            analog(ImGuiKey_GamepadRStickLeft);
+        const auto gamepadRotating = !popupOpen && !io.AppFocusLost &&
+            leftTrigger >= kGamepadTriggerThreshold && std::abs(rightStickX) > 0.0001F;
+        const auto mouseDelta = state_->rotating ?
+            -io.MouseDelta.x * kMouseRotationRadiansPerPixel : 0.0F;
+        // Cap DeltaTime so a resumed or temporarily blocked render frame cannot
+        // turn the actor by a large amount from one still-held stick sample.
+        const auto gamepadDelta = gamepadRotating ?
+            -rightStickX * kGamepadRotationRadiansPerSecond *
+                std::clamp(io.DeltaTime, 0.0F, 0.05F) :
+            0.0F;
+        if (mouseDelta == 0.0F && gamepadDelta == 0.0F) return;
+        const auto delta = std::clamp(mouseDelta + gamepadDelta,
             -kMaxMouseRotationRadiansPerFrame, kMaxMouseRotationRadiansPerFrame);
         auto* ui = RE::UI::GetSingleton();
         const auto gamePaused = ui && ui->GameIsPaused();

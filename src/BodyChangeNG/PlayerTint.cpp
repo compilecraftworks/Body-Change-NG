@@ -1,11 +1,10 @@
 #include "BodyChangeNG/PlayerTint.h"
+#include "BodyChangeNG/AppearancePreviewState.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
 #include "BodyChangeNG/RuntimeCompatibility.h"
-
-#include "BodyChangeNG/Settings.h"
 
 #include <RE/P/PackUnpack.h>
 #include <SKSE/Logger.h>
@@ -43,12 +42,24 @@ namespace
 
     std::mutex g_currentTintStateLock;
     CurrentTintState g_currentTintState;
+    std::vector<bcn::player_tint::OriginalBackup> g_tintBackups;
+    // Logical committed selection, pinned before a preview or a queued commit.
+    // It stays independent of task timing: commit B -> preview C -> save/close
+    // must retain B even if C superseded B's queued visual work.
+    bcn::AppearancePreviewState<CurrentTintState> g_savedTintState;
 
-    [[nodiscard]] CurrentTintState CurrentState()
+    [[nodiscard]] auto Backups()
     {
         std::scoped_lock lock(g_currentTintStateLock);
-        return g_currentTintState;
+        return g_tintBackups;
     }
+
+    void CommitIntent(CurrentTintState state)
+    {
+        std::scoped_lock lock(g_currentTintStateLock);
+        g_savedTintState.Commit(std::move(state));
+    }
+
 
     void SetCurrentPack(std::optional<std::string> pack)
     {
@@ -58,24 +69,6 @@ namespace
         g_currentTintState.restoredLayers.clear();
     }
 
-    void RecordLayerOverride(const bcn::player_tint::Asset& asset,
-        const bcn::player_tint::Color& color)
-    {
-        std::scoped_lock lock(g_currentTintStateLock);
-        // The detailed editor is opened from a selected pack, so this pack is
-        // the reproducible base even if its preceding game task was superseded
-        // by a very fast color-picker input.
-        g_currentTintState.pack = asset.pack;
-        g_currentTintState.layerOverrides[asset.layer] = { asset.id, color };
-        g_currentTintState.restoredLayers.erase(asset.layer);
-    }
-
-    void RecordLayerRestore(const bcn::player_tint::Layer layer)
-    {
-        std::scoped_lock lock(g_currentTintStateLock);
-        g_currentTintState.layerOverrides.erase(layer);
-        g_currentTintState.restoredLayers.insert(layer);
-    }
 
     class DiscardPapyrusResult final : public RE::BSScript::IStackCallbackFunctor
     {
@@ -190,9 +183,8 @@ namespace
         // its implementation is not exported by the plugin consumer target.
         // Keep the exact upstream versioned member selection in this one
         // adapter instead of touching an unconditional PlayerCharacter offset.
-        // Upstream explicitly reports no player tint list for VR, so VR fails
-        // closed rather than probing an unverified layout.
-        if (!player || REL::Module::IsVR()) return {};
+        // The plugin is SE/AE-exclusive; select the loaded flat version below.
+        if (!player) return {};
         const auto version = REL::Module::get().version();
         const auto layout = bcn::runtime::ResolvePlayerTintLayout(version);
         if (!layout) {
@@ -204,33 +196,6 @@ namespace
         auto* overlayTints = REL::RelocateMember<RE::BSTArray<RE::TintMask*>*>(
             player, layout->overlayOffset);
         return { base, overlayTints };
-    }
-
-    void LogPlayerTintState(RE::PlayerCharacter* player, const std::string_view reason)
-    {
-        const auto lists = PlayerTintLists(player);
-        const auto logList = [&](const char* listName, const RE::BSTArray<RE::TintMask*>* list) {
-            if (!list) {
-                SKSE::log::info("TintAudit {} list={} unavailable", reason, listName);
-                return;
-            }
-            SKSE::log::info("TintAudit {} list={} count={}", reason, listName, list->size());
-            for (std::uint32_t index{}; index < list->size(); ++index) {
-                const auto* mask = (*list)[index];
-                if (!mask) {
-                    SKSE::log::info("TintAudit {} list={} index={} null", reason, listName, index);
-                    continue;
-                }
-                const auto* path = mask->texture ? mask->texture->textureName.c_str() : nullptr;
-                SKSE::log::info(
-                    "TintAudit {} list={} index={} type={} path='{}' rgb=({},{},{}) alpha={:.4f}",
-                    reason, listName, index, mask->type.underlying(), path ? path : "",
-                    static_cast<std::uint32_t>(mask->color.red), static_cast<std::uint32_t>(mask->color.green),
-                    static_cast<std::uint32_t>(mask->color.blue), mask->alpha);
-            }
-        };
-        logList("base", lists.base);
-        logList("overlay", lists.overlay);
     }
 
     [[nodiscard]] RE::TintMask* FindPlayerMask(RE::PlayerCharacter* player, const bcn::player_tint::Layer layer)
@@ -299,19 +264,21 @@ namespace
 
     void CaptureOriginalIfNeeded(RE::TintMask& mask, const bcn::player_tint::Layer layer)
     {
-        auto settings = bcn::Settings::Get().Snapshot();
+        std::scoped_lock lock(g_currentTintStateLock);
         const auto type = static_cast<std::uint8_t>(layer);
-        if (std::ranges::find(settings.playerTintBackups, type, &bcn::PlayerTintBackup::type) != settings.playerTintBackups.end()) return;
+        if (std::ranges::find(g_tintBackups, type, &bcn::player_tint::OriginalBackup::type) != g_tintBackups.end()) return;
         const auto* path = mask.texture ? mask.texture->textureName.c_str() : nullptr;
         if (!path || path[0] == '\0') return;
-        settings.playerTintBackups.push_back({
+        auto normalized = Lower(path);
+        std::ranges::replace(normalized, '/', '\\');
+        if (normalized.starts_with("bodychangeng\\cache\\") ||
+            normalized.starts_with("textures\\bodychangeng\\cache\\")) return;
+        g_tintBackups.push_back({
             .type = type,
             .texturePath = path,
             .color = { mask.color.red, mask.color.green, mask.color.blue },
             .alpha = std::clamp(mask.alpha, 0.0F, 1.0F)
         });
-        bcn::Settings::Get().Update(settings);
-        [[maybe_unused]] const auto saved = bcn::Settings::Get().Save();
     }
 
     [[nodiscard]] bool IsCurrentTintChange(const std::uint64_t generation) noexcept
@@ -329,100 +296,80 @@ namespace
         RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(new DiscardPapyrusResult());
         const auto dispatched = vm->DispatchStaticCall(
             "Game", "UpdateTintMaskColors", RE::MakeFunctionArguments(), callback);
-        SKSE::log::info("TintAudit Game.UpdateTintMaskColors dispatched={}", dispatched);
         return dispatched;
     }
 
-    void ApplyNow(RE::ActorHandle playerHandle, const bcn::player_tint::Asset asset,
-        const bcn::player_tint::Color color, const std::uint64_t generation)
-    {
-        const auto actor = playerHandle.get();
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || !player || actor->GetFormID() != player->GetFormID() || !actor->Is3DLoaded()) return;
-        if (!IsCurrentTintChange(generation)) return;
-        const auto playerSex = actor->GetActorBase() && actor->GetActorBase()->GetSex() == RE::SEX::kFemale ?
-            bcn::player_tint::Sex::female : bcn::player_tint::Sex::male;
-        if (asset.sex != bcn::player_tint::Sex::unisex && asset.sex != playerSex) return;
-        if (!bcn::player_tint::TintMatchesActor(
-                asset.bodyFamilies, bcn::body_family::ResolveActor(actor.get()))) return;
-        const auto path = TintMaskTexturePath(asset.source);
-        if (path.empty()) {
-            SKSE::log::error("Body Change NG could not cache tint asset '{}'", asset.name);
-            return;
-        }
-        SKSE::log::info(
-            "TintAudit expected asset='{}' pack='{}' layer={} source='{}' cache='{}' rgba=({:.4f},{:.4f},{:.4f},{:.4f})",
-            asset.name, asset.pack, static_cast<std::uint32_t>(asset.layer),
-            bcn::path_text::Utf8(asset.source), path, color.red, color.green, color.blue, color.alpha);
-        if (auto* original = FindPlayerMask(player, asset.layer)) CaptureOriginalIfNeeded(*original, asset.layer);
-        const auto applied = ForEachPlayerMask(player, asset.layer, [&](RE::TintMask& mask) {
-            mask.texture->textureName = path.c_str();
-            mask.color.red = Channel(color.red);
-            mask.color.green = Channel(color.green);
-            mask.color.blue = Channel(color.blue);
-            mask.alpha = std::clamp(color.alpha, 0.0F, 1.0F);
-        });
-        if (applied == 0U) {
-            SKSE::log::warn("Body Change NG could not apply tint '{}': the player has no matching active layer", asset.name);
-            return;
-        }
-        if (IsCurrentTintChange(generation)) {
-            [[maybe_unused]] const auto refreshed = RefreshPlayerTints();
-            RecordLayerOverride(asset, color);
-        }
-        SKSE::log::info("Body Change NG applied player tint '{}' to {} base/overlay mask(s)", asset.name, applied);
-    }
 
-    void ApplyPackNow(RE::ActorHandle playerHandle, const std::vector<bcn::player_tint::Asset> assets,
-        const std::uint64_t generation)
+    bool ApplyPackNow(RE::ActorHandle playerHandle, const std::vector<bcn::player_tint::Asset>& assets,
+        const std::uint64_t generation,
+        const std::vector<bcn::player_tint::PersistedLayerState>& drafts = {})
     {
         const auto actor = playerHandle.get();
         auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || !player || actor->GetFormID() != player->GetFormID() || !actor->Is3DLoaded()) return;
-        if (!IsCurrentTintChange(generation)) return;
+        if (!actor || !player || actor->GetFormID() != player->GetFormID() || !actor->Is3DLoaded()) return false;
+        if (!IsCurrentTintChange(generation)) return false;
         std::size_t applied{};
-        for (const auto& asset : assets) {
-            const auto path = TintMaskTexturePath(asset.source);
-            if (path.empty()) continue;
-            SKSE::log::info(
-                "TintAudit expected pack='{}' asset='{}' layer={} source='{}' cache='{}'",
-                asset.pack, asset.name, static_cast<std::uint32_t>(asset.layer),
-                bcn::path_text::Utf8(asset.source), path);
-            if (auto* original = FindPlayerMask(player, asset.layer)) CaptureOriginalIfNeeded(*original, asset.layer);
-            applied += ForEachPlayerMask(player, asset.layer, [&path](RE::TintMask& mask) {
-                mask.texture->textureName = path.c_str();
+        CurrentTintState next{ .pack = assets.empty() ? std::nullopt : std::optional{ assets.front().pack } };
+        const auto backups = Backups();
+        // Undo layers belonging only to the preceding preview/pack. Otherwise
+        // returning to a partial pack would leave that other pack's masks live.
+        for (const auto& backup : backups) {
+            const auto layer = static_cast<bcn::player_tint::Layer>(backup.type);
+            if (std::ranges::find(assets, layer, &bcn::player_tint::Asset::layer) != assets.end()) continue;
+            ForEachPlayerMask(player, layer, [&](RE::TintMask& mask) {
+                mask.texture->textureName = backup.texturePath.c_str();
+                mask.color.red = backup.color[0];
+                mask.color.green = backup.color[1];
+                mask.color.blue = backup.color[2];
+                mask.alpha = backup.alpha;
             });
         }
+        for (const auto& asset : assets) {
+            const auto draft = std::ranges::find_if(drafts, [&](const auto& value) {
+                return value.layer == asset.layer && value.assetID == asset.id;
+            });
+            const auto backup = draft != drafts.end() && draft->restored ?
+                std::ranges::find(backups, static_cast<std::uint8_t>(asset.layer), &bcn::player_tint::OriginalBackup::type) :
+                backups.end();
+            const auto path = backup != backups.end() ? backup->texturePath : TintMaskTexturePath(asset.source);
+            if (path.empty()) continue;
+            if (auto* original = FindPlayerMask(player, asset.layer)) CaptureOriginalIfNeeded(*original, asset.layer);
+            const auto count = ForEachPlayerMask(player, asset.layer, [&](RE::TintMask& mask) {
+                mask.texture->textureName = path.c_str();
+                if (backup != backups.end()) {
+                    mask.color.red = backup->color[0];
+                    mask.color.green = backup->color[1];
+                    mask.color.blue = backup->color[2];
+                    mask.alpha = std::clamp(backup->alpha, 0.0F, 1.0F);
+                } else if (draft != drafts.end()) {
+                    mask.color.red = Channel(draft->color.red);
+                    mask.color.green = Channel(draft->color.green);
+                    mask.color.blue = Channel(draft->color.blue);
+                    mask.alpha = std::clamp(draft->color.alpha, 0.0F, 1.0F);
+                }
+            });
+            applied += count;
+            if (count != 0U) {
+                if (backup != backups.end()) next.restoredLayers.insert(asset.layer);
+                else if (const auto color = bcn::player_tint::CurrentColor(asset.layer)) {
+                    next.layerOverrides[asset.layer] = { asset.id, *color };
+                }
+            }
+        }
         if (applied != 0U && IsCurrentTintChange(generation)) {
+            {
+                std::scoped_lock lock(g_currentTintStateLock);
+                g_currentTintState = std::move(next);
+            }
+            // One composite rebuild for the pack and all remembered colors.
             [[maybe_unused]] const auto refreshed = RefreshPlayerTints();
-            SetCurrentPack(assets.front().pack);
+            return true;
         }
-        SKSE::log::info("Body Change NG applied tint pack with {} mapped layers", applied);
+        return false;
     }
 
-    void RestoreNow(RE::ActorHandle playerHandle, const bcn::player_tint::Layer layer,
-        const bcn::PlayerTintBackup backup, const std::uint64_t generation)
-    {
-        const auto actor = playerHandle.get();
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!actor || !player || actor->GetFormID() != player->GetFormID() || !actor->Is3DLoaded()) return;
-        if (!IsCurrentTintChange(generation)) return;
-        const auto restored = ForEachPlayerMask(player, layer, [&backup](RE::TintMask& mask) {
-            mask.texture->textureName = backup.texturePath.c_str();
-            mask.color.red = backup.color[0];
-            mask.color.green = backup.color[1];
-            mask.color.blue = backup.color[2];
-            mask.alpha = std::clamp(backup.alpha, 0.0F, 1.0F);
-        });
-        if (restored == 0U) return;
-        if (IsCurrentTintChange(generation)) {
-            [[maybe_unused]] const auto refreshed = RefreshPlayerTints();
-            RecordLayerRestore(layer);
-        }
-        SKSE::log::info("Body Change NG restored original player tint layer {}", static_cast<std::uint32_t>(layer));
-    }
 
-    void RestoreAllNow(RE::ActorHandle playerHandle, const std::vector<bcn::PlayerTintBackup> backups,
+    void RestoreAllNow(RE::ActorHandle playerHandle, const std::vector<bcn::player_tint::OriginalBackup> backups,
         const std::uint64_t generation)
     {
         const auto actor = playerHandle.get();
@@ -444,7 +391,6 @@ namespace
             [[maybe_unused]] const auto refreshed = RefreshPlayerTints();
             SetCurrentPack(std::nullopt);
         }
-        SKSE::log::info("Body Change NG restored {} original player tint layers", restored);
     }
 
     [[nodiscard]] std::string_view Filename(const std::string_view path)
@@ -488,8 +434,7 @@ namespace
     {
         if (!player || !FindPlayerMask(player, layer)) return std::nullopt;
         const auto* base = player->GetActorBase();
-        const auto playerSex = base && base->GetSex() == RE::SEX::kFemale ?
-            bcn::player_tint::Sex::female : bcn::player_tint::Sex::male;
+        const auto playerFemale = base && base->GetSex() == RE::SEX::kFemale;
         const auto raceToken = RaceFilenameToken(player);
         const auto playerFamily = bcn::body_family::ResolveActor(player);
         const auto* current = FindPlayerMask(player, layer);
@@ -499,10 +444,8 @@ namespace
         auto bestScore = -1;
         for (const auto& asset : catalog) {
             if (asset.pack != pack || asset.layer != layer ||
-                (asset.sex != bcn::player_tint::Sex::unisex && asset.sex != playerSex)) {
-                continue;
-            }
-            if (!bcn::player_tint::TintMatchesActor(asset.bodyFamilies, playerFamily)) continue;
+                !bcn::player_tint::TintAssetMatchesActor(asset.sex,
+                    asset.bodyFamilies, playerFamily, playerFemale)) continue;
             const auto filename = Lower(Filename(asset.path));
             const auto exactCurrent = !currentName.empty() && filename == currentName;
             const auto assetRace = AssetRaceToken(asset.name);
@@ -548,22 +491,12 @@ namespace bcn::player_tint
 
     std::filesystem::path Catalog::RootPath()
     {
-        return std::filesystem::current_path() / "Data" / "TintMask";
+        return std::filesystem::current_path() / "Data" / "BodySkin";
     }
 
     std::vector<Asset> Catalog::ScanDirectory(const std::filesystem::path& root)
     {
-        struct PackAudit final
-        {
-            std::size_t ddsTotal{};
-            std::size_t tintDirectory{};
-            std::size_t recognized{};
-            std::size_t unrecognized{};
-            std::size_t outsideTintDirectory{};
-        };
-        const auto dataRoot = root.parent_path();
         std::vector<Asset> loaded;
-        std::map<std::string, PackAudit> audit;
         std::error_code error;
         if (std::filesystem::exists(root, error)) {
             for (std::filesystem::recursive_directory_iterator it(root,
@@ -581,38 +514,20 @@ namespace bcn::player_tint
                 if (first == rootRelative->end()) continue;
                 const auto pack = bcn::path_text::Utf8(*first);
                 if (pack.empty()) continue;
-                auto& packAudit = audit[pack];
-                ++packAudit.ddsTotal;
                 const auto parent = Lower(bcn::path_text::Utf8(it->path().parent_path().filename()));
-                if (parent != "tintmasks") {
-                    ++packAudit.outsideTintDirectory;
-                    SKSE::log::info("TintCatalogAudit pack='{}' file='{}' mapping=outside-tintmasks",
-                        pack, bcn::path_text::Utf8(it->path()));
-                    continue;
-                }
-                ++packAudit.tintDirectory;
+                if (parent != "tintmasks") continue;
                 const auto filename = bcn::path_text::Utf8(it->path().filename());
                 const auto layer = InferLayer(filename);
                 if (!layer) {
-                    ++packAudit.unrecognized;
-                    SKSE::log::info("TintCatalogAudit pack='{}' file='{}' mapping=unrecognized-layer",
-                        pack, bcn::path_text::Utf8(it->path()));
                     continue;
                 }
                 if (loaded.size() >= kMaxAssets) continue;
-                const auto dataRelative = RelativeWithin(it->path(), dataRoot);
-                if (!dataRelative || !rootRelative) continue;
-                auto path = bcn::path_text::GenericUtf8(*dataRelative);
                 auto id = bcn::path_text::GenericUtf8(*rootRelative);
+                auto path = std::string{ "BodySkinTint\\" } + id;
                 if (path.size() > 1024U) continue;
                 std::ranges::replace(path, '/', '\\');
                 std::ranges::replace(id, '/', '\\');
-                ++packAudit.recognized;
-                SKSE::log::info(
-                    "TintCatalogAudit pack='{}' file='{}' mapping=player-tint-layer layer={} sex={} families={}",
-                    pack, bcn::path_text::Utf8(it->path()), static_cast<std::uint32_t>(*layer),
-                    InferSex(filename) == Sex::female ? "female" : InferSex(filename) == Sex::male ? "male" : "unisex",
-                    InferTintFamilies(pack, path, InferSex(filename)));
+                bcn::runtime_assets::RegisterGameRelativeSource(path, it->path());
                 loaded.push_back({
                     .id = std::move(id),
                     .pack = pack,
@@ -626,12 +541,6 @@ namespace bcn::player_tint
             }
         }
         if (error) SKSE::log::warn("Body Change NG could not scan player tint masks at {}: {}", bcn::path_text::Utf8(root), error.message());
-        for (const auto& [pack, counts] : audit) {
-            SKSE::log::info(
-                "TintCatalogAudit pack='{}' dds-total={} tintmasks-dds={} recognized={} unrecognized={} outside-tintmasks={}",
-                pack, counts.ddsTotal, counts.tintDirectory, counts.recognized,
-                counts.unrecognized, counts.outsideTintDirectory);
-        }
         std::ranges::sort(loaded, {}, [](const Asset& asset) {
             return std::tuple{ asset.pack, static_cast<std::uint8_t>(asset.layer), asset.name, asset.id };
         });
@@ -640,7 +549,10 @@ namespace bcn::player_tint
 
     void Catalog::Refresh()
     {
-        bcn::runtime_assets::ClearGameRelativeSources("TintMask\\");
+        // The internal source key is intentionally distinct from BodySkin\\.
+        // A skin refresh can therefore never invalidate a tint pack mapping,
+        // even though both scanners now read the same user-facing root.
+        bcn::runtime_assets::ClearGameRelativeSources("BodySkinTint\\");
         std::vector<Asset> loaded;
         for (const auto& root : bcn::catalog_roots::Discover(RootPath())) {
             for (auto& asset : ScanDirectory(root)) {
@@ -654,7 +566,6 @@ namespace bcn::player_tint
         });
         std::scoped_lock lock(lock_);
         assets_ = std::move(loaded);
-        SKSE::log::info("Body Change NG loaded {} player-only tint mask assets", assets_.size());
     }
 
     std::vector<Asset> Catalog::Snapshot() const
@@ -724,10 +635,10 @@ namespace bcn::player_tint
 
     std::optional<Color> OriginalColor(const Layer layer)
     {
-        const auto settings = Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.playerTintBackups,
-            static_cast<std::uint8_t>(layer), &PlayerTintBackup::type);
-        if (found == settings.playerTintBackups.end()) return std::nullopt;
+        const auto backups = Backups();
+        const auto found = std::ranges::find(backups,
+            static_cast<std::uint8_t>(layer), &OriginalBackup::type);
+        if (found == backups.end()) return std::nullopt;
         return Color{
             .red = static_cast<float>(found->color[0]) / 255.0F,
             .green = static_cast<float>(found->color[1]) / 255.0F,
@@ -736,54 +647,14 @@ namespace bcn::player_tint
         };
     }
 
-    ApplyResult QueueApply(std::string assetID, const Color color)
-    {
-        const auto asset = Catalog::Get().Find(assetID);
-        if (!asset) return ApplyResult::invalidAsset;
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return ApplyResult::unavailable;
-        if (!TintMatchesActor(asset->bodyFamilies, body_family::ResolveActor(player))) {
-            return ApplyResult::incompatibleBodyFamily;
-        }
-        if (!FindPlayerMask(player, asset->layer)) return ApplyResult::unsupportedLayer;
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
-        const auto handle = player->GetHandle();
-        const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        auto baseAssets = CurrentPack() == asset->pack ? std::vector<Asset>{} :
-            BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), asset->pack);
-        QueueTintTask(player->GetFormID(), [handle, asset = *asset, color, baseAssets = std::move(baseAssets), generation] {
-            if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
-            ApplyNow(handle, asset, color, generation);
-        });
-        return ApplyResult::queued;
-    }
 
-    ApplyResult QueueApplyPack(std::string pack)
+    ApplyResult QueueApplyPack(std::string pack, std::vector<PersistedLayerState> layerDrafts,
+        const bool commitPreview)
     {
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
         const auto catalog = Catalog::Get().Snapshot();
         auto selected = BestPackAssetsForPlayer(player, catalog, pack);
-        for (std::uint8_t raw{}; raw <= static_cast<std::uint8_t>(Layer::dirt); ++raw) {
-            const auto layer = static_cast<Layer>(raw);
-            const auto* current = FindPlayerMask(player, layer);
-            const auto currentName = current && current->texture ? Lower(Filename(current->texture->textureName.c_str())) : std::string{};
-            std::size_t candidates{};
-            for (const auto& asset : catalog) {
-                if (asset.pack == pack && asset.layer == layer) ++candidates;
-            }
-            const auto best = ::BestAssetForPlayer(player, catalog, pack, layer);
-            if (best) {
-                SKSE::log::info(
-                    "TintPackAudit pack='{}' layer={} active=true candidates={} selected='{}' current='{}'",
-                    pack, static_cast<std::uint32_t>(layer), candidates, best->path, currentName);
-            } else {
-                SKSE::log::info(
-                    "TintPackAudit pack='{}' layer={} active={} candidates={} selected='<none>' current='{}'",
-                    pack, static_cast<std::uint32_t>(layer), current != nullptr, candidates, currentName);
-            }
-        }
         if (selected.empty()) {
             const auto packExists = std::ranges::any_of(catalog,
                 [pack](const Asset& asset) { return asset.pack == pack; });
@@ -793,80 +664,60 @@ namespace bcn::player_tint
         if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        QueueTintTask(player->GetFormID(), [handle, assets = std::move(selected), generation] {
-            ApplyPackNow(handle, assets, generation);
+        if (commitPreview) {
+            CurrentTintState committed{ .pack = pack };
+            for (const auto& asset : selected) {
+                const auto draft = std::ranges::find_if(layerDrafts, [&](const auto& value) {
+                    return value.layer == asset.layer && value.assetID == asset.id;
+                });
+                if (draft != layerDrafts.end() && draft->restored) committed.restoredLayers.insert(asset.layer);
+                else if (const auto color = draft != layerDrafts.end() ? std::optional{ draft->color } : CurrentColor(asset.layer)) {
+                    committed.layerOverrides[asset.layer] = { asset.id, *color };
+                }
+            }
+            CommitIntent(std::move(committed));
+        }
+        QueueTintTask(player->GetFormID(), [handle, assets = std::move(selected),
+                drafts = std::move(layerDrafts), generation] {
+            ApplyPackNow(handle, assets, generation, drafts);
         });
         return ApplyResult::queued;
     }
 
     std::optional<std::string> CurrentPack()
     {
-        return CurrentState().pack;
+        std::scoped_lock lock(g_currentTintStateLock);
+        return g_savedTintState.Saved(g_currentTintState).pack;
     }
 
     ApplyResult QueueReapplyCurrent()
     {
-        const auto state = CurrentState();
-        if (!state.pack && state.layerOverrides.empty() && state.restoredLayers.empty()) {
-            return ApplyResult::unavailable;
+        const auto state = SnapshotPersistedState();
+        if (!state.pack && state.layers.empty()) {
+            return state.backups.empty() ? ApplyResult::unavailable : QueueRestoreAll();
         }
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
-        const auto catalog = Catalog::Get().Snapshot();
-        auto baseAssets = state.pack ? BestPackAssetsForPlayer(player, catalog, *state.pack) :
-            std::vector<Asset>{};
-        std::vector<std::pair<Asset, Color>> overrides;
-        for (const auto& [layer, selection] : state.layerOverrides) {
-            const auto found = std::ranges::find(catalog, selection.assetID, &Asset::id);
-            if (found != catalog.end() && found->layer == layer) {
-                overrides.emplace_back(*found, selection.color);
-            }
+        if (!state.pack) return ApplyResult::invalidAsset;
+        auto selected = BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), *state.pack);
+        if (selected.empty()) return ApplyResult::invalidAsset;
+        auto layers = state.layers;
+        for (auto& layer : layers) {
+            if (!layer.restored) continue;
+            const auto asset = std::ranges::find(selected, layer.layer, &Asset::layer);
+            if (asset != selected.end()) layer.assetID = asset->id;
         }
-        std::vector<std::pair<Layer, PlayerTintBackup>> restores;
-        const auto backups = Settings::Get().Snapshot().playerTintBackups;
-        for (const auto layer : state.restoredLayers) {
-            const auto found = std::ranges::find(backups, static_cast<std::uint8_t>(layer), &PlayerTintBackup::type);
-            if (found != backups.end()) restores.emplace_back(layer, *found);
-        }
-        if (baseAssets.empty() && overrides.empty() && restores.empty()) return ApplyResult::invalidAsset;
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
-        const auto handle = player->GetHandle();
+        if (!SKSE::GetTaskInterface() || !frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        SKSE::log::info(
-            "Body Change NG is reapplying tint state after RaceMenu: pack='{}' detail-overrides={} restored-layers={}",
-            state.pack.value_or(std::string{}), overrides.size(), restores.size());
-        QueueTintTask(player->GetFormID(), [handle, baseAssets = std::move(baseAssets), overrides = std::move(overrides),
-                           restores = std::move(restores), generation] {
-            if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
-            for (const auto& [asset, color] : overrides) ApplyNow(handle, asset, color, generation);
-            for (const auto& [layer, backup] : restores) RestoreNow(handle, layer, backup, generation);
+        QueueTintTask(player->GetFormID(), [handle = player->GetHandle(),
+                assets = std::move(selected), layers = std::move(layers), generation] {
+            ApplyPackNow(handle, assets, generation, layers);
         });
         return ApplyResult::queued;
     }
 
-    ApplyResult QueueRestore(const Layer layer, std::string basePack)
-    {
-        const auto settings = Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.playerTintBackups, static_cast<std::uint8_t>(layer), &PlayerTintBackup::type);
-        if (found == settings.playerTintBackups.end()) return ApplyResult::noOriginalBackup;
-        auto* player = RE::PlayerCharacter::GetSingleton();
-        if (!player) return ApplyResult::unavailable;
-        if (!FindPlayerMask(player, layer)) return ApplyResult::unsupportedLayer;
-        const auto* tasks = SKSE::GetTaskInterface();
-        if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
-        const auto handle = player->GetHandle();
-        const auto generation = g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel) + 1U;
-        auto baseAssets = basePack.empty() || CurrentPack() == basePack ? std::vector<Asset>{} :
-            BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), basePack);
-        QueueTintTask(player->GetFormID(), [handle, layer, backup = *found, baseAssets = std::move(baseAssets), generation] {
-            if (!baseAssets.empty()) ApplyPackNow(handle, baseAssets, generation);
-            RestoreNow(handle, layer, backup, generation);
-        });
-        return ApplyResult::queued;
-    }
 
-    ApplyResult QueueRestoreAll()
+    ApplyResult QueueRestoreAll(const bool commitPreview)
     {
         // Invalidate a previously queued pack even when it has not yet run and
         // therefore has not captured its original layers. This makes rapid
@@ -878,14 +729,16 @@ namespace bcn::player_tint
         const auto* tasks = SKSE::GetTaskInterface();
         if (!tasks || !bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         const auto handle = player->GetHandle();
+        if (commitPreview) CommitIntent({});
         QueueTintTask(player->GetFormID(), [handle, generation] {
             // Read backups on the game task, not on the UI submission frame.
             // If an older apply was already running, its original capture is
             // visible here and this newest default request can still undo it.
-            const auto backups = bcn::Settings::Get().Snapshot().playerTintBackups;
+            const auto backups = Backups();
             if (backups.empty()) {
-                if (IsCurrentTintChange(generation)) SetCurrentPack(std::nullopt);
-                SKSE::log::info("Body Change NG default tint request required no layer restoration");
+                if (IsCurrentTintChange(generation)) {
+                    SetCurrentPack(std::nullopt);
+                }
                 return;
             }
             RestoreAllNow(handle, backups, generation);
@@ -895,8 +748,11 @@ namespace bcn::player_tint
 
     PersistedState SnapshotPersistedState()
     {
-        const auto current = CurrentState();
-        PersistedState state{ .pack = current.pack };
+        const auto [current, backups] = [] {
+            std::scoped_lock lock(g_currentTintStateLock);
+            return std::pair{ g_savedTintState.Saved(g_currentTintState), g_tintBackups };
+        }();
+        PersistedState state{ .pack = current.pack, .backups = backups };
         state.layers.reserve(current.layerOverrides.size() + current.restoredLayers.size());
         for (const auto& [layer, selection] : current.layerOverrides) {
             state.layers.push_back(PersistedLayerState{
@@ -911,7 +767,13 @@ namespace bcn::player_tint
         return state;
     }
 
-    void RestorePersistedState(PersistedState state)
+    void BeginPreview()
+    {
+        std::scoped_lock lock(g_currentTintStateLock);
+        g_savedTintState.Begin(g_currentTintState);
+    }
+
+    void RestorePersistedState(PersistedState state, const bool restoreBackups)
     {
         CurrentTintState restored;
         if (state.pack && state.pack->size() <= 1024U) restored.pack = std::move(state.pack);
@@ -929,6 +791,8 @@ namespace bcn::player_tint
         }
         std::scoped_lock lock(g_currentTintStateLock);
         g_currentTintState = std::move(restored);
+        g_savedTintState.Reset();
+        if (restoreBackups) g_tintBackups = std::move(state.backups);
     }
 
     void ResetPersistedState()
@@ -936,5 +800,7 @@ namespace bcn::player_tint
         g_tintGeneration.fetch_add(1U, std::memory_order_acq_rel);
         std::scoped_lock lock(g_currentTintStateLock);
         g_currentTintState = {};
+        g_savedTintState.Reset();
+        g_tintBackups.clear();
     }
 }

@@ -2,8 +2,8 @@
 
 namespace bcn::text_input
 {
-    // Installs a verified PollInputDevices call hook. Keyboard events are
-    // filtered only while an ImGui text widget actually owns text focus.
+    // Installs a verified PollInputDevices call hook for text editing, catalog
+    // navigation, mapped keyboard/gamepad Activate/Cancel, and RMB rotation.
     [[nodiscard]] bool Install();
     void Reset() noexcept;
 }

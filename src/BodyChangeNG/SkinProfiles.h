@@ -4,6 +4,7 @@
 #include "BodyChangeNG/SkinLayout.h"
 
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
@@ -124,6 +125,18 @@ namespace bcn
 
     [[nodiscard]] std::string FutanariSkinTypeLabel(FutanariSkinType a_type);
 
+    [[nodiscard]] constexpr bool FutanariSkinTypeMatchesActor(
+        const FutanariSkinType type, const body_family::Mask actorFamily) noexcept
+    {
+        const auto ube = body_family::Bit(body_family::Family::ube);
+        const auto legacy = body_family::kFemaleFamilies & ~ube;
+        const auto hasUbe = (actorFamily & ube) != 0U;
+        const auto hasLegacy = (actorFamily & legacy) != 0U;
+        if (hasUbe && !hasLegacy) return type == FutanariSkinType::ubeTrx;
+        if (hasLegacy && !hasUbe) return type != FutanariSkinType::ubeTrx;
+        return true;
+    }
+
     [[nodiscard]] constexpr body_family::Mask StandardSkinFamilies(const SkinSex sex) noexcept
     {
         return sex == SkinSex::female ?
@@ -179,6 +192,11 @@ namespace bcn
         // Texture paths are game-relative and may point to any installed mod
         // folder, so player and NPC rule selection remain independent.
         void Refresh();
+        // UI refreshes must not hash every installed DDS on Skyrim's render
+        // thread.  The previous snapshot remains readable until the worker
+        // publishes one complete replacement.
+        [[nodiscard]] bool RefreshAsync();
+        [[nodiscard]] bool Refreshing() const noexcept { return refreshing_.load(std::memory_order_acquire); }
         [[nodiscard]] static std::vector<SkinProfile> ScanDirectory(const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<SkinProfile> Snapshot() const;
         [[nodiscard]] std::optional<SkinProfile> Find(std::string_view a_id) const;
@@ -191,6 +209,7 @@ namespace bcn
 
     private:
         mutable std::mutex lock_;
+        std::atomic_bool refreshing_{};
         std::vector<SkinProfile> profiles_;
         std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };

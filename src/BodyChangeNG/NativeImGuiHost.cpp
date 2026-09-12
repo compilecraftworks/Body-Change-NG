@@ -51,6 +51,11 @@ namespace
     std::atomic_bool g_openRequested{};
     std::atomic_bool g_cursorShowPending{};
     std::atomic_bool g_escapeRequested{};
+    std::atomic_bool g_activateRequested{};
+    std::atomic_bool g_cancelRequested{};
+    std::atomic_bool g_menuActionHeld{};
+    bool g_activateThisFrame{};
+    bool g_cancelThisFrame{};
     std::atomic_int g_mouseWheelSteps{};
     std::atomic_int g_rightMouseState{ -1 };
     std::atomic_bool g_wantsTextInput{};
@@ -75,6 +80,8 @@ namespace
 
     void ClearPendingTextInputKeys() noexcept
     {
+        g_activateRequested = false;
+        g_cancelRequested = false;
         std::scoped_lock lock(g_textInputKeyLock);
         g_pendingTextInputKeys.clear();
     }
@@ -705,7 +712,11 @@ namespace
             DrainTextInputKeys(io);
             ImGui::NewFrame();
             SyncTextInput(false);
+            g_activateThisFrame = g_activateRequested.exchange(false);
+            g_cancelThisFrame = g_cancelRequested.exchange(false);
             if (g_renderCallback) g_renderCallback();
+            g_activateThisFrame = false;
+            g_cancelThisFrame = false;
             // Match SFS: synchronize immediately after the text widget has
             // gained or released focus. Waiting until after Render() leaves
             // Skyrim's Type Mode one UI frame behind the visible caret.
@@ -723,6 +734,8 @@ namespace
                 g_openRequested = true;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
+                g_activateRequested = false;
+                g_cancelRequested = false;
                 bcn::ui::OnOpened();
                 break;
             case RE::UI_MESSAGE_TYPE::kHide:
@@ -735,7 +748,8 @@ namespace
                 g_rightMouseState = -1;
                 g_wantsTextInput = false;
                 ClearPendingTextInputKeys();
-                bcn::text_input::Reset();
+                // Preserve consumed press ownership until its release. The
+                // input filter observes the closed menu on its next poll.
                 if (g_skyrimTextInputAllowed) {
                     if (auto* controlMap = RE::ControlMap::GetSingleton()) controlMap->AllowTextInput(false);
                     g_skyrimTextInputAllowed = false;
@@ -890,6 +904,13 @@ namespace bcn::native_ui
         g_pendingTextInputKeys.push_back({ scanCode, down });
     }
 
+    void SubmitMenuNavigationKey(const std::uint32_t scanCode, const bool down) noexcept
+    {
+        if (!g_open || g_wantsTextInput.load(std::memory_order_acquire)) return;
+        std::scoped_lock lock(g_textInputKeyLock);
+        g_pendingTextInputKeys.push_back({ scanCode, down });
+    }
+
     void SubmitEscape() noexcept
     {
         if (g_open) g_escapeRequested = true;
@@ -899,6 +920,13 @@ namespace bcn::native_ui
     {
         return g_escapeRequested.exchange(false);
     }
+
+    void SubmitActivate() noexcept { if (g_open) g_activateRequested = true; }
+    void SubmitCancel() noexcept { if (g_open) g_cancelRequested = true; }
+    void SetMenuActionHeld(const bool held) noexcept { g_menuActionHeld = held; }
+    bool ActivatePressed() noexcept { return g_activateThisFrame; }
+    bool CancelPressed() noexcept { return g_cancelThisFrame; }
+    bool MenuActionHeld() noexcept { return g_menuActionHeld.load(); }
 
     float GetResolutionScale() noexcept
     {

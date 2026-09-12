@@ -9,6 +9,8 @@
 #include "BodyChangeNG/OutfitRefitRules.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/RenderedOutfit.h"
 
 #include <SKSE/Logger.h>
 #include <RE/P/ProcessLists.h>
@@ -155,6 +157,15 @@ namespace bcn
     void OutfitRefit::ProcessActor(RE::Actor* actor) const
     {
         if (!actor || !actor->Is3DLoaded()) return;
+        const auto useSFS = rendered_outfit::Available();
+        if (useSFS && !frame_tasks::InGameTask()) {
+            rendered_outfit::Request(actor);
+            return;
+        }
+        // A new decision can equal the already-applied signature while an
+        // older, different decision is still queued (A -> B -> A). Cancel
+        // that pending generation even when no replacement morph is needed.
+        if (useSFS) racemenu::CancelPendingOutfit(actor);
         if (racemenu::HasActivePreview(actor)) return;
         const auto settings = Settings::Get().MorphOptions();
         if (!settings.outfitCorrection) {
@@ -170,6 +181,14 @@ namespace bcn
 
         const auto snapshot = Snapshot();
         const auto& rules = *snapshot;
+        const auto base = actor->GetActorBase();
+        if (!base) return;
+        const auto female = base->GetSex() == RE::SEX::kFemale;
+        const auto& mapping = female ? rules.femalePresetByOutfit : rules.malePresetByOutfit;
+        std::string presetName;
+        const auto rendered = rendered_outfit::Read(actor);
+        if (rendered.route == rendered_outfit::Route::defer ||
+            rendered.route == rendered_outfit::Route::invalidActor) return;
         constexpr std::array slots{
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             RE::BGSBipedObjectForm::BipedObjectSlot::kModChestPrimary,
@@ -178,12 +197,39 @@ namespace bcn
         std::array<RE::TESObjectARMO*, slots.size()> worn{};
         bool hasEligibleOutfit{};
         bool forceRefit{};
-        for (std::size_t index{}; index < slots.size(); ++index) {
-            worn[index] = actor->GetWornArmor(slots[index]);
-            hasEligibleOutfit = hasEligibleOutfit || (worn[index] && !IsBlacklisted(worn[index], rules));
-            forceRefit = forceRefit || IsForced(worn[index], rules);
+        if (rendered.route == rendered_outfit::Route::rendered) {
+            const auto decision = rendered_outfit::EvaluateVisible(rendered.items, rules, mapping,
+                [](const auto& item) -> std::optional<outfit_refit_evaluation::ArmorIdentity> {
+                    auto* armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(rendered_outfit::RuleForm(item));
+                    if (!armor) armor = RE::TESForm::LookupByID<RE::TESObjectARMO>(item.formID);
+                    if (!armor) return {};
+                    // Unknown dynamic provenance is not an invented source
+                    // plugin. Names can still match; known originals retain
+                    // all original name/FormID/plugin rules and mappings.
+                    const auto* file = (armor->GetFormID() >> 24U) == 0xFFU ? nullptr : armor->GetFile(0);
+                    return outfit_refit_evaluation::ArmorIdentity{
+                        armor->GetName(), file ? file->GetFilename() : "", armor->GetFormID()};
+                });
+            hasEligibleOutfit = decision.eligible;
+            forceRefit = decision.forced;
+            presetName = decision.preset;
+        } else {
+            // API absent/unsupported or explicit NotManaged: preserve the
+            // original inventory-based path, including any-slot force rules.
+            for (std::size_t index{}; index < slots.size(); ++index) {
+                worn[index] = actor->GetWornArmor(slots[index]);
+                hasEligibleOutfit = hasEligibleOutfit || (worn[index] && !IsBlacklisted(worn[index], rules));
+                forceRefit = forceRefit || IsForced(worn[index], rules);
+            }
+            forceRefit = forceRefit || HasAnyForcedWornArmor(actor, rules);
+            for (const auto* armor : worn) {
+                if (!armor) continue;
+                if (const auto found = mapping.find(armor->GetName()); found != mapping.end()) {
+                    presetName = found->second;
+                    break;
+                }
+            }
         }
-        forceRefit = forceRefit || HasAnyForcedWornArmor(actor, rules);
         if (!outfit_refit_evaluation::ShouldApply(hasEligibleOutfit, forceRefit)) {
             const auto signature = StableStateSignature("outfit", "clear", true,
                 settings.outfitNippleCorrection ? 1U : 0U);
@@ -193,18 +239,6 @@ namespace bcn
             return;
         }
 
-        const auto base = actor->GetActorBase();
-        if (!base) return;
-        const auto female = base->GetSex() == RE::SEX::kFemale;
-        const auto& mapping = female ? rules.femalePresetByOutfit : rules.malePresetByOutfit;
-        std::string presetName;
-        for (const auto* armor : worn) {
-            if (!armor) continue;
-            if (const auto found = mapping.find(armor->GetName()); found != mapping.end()) {
-                presetName = found->second;
-                break;
-            }
-        }
         std::vector<std::string> candidates;
         std::string currentBodyId;
         body_family::Mask currentBodyFamily{};

@@ -1,9 +1,10 @@
 #include "BodyChangeNG/RuntimeLayout.h"
+#include "BodyChangeNG/NativeAddonLayout.h"
 #include "BodyChangeNG/RaceMenuCompatibility.h"
-#include "BodyChangeNG/RaceMenuOverrideRouting.h"
 #include "BodyChangeNG/MenuCameraProjection.h"
 
 #include <cmath>
+#include <array>
 #include <iostream>
 
 namespace
@@ -20,36 +21,67 @@ namespace
 
 int main()
 {
-    using bcn::racemenu_override::Route;
     using bcn::runtime::GameBranch;
-    Expect(bcn::racemenu_override::ResolveRoute(0U, GameBranch::se) == Route::legacySeV0Papyrus &&
-        bcn::racemenu_override::UsesPapyrus(Route::legacySeV0Papyrus),
-        "legacy SE RaceMenu Override v0 must use the Papyrus route");
-    Expect(bcn::racemenu_override::ResolveRoute(0U, GameBranch::ae) == Route::aeBackportV0Papyrus &&
-        bcn::racemenu_override::UsesPapyrus(Route::aeBackportV0Papyrus),
-        "the AE backport Override v0 must stay separate from legacy SE v0");
-    Expect(bcn::racemenu_override::ResolveRoute(1U, GameBranch::se) == Route::officialV1Papyrus &&
-        bcn::racemenu_override::ResolveRoute(1U, GameBranch::ae) == Route::officialV1Papyrus &&
-        bcn::racemenu_override::UsesPapyrus(Route::officialV1Papyrus),
-        "official Override v1 must use its serialization-safe Papyrus route");
-    Expect(bcn::racemenu_override::ResolveRoute(2U, GameBranch::se) == Route::officialV2Native &&
-        bcn::racemenu_override::ResolveRoute(2U, GameBranch::ae) == Route::officialV2Native &&
-        bcn::racemenu_override::UsesNativeV2(Route::officialV2Native),
-        "official Override v2 must use the native wrapper route");
-    Expect(bcn::racemenu_override::ResolveRoute(3U, GameBranch::ae) == Route::unsupported &&
-        !bcn::racemenu_override::UsesPapyrus(Route::unsupported) &&
-        !bcn::racemenu_override::UsesNativeV2(Route::unsupported),
-        "an unaudited future Override ABI must fail closed");
-    Expect(bcn::racemenu_override::ResolveRoute(2U, GameBranch::unsupported) == Route::unsupported,
-        "a known Override ABI must not run on an unaudited Skyrim runtime");
-
     using bcn::racemenu_compat::BodyMorphAbi;
+    using bcn::racemenu_compat::NodeOverrideAbi;
+    using bcn::racemenu_compat::ResolveNodeOverrideAbi;
+    for (const auto branch : { GameBranch::se, GameBranch::ae }) {
+        Expect(ResolveNodeOverrideAbi(0, branch) == NodeOverrideAbi::papyrus,
+            "missing direct contract lost the Papyrus face fallback");
+        Expect(ResolveNodeOverrideAbi(1, branch) == NodeOverrideAbi::legacyV1,
+            "legacy face ABI incorrectly depends on game branch or overlay interface");
+        for (const auto version : { 2U, 3U, 100U, 0xFFFFFFFFU })
+            Expect(ResolveNodeOverrideAbi(version, branch) == NodeOverrideAbi::publicV2,
+                "newer face override interface lost the known v2 prefix fallback");
+    }
+    for (const auto version : { 0U, 1U, 2U, 3U })
+        Expect(ResolveNodeOverrideAbi(version, GameBranch::unsupported) == NodeOverrideAbi::papyrus,
+            "unknown game runtime enabled a raw face interface");
     Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(4U, GameBranch::se) == BodyMorphAbi::v4 &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(4U, GameBranch::ae) == BodyMorphAbi::v4 &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(5U, GameBranch::se) == BodyMorphAbi::v5 &&
         bcn::racemenu_compat::ResolveBodyMorphAbi(5U, GameBranch::ae) == BodyMorphAbi::v5,
-        "verified RaceMenu BodyMorph ABIs must resolve explicitly");
-    Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(6U, GameBranch::ae) == BodyMorphAbi::unsupported &&
+        "RaceMenu BodyMorph v4/v5 common-prefix ABIs must resolve on every supported branch");
+    Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(3U, GameBranch::ae) == BodyMorphAbi::unsupported &&
         bcn::racemenu_compat::ResolveBodyMorphAbi(5U, GameBranch::unsupported) == BodyMorphAbi::unsupported,
-        "future BodyMorph ABIs and unknown runtimes must fail closed");
+        "no lower BodyMorph contract and unknown game runtimes must remain unsupported");
+    using bcn::racemenu_compat::OverlayStackAbi;
+    Expect(bcn::racemenu_compat::ResolveOverlayStackAbi(1U, 2U, GameBranch::se) ==
+            OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(2U, 1U, GameBranch::ae) ==
+            OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(1U, 3U, GameBranch::ae) ==
+            OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(1U, 1U, GameBranch::unsupported) ==
+            OverlayStackAbi::unsupported,
+        "legacy/public generation mixing and unknown game runtimes must remain unsupported");
+    for (const auto branch : { GameBranch::se, GameBranch::ae }) {
+        for (const auto future : { 6U, 7U, 100U, 0xFFFFFFFFU }) {
+            Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(future, branch) == BodyMorphAbi::v5 &&
+                    bcn::racemenu_compat::UsesBodyMorphFallback(future),
+                "newer BodyMorph revisions must fall back to the highest known lower prefix");
+        }
+        for (const auto newer : { 3U, 4U, 100U, 0xFFFFFFFFU }) {
+            for (const auto knownOrNewer : { 2U, 3U, 0xFFFFFFFFU }) {
+                Expect(bcn::racemenu_compat::ResolveOverlayStackAbi(newer, knownOrNewer, branch) ==
+                        OverlayStackAbi::publicV2 &&
+                    bcn::racemenu_compat::ResolveOverlayStackAbi(knownOrNewer, newer, branch) ==
+                        OverlayStackAbi::publicV2 &&
+                    bcn::racemenu_compat::UsesOverlayFallback(newer, knownOrNewer),
+                    "new public revisions must independently retain the v2 fallback");
+            }
+        }
+    }
+    Expect(!bcn::racemenu_compat::UsesBodyMorphFallback(4U) &&
+        !bcn::racemenu_compat::UsesBodyMorphFallback(5U) &&
+        !bcn::racemenu_compat::UsesOverlayFallback(1U, 1U) &&
+        !bcn::racemenu_compat::UsesOverlayFallback(2U, 2U) &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(0U, 3U, GameBranch::ae) == OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(3U, 0U, GameBranch::ae) == OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(0U, GameBranch::ae) == BodyMorphAbi::unsupported &&
+        bcn::racemenu_compat::ResolveOverlayStackAbi(3U, 3U, GameBranch::unsupported) == OverlayStackAbi::unsupported &&
+        bcn::racemenu_compat::ResolveBodyMorphAbi(6U, GameBranch::unsupported) == BodyMorphAbi::unsupported,
+        "fallback must not admit missing interfaces or unverified game layouts");
 
     Expect(bcn::runtime::ResolveGameBranch(REL::Version{ 1, 5, 97, 0 }) == GameBranch::se &&
         bcn::runtime::ResolveGameBranch(REL::Version{ 1, 6, 1170, 0 }) == GameBranch::ae,
@@ -58,6 +90,54 @@ int main()
         bcn::runtime::ResolveGameBranch(REL::Version{ 1, 7, 99, 0 }) == GameBranch::unsupported &&
         bcn::runtime::ResolveGameBranch(REL::Version{ 1, 8, 0, 0 }) == GameBranch::unsupported,
         "unverified Skyrim patch and future minor versions must fail closed even when one isolated layout is known");
+
+    constexpr std::array supportedRuntimes{
+        REL::Version{ 1, 5, 97, 0 },
+        REL::Version{ 1, 6, 317, 0 },
+        REL::Version{ 1, 6, 318, 0 },
+        REL::Version{ 1, 6, 323, 0 },
+        REL::Version{ 1, 6, 342, 0 },
+        REL::Version{ 1, 6, 353, 0 },
+        REL::Version{ 1, 6, 629, 0 },
+        REL::Version{ 1, 6, 640, 0 },
+        REL::Version{ 1, 6, 659, 0 },
+        REL::Version{ 1, 6, 1130, 0 },
+        REL::Version{ 1, 6, 1170, 0 },
+        REL::Version{ 1, 6, 1179, 0 }
+    };
+    for (const auto version : supportedRuntimes) {
+        const auto branch = bcn::runtime::ResolveGameBranch(version);
+        const auto addon = bcn::native_addon::ResolveRuntimeLayout(version);
+        Expect(addon && addon->visitor == (branch == GameBranch::se ? 15561U : 15739U) &&
+            addon->directCaller == (branch == GameBranch::se ? 15535U : 15712U) &&
+            addon->recursiveCaller == (branch == GameBranch::se ? 15546U : 15722U),
+            "native addon routing must resolve using the loaded game's library on all 12 versions");
+        Expect(branch != GameBranch::unsupported,
+            "a declared BCNG SE/AE runtime disappeared from the admission table");
+        Expect(bcn::runtime::ResolvePlayerTintLayout(version).has_value(),
+            "player tint must have an explicit layout on every admitted runtime");
+        Expect(bcn::runtime::ResolveRendererHook(version).has_value() &&
+                bcn::runtime::ResolveInputPollHook(version).has_value(),
+            "native UI hooks must have an explicit layout on every admitted runtime");
+        Expect(bcn::racemenu_compat::ResolveBodyMorphAbi(4U, branch) == BodyMorphAbi::v4 &&
+                bcn::racemenu_compat::ResolveBodyMorphAbi(5U, branch) == BodyMorphAbi::v5,
+            "BodyMorph v4/v5 must remain available on every admitted runtime");
+        Expect(bcn::racemenu_compat::ResolveOverlayStackAbi(1U, 1U, branch) ==
+                    OverlayStackAbi::legacyV1 &&
+                bcn::racemenu_compat::ResolveOverlayStackAbi(2U, 2U, branch) ==
+                    OverlayStackAbi::publicV2,
+            "both official RaceMenu overlay ABI generations must resolve on every admitted runtime");
+    }
+
+    constexpr REL::Version epic{1,6,678,0};
+    Expect(!bcn::native_addon::ResolveRuntimeLayout(epic) &&
+        !bcn::native_addon::ResolveRuntimeLayout(REL::Version{1,7,99,0}),
+        "native addon proof must not admit an unverified game layout");
+    Expect(bcn::runtime::ResolveGameBranch(epic)==GameBranch::unsupported &&
+        !bcn::runtime::ResolvePlayerTintLayout(epic) && !bcn::runtime::ResolveRendererHook(epic) &&
+        !bcn::runtime::ResolveInputPollHook(epic),
+        "Epic 1.6.678 has no supported upstream SKSE loader; never guess GOG layouts for it");
+
 
     const auto legacyTint = bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 6, 353, 0 });
     const auto aeTint = bcn::runtime::ResolvePlayerTintLayout(REL::Version{ 1, 6, 629, 0 });

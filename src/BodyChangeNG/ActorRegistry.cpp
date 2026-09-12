@@ -1,12 +1,18 @@
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/ActorStateSerialization.h"
+#include "BodyChangeNG/PlayerTintSerialization.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/RenderedOutfit.h"
+#include "BodyChangeNG/FaceSkinOverrides.h"
+#include "BodyChangeNG/FaceSkinSerialization.h"
+#include "BodyChangeNG/NativeAddonSkinBackend.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/SkinProfiles.h"
 
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/Settings.h"
-#include "BodyChangeNG/SkinOverrides.h"
+#include "BodyChangeNG/SkinApplication.h"
 
 #include <SKSE/Logger.h>
 
@@ -22,25 +28,23 @@ namespace
     constexpr std::uint32_t kCosaveID = 0x42434E47U;       // BCNG
     constexpr std::uint32_t kActorRecord = 0x41535452U;    // ASTR
     constexpr std::uint32_t kTintRecord = 0x54494E54U;     // TINT
-    constexpr std::uint32_t kActorRecordVersion = 2U;
+    constexpr std::uint32_t kFaceRecord = 0x46434E49U;     // FCNI, independent of ASTR
+    constexpr std::uint32_t kActorRecordVersion = 6U;
+    constexpr std::uint32_t kMultipleOverlayActorRecordVersion = 5U;
+    constexpr std::uint32_t kOverlayActorRecordVersion = 3U;
     constexpr std::uint32_t kLegacyActorRecordVersion = 1U;
-    constexpr std::uint32_t kTintRecordVersion = 1U;
+    constexpr std::uint32_t kPreviousActorRecordVersion = 2U;
+    constexpr std::uint32_t kTintRecordVersion = bcn::player_tint::kStateVersion;
     constexpr std::uint32_t kMaxActors = 16384U;
     constexpr std::uint32_t kMaxStrings = 131072U;
-    constexpr std::uint32_t kMaxTintLayers = 32U;
+    constexpr std::uint32_t kMaxOverlayItemsPerActor = 256U;
     constexpr std::uint32_t kMaxStringLength = 1024U;
 
-    enum StateFlags : std::uint16_t
-    {
-        kManualBody = 1U << 0U,
-        kManualSkin = 1U << 1U,
-        kDefaultBody = 1U << 2U,
-        kDefaultSkin = 1U << 3U,
-        kAppliedDefaultBody = 1U << 4U,
-        kAppliedDefaultSkin = 1U << 5U,
-        kBodyApplied = 1U << 6U,
-        kSkinApplied = 1U << 7U
-    };
+    using bcn::actor_serialization::SerializedActorStateV2;
+    using bcn::actor_serialization::SerializedActorStateV3;
+    using bcn::actor_serialization::SerializedActorStateV4;
+    using bcn::actor_serialization::SerializedActorStateV5;
+    using bcn::actor_serialization::SerializedOverlayItemV5;
 
     struct SerializedActorStateV1 final
     {
@@ -58,22 +62,6 @@ namespace
         std::uint64_t outfitSignature{};
     };
 
-    struct SerializedActorStateV2 final
-    {
-        std::uint32_t actorFormID{};
-        std::uint32_t baseLocalFormID{};
-        std::uint32_t basePluginIndex{};
-        std::uint32_t selectedBodyIndex{};
-        std::uint32_t selectedSkinIndex{};
-        std::uint32_t selectedFutanariSkinIndex{};
-        std::uint32_t appliedBodyIndex{};
-        std::uint32_t appliedSkinIndex{};
-        std::uint16_t flags{};
-        std::uint16_t reserved{};
-        std::uint64_t bodySignature{};
-        std::uint64_t skinSignature{};
-        std::uint64_t outfitSignature{};
-    };
 
     struct BaseIdentity final
     {
@@ -152,57 +140,40 @@ namespace
                 indexByString.emplace(value, index);
                 return index;
             };
-            std::vector<SerializedActorStateV2> serialized;
+            struct EncodedActor final
+            {
+                SerializedActorStateV5 state;
+                std::vector<SerializedOverlayItemV5> overlays;
+            };
+            std::vector<EncodedActor> serialized;
             serialized.reserve(states.size());
             for (const auto& state : states) {
-                std::uint16_t flags{};
-                if (state.body.selection.manual) flags |= kManualBody;
-                if (state.skin.selection.manual) flags |= kManualSkin;
-                if (state.body.selection.useDefault) flags |= kDefaultBody;
-                if (state.skin.selection.useDefault) flags |= kDefaultSkin;
-                if (state.body.application.appliedDefault) flags |= kAppliedDefaultBody;
-                if (state.skin.application.appliedDefault) flags |= kAppliedDefaultSkin;
-                if (state.body.application.applied) flags |= kBodyApplied;
-                if (state.skin.application.applied) flags |= kSkinApplied;
-                serialized.push_back(SerializedActorStateV2{
-                    .actorFormID = state.actorFormID,
-                    .baseLocalFormID = state.baseLocalFormID,
-                    .basePluginIndex = indexFor(state.basePlugin),
-                    .selectedBodyIndex = indexFor(state.body.selection.selectedId),
-                    .selectedSkinIndex = indexFor(state.skin.selection.selectedId),
-                    .selectedFutanariSkinIndex = indexFor(state.futanari.selectedSkinId),
-                    .appliedBodyIndex = indexFor(state.body.application.appliedId),
-                    .appliedSkinIndex = indexFor(state.skin.application.appliedId),
-                    .flags = flags,
-                    .bodySignature = state.body.application.signature,
-                    .skinSignature = state.skin.application.signature,
-                    .outfitSignature = state.body.outfitSignature
-                });
+                EncodedActor encoded;
+                encoded.state = bcn::actor_serialization::EncodeV6(state, indexFor, encoded.overlays);
+                serialized.push_back(std::move(encoded));
             }
             const auto stringCount = static_cast<std::uint32_t>(strings.size());
             const auto actorCount = static_cast<std::uint32_t>(serialized.size());
             auto ok = WriteValue(output, stringCount);
             for (const auto& value : strings) ok = WriteString(output, value) && ok;
             ok = WriteValue(output, actorCount) && ok;
-            for (const auto& state : serialized) ok = WriteValue(output, state) && ok;
+            for (const auto& actor : serialized) {
+                ok = WriteValue(output, actor.state) && ok;
+                for (const auto& overlay : actor.overlays) ok = WriteValue(output, overlay) && ok;
+            }
             if (!ok) SKSE::log::error("Body Change NG could not write its actor registry cosave record");
         }
 
+        if (output && output->OpenRecord(kFaceRecord, 1U)) {
+            const auto ok = bcn::face_skin::WriteBaselines(bcn::face_skin::SnapshotBaselines(),
+                [output](const auto& value) { return WriteValue(output, value); },
+                [output](const std::string& value) { return value.size() <= kMaxStringLength && WriteString(output, value); });
+            if (!ok) SKSE::log::error("BCNG could not save face NiOverride restoration baselines");
+        }
         if (output && output->OpenRecord(kTintRecord, kTintRecordVersion)) {
-            const auto tint = bcn::player_tint::SnapshotPersistedState();
-            auto ok = WriteString(output, tint.pack.value_or(std::string{}));
-            const auto count = static_cast<std::uint32_t>((std::min)(tint.layers.size(),
-                static_cast<std::size_t>(kMaxTintLayers)));
-            ok = WriteValue(output, count) && ok;
-            for (std::uint32_t index{}; index < count; ++index) {
-                const auto& layer = tint.layers[index];
-                const auto rawLayer = static_cast<std::uint8_t>(layer.layer);
-                const auto restored = static_cast<std::uint8_t>(layer.restored);
-                ok = WriteValue(output, rawLayer) && WriteValue(output, restored) &&
-                    WriteValue(output, layer.color.red) && WriteValue(output, layer.color.green) &&
-                    WriteValue(output, layer.color.blue) && WriteValue(output, layer.color.alpha) &&
-                    WriteString(output, layer.assetID) && ok;
-            }
+            const auto ok = bcn::player_tint::WriteState(bcn::player_tint::SnapshotPersistedState(),
+                [output](const auto& value) { return WriteValue(output, value); },
+                [output](const std::string& value) { return value.size() <= kMaxStringLength && WriteString(output, value); });
             if (!ok) SKSE::log::error("Body Change NG could not write its player tint cosave record");
         }
     }
@@ -218,11 +189,11 @@ namespace
         std::vector<bcn::ActorState> loaded;
         loaded.reserve(actorCount);
         for (std::uint32_t index{}; index < actorCount; ++index) {
-            SerializedActorStateV2 source;
+            std::optional<bcn::ActorState> decoded;
             if (version == kLegacyActorRecordVersion) {
                 SerializedActorStateV1 legacy;
                 if (!ReadValue(input, legacy)) return;
-                source = {
+                SerializedActorStateV2 source{
                     .actorFormID = legacy.actorFormID,
                     .baseLocalFormID = legacy.baseLocalFormID,
                     .basePluginIndex = legacy.basePluginIndex,
@@ -237,74 +208,52 @@ namespace
                     .skinSignature = legacy.skinSignature,
                     .outfitSignature = legacy.outfitSignature
                 };
-            } else if (!ReadValue(input, source)) {
+                if (!input->ResolveFormID(source.actorFormID, source.actorFormID)) continue;
+                decoded = bcn::actor_serialization::Decode(source, strings);
+            } else if (version == kPreviousActorRecordVersion) {
+                SerializedActorStateV2 source;
+                if (!ReadValue(input, source)) return;
+                if (!input->ResolveFormID(source.actorFormID, source.actorFormID)) continue;
+                decoded = bcn::actor_serialization::Decode(source, strings);
+            } else if (version == kOverlayActorRecordVersion) {
+                SerializedActorStateV3 source;
+                if (!ReadValue(input, source)) return;
+                if (!input->ResolveFormID(source.actorFormID, source.actorFormID)) continue;
+                decoded = bcn::actor_serialization::Decode(source, strings);
+            } else if (version == 4U) {
+                SerializedActorStateV4 source;
+                if (!ReadValue(input, source)) return;
+                if (!input->ResolveFormID(source.state.actorFormID, source.state.actorFormID)) continue;
+                decoded = bcn::actor_serialization::Decode(source, strings);
+            } else if (version == kMultipleOverlayActorRecordVersion ||
+                version == kActorRecordVersion) {
+                SerializedActorStateV5 source;
+                if (!ReadValue(input, source)) return;
+                std::size_t itemCount{};
+                for (const auto count : source.overlayCounts) itemCount += count;
+                if (itemCount > kMaxOverlayItemsPerActor) return;
+                std::vector<SerializedOverlayItemV5> overlayItems(itemCount);
+                for (auto& item : overlayItems) if (!ReadValue(input, item)) return;
+                if (!input->ResolveFormID(source.state.actorFormID, source.state.actorFormID)) continue;
+                decoded = version == kActorRecordVersion ?
+                    bcn::actor_serialization::DecodeV6(source, overlayItems, strings) :
+                    bcn::actor_serialization::Decode(source, overlayItems, strings);
+            } else {
                 return;
             }
-            if (!input->ResolveFormID(source.actorFormID, source.actorFormID)) continue;
-            const auto validIndex = [&strings](const std::uint32_t value) { return value < strings.size(); };
-            if (!validIndex(source.basePluginIndex) || !validIndex(source.selectedBodyIndex) ||
-                !validIndex(source.selectedSkinIndex) || !validIndex(source.selectedFutanariSkinIndex) ||
-                !validIndex(source.appliedBodyIndex) ||
-                !validIndex(source.appliedSkinIndex)) continue;
-            loaded.push_back(bcn::ActorState{
-                .actorFormID = source.actorFormID,
-                .baseLocalFormID = source.baseLocalFormID,
-                .basePlugin = strings[source.basePluginIndex],
-                .body = {
-                    .selection = {
-                        .selectedId = strings[source.selectedBodyIndex],
-                        .manual = (source.flags & kManualBody) != 0U,
-                        .useDefault = (source.flags & kDefaultBody) != 0U
-                    },
-                    .application = {
-                        .appliedId = strings[source.appliedBodyIndex],
-                        .appliedDefault = (source.flags & kAppliedDefaultBody) != 0U,
-                        .applied = (source.flags & kBodyApplied) != 0U,
-                        .signature = source.bodySignature
-                    },
-                    .outfitSignature = source.outfitSignature
-                },
-                .skin = {
-                    .selection = {
-                        .selectedId = strings[source.selectedSkinIndex],
-                        .manual = (source.flags & kManualSkin) != 0U,
-                        .useDefault = (source.flags & kDefaultSkin) != 0U
-                    },
-                    .application = {
-                        .appliedId = strings[source.appliedSkinIndex],
-                        .appliedDefault = (source.flags & kAppliedDefaultSkin) != 0U,
-                        .applied = (source.flags & kSkinApplied) != 0U,
-                        .signature = source.skinSignature
-                    }
-                },
-                .futanari = { .selectedSkinId = strings[source.selectedFutanariSkinIndex] }
-            });
+            if (!decoded) continue;
+            loaded.push_back(std::move(*decoded));
         }
         for (auto& state : loaded) bcn::ActorRegistry::Get().RestoreSerialized(std::move(state));
     }
 
-    void LoadTintRecord(SKSE::SerializationInterface* input)
+    void LoadTintRecord(SKSE::SerializationInterface* input, const std::uint32_t version)
     {
-        std::string pack;
-        std::uint32_t count{};
-        if (!ReadString(input, pack) || !ReadValue(input, count) || count > kMaxTintLayers) return;
-        bcn::player_tint::PersistedState state;
-        if (!pack.empty()) state.pack = std::move(pack);
-        state.layers.reserve(count);
-        for (std::uint32_t index{}; index < count; ++index) {
-            std::uint8_t rawLayer{};
-            std::uint8_t restored{};
-            bcn::player_tint::PersistedLayerState layer;
-            if (!ReadValue(input, rawLayer) || !ReadValue(input, restored) ||
-                !ReadValue(input, layer.color.red) || !ReadValue(input, layer.color.green) ||
-                !ReadValue(input, layer.color.blue) || !ReadValue(input, layer.color.alpha) ||
-                !ReadString(input, layer.assetID)) return;
-            if (rawLayer > static_cast<std::uint8_t>(bcn::player_tint::Layer::dirt)) continue;
-            layer.layer = static_cast<bcn::player_tint::Layer>(rawLayer);
-            layer.restored = restored != 0U;
-            state.layers.push_back(std::move(layer));
-        }
-        bcn::player_tint::RestorePersistedState(std::move(state));
+        auto state = bcn::player_tint::ReadState(version,
+            [input](auto& value) { return ReadValue(input, value); },
+            [input](std::string& value) { return ReadString(input, value); });
+        if (state) bcn::player_tint::RestorePersistedState(std::move(*state));
+        else SKSE::log::warn("BCNG rejected a malformed player tint record");
     }
 
     void LoadState(SKSE::SerializationInterface* input)
@@ -316,10 +265,24 @@ namespace
         std::uint32_t length{};
         while (input && input->GetNextRecordInfo(type, version, length)) {
             if (type == kActorRecord &&
-                (version == kLegacyActorRecordVersion || version == kActorRecordVersion)) {
+                (version == kLegacyActorRecordVersion ||
+                    version == kPreviousActorRecordVersion || version == kOverlayActorRecordVersion ||
+                    version == 4U || version == kMultipleOverlayActorRecordVersion ||
+                    version == kActorRecordVersion)) {
                 LoadActorRecord(input, version);
-            } else if (type == kTintRecord && version == kTintRecordVersion) {
-                LoadTintRecord(input);
+            } else if (type == kFaceRecord && version == 1U) {
+                auto rows = bcn::face_skin::ReadBaselines(
+                    [input](auto& value) { return ReadValue(input, value); },
+                    [input](std::string& value) { return ReadString(input, value); });
+                if (rows) {
+                    std::erase_if(*rows, [input](auto& row) {
+                        return !input->ResolveFormID(row.actor, row.actor) ||
+                            !input->ResolveFormID(row.base, row.base);
+                    });
+                    bcn::face_skin::RestoreBaselines(std::move(*rows));
+                } else SKSE::log::error("BCNG rejected malformed face baseline record");
+            } else if (type == kTintRecord && (version == 1U || version == kTintRecordVersion)) {
+                LoadTintRecord(input, version);
             } else {
                 SKSE::log::warn("Body Change NG ignored cosave record {:08X} version {}", type, version);
             }
@@ -331,6 +294,7 @@ namespace
     void RevertState(SKSE::SerializationInterface*)
     {
         bcn::frame_tasks::Reset(false);
+        bcn::rendered_outfit::Reset();
         bcn::ActorRegistry::Get().Revert();
         bcn::player_tint::ResetPersistedState();
     }
@@ -414,14 +378,18 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        if (!state || (!state->body.selection.manual && !state->skin.selection.manual)) return std::nullopt;
+        if (!state || (!state->body.selection.manual && !state->skin.selection.manual &&
+                !state->futanari.manual)) return std::nullopt;
         return ManualActorSelection{
             .bodyId = state->body.selection.selectedId,
             .skinId = state->skin.selection.selectedId,
+            .futanariSkinId = state->futanari.selectedSkinId,
             .hasBody = state->body.selection.manual,
             .hasSkin = state->skin.selection.manual,
+            .hasFutanari = state->futanari.manual,
             .useDefaultBody = state->body.selection.useDefault,
-            .useDefaultSkin = state->skin.selection.useDefault
+            .useDefaultSkin = state->skin.selection.useDefault,
+            .useDefaultFutanari = state->futanari.useDefault
         };
     }
 
@@ -432,6 +400,14 @@ namespace bcn
         return state && state->body.application.applied && !state->body.application.appliedDefault &&
             !state->body.application.appliedId.empty() ?
             std::optional{ state->body.application.appliedId } : std::nullopt;
+    }
+
+    std::optional<std::string> ActorRegistry::SelectedBodyId(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && !state->body.selection.useDefault && !state->body.selection.selectedId.empty() ?
+            std::optional{ state->body.selection.selectedId } : std::nullopt;
     }
 
     std::optional<std::string> ActorRegistry::SelectedSkinId(const RE::Actor* actor) const
@@ -451,12 +427,66 @@ namespace bcn
             std::optional{ state->skin.application.appliedId } : std::nullopt;
     }
 
+    std::vector<OverlayItemState> ActorRegistry::SelectedOverlays(
+        const RE::Actor* actor, const overlay::Area area) const
+    {
+        if (area == overlay::Area::count) return {};
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        if (!state) return {};
+        const auto& selected = state->overlay.areas[overlay::Index(area)];
+        return selected.useDefault ? std::vector<OverlayItemState>{} : selected.items;
+    }
+
+    std::optional<OverlayItemState> ActorRegistry::SelectedOverlay(
+        const RE::Actor* actor, const overlay::Area area, const std::string_view overlayId) const
+    {
+        if (area == overlay::Area::count || overlayId.empty()) return std::nullopt;
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        if (!state) return std::nullopt;
+        const auto& selected = state->overlay.areas[overlay::Index(area)];
+        if (selected.useDefault) return std::nullopt;
+        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        return found == selected.items.end() ? std::nullopt : std::optional{ *found };
+    }
+
+    bool ActorRegistry::OverlayAreaIsManual(const RE::Actor* actor, const overlay::Area area) const
+    {
+        if (area == overlay::Area::count) return false;
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && state->overlay.areas[overlay::Index(area)].manual;
+    }
+
     std::optional<std::string> ActorRegistry::SelectedFutanariSkinId(const RE::Actor* actor) const
     {
         std::scoped_lock lock(lock_);
         const auto* state = FindValidatedLocked(actor);
-        return state && !state->futanari.selectedSkinId.empty() ?
+        return state && !state->futanari.useDefault && !state->futanari.selectedSkinId.empty() ?
             std::optional{ state->futanari.selectedSkinId } : std::nullopt;
+    }
+
+    bool ActorRegistry::HasFutanariSelection(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && (state->futanari.manual || state->futanari.useDefault ||
+            !state->futanari.selectedSkinId.empty());
+    }
+
+    bool ActorRegistry::FutanariSelectionIsManual(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && state->futanari.manual;
+    }
+
+    bool ActorRegistry::FutanariUsesDefault(const RE::Actor* actor) const
+    {
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && state->futanari.useDefault;
     }
 
     void ActorRegistry::SetManualBody(RE::Actor* actor, std::string bodyId, const bool useDefault)
@@ -479,73 +509,173 @@ namespace bcn
         state.skin.selection.useDefault = useDefault;
     }
 
-    void ActorRegistry::SetFutanariSkin(RE::Actor* actor, std::string skinId)
+    void ActorRegistry::AddManualOverlay(RE::Actor* actor, const overlay::Area area,
+        std::string overlayId, std::string texturePath, const std::uint8_t ownedSlot,
+        const bool useDefault)
     {
-        if (!actor || skinId.empty() || skinId.size() > kMaxStringLength) return;
+        if (!actor || area == overlay::Area::count ||
+            (!useDefault && (overlayId.empty() || texturePath.empty())) ||
+            overlayId.size() > kMaxStringLength || texturePath.size() > kMaxStringLength) return;
         std::scoped_lock lock(lock_);
-        EnsureLocked(actor).futanari.selectedSkinId = std::move(skinId);
+        auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
+        selected.manual = true;
+        selected.useDefault = useDefault;
+        if (useDefault) {
+            selected.items.clear();
+            return;
+        }
+        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        OverlayItemState item{ .selectedId = std::move(overlayId),
+            .texturePath = std::move(texturePath), .ownedSlot = ownedSlot };
+        if (found == selected.items.end()) selected.items.push_back(std::move(item));
+        else {
+            item.color = found->color;
+            *found = std::move(item);
+        }
     }
 
-    void ActorRegistry::ClearFutanariSkin(RE::Actor* actor)
+    void ActorRegistry::RemoveManualOverlay(RE::Actor* actor, const overlay::Area area,
+        const std::string_view overlayId)
+    {
+        if (!actor || area == overlay::Area::count || overlayId.empty()) return;
+        std::scoped_lock lock(lock_);
+        auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
+        std::erase_if(selected.items, [&](const auto& item) { return item.selectedId == overlayId; });
+        selected.manual = true;
+        selected.useDefault = selected.items.empty();
+    }
+
+    bool ActorRegistry::CompleteOverlayApply(RE::Actor* actor, overlay::Area area,
+        OverlayItemState item, overlay::ApplyMode mode, std::uint64_t resetRevision)
+    {
+        if (!actor || area == overlay::Area::count) return false;
+        std::scoped_lock lock(lock_);
+        return CompleteOverlayTransaction(EnsureLocked(actor).overlay.areas[overlay::Index(area)],
+            std::move(item), mode, resetRevision);
+    }
+
+    void ActorRegistry::CompleteOverlayReset(RE::Actor* actor, overlay::Area area,
+        std::uint64_t resetRevision)
+    {
+        if (!actor || area == overlay::Area::count) return;
+        std::scoped_lock lock(lock_);
+        auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
+        if (!state) return;
+        auto& selected = state->overlay.areas[overlay::Index(area)];
+        if (selected.useDefault && selected.resetRevision == resetRevision) selected.items.clear();
+    }
+
+    void ActorRegistry::ClearManualOverlays(RE::Actor* actor, const overlay::Area area)
+    {
+        if (!actor || area == overlay::Area::count) return;
+        std::scoped_lock lock(lock_);
+        auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
+        selected.items.clear();
+        selected.manual = true;
+        selected.useDefault = true;
+    }
+
+    void ActorRegistry::SetAutomaticOverlaySelection(RE::Actor* actor, const overlay::Area area,
+        std::optional<std::string> overlayId)
+    {
+        if (!actor || area == overlay::Area::count ||
+            (overlayId && (overlayId->empty() || overlayId->size() > kMaxStringLength))) return;
+        std::scoped_lock lock(lock_);
+        auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
+        if (selected.manual || !overlayId) return;
+        const auto previous = selected.items.empty() ? OverlayItemState{} : selected.items.front();
+        selected.items = { OverlayItemState{ .selectedId = std::move(*overlayId),
+            .texturePath = previous.texturePath, .ownedSlot = previous.ownedSlot,
+            .color = previous.color } };
+        selected.useDefault = false;
+    }
+
+    void ActorRegistry::MarkOverlayResolved(RE::Actor* actor, const overlay::Area area,
+        const std::string_view overlayId, std::string texturePath, const std::uint8_t ownedSlot)
+    {
+        if (!actor || area == overlay::Area::count || texturePath.empty() ||
+            texturePath.size() > kMaxStringLength) return;
+        std::scoped_lock lock(lock_);
+        auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
+        if (selected.useDefault) return;
+        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        if (found == selected.items.end()) return;
+        found->texturePath = std::move(texturePath);
+        found->ownedSlot = ownedSlot;
+    }
+
+    void ActorRegistry::SetManualFutanariSkin(
+        RE::Actor* actor, std::string skinId, const bool useDefault)
+    {
+        if (!actor || (!useDefault && skinId.empty()) || skinId.size() > kMaxStringLength) return;
+        std::scoped_lock lock(lock_);
+        auto& selection = EnsureLocked(actor).futanari;
+        selection.selectedSkinId = useDefault ? std::string{} : std::move(skinId);
+        selection.manual = true;
+        selection.useDefault = useDefault;
+    }
+
+    void ActorRegistry::SetAutomaticFutanariSkin(
+        RE::Actor* actor, std::optional<std::string> skinId)
+    {
+        if (!actor || !skinId || skinId->empty() || skinId->size() > kMaxStringLength) return;
+        std::scoped_lock lock(lock_);
+        auto& selection = EnsureLocked(actor).futanari;
+        if (selection.manual) return;
+        selection.selectedSkinId = std::move(*skinId);
+        selection.useDefault = false;
+    }
+
+    void ActorRegistry::SetOverlayColor(RE::Actor* actor, const overlay::Area area,
+        const std::string_view overlayId, const std::uint32_t color)
+    {
+        if (!actor || area == overlay::Area::count) return;
+        std::scoped_lock lock(lock_);
+        auto& items = EnsureLocked(actor).overlay.areas[overlay::Index(area)].items;
+        const auto found = std::ranges::find(items, overlayId, &OverlayItemState::selectedId);
+        if (found != items.end()) found->color = color;
+    }
+
+    void ActorRegistry::ResetSelectionsToDefaults(RE::Actor* actor)
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        if (auto* state = const_cast<ActorState*>(FindValidatedLocked(actor))) {
-            state->futanari.selectedSkinId.clear();
-        }
+        ResetActorSelectionsToDefaults(EnsureLocked(actor));
     }
 
-    bool ActorRegistry::RemoveManual(RE::Actor* actor)
-    {
-        if (!actor) return false;
-        std::scoped_lock lock(lock_);
-        auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
-        if (!state || (!state->body.selection.manual && !state->skin.selection.manual)) return false;
-        state->body.selection = {};
-        state->skin.selection = {};
-        return true;
-    }
-
-    bool ActorRegistry::RemoveManualBody(RE::Actor* actor)
-    {
-        if (!actor) return false;
-        std::scoped_lock lock(lock_);
-        auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
-        if (!state || !state->body.selection.manual) return false;
-        state->body.selection = {};
-        return true;
-    }
-
-    void ActorRegistry::ClearManualSelections()
+    void ActorRegistry::ResetAllSelectionsToDefaults()
     {
         std::scoped_lock lock(lock_);
         for (auto& [formID, state] : states_) {
-            state.body.selection = {};
-            state.skin.selection = {};
-        }
-    }
-
-    void ActorRegistry::ClearManualBodySelections()
-    {
-        std::scoped_lock lock(lock_);
-        for (auto& [formID, state] : states_) {
-            state.body.selection = {};
+            static_cast<void>(formID);
+            ResetActorSelectionsToDefaults(state);
         }
     }
 
     bool ActorRegistry::HasManualSelection(const RE::Actor* actor) const
     {
-        return ManualSelection(actor).has_value();
+        std::scoped_lock lock(lock_);
+        const auto* state = FindValidatedLocked(actor);
+        return state && (state->body.selection.manual || state->skin.selection.manual ||
+            state->futanari.manual ||
+            std::ranges::any_of(state->overlay.areas,
+                [](const auto& area) { return area.manual; }));
     }
 
     void ActorRegistry::SetRuleSelection(RE::Actor* actor, std::optional<std::string> bodyId,
-        std::optional<std::string> skinId, const bool useDefaultBody)
+        std::optional<std::string> skinId, const bool useDefaultBody,
+        std::optional<std::string> futanariSkinId)
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
         UpdateAutomaticSelection(state.body.selection, bodyId, useDefaultBody);
         UpdateAutomaticSelection(state.skin.selection, skinId);
+        if (!state.futanari.manual && futanariSkinId && !futanariSkinId->empty() &&
+            futanariSkinId->size() <= kMaxStringLength) {
+            state.futanari.selectedSkinId = std::move(*futanariSkinId);
+            state.futanari.useDefault = false;
+        }
     }
 
     std::uint64_t ActorRegistry::BodySignature(const std::string_view bodyId, const bool useDefault)
@@ -602,7 +732,7 @@ namespace bcn
             if (state->skin.application.verifiedThisSession) return false;
         }
 
-        const auto liveMatches = skin_override::LiveSkinStateMatches(actor, skinId, useDefault);
+        const auto liveMatches = skin_application::LiveSkinStateMatches(actor, skinId, useDefault);
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
         if (!state) return true;
@@ -684,16 +814,6 @@ namespace bcn
         EnsureLocked(actor).body.outfitSignature = 0U;
     }
 
-    void ActorRegistry::InvalidateAllBodyResults()
-    {
-        std::scoped_lock lock(lock_);
-        for (auto& [formID, state] : states_) {
-            state.body.application.applied = false;
-            state.body.application.verifiedThisSession = false;
-            state.body.application.signature = 0U;
-        }
-    }
-
     void ActorRegistry::RestoreSerialized(ActorState state)
     {
         if (state.actorFormID == 0U) return;
@@ -704,6 +824,8 @@ namespace bcn
 
     void ActorRegistry::Revert()
     {
+        face_skin::Reset();
+        native_addon::Reset();
         std::scoped_lock lock(lock_);
         states_.clear();
         ++sessionGeneration_;

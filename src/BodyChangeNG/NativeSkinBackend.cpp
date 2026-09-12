@@ -5,16 +5,31 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/NativeSkinRouting.h"
+#include "BodyChangeNG/SkinGeometryRouting.h"
+#include "BodyChangeNG/FaceSkinOverrides.h"
 #include "BodyChangeNG/NativeSkinOwnership.h"
+#include "BodyChangeNG/NativeAddonCopy.h"
+#include "BodyChangeNG/NativeTextureData.h"
+#include "BodyChangeNG/NativeTexturePath.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
 #include "BodyChangeNG/RuntimeCompatibility.h"
 #include "BodyChangeNG/SkinApplicationPlan.h"
-#include "BodyChangeNG/SkinOverrideOwnership.h"
+#include "BodyChangeNG/SkinTextureOwnership.h"
 #include "BodyChangeNG/SkinProfiles.h"
+#include "BodyChangeNG/SkinRefreshTargets.h"
 
+#include <RE/B/BGSKeyword.h>
 #include <RE/B/BGSListForm.h>
 #include <RE/B/BGSTextureSet.h>
+#include <RE/B/BSGeometry.h>
+#include <RE/B/BSLightingShaderMaterialBase.h>
+#include <RE/B/BSModelDB.h>
+#include <RE/B/BSResourceNiBinaryStream.h>
+#include <RE/B/BSTextureSet.h>
+#include <RE/B/BSVisit.h>
 #include <RE/C/ConcreteFormFactory.h>
+#include <RE/M/MemoryManager.h>
+#include <RE/N/NiNode.h>
 #include <RE/P/ProcessLists.h>
 #include <RE/T/TESNPC.h>
 #include <RE/T/TESObjectARMA.h>
@@ -26,8 +41,11 @@
 #include <atomic>
 #include <filesystem>
 #include <mutex>
+#include <new>
 #include <ranges>
+#include <span>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -36,13 +54,37 @@ namespace
     using TextureRole = bcn::native_skin::TextureRole;
     using TextureLayers = std::vector<bcn::SkinTextureLayer>;
     constexpr std::size_t kTextureCount = RE::BSTextureSet::Textures::kUsedTotal;
+    constexpr auto kGenitalSlot = static_cast<std::uint32_t>(
+        RE::BGSBipedObjectForm::BipedObjectSlot::kModPelvisSecondary);
+
+    [[nodiscard]] bool IsTngSkinArmor(const RE::TESObjectARMO* armor)
+    {
+        return armor && armor->HasKeywordString("TNG_CustomSkin");
+    }
+
+    void RemoveTngSkinMarker(RE::TESObjectARMO* armor)
+    {
+        if (!armor) return;
+        RE::BGSKeyword* marker{};
+        armor->ForEachKeyword([&marker](RE::BGSKeyword* keyword) {
+            const auto* editorId = keyword ? keyword->GetFormEditorID() : nullptr;
+            if (editorId && std::string_view{ editorId } == "TNG_CustomSkin") {
+                marker = keyword;
+                return RE::BSContainer::ForEachResult::kStop;
+            }
+            return RE::BSContainer::ForEachResult::kContinue;
+        });
+        if (marker) armor->RemoveKeyword(marker);
+    }
 
     struct TextureBinding final
     {
         RE::BGSTextureSet* textureSet{};
         TextureRole role{ TextureRole::unmanaged };
+        std::optional<TextureRole> fixedRole;
         std::uint32_t slotMask{};
         std::array<std::string, kTextureCount> originalPaths;
+        bcn::native_skin::FormTextureSlots formSlots{};
     };
 
     struct ArmorGraph final
@@ -51,16 +93,31 @@ namespace
         std::vector<TextureBinding> textures;
     };
 
+    struct ModelTextureTarget final
+    {
+        TextureRole role{ TextureRole::unmanaged };
+        std::uint32_t index3D{};
+        std::string name3D;
+        std::array<std::string, kTextureCount> paths;
+    };
+
+    struct PendingModelTexture final
+    {
+        ModelTextureTarget target;
+        TextureBinding binding;
+    };
+
     struct BaseInstance final
     {
         RE::TESNPC* base{};
         RE::FormID ownerActor{};
+        RE::FormID sourceRace{};
+        RE::SEX sourceSex{ RE::SEX::kMale };
+        bcn::body_family::Mask sourceFamily{};
         RE::TESObjectARMO* originalSkin{};
         RE::TESObjectARMO* originalFarSkin{};
-        RE::BGSTextureSet* originalFace{};
         ArmorGraph skin;
         ArmorGraph farSkin;
-        TextureBinding face;
         std::string desiredProfileId;
         std::string appliedProfileId;
         std::uint64_t appliedContentHash{};
@@ -69,7 +126,6 @@ namespace
         bool appliedDefault{};
         bool skinAttached{};
         bool farSkinAttached{};
-        bool faceAttached{};
     };
 
     std::mutex g_lock;
@@ -110,17 +166,54 @@ namespace
         return path ? std::string{ path } : std::string{};
     }
 
+    [[nodiscard]] bool PrepareFormSlots(TextureBinding& binding)
+    {
+        const auto slots = bcn::native_skin::DiscoverFormTextureSlots(*binding.textureSet,
+            [&](const std::size_t shader) { return TexturePath(binding.textureSet, shader); });
+        if (!slots) {
+            SKSE::log::error("BCNG cannot resolve private TXST shader-to-record slots form={:08X}",
+                binding.textureSet->GetFormID());
+            return false;
+        }
+        binding.formSlots = *slots;
+        return true;
+    }
+
+    [[nodiscard]] bool WriteTexturePath(TextureBinding& binding,
+        const std::size_t index, const std::string& path)
+    {
+        auto* form = binding.textureSet;
+        if (!form || index >= binding.formSlots.size() ||
+            !bcn::native_skin::WriteFormTexturePath(*form, binding.formSlots[index], path.c_str())) return false;
+        const auto actual = TexturePath(form, index);
+        if (actual == path) return true;
+        SKSE::log::error("BCNG TXST readback mismatch form={:08X} index={} expected='{}' actual='{}'",
+            form->GetFormID(), index, path, actual);
+        return false;
+    }
+
     [[nodiscard]] std::optional<TextureBinding> CloneTexture(
         RE::BGSTextureSet* source, const std::uint32_t slotMask,
         const bcn::SkinUvLayout layout)
     {
         auto* clone = DuplicateForm(source);
         if (!clone) return std::nullopt;
+        // BGSTextureSet also inherits the no-op TESForm::Copy. In particular
+        // the model-space-normal flag must survive along with the DDS paths.
+        clone->boundData = source->boundData;
+        clone->flags = source->flags;
+        if (source->decalData) {
+            clone->decalData = RE::malloc<RE::DecalData>();
+            if (!clone->decalData) return std::nullopt;
+            *clone->decalData = *source->decalData;
+        }
         TextureBinding result;
         result.textureSet = clone;
         result.slotMask = slotMask;
+        if (!PrepareFormSlots(result)) return std::nullopt;
         for (std::size_t index{}; index < kTextureCount; ++index) {
             result.originalPaths[index] = TexturePath(source, index);
+            if (!WriteTexturePath(result, index, result.originalPaths[index])) return std::nullopt;
         }
         result.role = bcn::native_skin::ResolveTextureRole(
             slotMask, result.originalPaths[RE::BSTextureSet::Textures::kDiffuse], layout);
@@ -136,14 +229,220 @@ namespace
         TextureBinding result;
         result.textureSet = textureSet;
         result.slotMask = slotMask;
+        if (!PrepareFormSlots(result)) return std::nullopt;
         for (std::size_t index{}; index < kTextureCount; ++index) {
             result.originalPaths[index] = bcn::native_skin::UbeBaselineTexturePath(index);
-            textureSet->SetTexturePath(static_cast<RE::BSTextureSet::Texture>(index),
-                result.originalPaths[index].c_str());
+            if (!WriteTexturePath(result, index, result.originalPaths[index])) return std::nullopt;
         }
         result.role = bcn::native_skin::ResolveTextureRole(
             slotMask, result.originalPaths[RE::BSTextureSet::Textures::kDiffuse], layout);
         return result;
+    }
+
+    [[nodiscard]] std::string NativeFormPath(std::string path)
+    {
+        std::ranges::replace(path, '/', '\\');
+        constexpr std::string_view prefix = "textures\\";
+        if (path.size() >= prefix.size() &&
+            bcn::skin_geometry::ContainsIgnoreAsciiCase(
+                std::string_view(path).substr(0, prefix.size()), prefix)) {
+            path.erase(0, prefix.size());
+        }
+        return path;
+    }
+
+    [[nodiscard]] std::optional<std::vector<ModelTextureTarget>> DiscoverModelTextureTargets(
+        const RE::TESModelTextureSwap& model, const bcn::SkinUvLayout layout)
+    {
+        if (layout != bcn::SkinUvLayout::cbbe &&
+            layout != bcn::SkinUvLayout::unp) return std::vector<ModelTextureTarget>{};
+        const auto* modelPath = model.GetModel();
+        if (!modelPath || modelPath[0] == '\0') return std::vector<ModelTextureTarget>{};
+
+        RE::NiPointer<RE::NiNode> root;
+        RE::BSModelDB::DBTraits::ArgsType args;
+        const auto loaded = RE::BSModelDB::Demand(modelPath, root, args);
+        if (loaded != RE::BSResource::ErrorCode::kNone || !root) {
+            SKSE::log::warn("BCNG could not inspect native model '{}' for embedded skin atlases error={}",
+                modelPath, static_cast<unsigned>(loaded));
+            // A model that cannot be inspected may still be a conventional
+            // body/hand/foot ARMA whose ordinary skin TXST is sufficient. Do
+            // not reject every skin here. The graph-coverage guard later in
+            // the apply path still rejects a profile that actually declares
+            // a genital/anal atlas when no exact native target was found.
+            return std::vector<ModelTextureTarget>{};
+        }
+
+        std::vector<ModelTextureTarget> targets;
+        std::uint32_t index3D{};
+        bool invalid{};
+        RE::BSVisit::TraverseScenegraphGeometries(root.get(), [&](RE::BSGeometry* geometry) {
+            const auto currentIndex = index3D++;
+            if (!geometry) return RE::BSVisit::BSVisitControl::kContinue;
+            auto* shader = geometry->lightingShaderProp_cast();
+            auto* material = shader ?
+                static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+            auto* textureSet = material ? material->textureSet.get() : nullptr;
+            const auto* name = geometry->name.c_str();
+            const auto* diffuse = textureSet ?
+                textureSet->GetTexturePath(RE::BSTextureSet::Textures::kDiffuse) : nullptr;
+            const std::string_view nodeName = name ? std::string_view{ name } : std::string_view{};
+            const std::string_view diffusePath = diffuse ?
+                std::string_view{ diffuse } : std::string_view{};
+            const auto role = layout == bcn::SkinUvLayout::cbbe &&
+                    bcn::skin_geometry::IsCBBEGenitalAnal(nodeName, diffusePath) ?
+                TextureRole::cbbeGenitalAnal :
+                layout == bcn::SkinUvLayout::unp &&
+                    bcn::skin_geometry::IsUNPGenitalAnal(nodeName, diffusePath) ?
+                TextureRole::unpGenitalAnal : TextureRole::unmanaged;
+            if (role == TextureRole::unmanaged) {
+                return RE::BSVisit::BSVisitControl::kContinue;
+            }
+            if (nodeName.empty() || !textureSet) {
+                invalid = true;
+                return RE::BSVisit::BSVisitControl::kStop;
+            }
+            ModelTextureTarget target{
+                .role = role,
+                .index3D = currentIndex,
+                .name3D = std::string{ nodeName }
+            };
+            for (std::size_t index{}; index < target.paths.size(); ++index) {
+                const auto* path = textureSet->GetTexturePath(
+                    static_cast<RE::BSTextureSet::Texture>(index));
+                target.paths[index] = NativeFormPath(path ? path : "");
+            }
+            targets.push_back(std::move(target));
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        if (invalid) return std::nullopt;
+        return targets;
+    }
+
+    [[nodiscard]] std::optional<TextureBinding> CreateModelTexture(
+        const ModelTextureTarget& target, const std::uint32_t slotMask)
+    {
+        auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::BGSTextureSet>();
+        auto* textureSet = factory ? factory->Create() : nullptr;
+        if (!textureSet) {
+            SKSE::log::error(
+                "BCNG could not create private embedded TXST index3D={} name='{}' role={}",
+                target.index3D, target.name3D, static_cast<unsigned>(target.role));
+            return std::nullopt;
+        }
+        TextureBinding result;
+        result.textureSet = textureSet;
+        result.role = target.role;
+        result.fixedRole = target.role;
+        result.slotMask = slotMask;
+        if (!PrepareFormSlots(result)) return std::nullopt;
+        result.originalPaths = target.paths;
+        for (std::size_t index{}; index < result.originalPaths.size(); ++index) {
+            if (!WriteTexturePath(result, index, result.originalPaths[index])) {
+                SKSE::log::error(
+                    "BCNG could not initialize private embedded TXST form={:08X} index3D={} name='{}' shader-index={} path='{}'",
+                    textureSet->GetFormID(), target.index3D, target.name3D, index,
+                    result.originalPaths[index]);
+                return std::nullopt;
+            }
+        }
+        return result;
+    }
+
+    [[nodiscard]] bool SetModelAlternateTextures(RE::TESModelTextureSwap& model,
+        const std::vector<PendingModelTexture>& pending)
+    {
+        if (pending.empty()) return true;
+        if (model.numAlternateTextures != 0U && !model.alternateTextures) return false;
+
+        using Entry = RE::TESModelTextureSwap::AlternateTexture;
+        const auto oldCount = model.numAlternateTextures;
+        std::uint32_t additions{};
+        for (const auto& item : pending) {
+            if (!item.binding.textureSet) return false;
+            const auto exists = std::ranges::any_of(
+                std::span{ model.alternateTextures, oldCount }, [&](const Entry& entry) {
+                    return entry.index3D == item.target.index3D &&
+                        entry.name3D == std::string_view{ item.target.name3D };
+                });
+            if (!exists) ++additions;
+        }
+        const auto capacity = static_cast<std::size_t>(oldCount) + additions;
+        auto* replacement = RE::calloc<Entry>(capacity);
+        if (!replacement) return false;
+        for (std::uint32_t index{}; index < oldCount; ++index) {
+            std::construct_at(replacement + index, model.alternateTextures[index]);
+        }
+        auto used = oldCount;
+        for (const auto& item : pending) {
+            const auto current = std::span{ replacement, used };
+            const auto match = std::ranges::find_if(
+                current, [&](const Entry& entry) {
+                    return entry.index3D == item.target.index3D &&
+                        entry.name3D == std::string_view{ item.target.name3D };
+                });
+            if (match != current.end()) {
+                match->textureSet = item.binding.textureSet;
+                continue;
+            }
+            if (used >= capacity) {
+                std::destroy_n(replacement, used);
+                RE::free(replacement);
+                return false;
+            }
+            std::construct_at(replacement + used, Entry{
+                .textureSet = item.binding.textureSet,
+                .index3D = item.target.index3D,
+                .unk0C = 0U,
+                .name3D = RE::BSFixedString(item.target.name3D)
+            });
+            ++used;
+        }
+        if (model.alternateTextures) {
+            std::destroy_n(model.alternateTextures, oldCount);
+            RE::free(model.alternateTextures);
+        }
+        model.alternateTextures = replacement;
+        model.numAlternateTextures = used;
+        return true;
+    }
+
+    [[nodiscard]] bool MaterializeEmbeddedSkinAtlases(RE::TESModelTextureSwap& model,
+        const std::uint32_t slotMask, const bcn::SkinUvLayout layout,
+        std::vector<TextureBinding>& bindings)
+    {
+        const auto targets = DiscoverModelTextureTargets(model, layout);
+        if (!targets) return false;
+        std::vector<PendingModelTexture> pending;
+        pending.reserve(targets->size());
+        for (auto target : *targets) {
+            // Preserve an existing ARMA MODS provider as Default. The NIF
+            // paths are only the fallback when this shape had no native
+            // alternate texture entry before BCNG cloned the graph.
+            for (std::uint32_t index{}; index < model.numAlternateTextures; ++index) {
+                const auto& entry = model.alternateTextures[index];
+                if (entry.index3D != target.index3D ||
+                    entry.name3D != std::string_view{ target.name3D } ||
+                    !entry.textureSet) continue;
+                for (std::size_t slot{}; slot < target.paths.size(); ++slot) {
+                    target.paths[slot] = TexturePath(entry.textureSet, slot);
+                }
+                break;
+            }
+            auto binding = CreateModelTexture(target, slotMask);
+            if (!binding) {
+                SKSE::log::error(
+                    "BCNG skipped one embedded skin atlas model='{}' index3D={} name='{}'; ordinary body/hand/foot/face TXST remains usable",
+                    model.GetModel(), target.index3D, target.name3D);
+                continue;
+            }
+            pending.push_back({ std::move(target), std::move(*binding) });
+        }
+        if (!SetModelAlternateTextures(model, pending)) return false;
+        for (auto& item : pending) {
+            bindings.push_back(std::move(item.binding));
+        }
+        return true;
     }
 
     [[nodiscard]] const RE::BSTArray<RE::TESObjectARMA*>* EffectiveArmorAddons(
@@ -159,14 +458,29 @@ namespace
 
     [[nodiscard]] std::optional<ArmorGraph> CloneArmorGraph(
         RE::TESObjectARMO* source, const RE::SEX sex, const bcn::SkinUvLayout layout,
-        const bool synthesizeMissingUbeTexture)
+        const bool synthesizeMissingUbeTexture, const bool prepareForTng = false)
     {
         if (!source) return ArmorGraph{};
         auto* armor = DuplicateForm(source);
         const auto* sourceAddons = EffectiveArmorAddons(source);
         if (!armor || !sourceAddons) return std::nullopt;
+        if (armor->GetSlotMask() != source->GetSlotMask() ||
+            (!armor->armorAddons.empty() && armor->armorAddons.data() == sourceAddons->data())) {
+            SKSE::log::error("BCNG rejected invalid/shared ARMO clone source={:08X} clone={:08X}",
+                source->GetFormID(), armor->GetFormID());
+            return std::nullopt;
+        }
 
         ArmorGraph graph{ .armor = armor };
+        if (prepareForTng) {
+            // A TNG child is private to its provider map. Use its current body
+            // graph as the source, but turn BCNG's clone into a conventional
+            // non-TNG parent with an empty slot 52. TNG can then compose its
+            // selected addon normally without any DLL hook or private API.
+            RemoveTngSkinMarker(armor);
+            armor->RemoveSlotFromMask(
+                RE::BGSBipedObjectForm::BipedObjectSlot::kModPelvisSecondary);
+        }
         armor->armorAddons.clear();
         armor->armorAddons.reserve(sourceAddons->size());
         // The clone owns a fully materialized addon list. Keeping TNAM would
@@ -175,10 +489,47 @@ namespace
         armor->templateArmor = nullptr;
         const auto sexIndex = static_cast<std::uint32_t>(sex);
         for (auto* sourceAddon : *sourceAddons) {
+            if (prepareForTng && sourceAddon &&
+                (static_cast<std::uint32_t>(sourceAddon->GetSlotMask().underlying()) &
+                    kGenitalSlot) != 0U) continue;
             auto* addon = DuplicateForm(sourceAddon);
             if (!addon || sexIndex >= RE::SEXES::kTotal) return std::nullopt;
+            bcn::native_skin::CopyAddonData(*addon, *sourceAddon,
+                [](auto& destination, auto& original) { destination.CopyComponent(&original); });
+            const auto sameModel = [](const RE::TESModelTextureSwap& copy,
+                                       const RE::TESModelTextureSwap& original) {
+                if (copy.model != original.model ||
+                    copy.numAlternateTextures != original.numAlternateTextures) return false;
+                if (original.numAlternateTextures && (!copy.alternateTextures ||
+                    copy.alternateTextures == original.alternateTextures)) return false;
+                for (std::uint32_t i{}; i < original.numAlternateTextures; ++i) {
+                    const auto& left = copy.alternateTextures[i];
+                    const auto& right = original.alternateTextures[i];
+                    if (left.textureSet != right.textureSet || left.index3D != right.index3D ||
+                        left.name3D != right.name3D) return false;
+                }
+                return true;
+            };
+            if (!bcn::native_skin::SameAddonGeometry(*addon, *sourceAddon, sameModel)) {
+                SKSE::log::error("BCNG rejected incomplete ARMA clone source={:08X} clone={:08X}; original skin retained",
+                    sourceAddon->GetFormID(), addon->GetFormID());
+                return std::nullopt;
+            }
             const auto slotMask = static_cast<std::uint32_t>(
                 sourceAddon->GetSlotMask().underlying());
+            if (!MaterializeEmbeddedSkinAtlases(
+                    addon->bipedModels[sexIndex], slotMask, layout, graph.textures) ||
+                !MaterializeEmbeddedSkinAtlases(
+                    addon->bipedModel1stPersons[sexIndex], slotMask, layout, graph.textures)) {
+                // Embedded genital/anal atlases are optional children of an
+                // otherwise valid native skin graph. Never turn one malformed
+                // or unsupported add-on material into a total body/hand/foot/
+                // face failure. Its role stays unavailable and the partial
+                // role mask below preserves that shape's provider baseline.
+                SKSE::log::error(
+                    "BCNG skipped unsupported embedded genital/anal TXST targets source={:08X}; continuing ordinary native skin graph",
+                    sourceAddon->GetFormID());
+            }
             auto* sourceTexture = sourceAddon->skinTextures[sexIndex];
             auto* sourceList = sourceAddon->skinTextureSwapLists[sexIndex];
 
@@ -192,11 +543,19 @@ namespace
             if (sourceList) {
                 auto* list = DuplicateForm(sourceList);
                 if (!list) return std::nullopt;
+                // FLST has no Copy override either. Materialize the current
+                // list into private storage before replacing any texture entry.
+                list->forms = sourceList->forms;
+                if (sourceList->scriptAddedTempForms) {
+                    for (const auto id : *sourceList->scriptAddedTempForms) {
+                        if (auto* form = RE::TESForm::LookupByID(id)) list->forms.push_back(form);
+                    }
+                }
                 for (RE::BSTArray<RE::TESForm*>::size_type index{};
                      index < list->forms.size(); ++index) {
-                    auto* listedTexture = sourceList->forms[index] &&
-                        sourceList->forms[index]->GetFormType() == RE::FormType::TextureSet ?
-                        static_cast<RE::BGSTextureSet*>(sourceList->forms[index]) : nullptr;
+                    auto* listedTexture = list->forms[index] &&
+                        list->forms[index]->GetFormType() == RE::FormType::TextureSet ?
+                        static_cast<RE::BGSTextureSet*>(list->forms[index]) : nullptr;
                     if (!listedTexture) continue;
                     auto binding = CloneTexture(listedTexture, slotMask, layout);
                     if (!binding) return std::nullopt;
@@ -227,7 +586,7 @@ namespace
     {
         if (!textureSet) return false;
         for (std::size_t index{}; index < kTextureCount; ++index) {
-            if (bcn::skin_override::ownership::IsRacialSkinVarianceTexturePath(
+            if (bcn::skin_texture::ownership::IsRacialSkinVarianceTexturePath(
                     TexturePath(textureSet, index))) return true;
         }
         return false;
@@ -267,7 +626,7 @@ namespace
 
     [[nodiscard]] bcn::skin_plan::ApplicationPlan BuildPlan(
         const bcn::SkinProfile& profile, RE::TESNPC* base,
-        RE::BGSTextureSet* faceTexture, const bcn::body_family::Mask actorFamily)
+        const std::string_view faceDetailBaseline, const bcn::body_family::Mask actorFamily)
     {
         const auto* race = base ? base->GetRace() : nullptr;
         const auto* editorID = race ? race->GetFormEditorID() : nullptr;
@@ -276,8 +635,7 @@ namespace
             .vampire = IsVampireRace(base),
             .humanoidRace = bcn::HumanoidSkinRaceFromEditorID(
                 editorID ? std::string_view{ editorID } : std::string_view{}),
-            .faceDetailFilename = faceTexture ? TexturePath(
-                faceTexture, RE::BSTextureSet::Textures::kDetailMap) : std::string{},
+            .faceDetailFilename = faceDetailBaseline,
             .bodyFamily = actorFamily
         });
     }
@@ -300,14 +658,51 @@ namespace
         }
     }
 
+    [[nodiscard]] bool ValidateResources(const BaseInstance& instance,
+        const bcn::skin_plan::ApplicationPlan& plan, const bool bodyRequired)
+    {
+        std::unordered_set<std::string> checked;
+        const auto validate = [&](const TextureLayers& layers, const std::string_view nameSpace) {
+            for (const auto& layer : layers) {
+                if (layer.shaderTextureIndex >= kTextureCount) continue;
+                const auto cached = bcn::runtime_assets::ExpectedTexturePathFromGameRelative(layer.path, nameSpace);
+                if (cached.empty() || !bcn::runtime_assets::CachedTextureExists(cached)) return false;
+                const auto paths = bcn::native_skin::PathsFromCache(cached);
+                if (!paths) {
+                    SKSE::log::error("BCNG invalid native TXST cache path='{}'", cached);
+                    return false;
+                }
+                if (!checked.insert(paths->resource).second) continue;
+                RE::BSResourceNiBinaryStream stream(paths->resource);
+                std::array<char, 4> magic{};
+                if (!stream.good() || !stream.read(magic.data(), 4U) ||
+                    std::string_view(magic.data(), magic.size()) != "DDS ") {
+                    SKSE::log::error("BCNG TXST DDS unavailable to engine path='{}'", cached);
+                    return false;
+                }
+            }
+            return true;
+        };
+        if (bodyRequired) {
+            for (const auto* graph : { &instance.skin, &instance.farSkin }) {
+                for (const auto& binding : graph->textures) {
+                    const auto role = binding.fixedRole.value_or(
+                        bcn::native_skin::ResolveTextureRole(binding.slotMask,
+                            binding.originalPaths[RE::BSTextureSet::Textures::kDiffuse],
+                            plan.runtimeUvLayout));
+                    if (!validate(LayersFor(plan, role), "skin")) return false;
+                }
+            }
+        }
+        return validate(plan.face, "skin-face");
+    }
+
     [[nodiscard]] bool ApplyLayers(TextureBinding& binding,
         const TextureLayers& layers, const std::string_view nameSpace)
     {
         if (!binding.textureSet) return false;
         for (std::size_t index{}; index < kTextureCount; ++index) {
-            binding.textureSet->SetTexturePath(
-                static_cast<RE::BSTextureSet::Texture>(index),
-                binding.originalPaths[index].c_str());
+            if (!WriteTexturePath(binding, index, binding.originalPaths[index])) return false;
         }
         for (const auto& layer : layers) {
             if (layer.shaderTextureIndex >= kTextureCount) {
@@ -318,8 +713,8 @@ namespace
             const auto cached = bcn::runtime_assets::ExpectedTexturePathFromGameRelative(
                 layer.path, nameSpace);
             if (cached.empty() || !bcn::runtime_assets::CachedTextureExists(cached)) return false;
-            binding.textureSet->SetTexturePath(
-                static_cast<RE::BSTextureSet::Texture>(layer.shaderTextureIndex), cached.c_str());
+            const auto paths = bcn::native_skin::PathsFromCache(cached);
+            if (!paths || !WriteTexturePath(binding, layer.shaderTextureIndex, paths->native)) return false;
         }
         return true;
     }
@@ -328,8 +723,9 @@ namespace
         ArmorGraph& graph, const bcn::skin_plan::ApplicationPlan& plan)
     {
         for (auto& binding : graph.textures) {
-            binding.role = bcn::native_skin::ResolveTextureRole(binding.slotMask,
-                binding.originalPaths[RE::BSTextureSet::Textures::kDiffuse], plan.runtimeUvLayout);
+            binding.role = binding.fixedRole.value_or(
+                bcn::native_skin::ResolveTextureRole(binding.slotMask,
+                    binding.originalPaths[RE::BSTextureSet::Textures::kDiffuse], plan.runtimeUvLayout));
             if (!ApplyLayers(binding, LayersFor(plan, binding.role), "skin")) return false;
         }
         return true;
@@ -341,38 +737,52 @@ namespace
         bcn::native_skin::TextureRoleMask result{};
         for (const auto& binding : graph.textures) {
             result |= bcn::native_skin::RoleBit(
-                bcn::native_skin::ResolveTextureRole(binding.slotMask,
-                    binding.originalPaths[RE::BSTextureSet::Textures::kDiffuse], layout));
+                binding.fixedRole.value_or(
+                    bcn::native_skin::ResolveTextureRole(binding.slotMask,
+                        binding.originalPaths[RE::BSTextureSet::Textures::kDiffuse], layout)));
         }
         return result;
     }
 
-    [[nodiscard]] bool GraphSupportsPlan(
-        const BaseInstance& instance, const bcn::skin_plan::ApplicationPlan& plan)
+    [[nodiscard]] bcn::native_skin::TextureRoleMask RequestedRoles(
+        const bcn::skin_plan::ApplicationPlan& plan)
     {
-        const auto required = bcn::native_skin::RequiredRoleMask(
+        return bcn::native_skin::RequiredRoleMask(
             plan.broadSharedAtlas, !plan.body.empty(), !plan.hands.empty(),
             !plan.feet.empty(),
             plan.runtimeUvLayout == bcn::SkinUvLayout::cbbe &&
                 !plan.cbbeGenitalAnal.empty(),
             plan.runtimeUvLayout == bcn::SkinUvLayout::unp &&
                 !plan.unpGenitalAnal.empty());
-        const auto available = AvailableRoles(instance.skin, plan.runtimeUvLayout);
-        return bcn::native_skin::CoversRequiredRoles(available, required) &&
-            (plan.face.empty() || instance.face.textureSet != nullptr);
+    }
+
+    [[nodiscard]] bool IsTngChildOfGraph(
+        RE::TESObjectARMO* candidate, const ArmorGraph& parent)
+    {
+        if (!IsTngSkinArmor(candidate) || !parent.armor) return false;
+        std::size_t bodyAddons{};
+        for (auto* expected : parent.armor->armorAddons) {
+            if (!expected ||
+                (static_cast<std::uint32_t>(expected->GetSlotMask().underlying()) &
+                    kGenitalSlot) != 0U) continue;
+            ++bodyAddons;
+            if (std::ranges::find(candidate->armorAddons, expected) ==
+                candidate->armorAddons.end()) return false;
+        }
+        // TNG's public composition copies the parent ARMA pointers and adds
+        // slot 52. Requiring at least one shared non-genital ARMA prevents an
+        // unrelated TNG Skin Armor from being mistaken for BCNG's child.
+        return bodyAddons != 0U;
     }
 
     [[nodiscard]] bool OwnsCurrentPointers(const BaseInstance& instance)
     {
         if (!instance.base) return false;
         if (instance.skinAttached && instance.skin.armor &&
-            instance.base->skin != instance.skin.armor) return false;
+            instance.base->skin != instance.skin.armor &&
+            !IsTngChildOfGraph(instance.base->skin, instance.skin)) return false;
         if (instance.farSkinAttached && instance.farSkin.armor &&
             instance.base->farSkin != instance.farSkin.armor) return false;
-        if (instance.faceAttached && instance.face.textureSet) {
-            if (!instance.base->headRelatedData ||
-                instance.base->headRelatedData->faceDetails != instance.face.textureSet) return false;
-        }
         return true;
     }
 
@@ -386,18 +796,13 @@ namespace
         if (instance.farSkinAttached && instance.farSkin.armor &&
             instance.base->farSkin != instance.farSkin.armor &&
             ArmorUsesRsv(instance.base->farSkin, sex)) return true;
-        if (instance.faceAttached && instance.face.textureSet) {
-            auto* currentFace = CurrentFaceTexture(instance.base);
-            if (currentFace != instance.face.textureSet && TextureSetUsesRsv(currentFace)) return true;
-        }
         return false;
     }
 
     [[nodiscard]] bool SourceStillMatches(const BaseInstance& instance)
     {
         return instance.base && instance.base->skin == instance.originalSkin &&
-            instance.base->farSkin == instance.originalFarSkin &&
-            CurrentFaceTexture(instance.base) == instance.originalFace;
+            instance.base->farSkin == instance.originalFarSkin;
     }
 
     [[nodiscard]] bool UnownedSourceChanged(const BaseInstance& instance)
@@ -410,41 +815,44 @@ namespace
             instance.base->farSkin != instance.originalFarSkin) {
             return true;
         }
-        return !instance.faceAttached &&
-            CurrentFaceTexture(instance.base) != instance.originalFace;
+        return false;
     }
 
-    void RefreshLoadedActors(RE::TESNPC* base)
+    void RefreshLoadedActors(RE::Actor* selected,
+        const std::function<void(RE::Actor*)>& refresh)
     {
+        auto* base = selected ? selected->GetActorBase() : nullptr;
         auto* processes = RE::ProcessLists::GetSingleton();
-        if (!base || !processes) return;
-        processes->ForAllActors([base](RE::Actor* actor) {
-            if (actor && actor->GetActorBase() == base && actor->Is3DLoaded()) {
-                actor->DoReset3D(false);
-            }
-            return RE::BSContainer::ForEachResult::kContinue;
-        });
+        if (!base || !refresh) return;
+        bcn::native_skin::VisitRefreshTargets(selected,
+            [processes](const auto& visit) {
+                if (!processes) return;
+                processes->ForAllActors([&visit](RE::Actor* actor) {
+                    visit(actor);
+                    return RE::BSContainer::ForEachResult::kContinue;
+                });
+            },
+            [base](RE::Actor* actor) {
+                return actor->GetActorBase() == base && actor->Is3DLoaded();
+            }, [&](RE::Actor* actor) {
+                refresh(actor);
+            });
     }
 
     void RestoreOwnedPointers(BaseInstance& instance)
     {
         if (!instance.base) return;
         if (instance.skinAttached && instance.skin.armor &&
-            instance.base->skin == instance.skin.armor) {
+            (instance.base->skin == instance.skin.armor ||
+                IsTngChildOfGraph(instance.base->skin, instance.skin))) {
             instance.base->skin = instance.originalSkin;
         }
         if (instance.farSkinAttached && instance.farSkin.armor &&
             instance.base->farSkin == instance.farSkin.armor) {
             instance.base->farSkin = instance.originalFarSkin;
         }
-        if (instance.faceAttached && instance.face.textureSet &&
-            instance.base->headRelatedData &&
-            instance.base->headRelatedData->faceDetails == instance.face.textureSet) {
-            instance.base->SetFaceTexture(instance.originalFace);
-        }
         instance.skinAttached = false;
         instance.farSkinAttached = false;
-        instance.faceAttached = false;
     }
 
     [[nodiscard]] std::optional<BaseInstance> BuildInstance(
@@ -452,22 +860,22 @@ namespace
         const bcn::SkinUvLayout runtimeUvLayout)
     {
         auto* base = actor ? actor->GetActorBase() : nullptr;
-        auto* sourceSkin = actor ? actor->GetSkin() : nullptr;
-        if (!base || !sourceSkin) return std::nullopt;
+        auto* currentSkin = actor ? actor->GetSkin() : nullptr;
+        if (!base || !currentSkin) return std::nullopt;
+        const auto prepareForTng = IsTngSkinArmor(currentSkin);
 
         BaseInstance instance;
         instance.base = base;
         instance.ownerActor = actor->GetFormID();
-        instance.originalSkin = base->skin;
+        instance.originalSkin = currentSkin;
         instance.originalFarSkin = base->farSkin;
-        instance.originalFace = CurrentFaceTexture(base);
         // Official UBE naked ARMAs omit NAM1/NAM3 and keep their baseline
         // paths in the NIF. Materialize that missing TXST only when this
         // profile actually declares body-atlas layers; a face-only profile
         // must not alter an otherwise untouched UBE body material graph.
         const auto synthesizeMissingUbeTexture = !profile.body.empty();
-        auto skin = CloneArmorGraph(sourceSkin, base->GetSex(), runtimeUvLayout,
-            synthesizeMissingUbeTexture);
+        auto skin = CloneArmorGraph(currentSkin, base->GetSex(), runtimeUvLayout,
+            synthesizeMissingUbeTexture, prepareForTng);
         if (!skin || !skin->armor) return std::nullopt;
         instance.skin = std::move(*skin);
         if (base->farSkin) {
@@ -475,14 +883,6 @@ namespace
                 synthesizeMissingUbeTexture);
             if (!farSkin) return std::nullopt;
             instance.farSkin = std::move(*farSkin);
-        }
-        if (instance.originalFace) {
-            auto face = CloneTexture(instance.originalFace,
-                static_cast<std::uint32_t>(RE::BGSBipedObjectForm::BipedObjectSlot::kHead),
-                runtimeUvLayout);
-            if (!face) return std::nullopt;
-            face->role = TextureRole::unmanaged;
-            instance.face = std::move(*face);
         }
         return instance;
     }
@@ -502,7 +902,9 @@ namespace
 
     void ApplyNow(RE::ActorHandle handle, bcn::SkinProfile profile,
         bcn::skin_plan::ApplicationPlan plan, const RE::FormID baseId,
-        const std::uint64_t generation)
+        const std::uint64_t generation,
+        const bcn::body_family::Mask sourceFamily,
+        std::function<void(RE::Actor*)> afterMutation)
     {
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, profile.id) ||
@@ -516,7 +918,8 @@ namespace
             found->second.desiredProfileId != profile.id) return;
         auto& instance = found->second;
         const auto graphAction = bcn::native_skin::ResolveGraphAction(
-            instance.skin.armor != nullptr, !instance.appliedProfileId.empty(),
+            instance.skin.armor != nullptr,
+            !instance.appliedProfileId.empty(),
             OwnsCurrentPointers(instance), SourceStillMatches(instance),
             CanRebaseFromRsv(instance), UnownedSourceChanged(instance));
         if (graphAction == bcn::native_skin::GraphAction::rejectForeignOwner) {
@@ -549,6 +952,9 @@ namespace
                 return;
             }
             built->desiredProfileId = instance.desiredProfileId;
+            built->sourceFamily = sourceFamily;
+            built->sourceRace = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
+            built->sourceSex = base->GetSex();
             built->generation = instance.generation;
             built->tracked = true;
             instance = std::move(*built);
@@ -557,7 +963,22 @@ namespace
         if (instance.appliedProfileId == profile.id &&
             instance.appliedContentHash == profile.contentHash && OwnsCurrentPointers(instance)) {
             lock.unlock();
-            bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
+            const auto action = bcn::face_skin::ResolveReapply(
+                bcn::face_skin::Matches(actor.get(), profile.id),
+                bcn::face_skin::Pending(actor.get(), profile.id));
+            if (action == bcn::face_skin::ReapplyAction::complete) {
+                bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
+            } else if (action == bcn::face_skin::ReapplyAction::applyFace) {
+                bcn::face_skin::Apply(actor.get(), plan.face, profile.id,
+                    [handle, id = profile.id, baseId, generation](bool success) {
+                        if (success && RequestStillCurrent(baseId, generation, id)) {
+                            if (auto current = handle.get())
+                                bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), id, false);
+                        }
+                    });
+            }
+            // The body graph is current: never rebuild it to retry a face,
+            // and never report a pending/failed face as whole-skin success.
             return;
         }
 
@@ -567,25 +988,30 @@ namespace
             return;
         }
 
-        if (!GraphSupportsPlan(instance, plan)) {
+        const auto requestedRoles = RequestedRoles(plan);
+        const auto availableRoles = AvailableRoles(instance.skin, plan.runtimeUvLayout);
+        const auto applicableRoles = bcn::native_skin::ApplicableRoleMask(
+            availableRoles, requestedRoles);
+        const auto skippedRoles = static_cast<bcn::native_skin::TextureRoleMask>(
+            requestedRoles & static_cast<bcn::native_skin::TextureRoleMask>(~availableRoles));
+        if (skippedRoles != 0U) {
+            SKSE::log::warn(
+                "BCNG partial skin '{}' skipped native roles mask={:02X}; available DDS roles mask={:02X} continue independently",
+                profile.name, skippedRoles, applicableRoles);
+        }
+        const auto bodyGraphRequired = applicableRoles != 0U;
+        if (!bodyGraphRequired && plan.face.empty()) {
             SKSE::log::error(
-                "Body Change NG aborted native TXST apply for '{}': the current Skin Armor graph has no exact TXST target for one or more declared parts",
+                "Body Change NG found no applicable DDS target for partial skin '{}' on the current actor",
                 profile.name);
             return;
         }
-
-        const auto bodyGraphRequired = bcn::native_skin::RequiredRoleMask(
-            plan.broadSharedAtlas, !plan.body.empty(), !plan.hands.empty(),
-            !plan.feet.empty(),
-            plan.runtimeUvLayout == bcn::SkinUvLayout::cbbe &&
-                !plan.cbbeGenitalAnal.empty(),
-            plan.runtimeUvLayout == bcn::SkinUvLayout::unp &&
-                !plan.unpGenitalAnal.empty()) != 0U;
+        // Preflight every resource before mutating even an already-attached
+        // private graph; a missing file must not leave a half-selected skin.
+        if (!ValidateResources(instance, plan, bodyGraphRequired)) return;
         if ((bodyGraphRequired && !ApplyGraph(instance.skin, plan)) ||
             (bodyGraphRequired && instance.farSkin.armor &&
-                !ApplyGraph(instance.farSkin, plan)) ||
-            (!plan.face.empty() && (!instance.face.textureSet ||
-                !ApplyLayers(instance.face, plan.face, "skin-face")))) {
+                !ApplyGraph(instance.farSkin, plan))) {
             SKSE::log::error("Body Change NG aborted native TXST apply for '{}' because its full declared layer set was unavailable",
                 profile.name);
             return;
@@ -609,26 +1035,22 @@ namespace
             instance.skinAttached = false;
             instance.farSkinAttached = false;
         }
-        if (instance.face.textureSet && !plan.face.empty()) {
-            instance.base->SetFaceTexture(instance.face.textureSet);
-            instance.faceAttached = true;
-        } else if (instance.faceAttached && instance.base->headRelatedData &&
-            instance.base->headRelatedData->faceDetails == instance.face.textureSet) {
-            instance.base->SetFaceTexture(instance.originalFace);
-            instance.faceAttached = false;
-        }
         instance.appliedProfileId = profile.id;
         instance.appliedContentHash = profile.contentHash;
         instance.appliedDefault = false;
         lock.unlock();
-        bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
-        RefreshLoadedActors(base);
-        SKSE::log::info("Body Change NG applied native TXST skin '{}' to ActorBase {:08X} from actor {:08X}",
-            profile.name, baseId, actor->GetFormID());
+        bcn::face_skin::Apply(actor.get(), plan.face, profile.id,
+            [handle, id = profile.id, baseId, generation](bool success) {
+                if (success && RequestStillCurrent(baseId, generation, id)) {
+                    if (auto current = handle.get()) bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), id, false);
+                }
+            }, static_cast<bool>(afterMutation) && actor->Is3DLoaded());
+        RefreshLoadedActors(actor.get(), afterMutation);
     }
 
     void ClearNow(RE::ActorHandle handle, const RE::FormID baseId,
-        const std::uint64_t generation)
+        const std::uint64_t generation,
+        std::function<void(RE::Actor*)> afterMutation)
     {
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, {})) return;
@@ -645,9 +1067,12 @@ namespace
         instance.appliedDefault = true;
         instance.tracked = true;
         lock.unlock();
-        bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), {}, true);
-        RefreshLoadedActors(base);
-        SKSE::log::info("Body Change NG restored native default Skin Armor for ActorBase {:08X}", baseId);
+        bcn::face_skin::Clear(actor.get(), [handle, baseId, generation](bool success) {
+            if (success && RequestStillCurrent(baseId, generation, {})) {
+                if (auto current = handle.get()) bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), {}, true);
+            }
+        }, static_cast<bool>(afterMutation) && actor->Is3DLoaded());
+        RefreshLoadedActors(actor.get(), afterMutation);
     }
 
     [[nodiscard]] std::vector<bcn::runtime_assets::TexturePreparation> Preparations(
@@ -697,8 +1122,9 @@ namespace
 namespace bcn::native_skin
 {
     SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
-        std::function<void()> beforeQueue)
+        std::function<void(RE::Actor*)> afterMutation)
     {
+        body_family::SetSkinFamilyResolver(&SourceBodyFamily);
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         if (!actor) return SkinApplyResult::invalidActor;
         if (runtime::ResolveGameBranch(REL::Module::get().version()) ==
@@ -731,6 +1157,7 @@ namespace bcn::native_skin
         const auto baseId = base->GetFormID();
         const auto actorId = actor->GetFormID();
         std::uint64_t generation{};
+        std::string faceDetailBaseline;
         {
             std::scoped_lock lock(g_lock);
             auto& instance = g_instances[baseId];
@@ -753,23 +1180,30 @@ namespace bcn::native_skin
             }
             instance.tracked = true;
             generation = instance.generation;
+            auto* currentFace = CurrentFaceTexture(base);
+            const auto currentDetail = currentFace ? TexturePath(currentFace,
+                RE::BSTextureSet::Textures::kDetailMap) : std::string{};
+            faceDetailBaseline = currentDetail;
         }
 
-        if (beforeQueue) beforeQueue();
-        const auto plan = BuildPlan(*profile, base, CurrentFaceTexture(base), actorFamily);
+        const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily);
         const auto handle = actor->GetHandle();
-        frame_tasks::Queue(actorId, [handle, profile = *profile, plan, baseId, generation]() mutable {
+        frame_tasks::Queue(actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily,
+                                      afterMutation = std::move(afterMutation)]() mutable {
             if (!RequestStillCurrent(baseId, generation, profile.id)) return;
             const auto lease = frame_tasks::CurrentLease();
-            auto continueApply = [lease, handle, profile, plan, baseId, generation](const bool prepared) mutable {
+            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily,
+                                     afterMutation = std::move(afterMutation)](const bool prepared) mutable {
                 if (!prepared) {
                     SKSE::log::error("Body Change NG could not prepare every native TXST asset for '{}'",
                         profile.name);
                     return;
                 }
                 static_cast<void>(frame_tasks::Continue(lease,
-                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation]() mutable {
-                        ApplyNow(handle, std::move(profile), std::move(plan), baseId, generation);
+                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation, actorFamily,
+                        afterMutation = std::move(afterMutation)]() mutable {
+                        ApplyNow(handle, std::move(profile), std::move(plan), baseId,
+                            generation, actorFamily, std::move(afterMutation));
                     }));
             };
             if (!runtime_assets::PrepareTexturePathsAsync(
@@ -782,7 +1216,8 @@ namespace bcn::native_skin
         return SkinApplyResult::queued;
     }
 
-    SkinApplyResult QueueClear(RE::Actor* actor, std::function<void()> beforeQueue)
+    SkinApplyResult QueueClear(RE::Actor* actor,
+        std::function<void(RE::Actor*)> afterMutation)
     {
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         if (!actor) return SkinApplyResult::invalidActor;
@@ -811,19 +1246,37 @@ namespace bcn::native_skin
                 instance.base = base;
                 instance.originalSkin = base->skin;
                 instance.originalFarSkin = base->farSkin;
-                instance.originalFace = CurrentFaceTexture(base);
             }
             instance.desiredProfileId.clear();
             instance.tracked = true;
             instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
             generation = instance.generation;
         }
-        if (beforeQueue) beforeQueue();
         const auto handle = actor->GetHandle();
         frame_tasks::Queue(actorId,
-            [handle, baseId, generation] { ClearNow(handle, baseId, generation); },
+            [handle, baseId, generation,
+                afterMutation = std::move(afterMutation)]() mutable {
+                ClearNow(handle, baseId, generation, std::move(afterMutation));
+            },
             1U, appearance::WorkChannel::skinApply);
         return SkinApplyResult::queued;
+    }
+
+    std::optional<std::uint32_t> SourceBodyFamily(const RE::Actor* actor)
+    {
+        const auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!base) return std::nullopt;
+        std::scoped_lock lock(g_lock);
+        const auto found = g_instances.find(base->GetFormID());
+        if (found == g_instances.end()) return std::nullopt;
+        const auto& instance = found->second;
+        const auto race = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
+        if (!instance.sourceFamily || instance.sourceRace != race ||
+            instance.sourceSex != base->GetSex()) return std::nullopt;
+        const auto* skin = actor->GetSkin();
+        if ((instance.skinAttached && skin == instance.skin.armor) ||
+            (instance.appliedDefault && skin == instance.originalSkin)) return instance.sourceFamily;
+        return std::nullopt;
     }
 
     std::optional<std::string> CurrentProfileId(const RE::Actor* actor)
@@ -855,21 +1308,19 @@ namespace bcn::native_skin
         if (found == g_instances.end() || !found->second.tracked) return false;
         const auto& instance = found->second;
         if (expectDefault) {
-            return instance.appliedDefault && instance.appliedProfileId.empty();
+            return instance.appliedDefault && instance.appliedProfileId.empty() &&
+                bcn::face_skin::Matches(actor, {});
         }
         return instance.appliedProfileId == profileId &&
             instance.appliedContentHash == SkinProfiles::Get().ContentHash(profileId) &&
-            OwnsCurrentPointers(instance);
+            OwnsCurrentPointers(instance) && bcn::face_skin::Matches(actor, profileId);
     }
 
     void ResetSessionState()
     {
-        std::vector<RE::TESNPC*> changed;
         {
             std::scoped_lock lock(g_lock);
-            changed.reserve(g_instances.size());
             for (auto& [baseId, instance] : g_instances) {
-                if (instance.base) changed.push_back(instance.base);
                 RestoreOwnedPointers(instance);
                 // TESNPC and the private duplicate forms are game-data forms,
                 // not save-specific references.  Reuse the already allocated
@@ -885,6 +1336,8 @@ namespace bcn::native_skin
                 instance.appliedDefault = false;
             }
         }
-        for (auto* base : changed) RefreshLoadedActors(base);
+        // This runs only at the pre/post save-load boundary. The game rebuilds
+        // the incoming world's actor 3D itself; scheduling an additional reset
+        // here would race that lifecycle and duplicate the facade refresh.
     }
 }

@@ -6,9 +6,9 @@ automatically assigned to NPCs. Each NPC distribution rule owns a separate
 body-preset pool and skin-profile pool, so different NPC groups may receive
 different fixed or stable-randomized results.
 
-A profile changes the actor's private native Skin Armor/TXST graph, with the
-legacy RaceMenu override backend retained only for supported older interface
-versions. A pack may be partial: only its supplied parts
+A profile changes body/hands/feet through the actor's private native Skin
+Armor/TXST graph. Face skin uses public NiOverride node-texture functions;
+there is no legacy whole-body override fallback. A pack may be partial: only its supplied parts
 and channels change, while absent ones retain the actor's underlying textures.
 Body, hands, feet, and face files are never guessed across parts. A verified
 humanoid layout may intentionally use its body atlas for feet when no separate
@@ -119,7 +119,7 @@ path and detected sex, for example `auto:MySkinA:female`. UBE adds the existing
 folder only when intentionally creating a new catalog identity. Favorites and
 NPC distribution rules continue to store these automatic IDs.
 
-Shader texture indices follow the RaceMenu/NiOverride convention used here:
+Shader texture indices follow Skyrim's `BSTextureSet` convention:
 `0` diffuse, `1` normal (`_msn`), `2` skin/tint (`_sk`), `3` face detail, and
 `7` specular (`_s`). A usable profile may provide any recognized body, hands,
 feet, or face map. Missing parts and missing diffuse, normal, subsurface, detail,
@@ -134,13 +134,16 @@ profiles for that NPC. Existing relative-folder automatic IDs do not change
 when a pack is classified. Conflicting/unknown runtime actor evidence still
 fails closed.
 
-RaceMenu's broad skin-slot call may traverse several ArmorAddons attached to
-one Skin Armor. Body Change NG 1.2 permits that route only for UBE's explicitly
-shared body atlas. Every other layout writes only to verified live
-Armor+ArmorAddon+geometry targets; a hidden or missing part remains pending for
-the next 3D/equipment refresh instead of painting another body part.
+Body Change NG 1.2 applies body/hands/feet through a private clone of the actor's
+native TXST -> ARMA -> Skin Armor graph. Face skin targets only the actual Face
+HeadPart node with NiOverride key 9, channels 0/1/2/3/7; Face TXST is not changed.
+Tint masks and tint channel 6 are excluded, including those bundled in BnP packs.
+Race/elder/vampire alternatives fall back to the selected pack's general DDS;
+channels absent from the pack retain the original provider's textures.
 
-RaceMenu skin overrides are shared by property slot rather than by mod owner.
-If another mod changes the same skin texture slot, the last applied override
-wins. Body Change NG therefore does not use a broad “remove all skin
-overrides” reset: that could erase another mod's work.
+Default Skin detaches only the native graph that BCNG still owns. Face restoration
+separately preserves the original visible paths and saved node keys, and does not
+delete a different key subsequently supplied by another mod. Player writes are
+persistent; NPC writes follow RSV's nonpersistent API mode and are reapplied from
+BCNG's saved actor selection on load/rebuild. Active RSV scripts can also reapply
+their own faces; simultaneous-provider ordering still requires in-game validation.

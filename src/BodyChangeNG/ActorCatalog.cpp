@@ -49,11 +49,7 @@ namespace
         const auto* pickData = RE::CrosshairPickData::GetSingleton();
         if (!pickData) return nullptr;
         RE::ObjectRefHandle handle;
-#if defined(EXCLUSIVE_SKYRIM_FLAT)
-        handle = pickData->targetActor;
-#else
-        handle = pickData->targetActor[RE::VR_DEVICE::kHeadset];
-#endif
+        handle = pickData->targetActor; // EXCLUSIVE_SKYRIM_FLAT only
         const auto reference = handle.get();
         return reference ? reference->As<RE::Actor>() : nullptr;
     }

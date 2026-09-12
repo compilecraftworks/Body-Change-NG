@@ -32,14 +32,6 @@ namespace bcn::skin_session
     [[nodiscard]] std::uint64_t BeginFutanariChange(ActorId actorId);
     [[nodiscard]] bool IsCurrentFutanariChange(ActorId actorId, std::uint64_t generation);
 
-    [[nodiscard]] std::uint64_t BeginFaceRefresh(ActorId actorId);
-    [[nodiscard]] bool IsCurrentFaceRefresh(ActorId actorId, std::uint64_t generation);
-    void MarkTransientFace(ActorId actorId);
-    [[nodiscard]] bool ReleaseTransientFace(ActorId actorId);
-    [[nodiscard]] bool HasTransientFace(ActorId actorId);
-
-    [[nodiscard]] bool ClaimLegacyCleanup(ActorId actorId);
-
     // An empty value is a tracked Default selection. It is intentionally
     // different from an actor that has not entered Body Change NG this session.
     void TrackSkinSelection(ActorId actorId, std::string profileId);
@@ -51,20 +43,22 @@ namespace bcn::skin_session
     void InvalidateFutanariType(ActorId actorId);
 
     // Equipment events are broad: OStim and many outfit systems emit them for
-    // unrelated armor. Remember only the Armor/ArmorAddon ownership identity
-    // successfully painted by BCNG so those events cannot repeatedly overwrite
-    // a third-party live material effect on the same genital addon.
-    [[nodiscard]] std::optional<std::uint64_t> AppliedAddonSignature(
+    // unrelated armor. Remember the exact slot-52 clone most recently
+    // reconciled, whether it was painted or restored to Default, so identical
+    // events do not create duplicate material work.
+    [[nodiscard]] std::optional<std::uint64_t> ReconciledAddonSignature(
         ActorId actorId, AddonTextureChannel channel);
-    [[nodiscard]] constexpr bool NeedsAddonReapply(
-        const std::optional<std::uint64_t> appliedSignature,
-        const std::uint64_t currentSignature) noexcept
+    [[nodiscard]] constexpr bool NeedsAddonReconcile(
+        const std::optional<std::uint64_t> reconciledSignature,
+        const std::uint64_t currentSignature,
+        const bool currentCloneHasBaseline = true) noexcept
     {
-        return currentSignature != 0U && appliedSignature != currentSignature;
+        return currentSignature != 0U &&
+            (reconciledSignature != currentSignature || !currentCloneHasBaseline);
     }
-    void MarkAddonApplied(ActorId actorId, AddonTextureChannel channel,
+    void MarkAddonReconciled(ActorId actorId, AddonTextureChannel channel,
         std::uint64_t signature);
-    void ClearAddonApplied(ActorId actorId, AddonTextureChannel channel);
+    void ClearAddonReconciled(ActorId actorId, AddonTextureChannel channel);
 
     void Reset();
     void Forget(ActorId actorId);
