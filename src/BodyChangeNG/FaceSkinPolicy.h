@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/NativeTexturePath.h"
 #include "BodyChangeNG/SkinTextureOwnership.h"
+#include "BodyChangeNG/SkinTransactionPolicy.h"
 
 #include <array>
 #include <cstdint>
@@ -35,8 +36,6 @@ namespace bcn::face_skin
     {
         return epoch == currentEpoch && generation == activeGeneration;
     }
-
-    [[nodiscard]] constexpr bool Persistent(const bool player) noexcept { return player; }
 
     // One engine rebuild at a time. A selection arriving during that rebuild
     // requests one more pass, not an early face write or an unbounded queue.
@@ -142,6 +141,23 @@ namespace bcn::face_skin
     {
         return Owns(current, value.pending[index]) ? std::string_view(value.pending[index]) :
             std::string_view(value.owned[index]);
+    }
+
+    inline void PrepareWrite(Baseline& value, std::size_t index,
+        const std::string& current, const std::string& desired, bool persistent)
+    {
+        if (!current.empty() && !Owns(current, OwnedValue(value, index, current))) value.saved[index] = current;
+        value.touched |= static_cast<std::uint8_t>(1U << index);
+        if (persistent) {
+            if (Owns(current, OwnedValue(value, index, current))) value.owned[index] = current;
+            value.pending[index] = desired;
+        }
+    }
+
+    [[nodiscard]] inline bool CanRollbackKey(const std::string& current, const std::string& before,
+        const std::string& attempted, std::string_view owned)
+    {
+        return current.empty() || Owns(current, before) || Owns(current, attempted) || Owns(current, owned);
     }
 
     template<class WriteLive, class ReadInterned, class SaveInterned>

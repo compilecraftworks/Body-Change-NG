@@ -1,11 +1,11 @@
 #requires -Version 7.0
 [CmdletBinding()]
-param([switch]$Apply)
+param([switch]$Apply, [ValidateSet('TuLED', 'TAKEALOOK')][string[]]$InstallNames = @('TuLED', 'TAKEALOOK'))
 $ErrorActionPreference = 'Stop'
 $bcngRepo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$bcngDll = Join-Path $bcngRepo 'build\v1.2.2\windows\x64\release\BodyChangeNG.dll'
-$bcngExpectedHash = 'BBEED2C787B8C275A9533282CC7BAFF6FCF71AC0E9A87A986B47BEF639D3B20B'
-$bcngArchive = Join-Path $bcngRepo 'build\mo2-backup-v1.2.2-slider-case-20260913'
+$bcngDll = Join-Path $bcngRepo 'build\v1.2.3\windows\x64\release\BodyChangeNG.dll'
+$bcngExpectedHash = 'DD648BA5E0C07950B05902451ED6A0510AAF0A70E565D27D21D0156277E12EBD'
+$bcngArchive = Join-Path $bcngRepo 'build\mo2-backup-v1.2.3-skin-transaction-20260914'
 $bcngInstalls = @(
     @{ Name = 'TuLED'; Root = 'D:\TuLED13E\File Mod Skyrim SE\mods\Body Change NG' },
     @{ Name = 'TAKEALOOK'; Root = 'C:\TAKEALOOK\mods\Body Change NG' }
@@ -32,7 +32,7 @@ if (Get-Process -Name SkyrimSE,skse64_loader -ErrorAction SilentlyContinue) {
     throw 'Exit Skyrim/SKSE before deployment.'
 }
 if ((Get-BCNGHash $bcngDll) -ne $bcngExpectedHash) { throw 'Build hash changed; review before deploying.' }
-if ((Get-Item -LiteralPath $bcngDll).VersionInfo.FileVersion -ne '1.2.2.0') { throw 'Wrong DLL version.' }
+if ((Get-Item -LiteralPath $bcngDll).VersionInfo.FileVersion -ne '1.2.3.0') { throw 'Wrong DLL version.' }
 
 $bcngCopies = @(
     @{ Source = $bcngDll; Relative = 'SKSE\Plugins\BodyChangeNG.dll' },
@@ -43,6 +43,7 @@ $bcngCopies = @(
     @{ Source = (Join-Path $bcngRepo 'THIRD_PARTY_NOTICES.md'); Relative = 'THIRD_PARTY_NOTICES.md' }
 )
 foreach ($install in $bcngInstalls) {
+    if ($install.Name -notin $InstallNames) { continue }
     if (Get-Process -Name SkyrimSE,skse64_loader -ErrorAction SilentlyContinue) {
         throw 'Game started; stop deployment.'
     }
@@ -76,7 +77,7 @@ foreach ($install in $bcngInstalls) {
         $oldPath = Join-Path $root ('licenses\' + $name)
         if (Test-Path -LiteralPath $oldPath) { $oldFiles += Get-Item -LiteralPath $oldPath }
     }
-    $metaSource = Join-Path $bcngRepo ('build\v1.2.2\mo2-deploy-stage\' + $install.Name + '-meta.ini')
+    $metaSource = Join-Path $bcngRepo ('build\v1.2.3\mo2-deploy-stage\' + $install.Name + '-meta.ini')
     $copyItems = $bcngCopies + @{ Source = $metaSource; Relative = 'meta.ini' }
     $protected = @{}
     foreach ($json in Get-ChildItem -LiteralPath $plugins -Recurse -File -Filter '*.json') {

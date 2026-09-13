@@ -1527,7 +1527,8 @@ namespace
     [[nodiscard]] bool QueueDefaultSkin(const bool persistSelection)
     {
         auto* actor = SelectedActor();
-        const auto result = bcn::skin_application::QueueClear(actor);
+        const auto result = bcn::skin_application::QueueClear(actor, persistSelection ?
+            bcn::skin_transaction::Mode::commit : bcn::skin_transaction::Mode::preview);
         if (result == bcn::skin_application::ApplyResult::queued && persistSelection) {
             SaveManualDefaultSkinIfNeeded(actor);
         } else {
@@ -1952,7 +1953,8 @@ namespace
                 return;
             }
             const auto& skin = *visibleSkins[row - (hasDefaultRow ? 1U : 0U)];
-            const auto result = bcn::skin_application::QueueApply(actor, skin.id);
+            const auto result = bcn::skin_application::QueueApply(actor, skin.id,
+                bcn::skin_transaction::Mode::preview);
             if (result == bcn::skin_application::ApplyResult::queued) {
                 RememberPending(g_pendingSkin, actor, skin.id, false, confirmedSkinId);
             } else {

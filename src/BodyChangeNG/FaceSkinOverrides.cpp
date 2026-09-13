@@ -30,6 +30,10 @@ namespace
         RE::ActorHandle handle;
         Paths paths;
         std::string profile;
+        bcn::skin_transaction::Mode mode{ bcn::skin_transaction::Mode::commit };
+        Paths goodPaths;
+        std::string goodProfile;
+        bcn::skin_transaction::Mode goodMode{ bcn::skin_transaction::Mode::commit };
         std::function<void(bool)> completion;
         std::uint64_t generation{};
         std::uint64_t activeGeneration{};
@@ -135,6 +139,10 @@ namespace
         Request request;
         NodeAccess nodeAccess;
         Baseline baseline;
+        Baseline beforeBaseline;
+        Paths beforeVisible, beforeSaved;
+        std::uint8_t mutated{};
+        bool hadBaseline{}, rollingBack{}, rollbackDone{}, rollbackFailed{};
         std::vector<Baseline> oldTargets;
         std::size_t oldTarget{}, channel{};
         bool capturing{}, persistent{}, finished{}, cleaningOld{};
@@ -161,23 +169,97 @@ namespace
         void Finish(bool success)
         {
             if (finished) return;
+            if (!success && Current() && !cleaningOld && mutated != 0U && !rollbackDone) {
+                if (rollingBack) {
+                    rollbackFailed = true;
+                    ++channel;
+                } else {
+                    rollingBack = true;
+                    channel = 0;
+                }
+                RollbackChannel();
+                return;
+            }
             finished = true;
             bool newer{};
+            std::function<void(bool)> completion;
             {
                 std::scoped_lock lock(g_mutex);
                 auto it = g_requests.find(actorId);
                 if (it == g_requests.end() || !OwnsActiveBatch(epoch, g_epoch, generation, it->second.activeGeneration)) return;
                 it->second.running = false;
                 newer = it->second.generation != generation;
-                if (!newer) it->second.complete = success;
+                if (success) {
+                    it->second.goodPaths = request.paths;
+                    it->second.goodProfile = request.profile;
+                    it->second.goodMode = request.mode;
+                }
+                if (!newer) {
+                    it->second.complete = success;
+                    completion = std::move(it->second.completion);
+                    if (!success) {
+                        // A recovery rebuild must replay the last completed face,
+                        // never repeat the failed texture batch indefinitely.
+                        it->second.paths = it->second.goodPaths;
+                        it->second.profile = it->second.goodProfile;
+                        it->second.mode = it->second.goodMode;
+                        it->second.complete = false;
+                    }
+                }
             }
             if (!newer) {
                 if (!success) {
                     if (auto actor = Actor()) bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
                     SKSE::log::warn("BCNG face NiOverride transaction incomplete actor={:08X} profile='{}'", actorId, request.profile);
                 }
+                if (completion) completion(success);
+            } else {
+                // Publish the drained generation's result before the next batch
+                // so its body/face rollback snapshots describe the same skin.
                 if (request.completion) request.completion(success);
-            } else Pump(actorId);
+                Pump(actorId);
+            }
+        }
+        void RollbackChannel()
+        {
+            if (!Current()) { rollbackDone = true; Finish(false); return; }
+            while (channel < kChannels.size() && (mutated & (1U << channel)) == 0U) ++channel;
+            if (channel == kChannels.size()) {
+                rollbackDone = true;
+                if (!rollbackFailed) {
+                    if (hadBaseline) Store(beforeBaseline);
+                    else {
+                        std::scoped_lock lock(g_mutex);
+                        std::erase_if(g_baselines, [&](const auto& row) { return SameTarget(row, baseline); });
+                    }
+                }
+                Finish(false);
+                return;
+            }
+            Read(true, [self = shared_from_this()](std::string current) {
+                const auto index = self->channel;
+                // Do not undo a later provider's key while an asynchronous call
+                // was in flight. The snapshot contains strings, not engine refs.
+                if (!CanRollbackKey(current, self->beforeSaved[index], self->request.paths[index],
+                        OwnedValue(self->baseline, index, current))) {
+                    self->rollbackFailed = true;
+                    ++self->channel;
+                    self->RollbackChannel();
+                    return;
+                }
+                auto visible = [self, index] {
+                    auto next = [self] { ++self->channel; self->RollbackChannel(); };
+                    if (self->beforeVisible[index].empty()) {
+                        // An absent optional map is restored by the native rebuild;
+                        // LoadTexture("") would install an engine fallback instead.
+                        next();
+                    } else self->Write(self->beforeVisible[index], false,
+                        [self, index, next] { self->Verify(self->beforeVisible[index], next); });
+                };
+                if (current == self->beforeSaved[index]) visible();
+                else if (self->beforeSaved[index].empty()) self->Remove(std::move(visible));
+                else self->Write(self->beforeSaved[index], true, std::move(visible));
+            });
         }
         template<class... Args>
         void Call(const char* name, std::function<void(Result)> continuation, Args... args)
@@ -257,26 +339,28 @@ namespace
         }
         void Capture()
         {
+            // Unchanged optional channels need no extra provider calls on a
+            // subsequent selection. The first baseline still captures all five.
+            while (channel < kChannels.size() && !capturing && request.paths[channel].empty() &&
+                (baseline.touched & (1U << channel)) == 0U) ++channel;
             if (channel == kChannels.size()) {
                 channel = 0;
+                beforeBaseline = baseline;
                 ApplyChannel();
                 return;
             }
             Read(true, [self = shared_from_this()](std::string saved) {
-                self->baseline.saved[self->channel] = std::move(saved);
+                self->beforeSaved[self->channel] = saved;
+                if (self->capturing) self->baseline.saved[self->channel] = std::move(saved);
                 self->Read(false, [self](std::string visible) {
                     const auto actor = self->Actor();
-                    const auto property = visible;
                     visible = CaptureVisiblePath(visible,
                         VisibleTextureName(actor.get(), self->baseline.node, kChannels[self->channel]));
-                    if (property.empty() && !visible.empty())
-                    if (!CanRestoreChannel(kChannels[self->channel], !visible.empty())) {
-                        SKSE::log::warn("BCNG face baseline unavailable actor={:08X} node='{}' channel={}; no face write",
-                            self->actorId, self->baseline.node, kChannels[self->channel]);
-                        self->Finish(false);
-                        return;
-                    }
-                    self->baseline.visible[self->channel] = std::move(visible);
+                    // A broken/missing current texture must not prevent a valid
+                    // replacement from repairing it. Never load an empty path
+                    // during rollback; the native rebuild handles absent maps.
+                    self->beforeVisible[self->channel] = visible;
+                    if (self->capturing) self->baseline.visible[self->channel] = std::move(visible);
                     ++self->channel;
                     self->Capture();
                 });
@@ -351,14 +435,15 @@ namespace
                 Read(true, [self = shared_from_this(), desired](std::string current) {
                     const auto index = self->channel;
                     if (!current.empty() && !Owns(current, OwnedValue(self->baseline, index, current))) {
-                        self->baseline.saved[index] = current;
+                        // A provider may change its key between asynchronous
+                        // capture and this write. Roll back to that newer key.
+                        self->beforeBaseline.saved[index] = current;
+                        if (current != self->beforeSaved[index]) self->beforeVisible[index] = current;
                     }
-                    self->baseline.touched |= static_cast<std::uint8_t>(1U << index);
-                    if (self->persistent) {
-                        if (Owns(current, OwnedValue(self->baseline, index, current))) self->baseline.owned[index] = current;
-                        self->baseline.pending[index] = desired;
-                    }
+                    self->beforeSaved[index] = current;
+                    PrepareWrite(self->baseline, index, current, desired, self->persistent);
                     if (!Store(self->baseline)) { self->Finish(false); return; }
+                    self->mutated |= static_cast<std::uint8_t>(1U << index);
                     self->Write(desired, self->persistent, [self, desired] { self->Verify(desired); });
                 });
                 return;
@@ -395,6 +480,12 @@ namespace
                 }
                 auto finish = [self, visible] {
                     auto commit = [self] {
+                        if (self->request.mode == bcn::skin_transaction::Mode::preview && !self->cleaningOld) {
+                            // Default preview changes only live material. Keep the
+                            // committed key and its restoration ownership intact.
+                            self->Next();
+                            return;
+                        }
                         self->baseline.owned[self->channel].clear();
                         self->baseline.pending[self->channel].clear();
                         self->baseline.touched &= static_cast<std::uint8_t>(~(1U << self->channel));
@@ -406,7 +497,9 @@ namespace
                         self->Verify(visible, commit);
                     });
                 };
-                if (Owns(current, owned)) {
+                self->mutated |= static_cast<std::uint8_t>(1U << index);
+                if (self->request.mode == bcn::skin_transaction::Mode::preview && !self->cleaningOld) finish();
+                else if (Owns(current, owned)) {
                     if (self->baseline.saved[index].empty()) self->Remove(std::move(finish));
                     else self->Write(self->baseline.saved[index], true, std::move(finish));
                 } else finish();
@@ -422,25 +515,26 @@ namespace
                 return;
             }
             cleaningOld = false;
+            mutated = 0;
             auto actor = request.handle.get();
             auto* base = actor ? actor->GetActorBase() : nullptr;
             auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
             if (!actor || !base || !head || head->formEditorID.empty() || !actor->Is3DLoaded()) { Finish(false); return; }
             baseline = { .actor = actorId, .base = base->GetFormID(), .node = head->formEditorID.c_str(),
                 .female = base->GetSex() == RE::SEX::kFemale };
-            persistent = Persistent(actor->IsPlayerRef());
+            persistent = bcn::skin_transaction::PersistsFace(actor->IsPlayerRef(), request.mode);
             capturing = true;
             {
                 std::scoped_lock lock(g_mutex);
                 const auto it = std::ranges::find_if(g_baselines, [&](const auto& value) { return SameTarget(value, baseline); });
                 if (it != g_baselines.end()) { baseline = *it; capturing = false; }
             }
+            hadBaseline = !capturing;
             if (capturing && std::ranges::all_of(request.paths, [](const auto& path) { return path.empty(); })) {
                 Finish(true);
                 return;
             }
-            if (capturing) Capture();
-            else ApplyChannel();
+            Capture();
         }
     };
 
@@ -501,7 +595,7 @@ namespace
         batch->BeginTarget();
     }
     void Submit(RE::Actor* actor, Paths paths, std::string profile, std::function<void(bool)> completion,
-        bool deferForRebuild)
+        bool deferForRebuild, bcn::skin_transaction::Mode mode)
     {
         if (!actor || !bcn::frame_tasks::Active()) { if (completion) completion(false); return; }
         bool capacityExceeded{};
@@ -513,6 +607,7 @@ namespace
                 request.handle = actor->GetHandle();
                 request.paths = std::move(paths);
                 request.profile = std::move(profile);
+                request.mode = mode;
                 request.completion = std::move(completion);
                 request.generation = ++g_generation;
                 request.complete = false;
@@ -532,7 +627,8 @@ namespace
 namespace bcn::face_skin
 {
     void Apply(RE::Actor* actor, const std::vector<SkinTextureLayer>& layers,
-        std::string profileId, std::function<void(bool)> completion, bool deferForRebuild)
+        std::string profileId, std::function<void(bool)> completion, bool deferForRebuild,
+        skin_transaction::Mode mode)
     {
         Paths paths;
         for (const auto& layer : layers) {
@@ -546,11 +642,12 @@ namespace bcn::face_skin
             }
             paths[static_cast<std::size_t>(found - kChannels.begin())] = *converted;
         }
-        Submit(actor, std::move(paths), std::move(profileId), std::move(completion), deferForRebuild);
+        Submit(actor, std::move(paths), std::move(profileId), std::move(completion), deferForRebuild, mode);
     }
-    void Clear(RE::Actor* actor, std::function<void(bool)> completion, bool deferForRebuild)
+    void Clear(RE::Actor* actor, std::function<void(bool)> completion, bool deferForRebuild,
+        skin_transaction::Mode mode)
     {
-        Submit(actor, {}, {}, std::move(completion), deferForRebuild);
+        Submit(actor, {}, {}, std::move(completion), deferForRebuild, mode);
     }
     void QueueRebuild(RE::Actor* actor, std::function<bool()> dispatch)
     {
@@ -620,14 +717,14 @@ namespace bcn::face_skin
         g_requests.erase(actor);
         // Cell detach discards jobs, not the original appearance needed by Default.
     }
-    bool Matches(const RE::Actor* actor, std::string_view profileId)
+    bool Matches(const RE::Actor* actor, std::string_view profileId, skin_transaction::Mode mode)
     {
         if (!actor) return false;
         std::scoped_lock lock(g_mutex);
         const auto it = g_requests.find(actor->GetFormID());
-        return it != g_requests.end() && it->second.complete && it->second.profile == profileId;
+        return it != g_requests.end() && it->second.complete && it->second.profile == profileId && it->second.mode == mode;
     }
-    bool Pending(const RE::Actor* actor, std::string_view profileId)
+    bool Pending(const RE::Actor* actor, std::string_view profileId, skin_transaction::Mode mode)
     {
         if (!actor) return false;
         std::scoped_lock lock(g_mutex);
@@ -635,7 +732,7 @@ namespace bcn::face_skin
         // Includes a newer request waiting behind its cancelled batch. Do not
         // keep replacing that pending generation on every reconciliation pass.
         return it != g_requests.end() && (it->second.running || it->second.rebuild.Blocked()) &&
-            !it->second.complete && it->second.profile == profileId;
+            !it->second.complete && it->second.profile == profileId && it->second.mode == mode;
     }
     std::vector<Baseline> SnapshotBaselines()
     {

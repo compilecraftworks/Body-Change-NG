@@ -1,0 +1,7 @@
+Body Change NG v1.2.3 — changes from v1.2.2
+
+- Separate body-skin previews from committed application metadata and persistent player face overrides, including NPC-distribution checkboxes and Default Skin previews. Previewing the same pack no longer counts as explicit confirmation.
+- Add bounded recovery for partially written face channels and native body/hand/foot texture graphs. Retain the last completed body snapshot for face failure recovery; respect later foreign ownership and never load an empty face texture path.
+- Distinguish refreshed DDS content and preview/commit mode in request generations. Release completed callbacks and discard recovery snapshots at save-load boundaries while retaining reusable native graphs.
+- Preserve partial DDS routing, NPC distribution, save record formats, and the morph fixes from 1.2.1/1.2.2. No new per-frame file scans, timers, or bulk diagnostics.
+- Validation: 24 host regression targets, including preview/save codec boundaries and injected native channel-write failures. In-game repeated-switch and save/load validation remains pending.

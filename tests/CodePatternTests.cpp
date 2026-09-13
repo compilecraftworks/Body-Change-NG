@@ -419,6 +419,7 @@ int main()
     const auto skinPreviewBody = std::string_view(uiSource).substr(
         skinPreview, skinConfirm - skinPreview);
     Require(skinPreviewBody.contains("QueueDefaultSkin(false)"));
+    Require(skinPreviewBody.contains("skin_transaction::Mode::preview"));
     Require(!skinPreviewBody.contains("SaveManualSkinIfNeeded"));
     Require(uiSource.contains("QueuePreviewDefault(actor)"));
     const auto manualSkinHelper = uiSource.find("void SaveManualSkinIfNeeded");
@@ -590,6 +591,24 @@ int main()
         "FaceSkinOverrides.cpp", std::ios::binary);
     Require(faceBatchFile.good());
     const std::string faceBatchSource((std::istreambuf_iterator<char>(faceBatchFile)), {});
+    Require(faceBatchSource.contains("PersistsFace(actor->IsPlayerRef(), request.mode)"));
+    Require(faceBatchSource.contains("CanRollbackKey(current,") &&
+        faceBatchSource.contains("PrepareWrite(self->baseline,") &&
+        faceBatchSource.contains("void RollbackChannel()") &&
+        faceBatchSource.contains("completion = std::move(it->second.completion)"));
+    Require(faceBatchSource.contains("it->second.paths = it->second.goodPaths") &&
+        faceBatchSource.contains("it->second.mode = it->second.goodMode") &&
+        faceBatchSource.contains("it->second.mode == mode"));
+    std::ifstream nativeSkinFile(std::filesystem::path("src") / "BodyChangeNG" /
+        "NativeSkinBackend.cpp", std::ios::binary);
+    Require(nativeSkinFile.good());
+    const std::string nativeSkinSource((std::istreambuf_iterator<char>(nativeSkinFile)), {});
+    Require(nativeSkinSource.contains("RecordsApplication(mode)") &&
+        nativeSkinSource.contains("instance.desiredMode != mode") &&
+        nativeSkinSource.contains("instance.desiredContentHash != profile->contentHash") &&
+        nativeSkinSource.contains("RestoreApplied(instance, *beforeMutation)") &&
+        nativeSkinSource.contains("RestoreApplied(instance, *instance.goodState)") &&
+        nativeSkinSource.contains("instance.goodState.reset()"));
     const auto currentBegin = faceBatchSource.find("bool Current()");
     const auto actorBegin = faceBatchSource.find("RE::NiPointer<RE::Actor> Actor()", currentBegin);
     Require(currentBegin != std::string::npos && actorBegin != std::string::npos);

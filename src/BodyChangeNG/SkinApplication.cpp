@@ -381,12 +381,12 @@ namespace bcn::skin_application
         native_addon::Reset();
     }
 
-    ApplyResult QueueApply(RE::Actor* actor, std::string profileId)
+    ApplyResult QueueApply(RE::Actor* actor, std::string profileId, skin_transaction::Mode mode)
     {
         const auto actorFormID = actor ? actor->GetFormID() : 0U;
         const auto profile = SkinProfiles::Get().Find(profileId);
         const auto result = native_skin::QueueApply(actor, profileId,
-            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); });
+            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actorFormID);
             skin_session::TrackSkinSelection(actorFormID, std::move(profileId));
@@ -397,7 +397,7 @@ namespace bcn::skin_application
         }
         if (result == ApplyResult::missingProfile && actor) {
             [[maybe_unused]] const auto cleared = native_skin::QueueClear(actor,
-                [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); });
+                [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
             const auto generation = BeginSkinChange(actorFormID);
             skin_session::TrackSkinSelection(actorFormID, {});
             QueueMaleGenitalClear(actor, generation);
@@ -405,10 +405,10 @@ namespace bcn::skin_application
         return result;
     }
 
-    ApplyResult QueueClear(RE::Actor* actor)
+    ApplyResult QueueClear(RE::Actor* actor, skin_transaction::Mode mode)
     {
         const auto result = native_skin::QueueClear(actor,
-            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); });
+            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actor->GetFormID());
             skin_session::TrackSkinSelection(actor->GetFormID(), {});

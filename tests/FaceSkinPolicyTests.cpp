@@ -76,7 +76,15 @@ try {
     Check(!WriteLegacyString("", true,
         [&] { operations += 'W'; }, [&] { operations += 'R'; return testDDS; },
         [&] { operations += 'S'; }) && operations.empty(), "legacy immediate path loaded an empty string");
-    Check(Persistent(true) && !Persistent(false), "RSV player/NPC persistence contract changed");
+    using bcn::skin_transaction::Mode;
+    using bcn::skin_transaction::RecordsApplication;
+    using bcn::skin_transaction::PersistsFace;
+    Check(PersistsFace(true, Mode::commit) && !PersistsFace(false, Mode::commit),
+        "RSV player/NPC commit persistence contract changed");
+    Check(!PersistsFace(true, Mode::preview) && !PersistsFace(false, Mode::preview),
+        "skin preview creates a saved RaceMenu key");
+    Check(RecordsApplication(Mode::commit) && !RecordsApplication(Mode::preview),
+        "preview becomes the registry's serialized applied skin");
     // Production gate: no face writes between selection and engine completion.
     RebuildGate gate;
     Check(gate.CanApply(false, true, false), "unchanged body cannot retry face without a rebuild");
@@ -166,6 +174,64 @@ try {
     const auto restored = ReadBaselines([&](auto& v) { return stream.Read(v); },
         [&](auto& v) { return stream.ReadText(v); });
     Check(restored && restored->size()==2, "baseline load");
+    // Real production PrepareWrite + FCNI codec: saving at every channel of
+    // hundreds of previews must not serialize any preview DDS as an owned key.
+    for (const bool player : { false, true }) {
+        Baseline durable{.actor = player ? 0x14U : 0x12345U, .base = 7,
+            .node = "FemaleHeadNord", .female = true};
+        Paths savedKeys;
+        for (std::size_t channel{}; channel < kChannels.size(); ++channel) {
+            durable.visible[channel] = "original/" + std::to_string(channel) + ".dds";
+            const auto committed = "committed/" + std::to_string(channel) + ".dds";
+            PrepareWrite(durable, channel, {}, committed, PersistsFace(player, Mode::commit));
+            if (player) savedKeys[channel] = committed;
+        }
+        const auto original = durable;
+        for (unsigned click{}; click < 200; ++click) {
+            for (std::size_t channel{}; channel < kChannels.size(); ++channel) {
+                const auto preview = "preview/" + std::to_string(click) + "/" +
+                    std::to_string(channel) + ".dds";
+                PrepareWrite(durable, channel, savedKeys[channel], preview, PersistsFace(player, Mode::preview));
+                Stream duringPreview;
+                Check(WriteBaselines({durable}, [&](const auto& v) { return duringPreview.Write(v); },
+                    [&](const auto& v) { return duringPreview.WriteText(v); }), "preview-boundary save failed");
+                const auto decoded = ReadBaselines([&](auto& v) { return duringPreview.Read(v); },
+                    [&](auto& v) { return duringPreview.ReadText(v); });
+                Check(decoded && decoded->front().owned == original.owned &&
+                    decoded->front().pending == original.pending &&
+                    decoded->front().visible == original.visible &&
+                    decoded->front().saved == original.saved,
+                    "preview or cancelled preview contaminated persistent face restoration paths");
+                Check(CanRollbackKey(savedKeys[channel], savedKeys[channel], preview,
+                    OwnedValue(durable, channel, savedKeys[channel])), "unchanged committed key cannot roll back");
+                Check(!CanRollbackKey("foreign/new.dds", savedKeys[channel], preview,
+                    OwnedValue(durable, channel, "foreign/new.dds")), "rollback overwrites a foreign provider");
+            }
+        }
+        const auto confirmed = "confirmed/new.dds";
+        PrepareWrite(durable, 0, savedKeys[0], confirmed, PersistsFace(player, Mode::commit));
+        Check(player ? durable.pending[0] == confirmed : durable.pending[0].empty(),
+            "preview-to-commit promotion lost the player/NPC persistence policy");
+    }
+    // Native TXST recovery uses RestoreRows for near and far graphs. Inject a
+    // failure at every channel and verify all remaining restoration writes run.
+    const std::vector<std::array<std::string, 8>> rows(3, {
+        "diffuse", "normal", "skin", "detail", "height", "env", "tint", "specular" });
+    for (int fault = -1; fault < 24; ++fault) {
+        int writes{};
+        auto live = rows;
+        for (auto& row : live) row.fill("failed-skin");
+        const auto ok = bcn::skin_transaction::RestoreRows(rows,
+            [&](std::size_t row, std::size_t channel, const std::string& value) {
+                const auto fails = writes++ == fault;
+                if (!fails) live[row][channel] = value;
+                return !fails;
+            });
+        Check(writes == 24 && ok == (fault < 0), "rollback stopped early or hid a failed write");
+        for (int index{}; index < 24; ++index)
+            Check(live[index / 8][index % 8] == (index == fault ? "failed-skin" : rows[index / 8][index % 8]),
+                "native restoration left an unrelated channel from the failed skin");
+    }
     Check((*restored)[0].owned == female.owned && (*restored)[0].saved == female.saved &&
         (*restored)[0].visible[3] == originalDetail &&
         (*restored)[0].pending == female.pending && (*restored)[0].touched == 1 && (*restored)[0].female,

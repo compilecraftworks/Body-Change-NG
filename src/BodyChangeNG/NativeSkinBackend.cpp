@@ -41,6 +41,7 @@
 #include <atomic>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <new>
 #include <ranges>
 #include <span>
@@ -93,6 +94,18 @@ namespace
         std::vector<TextureBinding> textures;
     };
 
+    struct AppliedSnapshot final
+    {
+        RE::TESObjectARMO* skinGraph{};
+        RE::TESObjectARMO* farGraph{};
+        RE::TESObjectARMO* skinPointer{};
+        RE::TESObjectARMO* farPointer{};
+        std::vector<std::array<std::string, kTextureCount>> skinPaths, farPaths;
+        std::string profile;
+        std::uint64_t contentHash{};
+        bool skinAttached{}, farAttached{}, useDefault{};
+    };
+
     struct ModelTextureTarget final
     {
         TextureRole role{ TextureRole::unmanaged };
@@ -119,6 +132,8 @@ namespace
         ArmorGraph skin;
         ArmorGraph farSkin;
         std::string desiredProfileId;
+        bcn::skin_transaction::Mode desiredMode{ bcn::skin_transaction::Mode::commit };
+        std::uint64_t desiredContentHash{};
         std::string appliedProfileId;
         std::uint64_t appliedContentHash{};
         std::uint64_t generation{};
@@ -126,6 +141,7 @@ namespace
         bool appliedDefault{};
         bool skinAttached{};
         bool farSkinAttached{};
+        std::shared_ptr<AppliedSnapshot> goodState;
     };
 
     std::mutex g_lock;
@@ -855,6 +871,94 @@ namespace
         instance.farSkinAttached = false;
     }
 
+    std::shared_ptr<AppliedSnapshot> CaptureApplied(const BaseInstance& instance)
+    {
+        auto state = std::make_shared<AppliedSnapshot>();
+        state->skinGraph = instance.skin.armor;
+        state->farGraph = instance.farSkin.armor;
+        state->skinPointer = instance.base->skin;
+        state->farPointer = instance.base->farSkin;
+        state->profile = instance.appliedProfileId;
+        state->contentHash = instance.appliedContentHash;
+        state->skinAttached = instance.skinAttached;
+        state->farAttached = instance.farSkinAttached;
+        state->useDefault = instance.appliedDefault;
+        const auto capture = [](const ArmorGraph& graph, auto& paths) {
+            for (const auto& binding : graph.textures) {
+                auto& row = paths.emplace_back();
+                for (std::size_t i{}; i < kTextureCount; ++i) row[i] = TexturePath(binding.textureSet, i);
+            }
+        };
+        capture(instance.skin, state->skinPaths);
+        capture(instance.farSkin, state->farPaths);
+        return state;
+    }
+
+    bool RestoreApplied(BaseInstance& instance, const AppliedSnapshot& state)
+    {
+        if (state.skinGraph != instance.skin.armor || state.farGraph != instance.farSkin.armor ||
+            state.skinPaths.size() != instance.skin.textures.size() ||
+            state.farPaths.size() != instance.farSkin.textures.size() || !OwnsCurrentPointers(instance)) return false;
+        bool restored = true;
+        const auto restore = [&restored](ArmorGraph& graph, const auto& paths) {
+            restored = bcn::skin_transaction::RestoreRows(paths,
+                [&graph](std::size_t row, std::size_t channel, const std::string& path) {
+                    return WriteTexturePath(graph.textures[row], channel, path);
+                }) && restored;
+        };
+        restore(instance.skin, state.skinPaths);
+        restore(instance.farSkin, state.farPaths);
+        if (!restored) return false;
+        instance.base->skin = state.skinPointer;
+        instance.base->farSkin = state.farPointer;
+        instance.skinAttached = state.skinAttached;
+        instance.farSkinAttached = state.farAttached;
+        instance.appliedProfileId = state.profile;
+        instance.appliedContentHash = state.contentHash;
+        instance.appliedDefault = state.useDefault;
+        return true;
+    }
+
+    void CompleteMutation(RE::ActorHandle handle, RE::FormID baseId, std::uint64_t generation,
+        const std::string& id, bcn::skin_transaction::Mode mode,
+        const std::shared_ptr<AppliedSnapshot>& completed,
+        const std::function<void(RE::Actor*)>& refresh, bool success)
+    {
+        auto actor = handle.get();
+        if (!actor || !actor->GetActorBase() || actor->GetActorBase()->GetFormID() != baseId) return;
+        bool current{}, recovered{};
+        {
+            std::scoped_lock lock(g_lock);
+            const auto found = g_instances.find(baseId);
+            if (found == g_instances.end()) return;
+            auto& instance = found->second;
+            current = instance.generation == generation && instance.desiredProfileId == id;
+            if (success) {
+                // Active face batches drain in order, including a batch that a
+                // newer click superseded. Remember its matching body snapshot.
+                if (completed && completed->skinGraph == instance.skin.armor &&
+                    completed->farGraph == instance.farSkin.armor) instance.goodState = completed;
+            } else if (current && OwnsCurrentPointers(instance) && completed &&
+                (instance.skinAttached || instance.base->skin == completed->skinPointer) &&
+                (instance.farSkinAttached || instance.base->farSkin == completed->farPointer)) {
+                recovered = instance.goodState && RestoreApplied(instance, *instance.goodState);
+                if (!recovered) {
+                    RestoreOwnedPointers(instance);
+                    instance.appliedProfileId.clear();
+                    instance.appliedContentHash = 0;
+                    instance.appliedDefault = true;
+                    recovered = true;
+                }
+            }
+        }
+        if (success && current && bcn::skin_transaction::RecordsApplication(mode))
+            bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), id, id.empty());
+        else if (!success && current) {
+            bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
+            if (recovered) RefreshLoadedActors(actor.get(), refresh);
+        }
+    }
+
     [[nodiscard]] std::optional<BaseInstance> BuildInstance(
         RE::Actor* actor, const bcn::SkinProfile& profile,
         const bcn::SkinUvLayout runtimeUvLayout)
@@ -904,7 +1008,7 @@ namespace
         bcn::skin_plan::ApplicationPlan plan, const RE::FormID baseId,
         const std::uint64_t generation,
         const bcn::body_family::Mask sourceFamily,
-        std::function<void(RE::Actor*)> afterMutation)
+        std::function<void(RE::Actor*)> afterMutation, bcn::skin_transaction::Mode mode)
     {
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, profile.id) ||
@@ -930,6 +1034,8 @@ namespace
         if (graphAction == bcn::native_skin::GraphAction::rebuildFromCurrentSource &&
             instance.skin.armor) {
             const auto desired = instance.desiredProfileId;
+            const auto desiredMode = instance.desiredMode;
+            const auto desiredContentHash = instance.desiredContentHash;
             const auto currentGeneration = instance.generation;
             const auto owner = instance.ownerActor;
             // RSV may replace only one member of the graph. Detach every
@@ -941,6 +1047,8 @@ namespace
             instance.base = base;
             instance.ownerActor = owner;
             instance.desiredProfileId = desired;
+            instance.desiredMode = desiredMode;
+            instance.desiredContentHash = desiredContentHash;
             instance.generation = currentGeneration;
             instance.tracked = true;
         }
@@ -952,6 +1060,8 @@ namespace
                 return;
             }
             built->desiredProfileId = instance.desiredProfileId;
+            built->desiredMode = instance.desiredMode;
+            built->desiredContentHash = instance.desiredContentHash;
             built->sourceFamily = sourceFamily;
             built->sourceRace = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
             built->sourceSex = base->GetSex();
@@ -962,20 +1072,21 @@ namespace
 
         if (instance.appliedProfileId == profile.id &&
             instance.appliedContentHash == profile.contentHash && OwnsCurrentPointers(instance)) {
-            lock.unlock();
             const auto action = bcn::face_skin::ResolveReapply(
-                bcn::face_skin::Matches(actor.get(), profile.id),
-                bcn::face_skin::Pending(actor.get(), profile.id));
+                bcn::face_skin::Matches(actor.get(), profile.id, mode),
+                bcn::face_skin::Pending(actor.get(), profile.id, mode));
+            // An unchanged reconciliation pass allocates no rollback snapshot.
+            const auto completed = action == bcn::face_skin::ReapplyAction::applyFace ?
+                CaptureApplied(instance) : nullptr;
+            lock.unlock();
             if (action == bcn::face_skin::ReapplyAction::complete) {
-                bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
+                if (bcn::skin_transaction::RecordsApplication(mode))
+                    bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
             } else if (action == bcn::face_skin::ReapplyAction::applyFace) {
                 bcn::face_skin::Apply(actor.get(), plan.face, profile.id,
-                    [handle, id = profile.id, baseId, generation](bool success) {
-                        if (success && RequestStillCurrent(baseId, generation, id)) {
-                            if (auto current = handle.get())
-                                bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), id, false);
-                        }
-                    });
+                    [handle, id = profile.id, baseId, generation, mode, completed, afterMutation](bool success) {
+                        CompleteMutation(handle, baseId, generation, id, mode, completed, afterMutation, success);
+                    }, false, mode);
             }
             // The body graph is current: never rebuild it to retry a face,
             // and never report a pending/failed face as whole-skin success.
@@ -1009,11 +1120,13 @@ namespace
         // Preflight every resource before mutating even an already-attached
         // private graph; a missing file must not leave a half-selected skin.
         if (!ValidateResources(instance, plan, bodyGraphRequired)) return;
+        const auto beforeMutation = CaptureApplied(instance);
         if ((bodyGraphRequired && !ApplyGraph(instance.skin, plan)) ||
             (bodyGraphRequired && instance.farSkin.armor &&
                 !ApplyGraph(instance.farSkin, plan))) {
             SKSE::log::error("Body Change NG aborted native TXST apply for '{}' because its full declared layer set was unavailable",
                 profile.name);
+            if (!RestoreApplied(instance, *beforeMutation)) RestoreOwnedPointers(instance);
             return;
         }
 
@@ -1038,19 +1151,18 @@ namespace
         instance.appliedProfileId = profile.id;
         instance.appliedContentHash = profile.contentHash;
         instance.appliedDefault = false;
+        const auto completed = CaptureApplied(instance);
         lock.unlock();
         bcn::face_skin::Apply(actor.get(), plan.face, profile.id,
-            [handle, id = profile.id, baseId, generation](bool success) {
-                if (success && RequestStillCurrent(baseId, generation, id)) {
-                    if (auto current = handle.get()) bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), id, false);
-                }
-            }, static_cast<bool>(afterMutation) && actor->Is3DLoaded());
+            [handle, id = profile.id, baseId, generation, mode, completed, afterMutation](bool success) {
+                CompleteMutation(handle, baseId, generation, id, mode, completed, afterMutation, success);
+            }, static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode);
         RefreshLoadedActors(actor.get(), afterMutation);
     }
 
     void ClearNow(RE::ActorHandle handle, const RE::FormID baseId,
         const std::uint64_t generation,
-        std::function<void(RE::Actor*)> afterMutation)
+        std::function<void(RE::Actor*)> afterMutation, bcn::skin_transaction::Mode mode)
     {
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, {})) return;
@@ -1066,12 +1178,11 @@ namespace
         instance.appliedContentHash = 0U;
         instance.appliedDefault = true;
         instance.tracked = true;
+        const auto completed = CaptureApplied(instance);
         lock.unlock();
-        bcn::face_skin::Clear(actor.get(), [handle, baseId, generation](bool success) {
-            if (success && RequestStillCurrent(baseId, generation, {})) {
-                if (auto current = handle.get()) bcn::ActorRegistry::Get().MarkSkinApplied(current.get(), {}, true);
-            }
-        }, static_cast<bool>(afterMutation) && actor->Is3DLoaded());
+        bcn::face_skin::Clear(actor.get(), [handle, baseId, generation, mode, completed, afterMutation](bool success) {
+            CompleteMutation(handle, baseId, generation, {}, mode, completed, afterMutation, success);
+        }, static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode);
         RefreshLoadedActors(actor.get(), afterMutation);
     }
 
@@ -1122,7 +1233,7 @@ namespace
 namespace bcn::native_skin
 {
     SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
-        std::function<void(RE::Actor*)> afterMutation)
+        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode)
     {
         body_family::SetSkinFamilyResolver(&SourceBodyFamily);
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
@@ -1174,8 +1285,11 @@ namespace bcn::native_skin
                 sharedAction == bcn::native_skin::SharedBaseAction::transferOwner) {
                 instance.ownerActor = actorId;
             }
-            if (instance.desiredProfileId != profile->id || instance.generation == 0U) {
+            if (instance.desiredProfileId != profile->id || instance.desiredMode != mode ||
+                instance.desiredContentHash != profile->contentHash || instance.generation == 0U) {
                 instance.desiredProfileId = profile->id;
+                instance.desiredMode = mode;
+                instance.desiredContentHash = profile->contentHash;
                 instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
             }
             instance.tracked = true;
@@ -1188,11 +1302,11 @@ namespace bcn::native_skin
 
         const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily);
         const auto handle = actor->GetHandle();
-        frame_tasks::Queue(actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily,
+        frame_tasks::Queue(actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily, mode,
                                       afterMutation = std::move(afterMutation)]() mutable {
             if (!RequestStillCurrent(baseId, generation, profile.id)) return;
             const auto lease = frame_tasks::CurrentLease();
-            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily,
+            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily, mode,
                                      afterMutation = std::move(afterMutation)](const bool prepared) mutable {
                 if (!prepared) {
                     SKSE::log::error("Body Change NG could not prepare every native TXST asset for '{}'",
@@ -1200,10 +1314,10 @@ namespace bcn::native_skin
                     return;
                 }
                 static_cast<void>(frame_tasks::Continue(lease,
-                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation, actorFamily,
+                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation, actorFamily, mode,
                         afterMutation = std::move(afterMutation)]() mutable {
                         ApplyNow(handle, std::move(profile), std::move(plan), baseId,
-                            generation, actorFamily, std::move(afterMutation));
+                            generation, actorFamily, std::move(afterMutation), mode);
                     }));
             };
             if (!runtime_assets::PrepareTexturePathsAsync(
@@ -1217,7 +1331,7 @@ namespace bcn::native_skin
     }
 
     SkinApplyResult QueueClear(RE::Actor* actor,
-        std::function<void(RE::Actor*)> afterMutation)
+        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode)
     {
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         if (!actor) return SkinApplyResult::invalidActor;
@@ -1248,15 +1362,17 @@ namespace bcn::native_skin
                 instance.originalFarSkin = base->farSkin;
             }
             instance.desiredProfileId.clear();
+            instance.desiredMode = mode;
+            instance.desiredContentHash = 0;
             instance.tracked = true;
             instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
             generation = instance.generation;
         }
         const auto handle = actor->GetHandle();
         frame_tasks::Queue(actorId,
-            [handle, baseId, generation,
+            [handle, baseId, generation, mode,
                 afterMutation = std::move(afterMutation)]() mutable {
-                ClearNow(handle, baseId, generation, std::move(afterMutation));
+                ClearNow(handle, baseId, generation, std::move(afterMutation), mode);
             },
             1U, appearance::WorkChannel::skinApply);
         return SkinApplyResult::queued;
@@ -1329,8 +1445,10 @@ namespace bcn::native_skin
                 // duplicate forms for the lifetime of the Skyrim process.
                 instance.ownerActor = 0U;
                 instance.desiredProfileId.clear();
+                instance.desiredContentHash = 0;
                 instance.appliedProfileId.clear();
                 instance.appliedContentHash = 0U;
+                instance.goodState.reset();
                 instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
                 instance.tracked = false;
                 instance.appliedDefault = false;

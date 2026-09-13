@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.2"
+local version = "1.2.3"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")

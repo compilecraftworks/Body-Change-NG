@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/SkinApplyResult.h"
+#include "BodyChangeNG/SkinTransactionPolicy.h"
 
 #include <functional>
 #include <cstdint>
@@ -22,9 +23,11 @@ namespace bcn::native_skin
     // the sole owner of the public Actor.QueueNiNodeUpdate route; this backend
     // must never issue a second 3D reset or repaint outfit-owned geometry.
     [[nodiscard]] SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
-        std::function<void(RE::Actor*)> afterMutation = {});
+        std::function<void(RE::Actor*)> afterMutation = {},
+        skin_transaction::Mode mode = skin_transaction::Mode::commit);
     [[nodiscard]] SkinApplyResult QueueClear(RE::Actor* actor,
-        std::function<void(RE::Actor*)> afterMutation = {});
+        std::function<void(RE::Actor*)> afterMutation = {},
+        skin_transaction::Mode mode = skin_transaction::Mode::commit);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* actor);
     [[nodiscard]] bool HasTrackedSelection(const RE::Actor* actor);
     // A DDS replacement does not change the body's UV family. Only return

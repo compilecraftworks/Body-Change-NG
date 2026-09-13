@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/SkinApplyResult.h"
+#include "BodyChangeNG/SkinTransactionPolicy.h"
 
 #include <cstdint>
 #include <optional>
@@ -34,11 +35,13 @@ namespace bcn::skin_application
     // Applies a shared texture profile to either the player or an NPC through
     // a private clone of the current native TXST -> ARMA -> Skin Armor graph.
     // NIF paths, inventory, and equipment slots are never changed.
-    [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_profileId);
+    [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_profileId,
+        skin_transaction::Mode mode = skin_transaction::Mode::commit);
     // Detaches only Body Change NG's still-owned native clones. Another
     // provider's later native Skin Armor/TXST graph is never removed, so RSV
     // becomes visible again after a clear.
-    [[nodiscard]] ApplyResult QueueClear(RE::Actor* a_actor);
+    [[nodiscard]] ApplyResult QueueClear(RE::Actor* a_actor,
+        skin_transaction::Mode mode = skin_transaction::Mode::commit);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* a_actor);
     // True only for actors whose skin was explicitly managed this session,
     // including an explicit Default Skin selection.
