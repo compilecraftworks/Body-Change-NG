@@ -3,6 +3,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
+#include "BodyChangeNG/SliderName.h"
 
 #include <pugixml.hpp>
 
@@ -44,13 +45,17 @@ namespace
     {
         constexpr std::array names{ "Breasts"sv, "BreastsSmall"sv, "NippleDistance"sv, "NippleSize"sv,
             "ButtCrack"sv, "Butt"sv, "ButtSmall"sv, "Legs"sv, "Arms"sv, "ShoulderWidth"sv };
-        return std::ranges::find(names, name) != names.end();
+        return std::ranges::any_of(names, [name](const auto candidate) {
+            return bcn::slider_name::Equal{}(candidate, name);
+        });
     }
 
     void AddSlider(bcn::BodyPreset& preset, const std::string_view name, const float value, const bool large)
     {
         if (name.empty()) return;
-        const auto found = std::ranges::find(preset.sliders, name, &bcn::BodySlider::name);
+        const auto found = std::ranges::find_if(preset.sliders, [name](const auto& slider) {
+            return bcn::slider_name::Equal{}(slider.name, name);
+        });
         if (found == preset.sliders.end()) {
             preset.sliders.push_back({ .name = std::string(name) });
             if (large) preset.sliders.back().highWeight = value;

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Body Change NG v1.2.2 — 변경 내역</title>
+<style>
+:root{color-scheme:dark;--bg:#101419;--panel:#192129;--line:#33414f;--text:#e7edf3;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.85 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+main{max-width:1040px;margin:32px auto;padding:44px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+h1,h2,h3{line-height:1.4;font-weight:800}h1{color:var(--title);font-size:2.7rem;margin:8px 0 18px}h1 small{font-size:1.2rem;color:var(--accent);white-space:nowrap}h2{margin-top:2.8em;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--accent);font-size:1.55rem}h3{color:var(--sub);margin-top:1.8em;font-size:1.15rem}
+a{color:var(--accent)}p{margin:.9em 0}li+li{margin-top:.45em}ul,ol{padding-left:1.5em}strong{color:#fff}
+.eyebrow{color:var(--accent);font-size:.8rem;letter-spacing:.14em}.lead{font-size:1.13rem;font-weight:650;color:var(--sub)}.notice{border-left:4px solid var(--warn);padding:14px 20px;background:#28261f;border-radius:0 6px 6px 0}.note{color:var(--muted)}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:28px 0}nav a{text-decoration:none}
+code{font: .91em/1.65 Consolas,"Malgun Gothic",monospace;background:#10181f;color:#cff0fa;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:#10181f;border:1px solid var(--line);padding:16px;border-radius:8px;overflow:auto;line-height:1.65}pre code{padding:0;background:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);background:#141b22}
+footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+@media(max-width:700px){main{margin:0;border:0;border-radius:0;padding:24px 18px}h1{font-size:2rem}body{font-size:15px}th,td{padding:9px}nav{gap:8px 14px}}
+@media print{:root{color-scheme:light}body,main{background:#fff;color:#222}main{border:0;margin:0;padding:0}strong,h1,h2,h3,code,th,td,a,.lead,.note,footer{color:#222}pre,code,.notice{background:#f3f3f3}pre{white-space:pre-wrap}pre code{white-space:pre-wrap}nav{display:none}h2,h3{break-after:avoid}}
+</style></head><body><main>
+<header><h1>Body Change NG <small>v1.2.2</small></h1><p class="lead">v1.2.1 대비 변경 내역</p></header>
+<section><h2>모프 이름 비교 수정 · 1.2.1 기능 유지</h2><ul>
+<li>Breasts/breasts, Waist/waist, HipBone/Hipbone처럼 대소문자만 다른 슬라이더의 충돌을 수정했습니다. XML의 small/big 값을 하나의 모프로 병합하며 처음 표기된 이름은 유지합니다.</li>
+<li>미리보기와 가슴·유두 의상 보정에서 대소문자가 다른 이름을 잘못 합성하던 문제를 수정했습니다. 미리보기 취소 시 확정 상태로 복원하는 동작은 유지합니다.</li>
+<li>UNP 역방향 기본 슬라이더에도 같은 이름 비교를 적용했습니다. 음수·100% 초과 값을 유지하며 원본 XML과 코세이브 형식은 바꾸지 않았습니다.</li>
+<li>모프 보존을 켠 상태의 OBody/OClothe 키 정리, 후타스킨 즐겨찾기, 성별별 NPC 배포 등 1.2.1의 기존 기능은 모두 유지합니다.</li>
+<li>최초 공개 1.2.1 이후 추가했던 체크박스 미리보기 액터의 커스텀 팔로워·노인 자동 선택 제외도 포함합니다. 일반 액터 직접 선택과 실제 배포 규칙은 바꾸지 않습니다.</li>
+</ul></section>
+<p class="notice">이 업데이트를 위해 새 게임이나 세이브 정리는 필요하지 않습니다. 기존 설정·규칙·팩과 세이브를 보존하세요.</p>
+<p class="note">Release 빌드와 자동 테스트 24종 통과. 이번 변경의 인게임 검증은 아직 진행하지 않았습니다.</p>
+<footer><a href="NEXUS-DESCRIPTION-v1.2.2-KO.html">전체 소개와 사용 안내</a><p>2026-09-13 · v1.2.2</p></footer>
+</main></body></html>

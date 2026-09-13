@@ -1,9 +1,10 @@
 #pragma once
 
+#include "BodyChangeNG/SliderName.h"
+
 #include <array>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 
 namespace bcn::racemenu::keys
 {
@@ -71,7 +72,7 @@ namespace bcn::racemenu::keys
             if (!replaceOutfit_ && (source == outfit || source == legacyOutfit)) return;
             if (!preserve_ || IsReplacedBody(source)) values[name] += value;
         }
-        std::unordered_map<std::string, float> values;
+        slider_name::Map<float> values;
     private:
         bool preserve_;
         bool replaceOutfit_;

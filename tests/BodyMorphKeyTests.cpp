@@ -1,7 +1,9 @@
 #include "BodyChangeNG/BodyMorphKeys.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
+#include "BodyChangeNG/SliderName.h"
 
 #include <cmath>
+#include <cstring>
 #include <iostream>
 #include <map>
 #include <set>
@@ -17,8 +19,15 @@ namespace
     }
     bool Near(float a, float b) { return std::abs(a - b) < 0.00001F; }
     struct Actor {};
+    // Independent fake of SKEEFixedString's _stricmp ordering. Do not reuse
+    // the production hash/equality here: a broken hash must fail these tests.
+    struct SkeeNameLess {
+        bool operator()(const std::string& left, const std::string& right) const {
+            return _stricmp(left.c_str(), right.c_str()) < 0;
+        }
+    };
     struct Morphs {
-        std::map<std::string, std::map<std::string, float>> values;
+        std::map<std::string, std::map<std::string, float>, SkeeNameLess> values;
         void ClearBodyMorphKeys(Actor*, const char* key) {
             for (auto it = values.begin(); it != values.end();) {
                 it->second.erase(key);
@@ -43,6 +52,75 @@ int main()
         namespace keys = bcn::racemenu::keys;
         using bcn::body_morph_policy::FemaleFamily;
         Actor actor;
+        {
+            bcn::slider_name::Map<float> names;
+            names.insert_or_assign("HipBone", 1.2F);
+            names.insert_or_assign("Hipbone", -1.5F);
+            Check(names.size() == 1U && names.begin()->first == "HipBone" &&
+                names.at("HIPBONE") == -1.5F, "slider identity lost casing or last assigned value");
+            Check(names.contains(std::string_view("hipbone")), "transparent lookup missed a case variant");
+            Check(!bcn::slider_name::Equal{}("Breasts", "BreastsSmall") &&
+                !bcn::slider_name::Equal{}("HipBone", "Hip_Bone") &&
+                !bcn::slider_name::Equal{}("\xC0", "\xE0"), "slider comparison merged distinct names");
+            for (unsigned char letter = 'A'; letter <= 'Z'; ++letter) {
+                const std::string upper(1U, static_cast<char>(letter));
+                const std::string lower(1U, static_cast<char>(letter + ('a' - 'A')));
+                Check(bcn::slider_name::Equal{}(upper, lower) &&
+                    bcn::slider_name::Hash{}(upper) == bcn::slider_name::Hash{}(lower),
+                    "equal ASCII slider names had unequal hashes");
+            }
+        }
+        // A saved morph's spelling need not match the next XML. Only one
+        // preview write may reach that SKEE name; cancel must restore all keys.
+        for (const bool reverse : {false, true}) {
+            for (const bool preserve : {false, true}) {
+                Morphs morphs;
+                const std::string oldName = reverse ? "Breasts" : "breasts";
+                const std::string newName = reverse ? "breasts" : "Breasts";
+                morphs.values[oldName] = {{keys::body, .7F}, {keys::obody, 1.2F},
+                    {keys::oclothe, -.1F}, {"Foreign", .25F}};
+                morphs.values["OldOnly"] = {{keys::body, .5F}};
+                const auto original = morphs.values;
+                for (unsigned step = 0; step < 128U; ++step) {
+                    const float selected = step % 2U ? -1.5F : 1.2F;
+                    keys::PreviewBase baseline(preserve);
+                    for (const auto& [name, values] : morphs.values) {
+                        for (const auto& [key, value] : values) baseline.Visit(name.c_str(), key.c_str(), value);
+                    }
+                    bcn::slider_name::Map<float> desired{{newName, selected}};
+                    for (const auto& [name, value] : baseline.values) desired.try_emplace(name, 0.0F);
+                    Check(desired.size() == 2U, "old spelling generated a second zero entry for the same morph");
+                    for (const auto& [name, value] : desired) morphs.values[name][keys::preview] =
+                        bcn::racemenu::PreviewPresetCorrection(value, baseline.values[name]);
+                    Check(Near(morphs.Sum("BREASTS"), selected + (preserve ? .25F : 0.0F)) &&
+                        Near(morphs.Sum("oldonly"), 0.0F), "case mismatch left a wrong-sign preview or old-only value");
+                    morphs.ClearBodyMorphKeys(&actor, keys::preview);
+                    Check(morphs.values == original, "case-variant preview cancellation changed persistent keys");
+                }
+                keys::BeginPresetCommit(morphs, &actor, preserve);
+                morphs.values[newName][keys::body] = -1.5F;
+                Check(Near(morphs.Sum("BREASTS"), -1.5F + (preserve ? .25F : 0.0F)) &&
+                    !morphs.values[newName].contains(keys::obody) &&
+                    !morphs.values[newName].contains(keys::oclothe),
+                    "case fix regressed 1.2.1 OBody cleanup or direct authored commit");
+            }
+        }
+        // Procedural refit uses canonical names; the XML may use lower case.
+        for (const auto family : {FemaleFamily::cbbe3ba, FemaleFamily::bhunpUnp}) {
+            bcn::slider_name::Map<float> desired{{"breasts", 1.2F}, {"breastcleavage", -.4F},
+                {"nipbgone", .7F}, {"nippleareola", .8F}};
+            bcn::slider_name::Map<float> outfit;
+            bcn::body_morph_policy::GenerateOutfitMorphs(family, .5F, true,
+                [&](const char* name) {
+                    const auto found = desired.find(name);
+                    return found == desired.end() ? 0.0F : found->second;
+                }, [&](const char* name, float value) { outfit.insert_or_assign(name, value); });
+            for (const auto& [name, value] : outfit) desired[name] += value;
+            Check(Near(desired.at("Breasts"), 1.15F) && Near(desired.at("BreastCleavage"), 1.0F),
+                "case-variant breast refit did not combine with the XML value");
+            Check(Near(desired.at(family == FemaleFamily::cbbe3ba ? "NipBGone" : "NippleAreola"),
+                family == FemaleFamily::cbbe3ba ? 1.0F : -.3F), "case-variant nipple target used a zero baseline");
+        }
         for (bool preserve : {false, true}) {
             Morphs morphs;
             morphs.values["Breasts"] = {{keys::body, .7F}, {keys::legacyBody, .1F},

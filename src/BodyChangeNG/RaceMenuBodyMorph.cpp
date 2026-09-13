@@ -10,6 +10,7 @@
 #include "BodyChangeNG/BodyMorphKeys.h"
 #include "BodyChangeNG/RaceMenuCompatibility.h"
 #include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/SliderName.h"
 #include "BodyChangeNG/Settings.h"
 
 #include <RE/B/BSVisit.h>
@@ -393,7 +394,7 @@ namespace
         if (mode == bcn::racemenu::ApplyMode::commit) {
             bcn::racemenu::keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs);
         }
-        std::unordered_map<std::string, float> desiredMorphs;
+        bcn::slider_name::Map<float> desiredMorphs;
         if (mode == bcn::racemenu::ApplyMode::outfit) {
             if (!bcn::rendered_outfit::ValidateApply(actor.get())) return;
             bodyMorph->ClearBodyMorphKeys(actor.get(), key);
@@ -509,14 +510,14 @@ namespace
             }
         }
         if (mode != bcn::racemenu::ApplyMode::outfit) {
-            std::unordered_map<std::string, float> replaced;
+            bcn::slider_name::Map<float> replaced;
             if (mode == bcn::racemenu::ApplyMode::preview) {
                 const auto plan = bcn::OutfitRefit::Get().Evaluate(actor.get(), &preset);
                 const auto replaceOutfit = plan.action != bcn::OutfitRefit::Action::defer;
                 PreviewBaseCollector collector(settings.preserveOtherMorphs, replaceOutfit);
                 bodyMorph->VisitMorphValues(actor.get(), collector);
                 replaced = std::move(collector.base.values);
-                std::unordered_map<std::string, float> previewOutfit;
+                bcn::slider_name::Map<float> previewOutfit;
                 if (plan.action == bcn::OutfitRefit::Action::named && plan.preset) {
                     for (const auto& slider : plan.preset->sliders) {
                         if (!settings.outfitNippleCorrection && IsNippleRefitSlider(slider.name)) continue;

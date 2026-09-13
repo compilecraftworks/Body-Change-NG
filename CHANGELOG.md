@@ -2,6 +2,14 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.2
+
+- Fixed case-only slider-name collisions such as Breasts/breasts, Waist/waist and HipBone/Hipbone. XML low/high endpoints now merge into one morph while retaining the first spelling.
+- Fixed previews and breast/nipple outfit correction combining differently cased names incorrectly. Preview cancellation still restores the committed state.
+- UNP reverse-defined base sliders now use the same case-insensitive matching. Negative and over-100 XML values remain supported; XML files and the co-save format are unchanged.
+- Retained all v1.2.1 features, including OBody/OClothe key cleanup with morph preservation enabled, Futanari Skin favorites and sex-specific NPC distribution controls.
+- Includes the automatic checkbox-preview target exclusion for custom followers and elder NPCs added after the initial public v1.2.1 build. Manual actor selection and actual distribution rules are unchanged.
+
 ## 1.2.1
 
 - NPC-distribution checkbox-mode automatic preview targeting skips custom followers and elder NPCs, including futanari targets. If no eligible nearby NPC remains, the player is selected. Manual actor selection and actual distribution rules are unchanged.

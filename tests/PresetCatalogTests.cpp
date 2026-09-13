@@ -1,5 +1,7 @@
 #include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/SliderName.h"
 
+#include <cmath>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -148,6 +150,99 @@ int main(const int argc, char** argv)
     if (!Require(ubeRefit && ubeRefit->family == "UBE",
             "named refit selected the wrong family for a UBE actor")) return 1;
 
+    // Distinct presets must never supply one another's zero values. Within
+    // one preset, differently cased low/high entries are one RaceMenu morph.
+    const auto caseRoot = root / "CaseNames";
+    std::filesystem::create_directories(caseRoot);
+    {
+        std::ofstream preset(caseRoot / "case.xml");
+        preset << R"(<SliderPresets>
+<Preset name="Target" set="CBBE 3BBB Body Amazing">
+  <SetSlider name="Breasts" size="small" value="120"/>
+  <SetSlider name="Breasts" size="big" value="120"/>
+</Preset>
+<Preset name="Other" set="CBBE 3BBB Body Amazing">
+  <SetSlider name="breasts" size="small" value="0"/>
+  <SetSlider name="breasts" size="big" value="0"/>
+</Preset>
+<Preset name="Mixed" set="CBBE 3BA">
+  <SetSlider name="Breasts" size="small" value="120"/>
+  <SetSlider name="breasts" size="big" value="-150"/>
+  <SetSlider name="Waist" size="small" value="-150"/>
+  <SetSlider name="waist" size="big" value="120"/>
+  <SetSlider name="HipBone" size="small" value="20"/>
+  <SetSlider name="Hipbone" size="big" value="80"/>
+</Preset>
+<Preset name="Mixed Reversed" set="CBBE 3BA">
+  <SetSlider name="Hipbone" size="big" value="80"/>
+  <SetSlider name="HipBone" size="small" value="20"/>
+  <SetSlider name="waist" size="big" value="120"/>
+  <SetSlider name="Waist" size="small" value="-150"/>
+  <SetSlider name="breasts" size="big" value="-150"/>
+  <SetSlider name="Breasts" size="small" value="120"/>
+</Preset>
+<Preset name="UNP Mixed" set="BHUNP">
+  <SetSlider name="breasts" size="small" value="120"/>
+  <SetSlider name="BREASTS" size="big" value="-150"/>
+  <SetSlider name="nippleSIZE" size="small" value="25"/>
+  <SetSlider name="NippleSize" size="big" value="75"/>
+  <SetSlider name="Hipbone" size="small" value="-150"/>
+  <SetSlider name="HipBone" size="big" value="120"/>
+</Preset>
+<Preset name="Duplicates-Refit" set="CBBE 3BA">
+  <SetSlider name="Breasts" size="small" value="10"/>
+  <SetSlider name="breasts" size="small" value="120"/>
+  <SetSlider name="BREASTS" size="big" value="-150"/>
+</Preset>
+</SliderPresets>)";
+    }
+    const auto casePresets = bcn::PresetCatalog::ScanDirectory(caseRoot);
+    if (!Require(casePresets.size() == 6U, "case fixture presets were lost")) return 1;
+    const auto caseFind = [&](const std::string_view name) -> const bcn::BodyPreset& {
+        return *std::ranges::find(casePresets, name, &bcn::BodyPreset::name);
+    };
+    const auto& target = caseFind("Target");
+    const auto& other = caseFind("Other");
+    if (!Require(target.sliders.size() == 1U && target.sliders[0].lowWeight == 1.2F &&
+            target.sliders[0].highWeight == 1.2F && other.sliders.size() == 1U &&
+            other.sliders[0].lowWeight == 0.0F && other.sliders[0].highWeight == 0.0F,
+            "another preset's zero slider changed the target's +120 value")) return 1;
+    const auto& mixed = caseFind("Mixed");
+    const auto& reversed = caseFind("Mixed Reversed");
+    if (!Require(mixed.sliders.size() == 3U && reversed.sliders.size() == 3U &&
+            mixed.sliders[0].name == "Breasts" && reversed.sliders.back().name == "breasts",
+            "case variants were not merged or first authored spelling was lost")) return 1;
+    const auto valuesAt = [](const bcn::BodyPreset& preset, const float weight) {
+        bcn::slider_name::Map<float> result;
+        for (const auto& slider : preset.sliders) result.insert_or_assign(slider.name,
+            slider.lowWeight + (slider.highWeight - slider.lowWeight) * weight);
+        return result;
+    };
+    for (const auto weight : {0.0F, .25F, .5F, 1.0F}) {
+        const auto forward = valuesAt(mixed, weight);
+        const auto backward = valuesAt(reversed, weight);
+        if (!Require(forward.size() == backward.size(), "case merging changed with XML order")) return 1;
+        for (const auto& [name, value] : forward) {
+            if (!Require(std::abs(value - backward.at(name)) < .00001F,
+                    "interpolated morph changed when XML endpoint order was reversed")) return 1;
+        }
+        if (!Require(std::abs(forward.at("BREASTS") - (1.2F - 2.7F * weight)) < .00001F &&
+                std::abs(forward.at("WAIST") - (-1.5F + 2.7F * weight)) < .00001F,
+                "negative or over-100 morph value was clamped")) return 1;
+    }
+    const auto& unp = caseFind("UNP Mixed");
+    const auto unpLow = valuesAt(unp, 0.0F);
+    const auto unpHigh = valuesAt(unp, 1.0F);
+    if (!Require(unp.sliders.size() == 3U && std::abs(unpLow.at("Breasts") + .2F) < .00001F &&
+            unpHigh.at("breasts") == 2.5F && unpLow.at("NIPPLEsize") == .75F &&
+            unpHigh.at("NippleSize") == .25F && unpLow.at("HipBone") == -1.5F &&
+            unpHigh.at("HipBone") == 1.2F, "UNP inversion was casing-dependent or inverted a non-default slider")) return 1;
+    const auto& duplicate = caseFind("Duplicates-Refit");
+    if (!Require(duplicate.isRefit && duplicate.sliders.size() == 1U &&
+            duplicate.sliders[0].name == "Breasts" && duplicate.sliders[0].lowWeight == 1.2F &&
+            duplicate.sliders[0].highWeight == -1.5F,
+            "named refit duplicate did not retain last value per endpoint")) return 1;
     std::filesystem::remove_all(root);
+    std::cout << "PresetCatalogTests passed: catalog, case variants, endpoint order, range and UNP inversion\n";
     return 0;
 }

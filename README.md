@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.1
+# Body Change NG — v1.2.2
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -9,20 +9,21 @@ No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not
 
 ## Final user guides and release comparison
 
-Version 1.2.1 adds Futanari Skin favorites, restores OBody/OClothe cleanup,
-and adds Female/Male distribution controls with nearest-NPC preview targeting.
-See the [English changes](CHANGELOG.md#121) or [한국어 변경 내역](CHANGELOG-KO.md#121).
-The v1.2.1 guides below document the current body-morph policy:
+Version 1.2.2 fixes case-variant morph names in XML parsing, previews and outfit
+correction. It retains the v1.2.1 OBody/OClothe cleanup, Futanari Skin favorites
+and sex-specific NPC distribution features.
+See the [English changes](CHANGELOG.md#122) or [한국어 변경 내역](CHANGELOG-KO.md#122).
+The v1.2.2 guides below document the current body-morph policy:
 BCNG preset confirmation and Default body remove `OBody` and `OClothe` even when
 **Preserve other mods' morphs** is enabled. Other morph keys still follow that
 option. Previews remain reversible. This does not turn off a running OBody mod;
 avoid having both systems automatically assign bodies to the same actors.
 
-- [English description and complete usage](docs/NEXUS-DESCRIPTION-v1.2.1.md)
-- [English Nexus BBCode](docs/NEXUS-DESCRIPTION-v1.2.1-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.2.1-KO.html)
-- [Changes from v1.2.0, English](docs/NEXUS-CHANGELOG-v1.2.1-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.1-KO.txt)
+- [English description and complete usage](docs/NEXUS-DESCRIPTION-v1.2.2.md)
+- [English Nexus BBCode](docs/NEXUS-DESCRIPTION-v1.2.2-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.2.2-KO.html)
+- [Changes from v1.2.1, English](docs/NEXUS-CHANGELOG-v1.2.2-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.2-KO.txt)
 - [Upload formats](docs/README.md) · [Full history](CHANGELOG.md) · [전체 이력](CHANGELOG-KO.md)
-- [Upgrade notes](docs/RELEASE-NOTES-v1.2.1.md) · [한국어 업데이트 안내](docs/RELEASE-NOTES-v1.2.1-KO.md)
+- [Upgrade notes](docs/RELEASE-NOTES-v1.2.2.md) · [한국어 업데이트 안내](docs/RELEASE-NOTES-v1.2.2-KO.md)
 - [Architecture](docs/ARCHITECTURE-v1.2.0-KO.md) · [Verification limits](docs/COMPATIBILITY-UI-20260912-KO.md)
 
 ## Requirements and compatibility
@@ -39,7 +40,7 @@ Explicit targets:
 No VR, LE, Epic 1.6.678, Store/Game Pass, or unlisted runtimes including 1.7.x.
 Do not assume the newest dependency download matches an older game.
 
-The v1.2.1 Release build and 24 automated test executables passed. This is not
+The v1.2.2 Release build and 24 automated test executables passed. This is not
 complete in-game/leak verification.
 
 ## Installation
@@ -126,7 +127,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.2.1/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.2.2/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

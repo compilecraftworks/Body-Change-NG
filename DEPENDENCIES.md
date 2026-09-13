@@ -1,6 +1,6 @@
 # Pinned build dependencies
 
-Body Change NG v1.2.1 is built with xmake 3.1.0 and the exact dependency
+Body Change NG v1.2.2 is built with xmake 3.1.0 and the exact dependency
 closure below. `xmake-requires.lock` remains authoritative for xmake packages
 and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
@@ -45,7 +45,7 @@ and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
   normal API is not disabled when this optional bug guard does not match.
 - The native face-attachment hook and Face TXST clone/assignment path have been
   retired. Face restoration uses a separate FCNI v1 cosave record. ASTR remains
-  at v6 in v1.2.1; the dated `docs/FACE-NIOVERRIDE-TRIAL-20260911-KO.md` describes
+  at v6 since v1.2.1; the dated `docs/FACE-NIOVERRIDE-TRIAL-20260911-KO.md` describes
   the earlier v4-era face transition. Compilation is not proof of in-game
   compatibility with every version.
 

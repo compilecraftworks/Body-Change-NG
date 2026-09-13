@@ -603,6 +603,11 @@ int main()
         "RaceMenuBodyMorph.cpp", std::ios::binary);
     Require(morphFile.good());
     const std::string morphSource((std::istreambuf_iterator<char>(morphFile)), {});
+    Require(morphSource.contains("bcn::slider_name::Map<float> desiredMorphs") &&
+        morphSource.contains("bcn::slider_name::Map<float> replaced") &&
+        morphSource.contains("bcn::slider_name::Map<float> previewOutfit") &&
+        !morphSource.contains("CollectCompatibleSliderNames") &&
+        !morphSource.contains("std::unordered_map<std::string, float>"));
     Require(!morphSource.contains("->GetBodyMorphs(") &&
         !morphSource.contains("AbsolutePresetCorrection") &&
         !morphSource.contains("CompatibleSliderUniverse") &&
