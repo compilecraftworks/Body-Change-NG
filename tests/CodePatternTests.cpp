@@ -314,6 +314,8 @@ int main()
     Require(switchSex.contains("RollbackPendingSelections(SelectedActor())") &&
         switchSex.contains("if (g_distributionFemale != female) ClearDistributionCatalogSelection()") &&
         switchSex.contains("catalog.Refresh()") && switchSex.contains("NearestDistributionActor") &&
+        switchSex.contains("!bcn::IsCustomFollowerActor(candidate)") &&
+        switchSex.contains("!bcn::IsElderActor(candidate->GetActorBase())") &&
         switchSex.contains("futanari_support::RegisteredType(candidate).has_value()") &&
         switchSex.contains("SelectActor(target)") && switchSex.contains("++g_distributionCatalogRevision"));
     const auto newRuleStart = uiSource.find("bcn::DistributionRule NewDistributionRule()");
@@ -361,6 +363,9 @@ int main()
         return std::string((std::istreambuf_iterator<char>(file)), {});
     };
     const auto distributionSource = readFeatureSource("Distribution.cpp");
+    Require(distributionSource.contains("return IsCustomFollower(actor, actor ? actor->GetActorBase() : nullptr)"));
+    Require(!readFeatureSource("ActorCatalog.cpp").contains("IsCustomFollowerActor") &&
+        !readFeatureSource("ActorCatalog.cpp").contains("IsElderActor"));
     const auto refreshStart = distributionSource.find("void Distribution::RefreshFutanariSelection(");
     const auto refreshEnd = distributionSource.find("bool Distribution::ApplyActor(", refreshStart);
     Require(refreshStart != std::string::npos && refreshEnd != std::string::npos);

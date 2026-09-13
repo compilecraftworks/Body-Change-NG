@@ -15,6 +15,7 @@
 #include <cstdint>
 #include <cctype>
 #include <iostream>
+#include <span>
 
 namespace NativeSlot = bcn::native_skin::slot_mask;
 
@@ -67,6 +68,33 @@ int main()
                 "player sex must not affect distribution target selection")) return 1;
     }
     constexpr auto playerTabs = bcn::ui_catalog::ResolveAvailableTabs(true, true);
+    for (const bool female : { false, true }) {
+        struct Candidate {
+            std::uint32_t formID;
+            bool female, player, customFollower, elder, registered;
+        };
+        const std::array entries{
+            Candidate{ 0x14U, !female, true, false, false, false },
+            Candidate{ 101U, female, false, true, false, true },
+            Candidate{ 102U, female, false, false, true, true },
+            Candidate{ 103U, female, false, true, true, true },
+            Candidate{ 104U, female, false, false, false, false },
+            Candidate{ 105U, female, false, false, false, true }
+        };
+        for (const bool requireRegistered : { false, true }) {
+            const auto allowed = [&](const std::uint32_t id) {
+                const auto found = std::ranges::find(entries, id, &Candidate::formID);
+                return found != entries.end() && !found->customFollower && !found->elder &&
+                    (!requireRegistered || found->registered);
+            };
+            if (!Require(bcn::ui_catalog::NearestDistributionActor(entries, female, 0x14U, allowed) ==
+                    (requireRegistered ? 105U : 104U),
+                    "automatic checkbox preview must skip custom followers and elders")) return 1;
+            const auto excludedOnly = std::span(entries).first(4U);
+            if (!Require(bcn::ui_catalog::NearestDistributionActor(excludedOnly, female, 0x14U, allowed) == 0x14U,
+                    "only excluded NPCs nearby must fall back to player")) return 1;
+        }
+    }
     if (!Require(playerTabs.size == 5U &&
             playerTabs.values[0] == Tab::body && playerTabs.values[1] == Tab::skin &&
             playerTabs.values[2] == Tab::tint && playerTabs.values[3] == Tab::futanari &&

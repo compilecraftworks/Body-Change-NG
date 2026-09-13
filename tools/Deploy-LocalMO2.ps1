@@ -4,8 +4,8 @@ param([switch]$Apply)
 $ErrorActionPreference = 'Stop'
 $bcngRepo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $bcngDll = Join-Path $bcngRepo 'build\v1.2.1\windows\x64\release\BodyChangeNG.dll'
-$bcngExpectedHash = '295AC8E15835ED42194CC693A291BA21BC40AB8591C1865AB2241CFF6098A4C3'
-$bcngArchive = Join-Path $bcngRepo 'build\mo2-backup-v1.2.1-20260913'
+$bcngExpectedHash = '61379E22BBA9F341BC5C827C816167FCBD44A90E4CA78B848B2DF89B107733B9'
+$bcngArchive = Join-Path $bcngRepo 'build\mo2-backup-v1.2.1-npc-filter-20260913'
 $bcngInstalls = @(
     @{ Name = 'TuLED'; Root = 'D:\TuLED13E\File Mod Skyrim SE\mods\Body Change NG' },
     @{ Name = 'TAKEALOOK'; Root = 'C:\TAKEALOOK\mods\Body Change NG' }

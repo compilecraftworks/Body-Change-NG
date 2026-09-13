@@ -23,6 +23,10 @@ namespace RE
 
 namespace bcn
 {
+    // Share the distribution rule's existing custom-follower classification
+    // with automatic UI preview selection, without filtering manual targets.
+    [[nodiscard]] bool IsCustomFollowerActor(RE::Actor* actor);
+
     enum class DistributionFeature : std::uint8_t
     {
         body,

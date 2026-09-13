@@ -763,6 +763,11 @@ namespace
 
 namespace bcn
 {
+    bool IsCustomFollowerActor(RE::Actor* actor)
+    {
+        return IsCustomFollower(actor, actor ? actor->GetActorBase() : nullptr);
+    }
+
     bool SetDistributionRuleNPC(DistributionRule& rule, RE::TESForm* form)
     {
         RE::TESNPC* base{};

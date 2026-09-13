@@ -4,6 +4,7 @@ All notable public changes to Body Change NG are documented here.
 
 ## 1.2.1
 
+- NPC-distribution checkbox-mode automatic preview targeting skips custom followers and elder NPCs, including futanari targets. If no eligible nearby NPC remains, the player is selected. Manual actor selection and actual distribution rules are unchanged.
 - NPC distribution now provides Female · Male · Distribute · Cancel distribution. It starts with Female and selects the nearest matching loaded NPC, falling back to the player. Futanari preview targets must be registered female futanari NPCs. Catalogs/new rules retain the requested sex independently of the preview actor; body/skin candidates also follow the configured distribution body type. Switching sex clears previous checkmarks/previews.
 - Preset confirmation and Default body now also clear the exact `OBody` and `OClothe` keys, preventing their base-body/refit layers from stacking with BCNG. These two keys are removed even with Preserve other mods' morphs enabled; unrelated keys remain preserved.
 - Previews show the post-cleanup result without deleting persistent keys until confirmation; cancellation restores the original state. Saved BCNG body states are re-evaluated once under the updated replacement policy. This does not disable redistribution by a running OBody installation.

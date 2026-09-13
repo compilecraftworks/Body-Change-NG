@@ -1,5 +1,7 @@
 # Body Change NG — v1.2.1
 
+  Automatic checkbox-mode targeting skips custom followers and elder NPCs;
+  manual actor selection and distribution rules remain unchanged.
 Native SKSE appearance control for Skyrim SE/AE: BodySlide presets, body and
 face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Feet
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.

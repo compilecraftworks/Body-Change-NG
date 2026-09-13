@@ -785,7 +785,9 @@ namespace
             female, player ? player->GetFormID() : 0U, [&](const std::uint32_t id) {
                 auto* candidate = catalog.Resolve(id);
                 return candidate && candidate->Is3DLoaded() && !candidate->IsDisabled() &&
-                    !candidate->IsDead() && (g_distributionPool != DistributionPool::futanari ||
+                    !candidate->IsDead() && !bcn::IsCustomFollowerActor(candidate) &&
+                    !bcn::IsElderActor(candidate->GetActorBase()) &&
+                    (g_distributionPool != DistributionPool::futanari ||
                         bcn::futanari_support::RegisteredType(candidate).has_value());
             });
         SelectActor(target);
