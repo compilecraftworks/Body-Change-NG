@@ -97,6 +97,10 @@ namespace
     std::array<bool, static_cast<std::size_t>(ActiveTab::count)> g_favoritesOnlyByTab{};
     bool g_showDistribution{};
     bool g_distributionSelectionMode{};
+    // Distribution intent is independent of the preview actor (which may
+    // fall back to a player of another sex/body family).
+    bool g_distributionFemale{ true };
+    std::uint64_t g_distributionCatalogRevision{};
     std::unordered_set<std::string> g_distributionSelectedIds;
     std::array<std::unordered_set<std::string>,
         bcn::overlay::Index(bcn::overlay::Area::count)> g_distributionSelectedOverlayIds;
@@ -628,6 +632,18 @@ namespace
         }
     }
 
+    void ToggleFutanariFavorite(const std::string& id)
+    {
+        auto settings = bcn::Settings::Get().Snapshot();
+        const auto found = std::ranges::find(settings.favoriteFutanariSkins, id);
+        if (found == settings.favoriteFutanariSkins.end()) settings.favoriteFutanariSkins.push_back(id);
+        else settings.favoriteFutanariSkins.erase(found);
+        bcn::Settings::Get().Update(settings);
+        if (!bcn::Settings::Get().Save()) {
+            bcn::ui::Notify(Text("즐겨찾기를 저장하지 못했습니다.", "Could not save favorites.", "无法保存收藏。"));
+        }
+    }
+
     void ToggleTintFavorite(const std::string& pack)
     {
         auto settings = bcn::Settings::Get().Snapshot();
@@ -642,12 +658,20 @@ namespace
 
     [[nodiscard]] bool IsDistributionSelectionFor(DistributionPool pool) noexcept;
 
+    [[nodiscard]] bcn::body_family::Mask DistributionCatalogFamily(const bcn::SettingsData& settings)
+    {
+        return g_distributionFemale ? bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
+            bcn::NpcDistributionFamily(settings.maleNpcBodyType);
+    }
+
     [[nodiscard]] std::vector<CatalogItem> BodyItems()
     {
         const auto presets = bcn::PresetCatalog::Get().Snapshot();
         const auto actor = bcn::ActorCatalog::Get().Resolve(g_selectedActorFormID);
         const auto actorBase = actor ? actor->GetActorBase() : nullptr;
-        const auto selectedMale = actorBase && actorBase->GetSex() == RE::SEX::kMale;
+        const auto actorMale = actorBase && actorBase->GetSex() == RE::SEX::kMale;
+        const auto distributionSelecting = IsDistributionSelectionFor(DistributionPool::body);
+        const auto selectedMale = distributionSelecting ? !g_distributionFemale : actorMale;
         const auto settings = bcn::Settings::Get().Snapshot();
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto currentPreset = bcn::racemenu::CurrentPresetId(actor);
@@ -656,8 +680,9 @@ namespace
         for (const auto& preset : presets) {
             if (preset.male != selectedMale) continue;
             const auto presetMask = bcn::body_family::PresetMask(preset.family, preset.male);
-            if (IsDistributionSelectionFor(DistributionPool::body)) {
+            if (distributionSelecting) {
                 if ((presetMask & bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U) continue;
+                if (!bcn::body_family::Matches(presetMask, DistributionCatalogFamily(settings))) continue;
             } else if (!bcn::body_family::Matches(presetMask, actorFamily)) {
                 continue;
             }
@@ -670,7 +695,7 @@ namespace
                 .favorite = std::ranges::find(settings.favoriteBodyPresets, id) !=
                     settings.favoriteBodyPresets.end(),
                 .current = currentPreset && *currentPreset == id,
-                .compatible = bcn::body_family::Matches(presetMask, actorFamily),
+                .compatible = preset.male == actorMale && bcn::body_family::Matches(presetMask, actorFamily),
                 .body = true
             });
         }
@@ -740,13 +765,42 @@ namespace
         return count;
     }
 
+    void SelectDistributionSex(const bool female)
+    {
+        if (g_distributionPool == DistributionPool::futanari && !female) return;
+        RollbackPendingSelections(SelectedActor());
+        if (g_distributionFemale != female) ClearDistributionCatalogSelection();
+        g_distributionFemale = female;
+        g_showOverlayDetails = false;
+        g_overlayColorEntryId.clear();
+        g_overlayCameraArea.reset();
+        g_overlayFocusedIds = {};
+        // Restore the presentation before measuring distance, and refresh only
+        // on explicit toolbar actions, not every UI frame.
+        bcn::menu_character::Presentation::Get().Restore();
+        auto& catalog = bcn::ActorCatalog::Get();
+        catalog.Refresh();
+        const auto* player = RE::PlayerCharacter::GetSingleton();
+        const auto target = bcn::ui_catalog::NearestDistributionActor(catalog.Snapshot(),
+            female, player ? player->GetFormID() : 0U, [&](const std::uint32_t id) {
+                auto* candidate = catalog.Resolve(id);
+                return candidate && candidate->Is3DLoaded() && !candidate->IsDisabled() &&
+                    !candidate->IsDead() && (g_distributionPool != DistributionPool::futanari ||
+                        bcn::futanari_support::RegisteredType(candidate).has_value());
+            });
+        SelectActor(target);
+        g_overlayDistributionPreviewDirty.fill(true);
+        ++g_distributionCatalogRevision;
+        ResetCatalogNavigation();
+    }
+
     void BeginDistributionCatalogSelection(const DistributionPool pool)
     {
         RollbackSingleCatalogPreview(SelectedActor(), pool);
         g_distributionPool = pool;
         g_distributionSelectionMode = true;
         ClearDistributionCatalogSelection();
-        ResetCatalogNavigation();
+        SelectDistributionSex(true);
     }
 
     void CancelDistributionCatalogSelection()
@@ -758,6 +812,7 @@ namespace
             RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool);
         }
         g_distributionSelectionMode = false;
+        ++g_distributionCatalogRevision;
         ClearDistributionCatalogSelection();
         g_overlayDistributionPreviewDirty.fill(false);
         ResetCatalogNavigation();
@@ -910,9 +965,7 @@ namespace
 
     [[nodiscard]] bcn::DistributionRule NewDistributionRule()
     {
-        const auto actor = SelectedActor();
-        const auto base = actor ? actor->GetActorBase() : nullptr;
-        const auto female = !base || base->GetSex() == RE::SEX::kFemale;
+        const auto female = g_distributionFemale;
         return {
             .id = bcn::GenerateUniqueUserRuleId(g_distributionRules, g_nextDraftRuleID),
             .name = female ? Text("새 여성 NPC 규칙", "New female NPC rule", "新的女性 NPC 规则") :
@@ -1058,7 +1111,17 @@ namespace
             }
             ImGui::TableSetColumnIndex(1);
             if (selecting) {
-                if (ImGui::Button(Text("배포 NPC 조건", "Distribution NPC conditions", "分发 NPC 条件"))) {
+                if (TabButton(Text("여성", "Female", "女性"), g_distributionFemale)) {
+                    SelectDistributionSex(true);
+                }
+                ImGui::SameLine();
+                ImGui::BeginDisabled(pool == DistributionPool::futanari);
+                if (TabButton(Text("남성", "Male", "男性"), !g_distributionFemale)) {
+                    SelectDistributionSex(false);
+                }
+                ImGui::EndDisabled();
+                ImGui::SameLine();
+                if (ImGui::Button(Text("배포 하기", "Distribute", "分发"))) {
                     OpenDistributionEditorFromCatalog();
                 }
                 ImGui::SameLine();
@@ -1476,6 +1539,14 @@ namespace
         if (!IsDistributionSelectionFor(DistributionPool::overlay)) return;
         auto* actor = SelectedActor();
         if (!actor) return;
+        const auto* base = actor->GetActorBase();
+        if (!base || (base->GetSex() == RE::SEX::kFemale) != g_distributionFemale) {
+            if (std::ranges::any_of(g_overlayDistributionPreviewDirty, [](bool dirty) { return dirty; })) {
+                bcn::overlay::QueueCancelPreviews(actor);
+                g_overlayDistributionPreviewDirty.fill(false);
+            }
+            return;
+        }
         for (const auto area : bcn::overlay::kAreas) {
             const auto index = bcn::overlay::Index(area);
             if (!g_overlayDistributionPreviewDirty[index]) continue;
@@ -1723,7 +1794,7 @@ namespace
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText,
                     Text("기본 바디", "Default body", "默认身体"));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), kCardSubtext,
-                    Text("이 액터의 Body Change NG 바디·의상 보정 모프만 제거", "Remove only this actor's Body Change NG body and outfit morphs", "仅移除此角色的 Body Change NG 身体与服装修正形态"));
+                    Text("이 액터의 BCNG·OBody 바디 및 의상 보정 모프 제거", "Remove this actor's BCNG and OBody body/outfit morphs", "移除此角色的 BCNG 和 OBody 身体与服装修正形态"));
                 if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
@@ -1806,15 +1877,17 @@ namespace
 
     void DrawSkinCatalog()
     {
+        const auto catalogRevision = g_distributionCatalogRevision;
         auto* actor = SelectedActor();
         if (!actor) {
             ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
             return;
         }
         const auto* base = actor->GetActorBase();
-        const bool female = !base || base->GetSex() == RE::SEX::kFemale;
         const auto actorRace = bcn::ResolveActorSkinRace(actor);
         const auto distributionSelecting = IsDistributionSelectionFor(DistributionPool::skin);
+        const bool female = distributionSelecting ? g_distributionFemale :
+            (!base || base->GetSex() == RE::SEX::kFemale);
 
         const auto skins = bcn::SkinProfiles::Get().Snapshot();
         const auto settings = bcn::Settings::Get().Snapshot();
@@ -1833,6 +1906,8 @@ namespace
             if (distributionSelecting) {
                 if (skin.sex != actorSex || skin.race != bcn::SkinRace::humanoid ||
                     skin.layout != bcn::SkinLayout::legacy) continue;
+                if (!bcn::SkinProfileCompatibility(skin, actorSex, bcn::SkinRace::humanoid,
+                        DistributionCatalogFamily(settings)).Compatible()) continue;
             } else if (!bcn::SkinProfileCompatibility(
                            skin, actorSex, actorRace, actorFamily).Compatible()) {
                 continue;
@@ -1857,7 +1932,8 @@ namespace
                 Text("BodySkin\\<스킨팩>\\textures\\~에서 바디스킨을 읽습니다.(더블클릭 적용)",
                     "Reads body skins from BodySkin\\<skin pack>\\textures\\~. (Double-click to apply)",
                     "从 BodySkin\\<皮肤包>\\textures\\~ 读取身体皮肤。（双击应用）"));
-        if (distributionSelecting != IsDistributionSelectionFor(DistributionPool::skin)) return;
+        if (catalogRevision != g_distributionCatalogRevision ||
+            distributionSelecting != IsDistributionSelectionFor(DistributionPool::skin)) return;
         const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedSkinId.empty()) {
@@ -2031,6 +2107,7 @@ namespace
 
     void DrawOverlayCatalog()
     {
+        const auto catalogRevision = g_distributionCatalogRevision;
         auto* actor = SelectedActor();
         if (!actor) {
             ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
@@ -2062,7 +2139,8 @@ namespace
             settings.favoriteOverlays.end());
         const auto needle = Lower(g_search);
         const auto* base = actor->GetActorBase();
-        const auto female = !base || base->GetSex() == RE::SEX::kFemale;
+        const auto female = distributionSelecting ? g_distributionFemale :
+            (!base || base->GetSex() == RE::SEX::kFemale);
         const auto family = bcn::body_family::ResolveActor(actor);
         const auto revision = bcn::overlay::CatalogRevision();
         const auto epoch = bcn::frame_tasks::Epoch();
@@ -2103,6 +2181,8 @@ namespace
             Text("설치된 모드에서 오버레이를 읽습니다.(더블클릭 복수 적용/해제)",
                 "Reads installed mods. (Double-click to apply/remove multiple)",
                 "从已安装的模组读取叠加层。（双击应用/移除多个）"));
+        if (catalogRevision != g_distributionCatalogRevision ||
+            distributionSelecting != IsDistributionSelectionFor(DistributionPool::overlay)) return;
 
         struct OverlayRow
         {
@@ -2379,6 +2459,7 @@ namespace
 
     void DrawFutanariCatalog()
     {
+        const auto catalogRevision = g_distributionCatalogRevision;
         auto* actor = SelectedActor();
         if (!bcn::futanari_support::Available()) {
             ImGui::TextUnformatted(Text(
@@ -2392,6 +2473,9 @@ namespace
             bcn::futanari_support::RegisteredType(actor) : std::nullopt;
 
         const auto profiles = bcn::FutanariSkinProfiles::Get().Snapshot();
+        const auto settings = bcn::Settings::Get().Snapshot();
+        const std::unordered_set<std::string_view> favorites(settings.favoriteFutanariSkins.begin(),
+            settings.favoriteFutanariSkins.end());
         const auto actorFamily = actor ?
             bcn::body_family::ResolveActor(actor) : bcn::body_family::Mask{};
         const auto backendCurrentID = actor ?
@@ -2411,6 +2495,7 @@ namespace
             }
             if (!g_search.empty() && Lower(profile.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(profile.id).find(Lower(g_search)) == std::string::npos) continue;
+            if (FavoritesOnly() && !favorites.contains(profile.id)) continue;
             visible.push_back(&profile);
         }
         DrawCatalogCommandRow(DistributionPool::futanari,
@@ -2425,7 +2510,8 @@ namespace
         // Installing a supported female addon enables the feature and its NPC
         // rule editor globally. Manual preview/apply is a separate actor-level
         // concern and must not prevent the user from configuring distribution.
-        if (distributionSelecting != IsDistributionSelectionFor(DistributionPool::futanari)) return;
+        if (catalogRevision != g_distributionCatalogRevision ||
+            distributionSelecting != IsDistributionSelectionFor(DistributionPool::futanari)) return;
         if (!distributionSelecting && !actor) {
             ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
             return;
@@ -2483,8 +2569,8 @@ namespace
         if (ImGui::BeginChild("FutanariCatalog", ImVec2(0.0F, CatalogListHeight()), true,
                 ImGuiWindowFlags_AlwaysVerticalScrollbar | ImGuiWindowFlags_NoNavInputs)) {
             std::size_t row{};
-                const auto drawRow = [&](const std::string& id, const std::string& name,
-                const std::string& subtitle, const bool current) {
+            const auto drawRow = [&](const std::string& id, const std::string& name,
+                const std::string& subtitle, const bool current, const bool canFavorite) {
                 ImGui::PushID(id.c_str());
                 const auto rowCursor = ImGui::GetCursorScreenPos();
                 const auto height = Scaled(48.0F);
@@ -2499,7 +2585,8 @@ namespace
                 }
                 const auto cursor = ImGui::GetCursorScreenPos();
                 const auto width = ImGui::GetContentRegionAvail().x;
-                ImGui::InvisibleButton("item", ImVec2(width, height));
+                const auto favoriteWidth = canFavorite ? Scaled(46.0F) : 0.0F;
+                ImGui::InvisibleButton("item", ImVec2((std::max)(0.0F, width - favoriteWidth), height));
                 const auto hovered = ImGui::IsItemHovered();
                 const auto clicked = ImGui::IsItemClicked();
                 const auto doubleClicked = hovered &&
@@ -2509,10 +2596,17 @@ namespace
                     current ? kCardSelected :
                     hovered || (navigation.hasFocus && navigation.focused == row) ?
                     kCardHovered : kCardNormal, Scaled(4.0F));
+                const auto textWidth = (std::max)(0.0F, width - favoriteWidth - Scaled(20.0F));
+                const auto visibleName = EllipsizeText(name, textWidth);
+                const auto visibleSubtitle = EllipsizeText(subtitle, textWidth);
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)),
-                    kCardText, name.c_str());
+                    kCardText, visibleName.c_str());
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
-                    kCardSubtext, subtitle.c_str());
+                    kCardSubtext, visibleSubtitle.c_str());
+                if (canFavorite) {
+                    ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
+                    if (FavoriteButton(favorites.contains(id), height)) ToggleFutanariFavorite(id);
+                }
                 if (distributionSelecting && clicked) {
                     FocusCatalogRow(row);
                     applyRow(row, true);
@@ -2540,7 +2634,7 @@ namespace
                     Text("기본 후타나리 스킨", "Default futanari skin", "默认扶她皮肤"),
                     Text("성기 애드온의 기본 텍스처로 복원",
                         "Restore the genital addon's default textures",
-                        "恢复生殖器附加组件的默认纹理"), currentID.empty());
+                        "恢复生殖器附加组件的默认纹理"), currentID.empty(), false);
             }
 
             if (visible.empty()) {
@@ -2557,7 +2651,7 @@ namespace
                     subtitle += " · ";
                     subtitle += Text("현재 적용", "Current", "当前应用");
                 }
-                drawRow(profile->id, profile->name, subtitle, profile->id == currentID);
+                drawRow(profile->id, profile->name, subtitle, profile->id == currentID, true);
             }
         }
         ImGui::EndChild();
@@ -3497,9 +3591,9 @@ namespace
                 bcn::racemenu::QueueCancelPreview();
             }
             TextDisabledWrapped(Text(
-                "기본 켜짐. 다음 바디 프리셋 적용부터 BCNG 모프만 교체합니다. 끄면 다른 모드의 바디 모프도 초기화합니다. 기본 바디 복원은 BCNG 모프만 제거합니다.",
-                "On by default. The next body preset replaces only BCNG morphs. Turning this off also clears other mods' body morphs when applying a preset. Default body removes only BCNG morphs.",
-                "默认开启。下次应用身体预设时仅替换 BCNG 形态。关闭后还会清除其他模组的身体形态。恢复默认身体仅移除 BCNG 形态。"));
+                "기본 켜짐. 바디 프리셋 적용·기본 바디 복원 시 BCNG와 OBody·OClothe 모프는 제거하고, 그 외 모드의 모프는 보존합니다. 끄면 프리셋 확정 시 모든 바디 모프를 초기화합니다.",
+                "On by default. Preset application and Default body remove BCNG and OBody/OClothe morphs while preserving other mods' morphs. When off, committing a preset clears all body morphs.",
+                "默认开启。应用身体预设和恢复默认身体会清除 BCNG 及 OBody/OClothe 形态，保留其他模组形态。关闭后，确认预设时会清除全部身体形态。"));
             ImGui::Separator();
             ImGui::TextUnformatted(Text("화면 표시", "Display", "显示"));
             ImGui::SetNextItemWidth(Scaled(300.0F));
@@ -3909,19 +4003,16 @@ namespace bcn::ui
         }
         ImGui::SameLine();
         const auto* favoritesLabel = Text("즐겨찾기", "Favorites", "收藏");
-        const auto showFavorites = g_activeTab != ActiveTab::futanari;
-        const auto favoritesControlWidth = showFavorites ?
+        const auto favoritesControlWidth =
             ImGui::GetFrameHeight() + ImGui::GetStyle().ItemInnerSpacing.x +
-                ImGui::CalcTextSize(favoritesLabel).x : 0.0F;
+                ImGui::CalcTextSize(favoritesLabel).x;
         const auto searchWidth = (std::max)(1.0F,
             ImGui::GetContentRegionAvail().x - favoritesControlWidth -
-                (showFavorites ? ImGui::GetStyle().ItemSpacing.x : 0.0F));
+                ImGui::GetStyle().ItemSpacing.x);
         ImGui::SetNextItemWidth(searchWidth);
         ImGui::InputTextWithHint("##search", Text("이름 검색", "Search", "搜索名称"), &g_search);
-        if (showFavorites) {
-            ImGui::SameLine();
-            ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
-        }
+        ImGui::SameLine();
+        ImGui::Checkbox(favoritesLabel, &FavoritesOnly());
         if (const auto* actor = SelectedActor(); actor && actor != RE::PlayerCharacter::GetSingleton() &&
             bcn::Distribution::Get().HasManualAssignment(actor)) {
             ImGui::TextColored(ImVec4(.48F, .82F, .96F, 1.0F), "%s", Text(
@@ -3938,18 +4029,24 @@ namespace bcn::ui
         }
 
         if (g_activeTab == ActiveTab::body) {
+            const auto catalogRevision = g_distributionCatalogRevision;
             const auto wasDistributionSelecting = IsDistributionSelectionFor(DistributionPool::body);
             auto items = BodyItems();
             DrawCatalogCommandRow(DistributionPool::body,
                 [] { RefreshFileCatalog(PresetCatalog::Get()); },
                 [&items] {
                     g_distributionSelectedIds.clear();
-                    for (const auto& item : items) g_distributionSelectedIds.insert(item.id);
+                    for (const auto& item : items) {
+                        if ((!FavoritesOnly() || item.favorite) && MatchSearch(item)) {
+                            g_distributionSelectedIds.insert(item.id);
+                        }
+                    }
                 },
                 Text("CalienteTools\\~에서 바디프리셋을 읽습니다.(더블클릭 적용)",
                     "Reads body presets from CalienteTools\\~. (Double-click to apply)",
                     "从 CalienteTools\\~ 读取身体预设。（双击应用）"));
-            if (wasDistributionSelecting == IsDistributionSelectionFor(DistributionPool::body)) {
+            if (catalogRevision == g_distributionCatalogRevision &&
+                wasDistributionSelecting == IsDistributionSelectionFor(DistributionPool::body)) {
                 DrawCatalog(items, true);
             }
         } else if (g_activeTab == ActiveTab::skin) {

@@ -388,8 +388,8 @@ namespace
         const auto settings = bcn::Settings::Get().MorphOptions();
         const auto key = mode == bcn::racemenu::ApplyMode::preview ? kPreviewKey :
             mode == bcn::racemenu::ApplyMode::outfit ? kOutfitKey : kCommittedKey;
-        // OBody-style replacement: only our keys by default, all BodyMorph
-        // keys when preservation is disabled. Preview must never clear them.
+        // Replace BCNG and OBody's competing base-body/refit keys. Unrelated
+        // keys survive by default. Preview must never clear persistent keys.
         if (mode == bcn::racemenu::ApplyMode::commit) {
             bcn::racemenu::keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs);
         }
@@ -731,13 +731,15 @@ namespace bcn::racemenu
         auto* reference = const_cast<RE::Actor*>(actor);
         const auto hasCommitted = bodyMorph->HasBodyMorphKey(reference, kCommittedKey) ||
             bodyMorph->HasBodyMorphKey(reference, kLegacyCommittedKey);
-        if (!expectDefault) return hasCommitted;
+        const auto hasOBody = bodyMorph->HasBodyMorphKey(reference, keys::obody) ||
+            bodyMorph->HasBodyMorphKey(reference, keys::oclothe);
+        if (!expectDefault) return hasCommitted && !hasOBody;
         const auto hasAnyOwned = hasCommitted ||
             bodyMorph->HasBodyMorphKey(reference, kPreviewKey) ||
             bodyMorph->HasBodyMorphKey(reference, kOutfitKey) ||
             bodyMorph->HasBodyMorphKey(reference, kLegacyPreviewKey) ||
             bodyMorph->HasBodyMorphKey(reference, kLegacyOutfitKey);
-        return !hasAnyOwned;
+        return !hasAnyOwned && !hasOBody;
     }
 
     bool HasOutfitCorrection(const RE::Actor* actor)
@@ -869,16 +871,9 @@ namespace bcn::racemenu
 
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kPreviewKey);
                 bodyMorph->ClearBodyMorphKeys(resolved.get(), kLegacyPreviewKey);
-                std::unordered_map<std::string, float> ownedValues;
-                for (const auto* key : { kCommittedKey, kOutfitKey,
-                         kLegacyCommittedKey, kLegacyOutfitKey }) {
-                    OwnedMorphCollector collector{ key };
-                    bodyMorph->VisitMorphValues(resolved.get(), collector);
-                    for (const auto& [name, value] : collector.values) {
-                        ownedValues[name] += value;
-                    }
-                }
-                for (const auto& [name, value] : ownedValues) {
+                PreviewBaseCollector collector(true, true);
+                bodyMorph->VisitMorphValues(resolved.get(), collector);
+                for (const auto& [name, value] : collector.base.values) {
                     if (std::abs(value) > 0.00001F) {
                         bodyMorph->SetMorph(resolved.get(), name.c_str(),
                             kPreviewKey, -value);
@@ -1001,7 +996,7 @@ namespace bcn::racemenu
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved) return;
                 if (!IsCurrentApply(resolved->GetFormID(), ApplyMode::commit, clearGeneration)) return;
-                keys::ClearOwned(*bodyMorph, resolved.get());
+                keys::ClearReplacedBody(*bodyMorph, resolved.get());
                 if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, resolved.get(), false);
                 bcn::ActorRegistry::Get().MarkBodyApplied(resolved.get(), {}, true);
             });
@@ -1053,9 +1048,9 @@ namespace bcn::racemenu
                     const auto resolved = handle.get();
                     auto* morph = Interface();
                     if (!resolved || !morph || !IsCurrentApply(resolved->GetFormID(), ApplyMode::commit, generation)) return;
-                    // Preserve the original bulk-reset scope: only BCNG keys.
-                    for (const auto key : {kPreviewKey, kCommittedKey, kOutfitKey,
-                             kLegacyPreviewKey, kLegacyCommittedKey, kLegacyOutfitKey}) morph->ClearBodyMorphKeys(resolved.get(), key);
+                    // Keep the BCNG-actor eligibility above; remove competing
+                    // OBody layers on these actors just like individual reset.
+                    keys::ClearReplacedBody(*morph, resolved.get());
                     if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*morph, resolved.get(), false);
                 });
                 ++cleared;

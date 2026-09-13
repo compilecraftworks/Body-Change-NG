@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.0
+# Body Change NG — v1.2.1
 
 Native SKSE appearance control for Skyrim SE/AE: BodySlide presets, body and
 face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Feet
@@ -7,20 +7,27 @@ No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not
 
 ## Final user guides and release comparison
 
-Use these final v1.2.0 guides rather than intermediate implementation reports:
+Version 1.2.1 adds Futanari Skin favorites, restores OBody/OClothe cleanup,
+and adds Female/Male distribution controls with nearest-NPC preview targeting.
+See the [English changes](CHANGELOG.md#121) or [한국어 변경 내역](CHANGELOG-KO.md#121).
+The v1.2.1 guides below document the current body-morph policy:
+BCNG preset confirmation and Default body remove `OBody` and `OClothe` even when
+**Preserve other mods' morphs** is enabled. Other morph keys still follow that
+option. Previews remain reversible. This does not turn off a running OBody mod;
+avoid having both systems automatically assign bodies to the same actors.
 
-- [English description and complete usage](docs/NEXUS-DESCRIPTION-v1.2.0.md)
-- [English Nexus BBCode](docs/NEXUS-DESCRIPTION-v1.2.0-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.2.0-KO.html)
-- [Final v1.1.4 comparison, English](docs/NEXUS-CHANGELOG-v1.2.0-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.0-KO.txt)
+- [English description and complete usage](docs/NEXUS-DESCRIPTION-v1.2.1.md)
+- [English Nexus BBCode](docs/NEXUS-DESCRIPTION-v1.2.1-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.2.1-KO.html)
+- [Changes from v1.2.0, English](docs/NEXUS-CHANGELOG-v1.2.1-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.1-KO.txt)
 - [Upload formats](docs/README.md) · [Full history](CHANGELOG.md) · [전체 이력](CHANGELOG-KO.md)
-- [Upgrade notes](docs/RELEASE-NOTES-v1.2.0.md) · [한국어 업데이트 안내](docs/RELEASE-NOTES-v1.2.0-KO.md)
+- [Upgrade notes](docs/RELEASE-NOTES-v1.2.1.md) · [한국어 업데이트 안내](docs/RELEASE-NOTES-v1.2.1-KO.md)
 - [Architecture](docs/ARCHITECTURE-v1.2.0-KO.md) · [Verification limits](docs/COMPATIBILITY-UI-20260912-KO.md)
 
 ## Requirements and compatibility
 
 Matching **SKSE64, Address Library, and RaceMenu** are required.
-Body changes also need compatible XML presets and body/outfit meshes with
-**Build Morphs** TRI output. Other features need their corresponding assets/addons.
+Body changes also need compatible XML presets and body/outfit meshes built with
+**Zeroed Sliders + Build Morphs** TRI output. Other features need their corresponding assets/addons.
 
 Explicit targets:
 
@@ -30,11 +37,8 @@ Explicit targets:
 No VR, LE, Epic 1.6.678, Store/Game Pass, or unlisted runtimes including 1.7.x.
 Do not assume the newest dependency download matches an older game.
 
-The final Release build and 23 automated test executables passed. This is not
-complete in-game/leak verification. Native genital ownership code was inspected
-on **1.5.97 and 1.6.1170**; the other ten targets must pass runtime code verification
-and the backend may remain unavailable. Known RaceMenu interface generations
-are audited, not every future ABI-breaking release or unofficial fork.
+The v1.2.1 Release build and 24 automated test executables passed. This is not
+complete in-game/leak verification.
 
 ## Installation
 
@@ -58,7 +62,7 @@ Complete paths relative to the game installation:
 
 In MO2, the mod root corresponds to Data: omit the initial Data directory
 inside a mod. The full guides provide before/after copy examples and complete
-female/male/UBE/TRX/ERF DDS paths. No profile.json is required. Tint masks share
+female/male/UBE/TRX/ERF DDS paths. Tint masks share
 BodySkin; the old standalone TintMask root is obsolete.
 
 The runtime installer has the DLL, empty opt-in rule JSON, **three** asset-folder
@@ -76,6 +80,11 @@ Tab order: **Body Presets → Body Skins → Tint Masks → Futanari Skin → Ov
   Cancel closes the active popup first, then the main UI.
 - NPC rules save only through an explicit immediate/next-launch distribution
   action. Closing cancels unsaved edits, unlike v1.1.4.
+- NPC distribution starts with Female. Female/Male selects the nearest matching
+  loaded NPC, falling back to the player. Catalog/rule sex stays independent
+  of the preview actor, and body/skin candidates follow configured NPC body types.
+  Switching sex clears previous checks/previews. Distribute opens the rule popup;
+  it does not save or apply rules by itself. Futanari remains female-only.
 - Manual overlays support multiple items per area. Automatic rules pick one
   candidate per configured area. Applied X/Y counts BCNG confirmations against
   RaceMenu capacity minus foreign reserved slots.
@@ -115,7 +124,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.2.0/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.2.1/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

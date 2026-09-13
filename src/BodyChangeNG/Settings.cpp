@@ -186,6 +186,14 @@ namespace bcn
                     }
                 }
             }
+            if (const auto found = root.find("favoriteFutanariSkins"); found != root.end() && found->is_array()) {
+                for (const auto& value : *found) {
+                    if (value.is_string() && value.get_ref<const std::string&>().size() <= 1024U &&
+                        data_.favoriteFutanariSkins.size() < 4096U) {
+                        data_.favoriteFutanariSkins.push_back(value.get<std::string>());
+                    }
+                }
+            }
             if (const auto found = root.find("favoriteTintPacks"); found != root.end() && found->is_array()) {
                 for (const auto& value : *found) {
                     if (value.is_string() && value.get_ref<const std::string&>().size() <= 1024U &&
@@ -204,6 +212,7 @@ namespace bcn
             }
             NormalizeFavorites(data_.favoriteBodyPresets, false);
             NormalizeFavorites(data_.favoriteSkinProfiles, true);
+            NormalizeFavorites(data_.favoriteFutanariSkins, false);
             NormalizeFavorites(data_.favoriteTintPacks, false);
             NormalizeFavorites(data_.favoriteOverlays, false);
             // Player tint baselines are save-specific (TINT co-save v2).
@@ -264,6 +273,7 @@ namespace bcn
                 { "genitalRandomization", copy.genitalRandomization },
                 { "favoriteBodyPresets", copy.favoriteBodyPresets },
                 { "favoriteSkinProfiles", copy.favoriteSkinProfiles },
+                { "favoriteFutanariSkins", copy.favoriteFutanariSkins },
                 { "favoriteTintPacks", copy.favoriteTintPacks },
                 { "favoriteOverlays", copy.favoriteOverlays }
             };

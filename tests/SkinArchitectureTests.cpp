@@ -32,6 +32,40 @@ int main()
 {
     using bcn::ui_catalog::ChoiceIntent;
     using bcn::ui_catalog::Tab;
+    {
+        struct Candidate {
+            std::uint32_t formID;
+            bool female, player;
+        };
+        const std::array entries{
+            Candidate{ 0x14U, false, true }, Candidate{ 1U, false, false },
+            Candidate{ 2U, true, false }, Candidate{ 3U, true, false },
+            Candidate{ 4U, false, false }, Candidate{ 5U, true, false }
+        };
+        const auto live = [](std::uint32_t id) { return id != 2U; };
+        using bcn::ui_catalog::NearestDistributionActor;
+        if (!Require(NearestDistributionActor(entries, true, 0x14U, live) == 3U,
+                "nearest female must skip stale NPCs and ignore the player's sex")) return 1;
+        if (!Require(NearestDistributionActor(entries, false, 0x14U, live) == 1U,
+                "player must not outrank the nearest male NPC")) return 1;
+        if (!Require(NearestDistributionActor(entries, true, 0x14U,
+                [](std::uint32_t id) { return id == 5U; }) == 5U,
+                "futanari selection must skip nearer unregistered female NPCs")) return 1;
+        for (const bool female : { false, true }) {
+            if (!Require(NearestDistributionActor(entries, female, 0x14U,
+                    [](std::uint32_t) { return false; }) == 0x14U,
+                    "no eligible NPC must fall back to player without changing requested sex")) return 1;
+        }
+        const std::array<Candidate, 0> empty{};
+        if (!Require(NearestDistributionActor(empty, true, 0x14U, live) == 0x14U &&
+                NearestDistributionActor(empty, false, 0U, live) == 0U,
+                "empty catalog fallback failed")) return 1;
+        auto femalePlayer = entries;
+        femalePlayer[0].female = true;
+        if (!Require(NearestDistributionActor(femalePlayer, false, 0x14U, live) == 1U &&
+                NearestDistributionActor(femalePlayer, true, 0x14U, live) == 3U,
+                "player sex must not affect distribution target selection")) return 1;
+    }
     constexpr auto playerTabs = bcn::ui_catalog::ResolveAvailableTabs(true, true);
     if (!Require(playerTabs.size == 5U &&
             playerTabs.values[0] == Tab::body && playerTabs.values[1] == Tab::skin &&

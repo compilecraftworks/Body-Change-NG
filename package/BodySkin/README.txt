@@ -1,4 +1,4 @@
-Body Change NG v1.2.0 — BodySkin 설치 안내
+Body Change NG v1.2.1 — BodySkin 설치 안내
 
 [한국어]
 일반적인 스킨팩은 설치된 스킨 모드 폴더를 통째로 이 BodySkin 폴더 안에

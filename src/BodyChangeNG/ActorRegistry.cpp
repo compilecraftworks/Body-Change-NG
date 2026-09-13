@@ -677,7 +677,8 @@ namespace bcn
     std::uint64_t ActorRegistry::BodySignature(const std::string_view bodyId, const bool useDefault)
     {
         const auto options = useDefault ? 0U : Settings::Get().BodyApplicationOptions();
-        return StableStateSignature("body-keyed-v2", bodyId, useDefault,
+        // v3 also replaces OBody/OClothe; re-evaluate pre-fix saved bodies once.
+        return StableStateSignature("body-keyed-v3", bodyId, useDefault,
             options, useDefault ? 0 : PresetCatalog::Get().ContentHash(bodyId));
     }
 

@@ -9,6 +9,20 @@
 
 namespace bcn::ui_catalog
 {
+    // ActorCatalog supplies NPCs in distance order. The player is only a
+    // fallback, never a distance-zero candidate ahead of a matching NPC.
+    template <class Entries, class Eligible>
+    [[nodiscard]] std::uint32_t NearestDistributionActor(const Entries& entries,
+        const bool female, const std::uint32_t playerFormID, Eligible&& eligible)
+    {
+        for (const auto& entry : entries) {
+            if (!entry.player && entry.female == female && eligible(entry.formID)) {
+                return entry.formID;
+            }
+        }
+        return playerFormID;
+    }
+
     struct PendingChoice final
     {
         std::uint32_t actorFormID{};

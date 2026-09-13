@@ -147,6 +147,24 @@ int main()
         futaSelection.contains("const auto backendCurrentID = actor ?") &&
         futaSelection.contains("profile.type != *actorType") &&
         futaSelection.contains("FutanariSkinTypeMatchesActor(profile.type, actorFamily)"));
+    // Futanari uses the shared favorite control in both catalog modes. The star
+    // has its own hit target and must not preview, confirm, or select a candidate.
+    Require(futaSelection.contains("settings.favoriteFutanariSkins") &&
+        futaSelection.contains("if (FavoritesOnly() && !favorites.contains(profile.id)) continue;") &&
+        futaSelection.contains("const auto favoriteWidth = canFavorite ? Scaled(46.0F) : 0.0F;") &&
+        futaSelection.contains("ImGui::InvisibleButton(\"item\", ImVec2((std::max)(0.0F, width - favoriteWidth), height))") &&
+        futaSelection.contains("if (FavoriteButton(favorites.contains(id), height)) ToggleFutanariFavorite(id);") &&
+        futaSelection.contains("currentID.empty(), false)") &&
+        futaSelection.contains("profile->id == currentID, true)") &&
+        futaSelection.find("const auto clicked = ImGui::IsItemClicked();") <
+            futaSelection.find("FavoriteButton(favorites.contains(id), height)"));
+    const auto futaFavorite = uiSection("void ToggleFutanariFavorite(", "void ToggleTintFavorite(");
+    Require(futaFavorite.contains("settings.favoriteFutanariSkins") &&
+        futaFavorite.contains("Settings::Get().Save()") &&
+        !futaFavorite.contains("QueueApply") && !futaFavorite.contains("applyRow") &&
+        !futaFavorite.contains("SetDistributionItemSelected"));
+    Require(!uiSource.contains("showFavorites = g_activeTab != ActiveTab::futanari") &&
+        uiSource.contains("ImGui::Checkbox(favoritesLabel, &FavoritesOnly());"));
     Require(uiSection("void CancelDistributionCatalogSelection()", "bool DistributionItemSelected(")
         .contains("RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool)"));
     Require(uiSection("void OpenDistributionEditorFromCatalog()", "template <class Refresh")
@@ -271,7 +289,7 @@ int main()
         uiSource.contains("DrawCatalogCommandRow(DistributionPool::skin") &&
         uiSource.contains("DrawCatalogCommandRow(DistributionPool::overlay") &&
         uiSource.contains("DrawCatalogCommandRow(DistributionPool::futanari") &&
-        uiSource.contains("Distribution NPC conditions") &&
+        uiSource.contains("\"배포 하기\", \"Distribute\"") &&
         uiSource.contains("Cancel distribution") &&
         uiSource.contains("Exclude custom followers") &&
         uiSource.contains("Exclude elder NPCs") &&
@@ -284,6 +302,32 @@ int main()
     const auto openDistribution = uiSource.find("void OpenDistributionEditorFromCatalog()");
     const auto commandRow = uiSource.find("void DrawCatalogCommandRow", openDistribution);
     Require(openDistribution != std::string::npos && commandRow != std::string::npos);
+    const auto commands = std::string_view(uiSource).substr(commandRow,
+        uiSource.find("void FillRuleTargetFromSelectedActor", commandRow) - commandRow);
+    Require(commands.find("SelectDistributionSex(true)") < commands.find("SelectDistributionSex(false)") &&
+        commands.find("SelectDistributionSex(false)") < commands.find("\"Distribute\"") &&
+        commands.find("\"Distribute\"") < commands.find("\"Cancel distribution\"") &&
+        commands.contains("ImGui::BeginDisabled(pool == DistributionPool::futanari)"));
+    const auto switchSexStart = uiSource.find("void SelectDistributionSex(");
+    const auto switchSexEnd = uiSource.find("void BeginDistributionCatalogSelection", switchSexStart);
+    const auto switchSex = std::string_view(uiSource).substr(switchSexStart, switchSexEnd - switchSexStart);
+    Require(switchSex.contains("RollbackPendingSelections(SelectedActor())") &&
+        switchSex.contains("if (g_distributionFemale != female) ClearDistributionCatalogSelection()") &&
+        switchSex.contains("catalog.Refresh()") && switchSex.contains("NearestDistributionActor") &&
+        switchSex.contains("futanari_support::RegisteredType(candidate).has_value()") &&
+        switchSex.contains("SelectActor(target)") && switchSex.contains("++g_distributionCatalogRevision"));
+    const auto newRuleStart = uiSource.find("bcn::DistributionRule NewDistributionRule()");
+    const auto newRule = std::string_view(uiSource).substr(newRuleStart,
+        uiSource.find("const char* DistributionPoolLabel", newRuleStart) - newRuleStart);
+    Require(newRule.contains("const auto female = g_distributionFemale") &&
+        !newRule.contains("SelectedActor()"));
+    Require(uiSource.contains("const auto selectedMale = distributionSelecting ? !g_distributionFemale : actorMale") &&
+        uiSource.contains("preset.male == actorMale &&") &&
+        uiSource.contains("bcn::body_family::Matches(presetMask, DistributionCatalogFamily(settings))") &&
+        uiSource.contains("DistributionCatalogFamily(settings)).Compatible()") &&
+        uiSource.contains("SnapshotLegacy(area, female)") &&
+        uiSource.contains("(base->GetSex() == RE::SEX::kFemale) != g_distributionFemale") &&
+        uiSource.contains("catalogRevision == g_distributionCatalogRevision"));
     const auto openDistributionBody = std::string_view(uiSource).substr(
         openDistribution, commandRow - openDistribution);
     Require(openDistributionBody.contains("SetRuleDistributionSelection(rule)") &&
@@ -571,6 +615,12 @@ int main()
     const auto defaultPreviewBody = std::string_view(morphSource).substr(
         defaultPreviewBegin, defaultPreviewEnd - defaultPreviewBegin);
     Require(defaultPreviewBody.contains("kPreviewKey, -value"));
+    Require(defaultPreviewBody.contains("PreviewBaseCollector collector(true, true)") &&
+        !defaultPreviewBody.contains("ClearReplacedBody"));
+    Require(morphSource.contains("keys::ClearReplacedBody(*bodyMorph, resolved.get())") &&
+        morphSource.contains("keys::ClearReplacedBody(*morph, resolved.get())") &&
+        morphSource.contains("return hasCommitted && !hasOBody") &&
+        morphSource.contains("return !hasAnyOwned && !hasOBody"));
     Require(!defaultPreviewBody.contains(
         "ClearBodyMorphKeys(resolved.get(), kCommittedKey)"));
     Require(!defaultPreviewBody.contains(

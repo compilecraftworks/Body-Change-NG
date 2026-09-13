@@ -1,0 +1,15 @@
+[center][size=6][color=#FFD600][b]BODY CHANGE NG[/b][/color][/size]
+[size=4][color=#5CFFA3][b]v1.2.1 · Changes from v1.2.0[/b][/color][/size][/center]
+[line]
+[size=5][color=#19D8FF][b]OBody cleanup · Futanari favorites · NPC distribution[/b][/color][/size]
+[list]
+[*]NPC distribution now provides Female / Male / Distribute / Cancel distribution. It starts with Female and selects the nearest matching NPC, or the player if none is available. Futanari targets must be registered female futanari NPCs. Catalog/rule sex is independent of the preview actor; body/skin candidates follow the configured distribution body type. Switching sex clears previous checks/previews.
+[*]Preset confirmation and Default Body now also clear the exact OBody and OClothe keys, even with Preserve other mods' morphs enabled. Other morph keys continue to follow the preservation option.
+[*]Previews simulate cleanup without deleting persistent keys until confirmation; cancellation restores the original state. Default Body preview now visits morph values once instead of four times.
+[*]Existing saved BCNG body records are re-evaluated once under the updated replacement policy. The co-save format is unchanged; this update does not require a new game or save cleaning.
+[*]Added favorite stars and filtering to Futanari Skin in both normal and NPC-distribution checkbox lists. Star clicks do not preview/apply skins or change distribution checkboxes.
+[*]ERF, TRX, and UBE TRX favorite IDs are stored separately in settings. Existing favorites and preferences are preserved, and long row text leaves room for the star.
+[/list]
+[line]
+[b]This does not disable redistribution by a running OBody installation. Avoid having both systems continuously assign bodies to the same actors.[/b]
+Release build and 24 automated test executables passed. In-game verification of these changes is still pending.

@@ -47,7 +47,10 @@ int main()
             Morphs morphs;
             morphs.values["Breasts"] = {{keys::body, .7F}, {keys::legacyBody, .1F},
                 {"Foreign", .2F}, {keys::outfit, -.05F}};
-            morphs.values["ForeignOnly"] = {{"OBody", .6F}, {"OClothe", -.1F}};
+            morphs.values["Breasts"][keys::obody] = 1.2F;
+            morphs.values["Breasts"][keys::oclothe] = -.1F;
+            morphs.values["OBodyOnly"] = {{keys::obody, .6F}, {keys::oclothe, -.1F}};
+            morphs.values["ForeignOnly"] = {{"Foreign", .5F}};
             const auto original = morphs.values;
             for (unsigned frame{}; frame < 128U; ++frame) {
                 keys::PreviewBase baseline(preserve);
@@ -61,6 +64,11 @@ int main()
                 if (baseline.values.contains("ForeignOnly")) {
                     morphs.values["ForeignOnly"][keys::preview] = -baseline.values["ForeignOnly"];
                 }
+                if (baseline.values.contains("OBodyOnly")) {
+                    morphs.values["OBodyOnly"][keys::preview] = -baseline.values["OBodyOnly"];
+                }
+                Check(Near(morphs.Sum("OBodyOnly"), 0.0F),
+                    "preserving preview did not neutralize the OBody-only slider");
                 Check(Near(morphs.Sum("Breasts"), desired + (preserve ? .2F : 0.0F)),
                     "preview did not follow the selected preservation policy");
                 Check(Near(morphs.Sum("ForeignOnly"), preserve ? .5F : 0.0F),
@@ -71,6 +79,9 @@ int main()
             keys::BeginPresetCommit(morphs, &actor, preserve);
             Check(morphs.values["Breasts"].contains("Foreign") == preserve,
                 "commit clearing scope ignored preservation");
+            Check(!morphs.values["Breasts"].contains(keys::obody) &&
+                !morphs.values["Breasts"].contains(keys::oclothe) && Near(morphs.Sum("OBodyOnly"), 0.0F),
+                "commit preserved OBody/OClothe when other-morph preservation was enabled");
             for (float desired : {-.5F, .4F, 1.75F}) {
                 keys::BeginPresetCommit(morphs, &actor, preserve);
                 morphs.values["Breasts"][keys::body] = desired;
@@ -78,10 +89,37 @@ int main()
                     Near(morphs.Sum("Breasts"), desired + (preserve ? .2F : 0.0F)),
                     "preset value was clamped, accumulated, or compensated against a foreign value");
             }
-            keys::ClearOwned(morphs, &actor); // Default is not a ClearMorphs request.
+            keys::ClearReplacedBody(morphs, &actor); // Default is not a ClearMorphs request.
             Check(Near(morphs.Sum("Breasts"), preserve ? .2F : 0.0F) &&
                 Near(morphs.Sum("ForeignOnly"), preserve ? .5F : 0.0F),
                 "Default reset removed another mod's keys or resurrected cleared values");
+        }
+        // Default preview/reset without a BCNG preset: both old provider keys
+        // are removed on confirmation only; exact similarly named keys survive.
+        {
+            Morphs morphs;
+            morphs.values["Breasts"] = {{keys::obody, 1.5F}, {keys::oclothe, -.2F},
+                {"RaceMenu", .25F}, {"OBodyOtherMod", .1F}};
+            morphs.values["obody_processed"] = {{keys::obody, 1.0F}};
+            const auto original = morphs.values;
+            keys::PreviewBase baseline(true);
+            for (const auto& [name, values] : morphs.values) {
+                for (const auto& [key, value] : values) baseline.Visit(name.c_str(), key.c_str(), value);
+            }
+            for (const auto& [name, value] : baseline.values) morphs.values[name][keys::preview] = -value;
+            Check(Near(morphs.Sum("Breasts"), .35F), "default preview retained OBody or suppressed other mods");
+            Check(morphs.values["obody_processed"][keys::obody] == 1.0F,
+                "preview deleted OBody's persistent processed marker");
+            morphs.ClearBodyMorphKeys(&actor, keys::preview);
+            Check(morphs.values == original, "default preview cancel changed the original keys");
+            keys::ClearOwned(morphs, &actor);
+            Check(morphs.values == original, "BCNG-only ownership cleanup deleted OBody keys");
+            keys::ClearReplacedBody(morphs, &actor);
+            Check(Near(morphs.Sum("Breasts"), .35F) && !morphs.values.contains("obody_processed"),
+                "default confirmation failed to remove exactly OBody/OClothe");
+            const auto once = morphs.values;
+            keys::ClearReplacedBody(morphs, &actor);
+            Check(morphs.values == once, "repeated default reset accumulated changes");
         }
         // SFS NotReady must leave the old clothing layer alone, but a ready
         // plan replaces it using the exact same new-preset refit generator.
@@ -123,6 +161,9 @@ int main()
         }
         Check(!keys::IsOwned("OBody") && !keys::IsOwned("OClothe") &&
             !keys::IsOwned("BodyChangeNGOtherMod"), "foreign morph was mistaken for a BCNG legacy key");
+        Check(keys::IsReplacedBody("OBody") && keys::IsReplacedBody("OClothe") &&
+            !keys::IsReplacedBody("OBodyOtherMod") && !keys::IsReplacedBody("OClotheOtherMod"),
+            "OBody replacement was missing or matched an unrelated key prefix");
 
         for (auto family : {FemaleFamily::cbbe3ba, FemaleFamily::bhunpUnp}) {
             for (bool nipples : {false, true}) {

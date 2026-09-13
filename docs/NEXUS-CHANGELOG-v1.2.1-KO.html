@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Body Change NG v1.2.1 — 변경 내역</title>
+<style>
+:root{color-scheme:dark;--bg:#101419;--panel:#192129;--line:#33414f;--text:#e7edf3;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.85 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+main{max-width:1040px;margin:32px auto;padding:44px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
+h1,h2,h3{line-height:1.4;font-weight:800}h1{color:var(--title);font-size:2.7rem;margin:8px 0 18px}h1 small{font-size:1.2rem;color:var(--accent);white-space:nowrap}h2{margin-top:2.8em;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--accent);font-size:1.55rem}h3{color:var(--sub);margin-top:1.8em;font-size:1.15rem}
+a{color:var(--accent)}p{margin:.9em 0}li+li{margin-top:.45em}ul,ol{padding-left:1.5em}strong{color:#fff}
+.eyebrow{color:var(--accent);font-size:.8rem;letter-spacing:.14em}.lead{font-size:1.13rem;font-weight:650;color:var(--sub)}.notice{border-left:4px solid var(--warn);padding:14px 20px;background:#28261f;border-radius:0 6px 6px 0}.note{color:var(--muted)}
+nav{display:flex;flex-wrap:wrap;gap:8px 20px;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:28px 0}nav a{text-decoration:none}
+code{font: .91em/1.65 Consolas,"Malgun Gothic",monospace;background:#10181f;color:#cff0fa;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:#10181f;border:1px solid var(--line);padding:16px;border-radius:8px;overflow:auto;line-height:1.65}pre code{padding:0;background:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);background:#141b22}
+footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
+@media(max-width:700px){main{margin:0;border:0;border-radius:0;padding:24px 18px}h1{font-size:2rem}body{font-size:15px}th,td{padding:9px}nav{gap:8px 14px}}
+@media print{:root{color-scheme:light}body,main{background:#fff;color:#222}main{border:0;margin:0;padding:0}strong,h1,h2,h3,code,th,td,a,.lead,.note,footer{color:#222}pre,code,.notice{background:#f3f3f3}pre{white-space:pre-wrap}pre code{white-space:pre-wrap}nav{display:none}h2,h3{break-after:avoid}}
+</style></head><body><main>
+<header><h1>Body Change NG <small>v1.2.1</small></h1><p class="lead">v1.2.0 대비 변경 내역</p></header>
+<section><h2>OBody 모프 정리 · 후타 즐겨찾기 · NPC 배포 개선</h2><ul>
+<li>NPC 배포 행을 여성 · 남성 · 배포 하기 · 배포 취소로 변경했습니다. 여성으로 시작하며, 해당 성별의 가까운 NPC가 없으면 플레이어를 선택합니다. 후타는 등록된 여성 후타 NPC만 자동 선택합니다. 목록·새 규칙의 성별은 미리보기 액터와 분리하고 바디·스킨에는 설정된 배포 바디 타입을 반영합니다. 성별 전환 시 이전 체크·미리보기를 정리합니다.</li>
+<li>바디 프리셋 확정·기본 바디 복원 시 OBody와 OClothe 키도 제거합니다. ‘다른 모드의 모프 보존’이 켜져 있어도 두 키는 제거하며, 그 외 모프는 보존 옵션을 따릅니다.</li>
+<li>미리보기는 두 키를 제거한 결과를 보여주되 원본 키는 확정 전까지 유지합니다. 취소하면 원래 상태로 돌아가며, 기본 복원 미리보기의 모프 순회를 4회에서 1회로 줄였습니다.</li>
+<li>기존 세이브의 BCNG 바디 기록을 새 교체 정책으로 한 번 재평가합니다. 세이브 형식은 변경하지 않았으며 새 게임이나 세이브 정리를 요구하지 않습니다.</li>
+<li>후타스킨에 별 버튼과 즐겨찾기 필터를 추가했습니다. 일반 목록과 NPC 배포 체크박스 목록 모두 지원하며, 별 클릭은 미리보기·적용·배포 체크를 바꾸지 않습니다.</li>
+<li>ERF·TRX·UBE TRX 즐겨찾기는 각각 구분되어 설정에 저장됩니다. 기존 즐겨찾기와 사용자 설정은 유지하고 긴 행 텍스트는 별 영역 앞에서 생략합니다.</li>
+</ul></section>
+<p class="notice">이 변경은 실행 중인 OBody의 자체 재배포를 끄지 않습니다. 두 시스템이 같은 액터의 체형을 계속 재지정하지 않도록 설정하세요.</p>
+<p class="note">Release 빌드와 자동 테스트 24종 통과. 이번 변경의 인게임 검증은 아직 진행하지 않았습니다.</p>
+<footer><a href="NEXUS-DESCRIPTION-v1.2.1-KO.html">전체 소개와 사용 안내</a><p>2026-09-13 · v1.2.1</p></footer>
+</main></body></html>

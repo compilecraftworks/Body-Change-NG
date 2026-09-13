@@ -3,9 +3,9 @@
 param([switch]$Apply)
 $ErrorActionPreference = 'Stop'
 $bcngRepo = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$bcngDll = Join-Path $bcngRepo 'build\v1.2.0\windows\x64\release\BodyChangeNG.dll'
-$bcngExpectedHash = '0E550575F78E3AA81B89E76506915C3D4C91F6167608FD2C959F83B96AFC1A12'
-$bcngArchive = Join-Path $bcngRepo 'build\mo2-clean-backup-20260912'
+$bcngDll = Join-Path $bcngRepo 'build\v1.2.1\windows\x64\release\BodyChangeNG.dll'
+$bcngExpectedHash = '295AC8E15835ED42194CC693A291BA21BC40AB8591C1865AB2241CFF6098A4C3'
+$bcngArchive = Join-Path $bcngRepo 'build\mo2-backup-v1.2.1-20260913'
 $bcngInstalls = @(
     @{ Name = 'TuLED'; Root = 'D:\TuLED13E\File Mod Skyrim SE\mods\Body Change NG' },
     @{ Name = 'TAKEALOOK'; Root = 'C:\TAKEALOOK\mods\Body Change NG' }
@@ -32,7 +32,7 @@ if (Get-Process -Name SkyrimSE,skse64_loader -ErrorAction SilentlyContinue) {
     throw 'Exit Skyrim/SKSE before deployment.'
 }
 if ((Get-BCNGHash $bcngDll) -ne $bcngExpectedHash) { throw 'Build hash changed; review before deploying.' }
-if ((Get-Item -LiteralPath $bcngDll).VersionInfo.FileVersion -ne '1.2.0.0') { throw 'Wrong DLL version.' }
+if ((Get-Item -LiteralPath $bcngDll).VersionInfo.FileVersion -ne '1.2.1.0') { throw 'Wrong DLL version.' }
 
 $bcngCopies = @(
     @{ Source = $bcngDll; Relative = 'SKSE\Plugins\BodyChangeNG.dll' },
@@ -76,7 +76,7 @@ foreach ($install in $bcngInstalls) {
         $oldPath = Join-Path $root ('licenses\' + $name)
         if (Test-Path -LiteralPath $oldPath) { $oldFiles += Get-Item -LiteralPath $oldPath }
     }
-    $metaSource = Join-Path $bcngRepo ('build\mo2-deploy-stage\' + $install.Name + '-meta.ini')
+    $metaSource = Join-Path $bcngRepo ('build\v1.2.1\mo2-deploy-stage\' + $install.Name + '-meta.ini')
     $copyItems = $bcngCopies + @{ Source = $metaSource; Relative = 'meta.ini' }
     $protected = @{}
     foreach ($json in Get-ChildItem -LiteralPath $plugins -Recurse -File -Filter '*.json') {

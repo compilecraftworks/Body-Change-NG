@@ -487,6 +487,8 @@ int main(const int argc, char** argv)
             "legacy settings were not copied to the BodyChangeNG path")) return 1;
     if (!Require(migratedSnapshot.openHotkey.key == 66U && migratedSnapshot.openHotkey.ctrl,
             "legacy settings values were not preserved during migration")) return 1;
+    if (!Require(migratedSnapshot.favoriteFutanariSkins.empty(),
+            "settings without futanari favorites must default to an empty list")) return 1;
     if (!Require(migratedSnapshot.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba &&
             migratedSnapshot.maleNpcBodyType == bcn::MaleNpcBodyType::himbo,
             "legacy settings migration did not preserve the new CBBE 3BA/HIMBO defaults")) return 1;
@@ -500,6 +502,15 @@ int main(const int argc, char** argv)
     nonPreserving.preserveOtherMorphs = false;
     nonPreserving.pauseGameWhenOpen = true;
     nonPreserving.performanceMode = true;
+    nonPreserving.favoriteBodyPresets = { "body-preset" };
+    nonPreserving.favoriteSkinProfiles = { "auto:skin-pack:female" };
+    nonPreserving.favoriteTintPacks = { "tint-pack" };
+    nonPreserving.favoriteOverlays = { "overlay-entry" };
+    const std::vector<std::string> futanariFavorites{
+        "futanari:후타팩 简体:erf", "futanari:후타팩 简体:cbbe-trx", "futanari:후타팩 简体:ube-trx"
+    };
+    nonPreserving.favoriteFutanariSkins = futanariFavorites;
+    nonPreserving.favoriteFutanariSkins.push_back(futanariFavorites.front());
     popupSettings.Update(nonPreserving);
     for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
         const auto kind = static_cast<PopupKind>(index);
@@ -512,6 +523,8 @@ int main(const int argc, char** argv)
     std::filesystem::current_path(sandbox);
     if (!Require(popupSettings.Save(), "popup settings save failed")) return 1;
     popupSettings.Load();
+    if (!Require(popupSettings.Snapshot().favoriteFutanariSkins == futanariFavorites,
+            "futanari favorites must survive restart, deduplicate and preserve pack/type/UTF-8 IDs")) return 1;
     if (!Require(!popupSettings.Snapshot().preserveOtherMorphs &&
             !popupSettings.MorphOptions().preserveOtherMorphs &&
             popupSettings.Snapshot().pauseGameWhenOpen &&
@@ -527,6 +540,33 @@ int main(const int argc, char** argv)
     if (!Require(popupSettings.MorphOptions().preserveOtherMorphs &&
             popupSettings.BodyApplicationOptions() != offSignature,
             "preserve option reload/signature did not change application policy")) return 1;
+    auto unfavorited = popupSettings.Snapshot();
+    std::erase(unfavorited.favoriteFutanariSkins, futanariFavorites.front());
+    popupSettings.Update(unfavorited);
+    if (!Require(popupSettings.Save(), "futanari unfavorite save failed")) return 1;
+    popupSettings.Load();
+    if (!Require(popupSettings.Snapshot().favoriteFutanariSkins ==
+            std::vector<std::string>(futanariFavorites.begin() + 1, futanariFavorites.end()),
+            "unfavoriting one addon type must not remove the same pack's other types")) return 1;
+    {
+        nlohmann::json saved;
+        {
+            std::ifstream stream(migratedSettings);
+            stream >> saved;
+        }
+        saved["favoriteFutanariSkins"].push_back(42);
+        saved["favoriteFutanariSkins"].push_back(nullptr);
+        saved["favoriteFutanariSkins"].push_back(std::string(1025U, 'x'));
+        WriteText(migratedSettings, saved.dump());
+    }
+    popupSettings.Load();
+    const auto favoritesReloaded = popupSettings.Snapshot();
+    if (!Require(favoritesReloaded.favoriteFutanariSkins == unfavorited.favoriteFutanariSkins &&
+            favoritesReloaded.favoriteBodyPresets == nonPreserving.favoriteBodyPresets &&
+            favoritesReloaded.favoriteSkinProfiles == nonPreserving.favoriteSkinProfiles &&
+            favoritesReloaded.favoriteTintPacks == nonPreserving.favoriteTintPacks &&
+            favoritesReloaded.favoriteOverlays == nonPreserving.favoriteOverlays,
+            "malformed futanari favorites must not discard valid entries or other tabs' favorites")) return 1;
     std::filesystem::current_path(originalCurrentPath);
     for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
         const auto position = popupSettings.PopupPosition(static_cast<PopupKind>(index));

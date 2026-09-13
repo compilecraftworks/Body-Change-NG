@@ -1,4 +1,4 @@
-Body Change NG v1.2.0 — Futanari 설치 안내
+Body Change NG v1.2.1 — Futanari 설치 안내
 
 [한국어]
 설치된 후타스킨 모드 폴더를 통째로 이 Futanari 폴더 안에 복사하세요.
@@ -29,6 +29,8 @@ MO2 모드 최상위는 게임 Data에 해당하므로 모드 안에 Data를 또
 
 스킨을 한 번 클릭하면 미리보기, 더블클릭하면 확정합니다.
 확정하지 않고 창을 닫으면 원래 선택을 유지합니다.
+행 오른쪽 별로 즐겨찾기를 지정·해제하고, 상단 즐겨찾기로 목록을 필터링합니다.
+NPC 배포 목록에서도 사용할 수 있으며 즐겨찾기는 게임 재실행 후에도 유지됩니다.
 일부 지원 런타임은 성기 TXST 경로의 추가 검증이 필요합니다.
 정확한 버전별 범위는 v1.2.0 소개글의 호환 안내를 확인하세요.
 
@@ -47,5 +49,8 @@ futanari addon in SOS/TNG. Skin selection does not install/equip/register an add
 Install the addon and its requirements normally. Male addon skins belong in BodySkin.
 
 Single-click previews; double-click confirms; close without confirmation to
-restore the previous selection. See the v1.2.0 description for runtime-specific
+restore the previous selection. Click a row's star to favorite/unfavorite it,
+then use the Favorites filter above the list. This also works in NPC-distribution
+selection mode; favorites persist across game restarts.
+See the v1.2.0 description for runtime-specific
 native genital-backend verification limits.

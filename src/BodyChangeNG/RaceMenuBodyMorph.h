@@ -71,8 +71,8 @@ namespace bcn::racemenu
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,
         std::uint64_t a_outfitSignature = 0U,
         UpdatePolicy a_updatePolicy = UpdatePolicy::synchronous);
-    // Previews the exact result of removing only BCNG-owned body/outfit
-    // keys without mutating any committed key. QueueCancelPreview restores the
+    // Previews removal of BCNG and OBody/OClothe body/outfit keys without
+    // mutating any committed key. QueueCancelPreview restores the
     // entry state by removing only the transient compensating layer.
     [[nodiscard]] ApplyResult QueuePreviewDefault(RE::Actor* a_actor);
     // RaceMenu recreates the player's 3D when character generation closes.

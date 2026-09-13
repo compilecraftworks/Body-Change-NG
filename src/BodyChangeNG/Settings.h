@@ -101,6 +101,7 @@ namespace bcn
         bool genitalRandomization{};
         std::vector<std::string> favoriteBodyPresets;
         std::vector<std::string> favoriteSkinProfiles;
+        std::vector<std::string> favoriteFutanariSkins;
         std::vector<std::string> favoriteTintPacks;
         std::vector<std::string> favoriteOverlays;
     };

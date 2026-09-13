@@ -13,6 +13,8 @@ namespace bcn::racemenu::keys
     inline constexpr auto legacyBody = "BodyChangerNG";
     inline constexpr auto legacyPreview = "BodyChangerNGPreview";
     inline constexpr auto legacyOutfit = "BodyChangerNGOutfit";
+    inline constexpr auto obody = "OBody";
+    inline constexpr auto oclothe = "OClothe";
     inline constexpr std::array owned{ body, preview, outfit, legacyBody, legacyPreview, legacyOutfit };
 
     [[nodiscard]] constexpr bool IsOwned(const std::string_view key) noexcept
@@ -27,12 +29,28 @@ namespace bcn::racemenu::keys
         for (const auto* key : owned) api.ClearBodyMorphKeys(actor, key);
     }
 
+    // OBody is another base-body provider, not an additive gameplay effect.
+    // Explicit BCNG body changes replace these two exact keys as well, but
+    // they are not BCNG-owned: preview cancellation must never delete them.
+    [[nodiscard]] constexpr bool IsReplacedBody(const std::string_view key) noexcept
+    {
+        return IsOwned(key) || key == obody || key == oclothe;
+    }
+
+    template <class API, class Actor>
+    void ClearReplacedBody(API& api, Actor* actor)
+    {
+        ClearOwned(api, actor);
+        api.ClearBodyMorphKeys(actor, obody);
+        api.ClearBodyMorphKeys(actor, oclothe);
+    }
+
     // The destructive branch is used only for an accepted preset commit, not
     // preview, cancellation, Default, or outfit-only updates (OBody semantics).
     template <class API, class Actor>
     void BeginPresetCommit(API& api, Actor* actor, const bool preserveOtherMorphs)
     {
-        if (preserveOtherMorphs) ClearOwned(api, actor);
+        if (preserveOtherMorphs) ClearReplacedBody(api, actor);
         else api.ClearMorphs(actor);
     }
 
@@ -51,7 +69,7 @@ namespace bcn::racemenu::keys
             const std::string_view source(key);
             if (source == preview || source == legacyPreview) return;
             if (!replaceOutfit_ && (source == outfit || source == legacyOutfit)) return;
-            if (!preserve_ || IsOwned(source)) values[name] += value;
+            if (!preserve_ || IsReplacedBody(source)) values[name] += value;
         }
         std::unordered_map<std::string, float> values;
     private:
