@@ -70,7 +70,9 @@ namespace bcn::rendered_outfit
         const auto module = ::GetModuleHandleW(L"SFSCore.dll");
         if (!module) return;
         const auto version = reinterpret_cast<abi::GetVersion>(::GetProcAddress(module, abi::kVersionExport));
-        const auto query = reinterpret_cast<abi::Query>(::GetProcAddress(module, abi::kQueryExport));
+        const auto query = ResolveQuery([module](const char* name) {
+            return reinterpret_cast<abi::Query>(::GetProcAddress(module, name));
+        });
         if (!version || !query || version() != abi::kVersion) return;
         if (auto* messaging = SKSE::GetMessagingInterface(); messaging && !g_listening) {
             g_listening = messaging->RegisterListener(abi::kSender, OnChange);

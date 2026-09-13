@@ -15,8 +15,23 @@ Final changes compared with v1.1.4[/center]
 [*]Restored the character-rotation hint on the main title bar immediately left of X. Corrected its clip region and right alignment; long text scales to fit instead of disappearing or truncating.
 [*]Shortened catalog help and fitted it to the available width on one line, including the English overlay hint.
 [*]Moved NPC distribution entry into each supported catalog. Added checkbox selection and category-specific condition popups; selected candidates remain available when adding more rules.
+[*]Body-preset, body-skin, and futanari-skin NPC-distribution lists now preview the last clicked or navigated compatible row, including checkbox clicks and keyboard/gamepad activation. Checkboxes remain distribution candidates, not manual actor assignments. Cancel, Clear selection, popup entry, actor/tab changes, and closing restore the corresponding committed appearance.
 [*]Catalog scans/refreshes use queued work and reusable snapshots instead of rebuilding expensive lists each time a window opens. Performance-mode scheduling remains separate from manual selection.
 [*]Updated the in-game help and complete installation guides. Skin and futanari packs can be installed by copying the entire installed texture-mod folder into BodySkin or Futanari.
+[*]Documented adding or replacing body-preset XML and BodySkin/Futanari packs while the game is running: finish copying, Refresh, then reselect and confirm. New plugin/addon installation and newly enabled MO2 mods still require restarting; this is not an overlay-mod installation workflow.
+[*]Added BodySlide preparation: build the character body and outfits with Zeroed Sliders and Build Morphs enabled so the preset's XML morphs are expressed on the intended baseline.
+[/list]
+
+[line]
+
+[size=5][color=#19D8FF][b]Body presets and morph preservation[/b][/color][/size]
+[list]
+[*]Added Preserve other mods' morphs in Mod Settings, enabled by default. Default character placement is Left; Pause game and Performance mode are off. Existing saved preferences are retained.
+[*]Body presets use the XML slider values interpolated by actor weight, including negative values and values above 100%. Removed aggregate-morph compensation from the committed preset path.
+[*]With preservation enabled, preset application replaces only BCNG's own morph keys. With it disabled, confirming a preset clears other RaceMenu body morphs before applying the preset. Unconfirmed previews remain reversible in either mode.
+[*]Default Body and actor reset clear current and legacy BCNG-owned keys without deleting other mods' morphs, even when preservation is disabled.
+[*]Aligned procedural breast/nipple correction with OBody NG's preset-key calculation instead of subtracting the sum of every mod's morphs. Preview and confirmed application now share the same correction policy.
+[*]Removed the obsolete catalog-wide slider-union cache and unused compatibility helpers; switching presets no longer depends on that extra catalog-wide work.
 [/list]
 
 [line]
@@ -39,6 +54,7 @@ Final changes compared with v1.1.4[/center]
 [size=5][color=#19D8FF][b]Futanari and male addon skins[/b][/color][/size]
 [list]
 [*]Moved supported SOS/TNG male and female-addon textures to a native TXST construction path, including refresh of already attached supported addon geometry.
+[*]Fixed a false validation failure that could block supported SOS/TNG male-addon and futanari skin changes when engine imports span adjacent readable memory regions. Code-pattern, ownership, and memory-access checks remain in place.
 [*]Female-addon installation/loading enables the futanari feature globally; merely having an ordinary male addon does not.
 [*]Manual eligibility is based on SOS/TNG registration of a supported female addon, not only currently visible geometry. Unregistered females and males are ineligible.
 [*]Added category-specific futanari distribution restricted to registered female futanari NPCs. Texture selection does not equip/register an addon.
@@ -55,7 +71,8 @@ Final changes compared with v1.1.4[/center]
 [*]Added multiple manual overlays per area; double-click toggles a committed item on/off. Per-area Default removes only BCNG-owned overlays.
 [*]Added overlay favorites and per-item color/opacity controls outside the scrolling list.
 [*]Remember preview RGBA per item while the main UI is open, and copy each selected overlay candidate's RGBA into NPC rules.
-[*]Enabled per-candidate color/opacity editing while the NPC-distribution checkbox list is open. Batch edits remain separate from the actor's committed overlays; either explicit distribution action saves the checked candidates with their individual colors.
+[*]NPC-distribution checkboxes now drive a cumulative per-area preview stack: checking adds an entry, unchecking removes its preview. The focused row controls color/opacity editing; checked candidates display those edits. Select all, Clear selection, and keyboard/gamepad confirmation follow the same checkbox state. Excess candidates remain in the distribution pool without overwriting foreign slots. Cancelling distribution or closing restores temporary changes without altering committed selections, colors, or counts.
+[*]Previewing an already applied BCNG overlay reuses its owned slot and restores its committed color on cancel, instead of stacking a duplicate. Selecting an area's Default row restores normal body-skin camera framing.
 [*]Store original tint DDS/RGBA in the save-specific TINT v2 record. Keep committed tint intent separate from previews and batch pack/layer restoration into one composite refresh.
 [*]Reworked repeated selection, ownership, restore, and provider-key lifetime handling. Preview slots no longer count as committed selections.
 [*]The header now shows Applied X/Y: X is BCNG's confirmed count; Y is RaceMenu capacity minus foreign occupied/reserved slots. Removed the separate BCNG counter.
@@ -68,6 +85,7 @@ Final changes compared with v1.1.4[/center]
 [*]Added optional SFS Rendered Outfit API v1 integration for breast/nipple correction and ORefit exclusions, force-refit entries, and outfit-specific presets.
 [*]Visible actual equipment is evaluated by its own name/FormID/plugin; visible registered appearances use their own identity. Hidden armor is ignored, and hiding all correction-relevant clothing clears breast/nipple correction.
 [*]Re-evaluates changed actors from SFS notifications and discards stale queued corrections. Without SFS or its supported API, or for an actor SFS does not manage, the original actual-equipment path remains unchanged.
+[*]Added support for SFS's game-task query entry point to prevent live breast/nipple updates from stalling after task-worker thread changes. Retained the older API fallback and stale-result checks.
 [/list]
 
 [line]
@@ -76,6 +94,8 @@ Final changes compared with v1.1.4[/center]
 [list]
 [*]New installations ship an empty opt-in rule set. Removed the distribution/exclusion mode and legacy exclusion-only rules during schema-7 migration; retain eligible positive assignments.
 [*]All NPCs rules default to excluding custom followers and elder NPCs through checked target filters.
+[*]Restrict custom-follower and elder exclusion checkboxes to All NPCs rules; they no longer silently block explicit name, individual NPC, or other target scopes.
+[*]Reevaluate automatic futanari skin candidates after late registration or addon-family changes, without rerolling body/skin/overlay assignments or overriding manual choices. Track the selected pack and texture content as well as addon geometry so a changed candidate is actually reapplied.
 [*]Removed OBody NPC-rule import. The optional OBody ORefit JSON reader remains only for explicit outfit-correction registration.
 [*]Changed v1.1.4's auto-save-on-close behavior: Close/X/Escape/main-window close now discards unsaved rule edits in every distribution-enabled tab.
 [*]Only Distribute to loaded NPCs now or Distribute next game launch saves conditions. Immediate activation occurs only after a successful save; next-launch saves leave active session rules unchanged.
@@ -91,9 +111,8 @@ Final changes compared with v1.1.4[/center]
 [*]Explicit runtime targets: SE 1.5.97; AE 1.6.317, 1.6.318, 1.6.323, 1.6.342, 1.6.353, 1.6.629, 1.6.640, 1.6.659, 1.6.1130, 1.6.1170, 1.6.1179. No VR, Epic 1.6.678, or unlisted runtime support.
 [*]Audited known RaceMenu BodyMorph and Override/Overlay interface generations, including legacy ABI and provider slot counts. A matching RaceMenu/SKSE build is still required.
 [*]Replaced a two-runtime genital-backend address gate with version-aware Address Library resolution and runtime code/ownership verification; corrected the GOG import-resolution assumption.
-[*]Native genital ownership code was inspected on 1.5.97 and 1.6.1170 only. The other ten targets still depend on runtime code verification and are not claimed fully play-tested.
 [*]Reduced redundant scans, temporary diagnostics, and obsolete code while retaining actionable failure reporting and ownership/lifetime checks.
-[*]Final SE/AE-only Release build and 23 automated test executables passed. This is not proof of zero leaks, zero regressions, or complete in-game coverage of all combinations.
+[*]The SE/AE-only Release build and automated regression tests passed, including morph-key preservation, reversible previews, overlay selection, SFS-consumer handling, and native-addon validation.
 [/list]
 
 [line]

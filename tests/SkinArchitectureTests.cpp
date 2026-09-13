@@ -49,6 +49,34 @@ int main()
             bcn::ui_catalog::MouseIntent(false, false) == ChoiceIntent::none,
             "single/double click selection policy regressed")) return 1;
 
+    if (!Require(!bcn::ui_catalog::CommitsActorChoice(false, false) &&
+            bcn::ui_catalog::CommitsActorChoice(true, false) &&
+            !bcn::ui_catalog::CommitsActorChoice(false, true) &&
+            !bcn::ui_catalog::CommitsActorChoice(true, true),
+            "distribution confirmation committed an actor selection")) return 1;
+    for (unsigned catalog{}; catalog < 3U; ++catalog) {
+        std::optional<bcn::ui_catalog::PendingChoice> preview;
+        const auto baseline = "committed-" + std::to_string(catalog);
+        bcn::ui_catalog::RememberPreview(preview, 0U, "invalid", false, baseline);
+        if (!Require(!preview, "invalid actor acquired preview ownership")) return 1;
+        bcn::ui_catalog::RememberPreview(preview, 0x14U, "A", false, baseline);
+        for (unsigned click{}; click < 1000U; ++click) {
+            const auto candidate = click % 2U ? "B" : "A";
+            bcn::ui_catalog::RememberPreview(preview, 0x14U, candidate, false, "live preview");
+            if (!Require(preview->id == candidate && preview->originalId == baseline,
+                    "checkbox/navigation preview accumulated or replaced its rollback baseline")) return 1;
+        }
+        bcn::ui_catalog::RememberPreview(preview, 0x14U, {}, true, "live preview");
+        if (!Require(preview->useDefault && preview->id.empty() && preview->originalId == baseline,
+                "default preview lost the committed baseline")) return 1;
+        preview.reset(); // cancel, popup entry, tab change or UI close
+        bcn::ui_catalog::RememberPreview(preview, 0x14U, "C", false, "new commit");
+        if (!Require(preview->originalId == "new commit", "reopening retained an old baseline")) return 1;
+        bcn::ui_catalog::RememberPreview(preview, 0x15U, "D", false, "NPC commit");
+        if (!Require(preview->actorFormID == 0x15U && preview->originalId == "NPC commit",
+                "preview baseline crossed actor boundaries")) return 1;
+    }
+
     for (const auto* domain : { "skin", "skin-face" }) {
         for (const auto* file : { "body.dds", "hands.dds", "feet.dds", "head.dds", "body_msn.dds", "body_sk.dds", "body_s.dds" }) {
             const auto cache = std::string("textures\\BodyChangeNG\\Cache\\") + domain + "\\0123\\" + file;

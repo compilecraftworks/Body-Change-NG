@@ -67,6 +67,17 @@ namespace bcn::overlay
     [[nodiscard]] bool HasActivePreview(const RE::Actor* a_actor);
     [[nodiscard]] std::optional<std::uint32_t> CurrentColor(
         const RE::Actor* a_actor, Area a_area, std::string_view a_entryId);
+    struct PreviewChoice final
+    {
+        std::string entryId;
+        std::uint32_t color{ 0xFFFFFFFFU };
+    };
+    // Complete checkbox snapshot for one area. Empty cancels that area's
+    // preview; unrenderable/excess candidates remain in the UI distribution pool.
+    [[nodiscard]] ApplyResult QueuePreviewSet(RE::Actor* a_actor, Area a_area,
+        std::vector<PreviewChoice> a_checked);
+    // Normal catalog color editing follows its live preview or committed item.
+    // Distribution drafts always use QueuePreviewSet, never this commit path.
     [[nodiscard]] ApplyResult QueueColor(RE::Actor* a_actor, Area a_area,
         std::string a_entryId, std::uint32_t a_color);
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, Area a_area,

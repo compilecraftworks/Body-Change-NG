@@ -1,6 +1,7 @@
 #include "BodyChangeNG/SkinApplication.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/NativeAddonPolicy.h"
 #include "BodyChangeNG/AsyncWorkGuards.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -289,7 +290,8 @@ namespace
                 NativeAddonTargets(actor.get(), true), profile.layers, "futanari")) {
             bcn::skin_session::MarkAddonReconciled(actor->GetFormID(),
                 bcn::skin_session::AddonTextureChannel::futanari,
-                FutanariTargetSignature(route));
+                bcn::skin_session::FutanariSelectionSignature(
+                    FutanariTargetSignature(route), profile.id, profile.contentHash));
             if (applied.changed) RefreshNativeSkin3D(actor.get());
         }
     }
@@ -612,17 +614,19 @@ namespace bcn::skin_application
         RE::Actor* actor, const bool onlyIfAddonChanged)
     {
         if (!native_addon::Available()) return;
+        if (!actor || !frame_tasks::Active() || frame_tasks::HasPreview(actor->GetFormID())) return;
+        // Registration / addon switches can occur after the actor-load pass.
+        // The player and manual selections are excluded by this narrow evaluator.
+        Distribution::Get().RefreshFutanariSelection(actor);
         if (const auto profileId = CurrentFutanariProfileId(actor)) {
             const auto profile = FutanariSkinProfiles::Get().Find(*profileId);
             if (!profile) return;
             if (onlyIfAddonChanged) {
-                const auto signature = actor ?
-                    FutanariTargetSignature(FindLoadedFutanariRoute(actor)) : 0U;
+                const auto signature = skin_session::FutanariSelectionSignature(
+                    FutanariTargetSignature(FindLoadedFutanariRoute(actor)), profile->id, profile->contentHash);
                 if (signature == 0U) {
-                    if (actor) {
-                        skin_session::ClearAddonReconciled(actor->GetFormID(),
-                            skin_session::AddonTextureChannel::futanari);
-                    }
+                    skin_session::ClearAddonReconciled(actor->GetFormID(),
+                        skin_session::AddonTextureChannel::futanari);
                     return;
                 }
                 if (!skin_session::NeedsAddonReconcile(
@@ -633,7 +637,7 @@ namespace bcn::skin_application
             }
             [[maybe_unused]] const auto result = QueueApplyFutanari(
                 actor, *profileId, FutanariSelectionMode::restore);
-        } else if (actor && ActorRegistry::Get().FutanariUsesDefault(actor)) {
+        } else if (ActorRegistry::Get().FutanariUsesDefault(actor)) {
             const auto signature =
                 FutanariTargetSignature(FindLoadedFutanariRoute(actor));
             if (signature == 0U) {

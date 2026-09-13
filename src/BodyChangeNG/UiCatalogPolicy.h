@@ -3,9 +3,42 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
+#include <string>
+#include <utility>
 
 namespace bcn::ui_catalog
 {
+    struct PendingChoice final
+    {
+        std::uint32_t actorFormID{};
+        std::string id;
+        std::string originalId;
+        bool useDefault{};
+    };
+
+    // Keep one reversible selection per catalog, not one record per click.
+    // The first baseline survives A/B/A navigation and checkbox changes.
+    inline void RememberPreview(std::optional<PendingChoice>& pending,
+        const std::uint32_t actorFormID, std::string id, const bool useDefault,
+        std::string originalId)
+    {
+        if (!actorFormID) return;
+        if (!pending || pending->actorFormID != actorFormID) {
+            pending = PendingChoice{ actorFormID, std::move(id),
+                std::move(originalId), useDefault };
+        } else {
+            pending->id = std::move(id);
+            pending->useDefault = useDefault;
+        }
+    }
+
+    [[nodiscard]] constexpr bool CommitsActorChoice(
+        const bool confirm, const bool distributionSelecting) noexcept
+    {
+        return confirm && !distributionSelecting;
+    }
+
     enum class Tab : std::uint8_t
     {
         body,

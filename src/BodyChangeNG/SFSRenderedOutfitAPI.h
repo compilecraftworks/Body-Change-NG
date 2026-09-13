@@ -11,6 +11,7 @@ namespace sfs::rendered_outfit_api {
 inline constexpr std::uint32_t kVersion = 1;
 inline constexpr char kVersionExport[] = "SkyrimFittingSystem_GetRenderedOutfitAPIVersion";
 inline constexpr char kQueryExport[] = "SkyrimFittingSystem_QueryRenderedOutfit";
+inline constexpr char kGameTaskQueryExport[] = "SkyrimFittingSystem_QueryRenderedOutfitOnGameTask";
 inline constexpr char kSender[] = "Skyrim Fitting System";
 inline constexpr std::uint32_t kChangedMessage = 0x53465352; // SFSR
 
@@ -82,6 +83,11 @@ struct Changed {
 // are cleared on epoch reset; query again for actors the consumer still needs.
 // Output is caller owned. ABI v1 requires itemSize==sizeof(Item), capacity is in
 // entries. nullptr items is valid only with zero capacity. No C++ allocator ABI.
+// Prefer kGameTaskQueryExport when available (same Query signature/layout).
+// Its caller MUST be executing inside SKSE::TaskInterface::AddTask, not Present,
+// an input callback, or an arbitrary worker. It does not compare OS thread IDs:
+// the SKSE task phase can migrate between threads. All actor/root/readiness and
+// revision checks still run. The original export is retained for older clients.
 using GetVersion = std::uint32_t (__cdecl*)();
 using Query = Status (__cdecl*)(std::uint32_t, Snapshot*, Item*, std::uint32_t,
                                 std::uint32_t);

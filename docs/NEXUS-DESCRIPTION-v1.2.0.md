@@ -15,7 +15,7 @@ BCNG ships no body meshes, skin packs, tattoo collections, or preset collection.
 - [RaceMenu](https://www.nexusmods.com/skyrimspecialedition/mods/19080), including its matching SKSE plugin and scripts. BCNG uses RaceMenu's BodyMorph, NiOverride, and overlay services.
 
 **Required for the feature you use**
-- **Body presets:** a supported morph-enabled body, compatible outfits, and BodySlide preset XMLs. Build the body and outfits with **Build Morphs** in [BodySlide](https://www.nexusmods.com/skyrimspecialedition/mods/201), then install the generated meshes and TRI files. A neutral/Zeroed Sliders base is recommended so an already-built shape is not added to the selected morph.
+- **Body presets:** a supported morph-enabled body, compatible outfits, and BodySlide preset XMLs. To reproduce the XML's intended shape, build **both the character body and the outfits you use** in [BodySlide](https://www.nexusmods.com/skyrimspecialedition/mods/201) with the matching **Zeroed Sliders** preset and **Build Morphs checked**. Install the generated meshes and TRI files together. Building only the body is not sufficient for outfits to follow correctly.
 - **Skins and tint masks:** compatible loose DDS files, arranged as shown below.
 - **Overlays:** installed RaceMenu paint registrations and textures, or SlaveTats collection JSONs and textures. Enable the relevant overlays in RaceMenu's configuration; BCNG does not increase its slot limit.
 - **Genital-addon skins:** the appropriate SOS or TNG setup, its supported addon, and compatible textures. Female futanari skins require a supported female addon; ordinary male addons do not enable this feature.
@@ -45,6 +45,16 @@ Here, SE/AE refers to the executable version, not whether you purchased the Anni
 **Tab order:** Body Presets → Body Skins → Tint Masks → Futanari Skin → Overlays.
 The Futanari Skin tab is hidden when no supported female addon is installed and loaded.
 
+**Add or replace files without closing the game:** You can add or replace body-preset XML files and body-skin, tint-mask, and futanari-skin packs at the full paths documented below while the game is running. Finish copying the files, press **Refresh** in the corresponding tab, then select the updated entry again to preview it and double-click to apply. Refresh updates the catalog; it does not automatically reapply a replacement to actors. With MO2, use the BCNG mod or a content mod already connected to the running game. The files must be accessible to that game process; restart after enabling a new mod or installing an ESP, DLL, or addon. This does not cover installing overlay mods.
+
+### BodySlide preparation — before launching the game
+
+1. Open BodySlide through the same mod-manager profile and select the **Zeroed Sliders** preset appropriate for your installed body family.
+2. Check **Build Morphs**. Build the character body and its matching parts, then use **Batch Build** for the compatible outfits you will wear, keeping the same zeroed base and Build Morphs enabled.
+3. Enable the generated mesh and TRI output in that profile. Ensure another mod does not overwrite it with a body or outfit built to a different shape.
+
+**Why this matters:** BCNG applies the selected XML's morph values on top of the installed mesh. If another preset's shape is already baked into that mesh, the result will not match the XML's intended shape. **Zeroed Sliders + Build Morphs is required for both body and outfits**; checking Build Morphs alone does not remove a shape already baked into the mesh. The XML sliders must also match the body/outfit's morph data.
+
 ### Controls
 - **F7:** open/close; configurable in Mod Settings, including modifier combinations.
 - **Single click / Up–Down / W–S / D-pad Up–Down:** move through rows and preview.
@@ -62,7 +72,23 @@ The character-rotation hint is right-aligned on the main title bar, immediately 
 ### Body Presets
 Select a BodySlide shape for the player or a loaded NPC. The list uses the selected actor's sex and detected body family. XML Preset/set and Group metadata help distinguish CBBE 3BA, BHUNP/UNP, UBE, HIMBO, and SAM; renaming an XML does not convert its sliders.
 
-The first **Default Body** row clears the actor's BCNG/legacy OBody body morph selection. It does not replace installed meshes or turn a custom body into a vanilla mesh. Your body and outfit must contain the corresponding morph data to show a change.
+The first **Default Body** row removes only the actor's BCNG body and outfit-correction morphs, including old BCNG keys. Other mods' morphs are left alone regardless of the preservation option. It does not replace installed meshes or turn a custom body into a vanilla mesh. Your body and outfit must contain the corresponding morph data to show a change.
+
+#### How preset morphs are calculated
+
+BCNG reads the XML's small (weight 0) and big (weight 100) values for each slider. With w = actor weight / 100, the recorded morph is:
+
+```text
+morph = (small × (1 - w) + big × w) / 100
+```
+
+For example, small 20 and big 80 at weight 25 produce 0.35 (35%). Negative values and values above 100% are retained, not clamped to the 0–100% range. BCNG does not subtract other mods' morphs from this XML value when applying the preset.
+
+UNP-family presets have a small set of reverse-defined base sliders, including Breasts and NippleDistance. BCNG converts those endpoints with 1 - (XML value / 100) before interpolation; it does not reverse every slider. Optional NPC nipple/genital randomization can separately replace its selected anatomical sliders, and does not apply to the player.
+
+With **Preserve other mods' morphs** on, only BCNG's previous preset/correction keys are replaced; preserved keys can also affect the final shape according to RaceMenu's morph-combination setting. With it off, confirming a preset clears existing RaceMenu body morph keys before writing the new values. Previewing does not permanently delete those keys; closing without confirmation restores the committed state.
+
+Clothed breast/nipple correction is a separate layer. The built-in correction uses either a target minus BCNG's preset value, or a weight-interpolated offset added to it. An explicitly selected outfit-correction preset supplies its own correction values instead. These corrections do not rewrite the source XML. To reproduce the intended baseline, build both the body and outfits with **Zeroed Sliders** and **Build Morphs**.
 
 ### Body Skins
 Choose a texture pack independently of the body preset.
@@ -96,10 +122,10 @@ One scrolling catalog contains four expandable sections. Open an arrow to see in
 
 - Single-click previews. **Double-click adds an overlay; double-click an already applied entry to remove it.** Multiple confirmed overlays can coexist in each area.
 - A new preview replaces the temporary preview, not the confirmed stack. Closing without confirmation restores the committed stack.
-- Each area has a first-row reset that removes that area's BCNG overlays, not other mods' overlays.
+- Selecting an area's first-row Default restores the normal body-skin camera framing. Confirming it removes only that area's BCNG overlays, not other mods' overlays.
 - **Applied 2/14** means two confirmed BCNG overlays, out of 14 slots available to BCNG. The denominator is RaceMenu's normal slot capacity minus slots occupied/reserved by other mods. A preview does not increase the count.
 - Select an entry and use the fixed bottom **Adjust color and opacity** controls. Color changes on a preview remain preview changes; changes to an already committed overlay update that overlay. The color popup is not a second Apply/Cancel transaction.
-- Preview colors are remembered per actor, area, and entry until the main window closes. You can also edit each candidate's color and opacity directly while **NPC Distribution** checkboxes are visible. These distribution edits do not change the selected actor's committed overlays. Click **Distribute to loaded NPCs now** or **Distribute next game launch** to save the checked candidates and their individual colors with the rules. Automatic distribution selects one candidate per configured area and applies that candidate's color.
+- Preview colors are remembered per actor, area, and entry until the main window closes. While **NPC Distribution** checkboxes are visible, checked entries accumulate as a temporary preview stack across all areas; unchecking an entry removes only its preview. The focused row selects which candidate's color/opacity you edit. An unchecked candidate can retain a draft color, but is not previewed until checked. Other mods' occupied slots are never overwritten; checked candidates beyond the available preview slots remain in the distribution pool. These distribution edits do not change the selected actor's committed overlays. Click **Distribute to loaded NPCs now** or **Distribute next game launch** to save the checked candidates and their individual colors with the rules. Automatic distribution selects one candidate per configured area and applies that candidate's color.
 - Star entries to favorite them. Long secondary paths are shortened with an ellipsis.
 
 Slot capacity is read from RaceMenu and depends on your configuration. An invisible or transparent foreign overlay can still reserve a slot. BCNG does not automatically clear it to make room.
@@ -123,6 +149,8 @@ Rules are evaluated in order independently for each feature, and independently f
 Automatic pools use conventional/non-UBE candidates and the appropriate sex. Futanari rules require registered female futanari NPCs and match the addon type. Manual confirmed choices, including Default choices, take priority over automatic distribution. NPCs sharing an ActorBase also share its native body-skin assignment; BCNG does not create a separate ActorBase for every spawned reference.
 
 The two All NPCs exclusion checkboxes are target filters, not separate blacklist rules.
+
+In body-preset, body-skin, and futanari-skin distribution lists, clicking a checkbox or row, or navigating with the keyboard/gamepad, previews the last compatible item on the selected actor. Only one item from each of these categories is previewed at a time; checkbox choices remain the distribution pool. Incompatible candidates may stay checked but are not rendered on that actor. Cancel distribution, Clear selection, entering the conditions popup, switching actors/tabs, or closing restores the committed appearance. The normal Futanari Skin list shows only the actor's registered ERF/TRX/UBE TRX type; the distribution pool can mix conventional ERF and TRX candidates, which are matched to each NPC's registered addon.
 
 ## FILE PATHS — KEEP THE ORIGINAL TEXTURE TREE
 
@@ -238,7 +266,7 @@ Data\Textures\Actors\Character\SlaveTats\     (collection textures)
 
 RaceMenu paints are discovered from their registrations; textures alone are not sufficient. A mod can legitimately register another texture path. SlaveTats entries are read from collection JSON and their referenced DDS files. There is **no BCNG Overlay pack root**; do not move these collections into BodySkin or Futanari.
 
-**Refresh:** each tab refreshes its relevant catalog of files visible to the running game. Installing/enabling a new ESP, DLL, or mod-manager provider can require a game restart; Refresh does not load new plugins. No per-pack profile.json is required.
+**Refresh after adding or replacing files:** Once copying finishes, press Refresh in Body Presets, Body Skins, Tint Masks, or Futanari Skin. Reselect the updated entry to preview it and double-click to apply it. The files must be accessible to the running game at the full paths above; Refresh does not load new plugins or newly enabled mod-manager virtual paths.
 
 ## SETTINGS, SAVES & RESET
 
@@ -259,12 +287,15 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (optional ORefit input)
 
 MO2 may place generated files in Overwrite or a configured output mod. Check the winning virtual Data path rather than assuming every generated file is physically inside the BCNG mod.
 
-**Mod Settings** includes the opening hotkey, UI language (English/Korean/Simplified Chinese), text/UI scale, character placement, optional game pause, NPC body types, and performance mode. Performance mode changes automatic-work spacing, not the intended selection.
+**Mod Settings** includes the opening hotkey, UI language (English/Korean/Simplified Chinese), text/UI scale, character placement, optional game pause, morph preservation, NPC body types, and performance mode. Defaults are **character on the left**, **game pause off**, **performance mode off**, and **Preserve other mods' morphs on**. Existing saved preferences are kept. Performance mode changes automatic-work spacing, not the intended selection.
+
+**Preserve other mods' morphs** controls which existing morph keys BCNG replaces. On: applying a body preset replaces only BCNG's morph keys. Off: applying a body preset clears all of that actor's RaceMenu body morph keys first. In either mode, BCNG writes the XML values, interpolated for actor weight, directly to its own key without subtracting other mods' values. Preserved morphs can therefore add to the visible result. Single-click previews simulate the chosen policy without deleting persistent keys; cancelling restores the committed state. Changing the option does not immediately reset every actor.
 
 **Reset selected actor settings** and **Reset all actor settings** restore BCNG-managed body morphs, body skin including supported male-addon skin, separate futanari skin, overlays, and player tint values. “All” includes BCNG's recorded actor states and the player; it is not a deletion of every other mod's appearance data. Reset is saved as an explicit Default choice, so old automatic assignments do not immediately return. It does not delete asset folders or your NPC rule file.
 
 ### Outfit correction & randomization
 The **Outfit · randomization** popup provides optional clothed breast/nipple correction and NPC nipple/genital-shape randomization for supported conventional female bodies. UBE does not use these correction/randomization options. This is morph adjustment, not genital-addon registration.
+Breast/nipple refit uses the OBody-style mix of target adjustments and fixed offsets: targets subtract only BCNG's own preset value, while fixed offsets remain additive. It never subtracts another mod's combined morph value. Body-preset previews use the same outfit-rule decision and calculate correction against the previewed preset without changing committed morphs.
 
 The outfit popup opens centered on first use instead of jumping to the top of the screen. Outfit, settings, NPC-condition, and color popups remember their individual positions for the next time you open them.
 
@@ -289,13 +320,13 @@ SFS is optional. This integration requires an SFS build providing Rendered Outfi
 - **Custom outfits:** native skin routing is used where the mesh draws from that skin. An outfit's own hard-coded textures or incompatible UV layout are not automatically converted.
 - **Other body controllers:** avoid having two systems continuously assign the same actor's morphs or texture channels.
 - **F7 does nothing:** verify the active DLL, exact game/SKSE/RaceMenu combination, and SKSE logs. Do not install a 1.7.x dependency merely because it is labelled latest.
-- **A preset appears but does not change the body/outfit:** check Build Morphs output, the winning meshes/TRIs, and matching preset slider names.
+- **A preset appears but does not change the body/outfit, or its shape differs from the XML:** rebuild both the character body and the outfits with the matching Zeroed Sliders preset and Build Morphs checked. Verify the winning mesh/TRI output and matching preset slider names; a different baked-in base shape remains underneath BCNG's morphs.
 - **A skin or tint pack is missing:** check the selected actor's sex/layout, the top-level pack folder, resolved Textures tree, and recognized DDS names. Remove accidental Data\Data or Textures\Textures nesting from the installation layout.
 - **Purple face or wrong texture:** check the selected pack, missing/corrupt DDS files, winning mod-manager paths, and conflicting face overrides. Include the selection sequence and versions in a report; a screenshot alone cannot establish the cause.
 - **Overlay unavailable or color has little effect:** check the area's RaceMenu enable/count settings, foreign reserved slots, and the texture itself. A colored texture will not necessarily tint like a grayscale mask.
 - **Futanari tab missing / Not eligible:** distinguish supported female-addon installation from the actor's SOS/TNG registration. Neither an ordinary male addon nor a texture-only pack satisfies both conditions.
 
-The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. Do not assume all combinations are proven leak-free or regression-free: the v1.2.0 Release build and 23 automated test executables passed, which is not a substitute for every-runtime gameplay and long-session testing.
+The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. Do not assume all combinations are proven leak-free or regression-free: the v1.2.0 Release build and automated regression tests passed, which is not a substitute for every-runtime gameplay and long-session testing.
 
 ## UPDATING FROM v1.1.4
 

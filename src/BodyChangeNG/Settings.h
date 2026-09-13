@@ -91,7 +91,8 @@ namespace bcn
         float mainWindowPositionY{};
         popup_placement::Positions popupPositions{};
         bool pauseGameWhenOpen{ false };
-        bool performanceMode{ true };
+        bool performanceMode{ false };
+        bool preserveOtherMorphs{ true };
         FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
         MaleNpcBodyType maleNpcBodyType{ MaleNpcBodyType::himbo };
         bool orefitEnabled{ true };
@@ -106,6 +107,7 @@ namespace bcn
 
     struct BodyMorphOptions
     {
+        bool preserveOtherMorphs{ true };
         bool outfitCorrection{};
         bool outfitNippleCorrection{};
         bool nippleRandomization{};
@@ -124,7 +126,7 @@ namespace bcn
         [[nodiscard]] float TextScale() const;
         [[nodiscard]] bool PerformanceMode() const;
         [[nodiscard]] bool OutfitCorrectionEnabled() const;
-        [[nodiscard]] std::uint32_t RandomizationOptions() const;
+        [[nodiscard]] std::uint32_t BodyApplicationOptions() const;
         [[nodiscard]] BodyMorphOptions MorphOptions() const;
         [[nodiscard]] popup_placement::Position PopupPosition(popup_placement::Kind kind) const;
         [[nodiscard]] bool RememberPopupPosition(popup_placement::Kind kind, float x, float y);

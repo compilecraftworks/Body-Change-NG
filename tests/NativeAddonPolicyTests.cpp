@@ -31,6 +31,40 @@ int main()
 {
     using namespace bcn::native_addon;
     try {
+        constexpr std::uintptr_t image = 0x140000000ULL;
+        // Captured TuLED layout: IAT 0x1509000..0x150A1B8 spans one
+        // PAGE_EXECUTE_READWRITE page followed by a PAGE_READONLY region.
+        std::array regions{
+            ImageMemoryRegion{ image + 0x1509000, image, 0x1000, true, true },
+            ImageMemoryRegion{ image + 0x150A000, image, 0x14B000, true, true }
+        };
+        unsigned queries{};
+        const auto query = [&](std::uintptr_t address) -> std::optional<ImageMemoryRegion> {
+            ++queries;
+            for (const auto& region : regions) {
+                if (address >= region.begin && address - region.begin < region.size) return region;
+            }
+            return {};
+        };
+        Check(IsReadableImageRange(image, 0x4000000, image + 0x1509000, 0x11B8, query) && queries == 2U,
+            "readable IAT split across protection regions was rejected");
+        for (unsigned failure{}; failure < 5U; ++failure) {
+            auto bad = regions[1];
+            if (failure == 0) bad.readable = false;
+            if (failure == 1) bad.committed = false;
+            if (failure == 2) bad.allocation += 0x1000;
+            if (failure == 3) bad.begin += 1;
+            if (failure == 4) bad.size = 0;
+            Check(!IsReadableImageRange(image, 0x4000000, image + 0x1509000, 0x11B8,
+                    [&](std::uintptr_t address) -> std::optional<ImageMemoryRegion> {
+                        return address < image + 0x150A000 ? regions[0] : bad;
+                    }), "unreadable, foreign or incomplete IAT tail was accepted");
+        }
+        Check(!IsReadableImageRange(image, 0x150A000, image + 0x1509000, 0x11B8, query) &&
+            !IsReadableImageRange(image, 0x4000000, image - 1, 8, query) &&
+            !IsReadableImageRange(UINTPTR_MAX - 4, 8, UINTPTR_MAX - 3, 2, query) &&
+            !IsReadableImageRange(image, 0x4000000, image, 0, query),
+            "overflowing or out-of-image IAT accepted");
         std::array<std::uint8_t, 32> imports{};
         std::uint64_t sleepPointer = 0x7FFB12345678;
         std::memcpy(imports.data()+8, &sleepPointer, 8);

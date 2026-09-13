@@ -240,8 +240,10 @@ namespace
         if (!rule.enabled || !actor) return false;
         const auto base = actor->GetActorBase();
         if (!base || (base->GetSex() == RE::SEX::kFemale) != rule.female) return false;
-        if (!rule.includeCustomFollowers && IsCustomFollower(actor, base)) return false;
-        if (!rule.includeElderNPCs && bcn::IsElderActor(base)) return false;
+        if (rule.scope == bcn::DistributionScope::allNPCs &&
+            !bcn::MatchesDistributionScopeFilters(rule,
+                !rule.includeCustomFollowers && IsCustomFollower(actor, base),
+                !rule.includeElderNPCs && bcn::IsElderActor(base))) return false;
         switch (rule.scope) {
         case bcn::DistributionScope::allNPCs:
             return true;
@@ -399,18 +401,38 @@ namespace
     }
 
     [[nodiscard]] std::vector<std::string> CompatibleFutanariPool(
-        const std::vector<std::string>& pool, RE::Actor* actor)
+        const std::vector<std::string>& pool, const bcn::FutanariSkinType type)
     {
-        if (pool.empty() || !actor) return {};
-        const auto type = bcn::futanari_support::RegisteredType(actor);
-        if (!type || *type == bcn::FutanariSkinType::ubeTrx) return {};
         std::vector<std::string> result;
         result.reserve(pool.size());
         for (const auto& id : pool) {
             const auto profile = bcn::FutanariSkinProfiles::Get().Find(id);
-            if (profile && profile->type == *type) result.push_back(id);
+            if (profile && profile->type == type) result.push_back(id);
         }
         return result;
+    }
+
+    [[nodiscard]] const bcn::DistributionRule* ChooseFutanariRule(
+        const std::vector<bcn::DistributionRule>& rules, RE::Actor* actor,
+        const bcn::FutanariFeatureState* previous, std::optional<std::string>& selected)
+    {
+        if (previous && previous->manual) return nullptr;
+        std::optional<bcn::FutanariSkinType> type;
+        for (const auto& rule : rules) {
+            if (!rule.female || rule.futanariSkinIds.empty() || !MatchesTarget(rule, actor)) continue;
+            // Resolve provider/geometry at most once per matching event, not
+            // once for every rule. No catalog pool means no provider scan.
+            if (!type) {
+                type = bcn::futanari_support::RegisteredType(actor);
+                if (!type || *type == bcn::FutanariSkinType::ubeTrx) return nullptr;
+            }
+            const auto compatible = CompatibleFutanariPool(rule.futanariSkinIds, *type);
+            selected = ChooseFromPool(rule, compatible, actor, "futanari",
+                previous ? std::string_view{ previous->selectedSkinId } : std::string_view{},
+                bcn::DistributionFeature::futanari);
+            if (selected) return &rule;
+        }
+        return nullptr;
     }
 
     [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
@@ -482,18 +504,8 @@ namespace
             }
         }
 
-        for (const auto& rule : rules) {
-            if (!rule.female || rule.futanariSkinIds.empty() || !MatchesTarget(rule, actor)) continue;
-            const auto compatible = CompatibleFutanariPool(rule.futanariSkinIds, actor);
-            result.futanariSkinId = ChooseFromPool(rule, compatible, actor, "futanari",
-                previous && !previous->futanari.manual ?
-                    std::string_view{ previous->futanari.selectedSkinId } : std::string_view{},
-                bcn::DistributionFeature::futanari);
-            if (result.futanariSkinId) {
-                rememberRule(rule);
-                break;
-            }
-        }
+        if (const auto* rule = ChooseFutanariRule(rules, actor,
+                previous ? &previous->futanari : nullptr, result.futanariSkinId)) rememberRule(*rule);
 
         for (const auto area : bcn::overlay::kAreas) {
             const auto index = bcn::overlay::Index(area);
@@ -968,6 +980,20 @@ namespace bcn
             return RE::BSContainer::ForEachResult::kContinue;
         });
         return queued;
+    }
+
+    void Distribution::RefreshFutanariSelection(RE::Actor* actor) const
+    {
+        if (!IsEligibleNPC(actor, RE::PlayerCharacter::GetSingleton()) ||
+            frame_tasks::HasPreview(actor->GetFormID()) ||
+            racemenu::HasActivePreview(actor) || overlay::HasActivePreview(actor)) return;
+        const auto previous = ActorRegistry::Get().Snapshot(actor);
+        if (previous && previous->futanari.manual) return;
+        const auto rules = EvaluationRules();
+        std::optional<std::string> selected;
+        if (ChooseFutanariRule(*rules, actor, previous ? &previous->futanari : nullptr, selected)) {
+            ActorRegistry::Get().SetAutomaticFutanariSkin(actor, std::move(selected));
+        }
     }
 
     bool Distribution::ApplyActor(RE::Actor* actor) const

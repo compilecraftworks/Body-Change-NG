@@ -153,6 +153,7 @@ namespace bcn
                 }
             }
             ReadIfPresent(root, "performanceMode", data_.performanceMode);
+            ReadIfPresent(root, "preserveOtherMorphs", data_.preserveOtherMorphs);
             int femaleNpcBodyType = static_cast<int>(data_.femaleNpcBodyType);
             int maleNpcBodyType = static_cast<int>(data_.maleNpcBodyType);
             ReadIfPresent(root, "femaleNpcBodyType", femaleNpcBodyType);
@@ -254,6 +255,7 @@ namespace bcn
                 { "textScale", copy.textScale },
                 { "pauseGameWhenOpen", copy.pauseGameWhenOpen },
                 { "performanceMode", copy.performanceMode },
+                { "preserveOtherMorphs", copy.preserveOtherMorphs },
                 { "femaleNpcBodyType", static_cast<int>(copy.femaleNpcBodyType) },
                 { "maleNpcBodyType", static_cast<int>(copy.maleNpcBodyType) },
                 { "orefitEnabled", copy.orefitEnabled },
@@ -341,17 +343,19 @@ namespace bcn
         return data_.orefitEnabled;
     }
 
-    std::uint32_t Settings::RandomizationOptions() const
+    std::uint32_t Settings::BodyApplicationOptions() const
     {
         std::scoped_lock lock(lock_);
         return (data_.nippleRandomization ? 1U : 0U) |
-            (data_.genitalRandomization ? 2U : 0U);
+            (data_.genitalRandomization ? 2U : 0U) |
+            (data_.preserveOtherMorphs ? 4U : 0U);
     }
 
     BodyMorphOptions Settings::MorphOptions() const
     {
         std::scoped_lock lock(lock_);
         return {
+            .preserveOtherMorphs = data_.preserveOtherMorphs,
             .outfitCorrection = data_.orefitEnabled,
             .outfitNippleCorrection = data_.orefitNippleMorphing,
             .nippleRandomization = data_.nippleRandomization,

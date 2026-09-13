@@ -220,6 +220,54 @@ int main()
                 !loadedDistributedNpc.skin.application.verifiedThisSession,
             "distributed NPC body/skin/addon state did not survive the real cosave codec");
 
+        // Actual selection reducer + ASTR codec: initial absence, late female
+        // registration, provider family switch, no candidate, and manual lock.
+        // Provider resolution itself still requires in-game validation.
+        auto lateRegistered = loadedDistributedNpc;
+        lateRegistered.futanari = {};
+        Check(!bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::nullopt),
+            "an unregistered NPC acquired an automatic futanari choice");
+        Check(bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::string{"ERF/A"}),
+            "late registration did not accept its first automatic selection");
+        lateRegistered = RoundTrip(lateRegistered);
+        Check(!lateRegistered.futanari.manual && lateRegistered.futanari.selectedSkinId == "ERF/A",
+            "late automatic futanari selection became manual or disappeared after load");
+        Check(bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::string{"TRX/B"}),
+            "addon family switch did not replace the automatic selection");
+        Check(lateRegistered.body.selection.selectedId == loadedDistributedNpc.body.selection.selectedId &&
+                lateRegistered.skin.selection.selectedId == loadedDistributedNpc.skin.selection.selectedId &&
+                lateRegistered.overlay.areas[0].items.front().selectedId ==
+                    loadedDistributedNpc.overlay.areas[0].items.front().selectedId,
+            "futanari-only re-evaluation changed another distribution channel");
+        Check(!bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::nullopt) &&
+                lateRegistered.futanari.selectedSkinId == "TRX/B",
+            "temporarily absent provider erased a saved selection");
+        Check(!bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::string{"TRX/B"}),
+            "identical provider event changed its selection repeatedly");
+        lateRegistered.futanari.manual = true;
+        Check(!bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::string{"ERF/A"}) &&
+                lateRegistered.futanari.selectedSkinId == "TRX/B",
+            "provider re-evaluation overwrote a manual futanari skin");
+        lateRegistered.futanari = { .manual = true, .useDefault = true };
+        Check(!bcn::UpdateAutomaticFutanariSelection(lateRegistered.futanari, std::string{"ERF/A"}) &&
+                RoundTrip(lateRegistered).futanari.useDefault,
+            "provider re-evaluation undid a saved manual Default");
+
+        const auto erfA = session::FutanariSelectionSignature(888U, "ERF/A", 1U);
+        const auto erfB = session::FutanariSelectionSignature(888U, "ERF/B", 1U);
+        Check(erfA != erfB && session::NeedsAddonReconcile(erfA, erfB),
+            "new rule candidate on unchanged geometry was incorrectly treated as already applied");
+        Check(erfA != session::FutanariSelectionSignature(888U, "ERF/A", 2U) &&
+                erfA != session::FutanariSelectionSignature(999U, "ERF/A", 1U),
+            "DDS refresh or provider replacement was hidden by the reconcile signature");
+        Check(session::FutanariSelectionSignature(0U, "ERF/A", 1U) == 0U,
+            "missing geometry acquired a non-empty reconcile signature");
+        for (unsigned i{}; i < 1000U; ++i) {
+            Check(!session::NeedsAddonReconcile(erfA,
+                    session::FutanariSelectionSignature(888U, "ERF/A", 1U)),
+                "identical rebuild event requested another native refresh");
+        }
+
         session::MarkAddonReconciled(male.actorFormID, Channel::maleGenitals, 777);
         session::MarkAddonReconciled(otherMale.actorFormID, Channel::maleGenitals, 777);
         session::Forget(male.actorFormID);

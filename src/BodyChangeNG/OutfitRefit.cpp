@@ -167,28 +167,41 @@ namespace bcn
         // that pending generation even when no replacement morph is needed.
         if (useSFS) racemenu::CancelPendingOutfit(actor);
         if (racemenu::HasActivePreview(actor)) return;
+        // Keep the disabled/no-owned-layer fast path: do not create registry
+        // entries for every untouched NPC just to record an empty correction.
+        if (!Settings::Get().OutfitCorrectionEnabled() && !racemenu::HasOutfitCorrection(actor)) return;
+        const auto plan = Evaluate(actor);
+        if (plan.action == Action::defer || !ActorRegistry::Get().NeedsOutfitApply(actor, plan.signature)) return;
+        if (plan.action == Action::clear) {
+            if (racemenu::HasOutfitCorrection(actor)) racemenu::QueueClearOutfit(actor, plan.signature);
+            else ActorRegistry::Get().MarkOutfitApplied(actor, plan.signature);
+        } else if (plan.action == Action::procedural) {
+            racemenu::QueueApplyProceduralOutfit(actor, plan.signature);
+        } else if (plan.preset) {
+            [[maybe_unused]] const auto result = racemenu::QueueApplyOutfit(
+                actor, plan.preset->PersistentId(), plan.signature);
+        }
+    }
+
+    OutfitRefit::Plan OutfitRefit::Evaluate(RE::Actor* actor, const BodyPreset* previewBody) const
+    {
+        if (!actor || !actor->Is3DLoaded()) return {};
+        if (rendered_outfit::Available() && !frame_tasks::InGameTask()) return {};
         const auto settings = Settings::Get().MorphOptions();
         if (!settings.outfitCorrection) {
-            // A globally disabled feature has nothing to evaluate unless an
-            // old BCNG/OBody outfit layer actually needs to be removed.
-            if (!racemenu::HasOutfitCorrection(actor)) return;
-            const auto signature = StableStateSignature("outfit", "disabled", true);
-            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
-                racemenu::QueueClearOutfit(actor, signature);
-            }
-            return;
+            return { Action::clear, StableStateSignature("outfit", "disabled", true) };
         }
 
         const auto snapshot = Snapshot();
         const auto& rules = *snapshot;
         const auto base = actor->GetActorBase();
-        if (!base) return;
+        if (!base) return {};
         const auto female = base->GetSex() == RE::SEX::kFemale;
         const auto& mapping = female ? rules.femalePresetByOutfit : rules.malePresetByOutfit;
         std::string presetName;
         const auto rendered = rendered_outfit::Read(actor);
         if (rendered.route == rendered_outfit::Route::defer ||
-            rendered.route == rendered_outfit::Route::invalidActor) return;
+            rendered.route == rendered_outfit::Route::invalidActor) return {};
         constexpr std::array slots{
             RE::BGSBipedObjectForm::BipedObjectSlot::kBody,
             RE::BGSBipedObjectForm::BipedObjectSlot::kModChestPrimary,
@@ -233,17 +246,18 @@ namespace bcn
         if (!outfit_refit_evaluation::ShouldApply(hasEligibleOutfit, forceRefit)) {
             const auto signature = StableStateSignature("outfit", "clear", true,
                 settings.outfitNippleCorrection ? 1U : 0U);
-            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
-                racemenu::QueueClearOutfit(actor, signature);
-            }
-            return;
+            return { Action::clear, signature };
         }
 
         std::vector<std::string> candidates;
         std::string currentBodyId;
         body_family::Mask currentBodyFamily{};
         if (!presetName.empty()) candidates.push_back(std::move(presetName));
-        if (const auto currentID = racemenu::CurrentPresetId(actor)) {
+        if (previewBody) {
+            currentBodyId = previewBody->PersistentId();
+            candidates.push_back(previewBody->name + "-Refit");
+            currentBodyFamily = body_family::PresetMask(previewBody->family, previewBody->male);
+        } else if (const auto currentID = racemenu::CurrentPresetId(actor)) {
             currentBodyId = *currentID;
             if (const auto current = PresetCatalog::Get().Find(*currentID)) {
                 candidates.push_back(current->name + "-Refit");
@@ -263,31 +277,17 @@ namespace bcn
             // the no-op signature so ordinary equip events stay inexpensive.
             const auto signature = StableStateSignature("outfit", "unsupported-female-family", true,
                 static_cast<std::uint32_t>(actorFamily));
-            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
-                if (racemenu::HasOutfitCorrection(actor)) {
-                    racemenu::QueueClearOutfit(actor, signature);
-                } else {
-                    ActorRegistry::Get().MarkOutfitApplied(actor, signature);
-                }
-            }
-            return;
+            return { Action::clear, signature };
         }
-        const auto found = PresetCatalog::Get().FindRefit(candidates, !female, actorFamily);
+        auto found = PresetCatalog::Get().FindRefit(candidates, !female, actorFamily);
         if (!found) {
             const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,
                 settings.outfitNippleCorrection ? 1U : 0U);
-            if (ActorRegistry::Get().NeedsOutfitApply(actor, signature)) {
-                racemenu::QueueApplyProceduralOutfit(actor, signature);
-            }
-            return;
+            return { Action::procedural, signature };
         }
         const auto signature = StableStateSignature("outfit", found->PersistentId() + "|" + currentBodyId, false,
             settings.outfitNippleCorrection ? 1U : 0U, found->cachedContentHash);
-        if (!ActorRegistry::Get().NeedsOutfitApply(actor, signature)) return;
-        const auto result = racemenu::QueueApplyOutfit(actor, found->PersistentId(), signature);
-        if (result != racemenu::ApplyResult::queued) {
-            SKSE::log::debug("Body Change NG could not queue outfit correction '{}' for {:08X}", found->name, actor->GetFormID());
-        }
+        return { Action::named, signature, std::move(found) };
     }
 
     std::size_t OutfitRefit::ProcessLoadedActors() const

@@ -12,6 +12,13 @@ namespace bcn::rendered_outfit
     namespace abi = sfs::rendered_outfit_api;
     enum class Route { worn, rendered, defer, invalidActor };
 
+    template <class Resolve>
+    abi::Query ResolveQuery(Resolve&& resolve)
+    {
+        if (const auto query = resolve(abi::kGameTaskQueryExport)) return query;
+        return resolve(abi::kQueryExport);
+    }
+
     struct Stamp final
     {
         std::uint64_t epoch{}, revision{}, scene{};

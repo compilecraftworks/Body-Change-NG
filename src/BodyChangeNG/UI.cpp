@@ -66,13 +66,7 @@ namespace
         bool body{};
     };
 
-    struct PendingChoice
-    {
-        RE::FormID actorFormID{};
-        std::string id;
-        std::string originalId;
-        bool useDefault{};
-    };
+    using PendingChoice = bcn::ui_catalog::PendingChoice;
 
     struct CatalogNavigationState
     {
@@ -106,6 +100,7 @@ namespace
     std::unordered_set<std::string> g_distributionSelectedIds;
     std::array<std::unordered_set<std::string>,
         bcn::overlay::Index(bcn::overlay::Area::count)> g_distributionSelectedOverlayIds;
+    std::array<bool, bcn::overlay::Index(bcn::overlay::Area::count)> g_overlayDistributionPreviewDirty{};
     bool g_showOutfit{};
     bool g_orefitRulesRegistered{};
     bool g_showSettings{};
@@ -149,6 +144,9 @@ namespace
     std::array<std::optional<PendingChoice>, bcn::overlay::Index(bcn::overlay::Area::count)>
         g_pendingOverlays;
     std::optional<bcn::overlay::Area> g_overlayArea;
+    // Default rows still select an area for clearing/color controls, but use
+    // the normal Skin-tab camera instead of that area's close-up.
+    std::optional<bcn::overlay::Area> g_overlayCameraArea;
     std::array<std::string, bcn::overlay::Index(bcn::overlay::Area::count)>
         g_overlayFocusedIds;
     std::array<bool, bcn::overlay::Index(bcn::overlay::Area::count)> g_overlaySectionsOpen{
@@ -672,6 +670,7 @@ namespace
                 .favorite = std::ranges::find(settings.favoriteBodyPresets, id) !=
                     settings.favoriteBodyPresets.end(),
                 .current = currentPreset && *currentPreset == id,
+                .compatible = bcn::body_family::Matches(presetMask, actorFamily),
                 .body = true
             });
         }
@@ -684,6 +683,8 @@ namespace
     }
 
     void RollbackPendingSelections(RE::Actor* actor);
+    void RollbackSingleCatalogPreview(RE::Actor* actor, DistributionPool pool);
+    void UpdatePreviewOwnership();
 
     void SelectActor(const RE::FormID formID)
     {
@@ -692,6 +693,7 @@ namespace
             RollbackPendingSelections(SelectedActor());
             bcn::menu_character::Presentation::Get().Restore();
             g_selectedActorFormID = formID;
+            g_overlayDistributionPreviewDirty.fill(true);
             bcn::skin_application::InvalidateFutanariDetection(formID);
             ResetCatalogNavigation();
         }
@@ -720,6 +722,7 @@ namespace
     {
         g_distributionSelectedIds.clear();
         for (auto& ids : g_distributionSelectedOverlayIds) ids.clear();
+        g_overlayDistributionPreviewDirty.fill(true);
     }
 
     [[nodiscard]] bool IsDistributionSelectionFor(const DistributionPool pool) noexcept
@@ -739,6 +742,7 @@ namespace
 
     void BeginDistributionCatalogSelection(const DistributionPool pool)
     {
+        RollbackSingleCatalogPreview(SelectedActor(), pool);
         g_distributionPool = pool;
         g_distributionSelectionMode = true;
         ClearDistributionCatalogSelection();
@@ -747,8 +751,15 @@ namespace
 
     void CancelDistributionCatalogSelection()
     {
+        if (IsDistributionSelectionFor(DistributionPool::overlay)) {
+            bcn::overlay::QueueCancelPreviews(SelectedActor());
+            for (auto& pending : g_pendingOverlays) pending.reset();
+        } else {
+            RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool);
+        }
         g_distributionSelectionMode = false;
         ClearDistributionCatalogSelection();
+        g_overlayDistributionPreviewDirty.fill(false);
         ResetCatalogNavigation();
     }
 
@@ -776,6 +787,7 @@ namespace
         auto& ids = g_distributionSelectedOverlayIds[bcn::overlay::Index(area)];
         if (selected) ids.insert(id);
         else ids.erase(id);
+        g_overlayDistributionPreviewDirty[bcn::overlay::Index(area)] = true;
     }
 
     void AddUniqueTargetOption(std::vector<std::string>& options,
@@ -1010,6 +1022,7 @@ namespace
         SetRuleDistributionSelection(rule);
         g_distributionRules.push_back(std::move(rule));
         g_selectedDistributionRule = g_distributionRules.size() - 1U;
+        RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool);
         g_showDistribution = true;
         // The popup owns this catalog-selection snapshot until it closes.
         // Hiding the checkboxes must not erase the IDs that + Add rule copies.
@@ -1033,6 +1046,7 @@ namespace
                 ImGui::SameLine();
                 if (ImGui::Button(Text("선택 해제", "Clear selection", "清除选择"))) {
                     ClearDistributionCatalogSelection();
+                    RollbackSingleCatalogPreview(SelectedActor(), pool);
                 }
                 ImGui::SameLine();
                 ImGui::TextDisabled("%s %zu", Text("선택", "Selected", "已选"),
@@ -1457,30 +1471,46 @@ namespace
         return result == bcn::skin_application::ApplyResult::queued;
     }
 
+    void SyncDistributionOverlayPreviews()
+    {
+        if (!IsDistributionSelectionFor(DistributionPool::overlay)) return;
+        auto* actor = SelectedActor();
+        if (!actor) return;
+        for (const auto area : bcn::overlay::kAreas) {
+            const auto index = bcn::overlay::Index(area);
+            if (!g_overlayDistributionPreviewDirty[index]) continue;
+            g_overlayDistributionPreviewDirty[index] = false;
+            std::vector<bcn::overlay::PreviewChoice> checked;
+            for (const auto& id : g_distributionSelectedOverlayIds[index]) {
+                const auto color = g_overlayColorDrafts.Find(actor->GetFormID(),
+                    static_cast<std::uint8_t>(area), id).value_or(
+                        bcn::overlay::CurrentColor(actor, area, id).value_or(0xFFFFFFFFU));
+                checked.push_back({ id, color });
+            }
+            const auto result = bcn::overlay::QueuePreviewSet(actor, area, std::move(checked));
+            if (result != bcn::overlay::ApplyResult::queued) bcn::ui::Notify(OverlayApplyResultMessage(result));
+            g_pendingOverlays[index].reset();
+        }
+    }
+
     void RememberPending(std::optional<PendingChoice>& pending, RE::Actor* actor,
         std::string id, const bool useDefault, std::string originalId)
     {
         if (!actor) return;
         bcn::frame_tasks::SetPreviewActor(actor->GetFormID());
-        if (!pending || pending->actorFormID != actor->GetFormID()) {
-            pending = PendingChoice{
-                .actorFormID = actor->GetFormID(),
-                .id = std::move(id),
-                .originalId = std::move(originalId),
-                .useDefault = useDefault
-            };
-            return;
-        }
-        pending->id = std::move(id);
-        pending->useDefault = useDefault;
+        bcn::ui_catalog::RememberPreview(pending, actor->GetFormID(),
+            std::move(id), useDefault, std::move(originalId));
     }
 
-    void RollbackPendingSelections(RE::Actor* actor)
+    // Distribution candidates are not manual assignments. Reuse the normal
+    // preview backends and undo only the catalog involved in this workflow.
+    void RollbackSingleCatalogPreview(RE::Actor* actor, const DistributionPool pool)
     {
         if (!bcn::frame_tasks::IsCurrent(g_uiSessionEpoch.load())) return;
         if (actor) {
             const auto actorFormID = actor->GetFormID();
-            if (g_pendingSkin && g_pendingSkin->actorFormID == actorFormID) {
+            if (pool == DistributionPool::skin && g_pendingSkin &&
+                g_pendingSkin->actorFormID == actorFormID) {
                 const auto result = g_pendingSkin->originalId.empty() ?
                     bcn::skin_application::QueueClear(actor) :
                     bcn::skin_application::QueueApply(actor, g_pendingSkin->originalId);
@@ -1488,7 +1518,8 @@ namespace
                     bcn::ui::Notify(SkinApplyResultMessage(result));
                 }
             }
-            if (g_pendingFutanari && g_pendingFutanari->actorFormID == actorFormID) {
+            if (pool == DistributionPool::futanari && g_pendingFutanari &&
+                g_pendingFutanari->actorFormID == actorFormID) {
                 const auto result = g_pendingFutanari->originalId.empty() ?
                     bcn::skin_application::QueueClearFutanari(actor,
                         bcn::skin_application::FutanariSelectionMode::restore) :
@@ -1499,14 +1530,28 @@ namespace
                     bcn::ui::Notify(SkinApplyResultMessage(result));
                 }
             }
-            bcn::overlay::QueueCancelPreviews(actor);
-        } else {
-            bcn::overlay::QueueCancelPreviews();
         }
         // Body previews live in a dedicated RaceMenu morph key, so cancelling
         // that key restores the exact last committed body without another
         // persistent write.
-        bcn::racemenu::QueueCancelPreview();
+        if (pool == DistributionPool::body) {
+            bcn::racemenu::QueueCancelPreview();
+            g_pendingBody.reset();
+        } else if (pool == DistributionPool::skin) {
+            g_pendingSkin.reset();
+        } else if (pool == DistributionPool::futanari) {
+            g_pendingFutanari.reset();
+        }
+        UpdatePreviewOwnership();
+    }
+
+    void RollbackPendingSelections(RE::Actor* actor)
+    {
+        if (!bcn::frame_tasks::IsCurrent(g_uiSessionEpoch.load())) return;
+        RollbackSingleCatalogPreview(actor, DistributionPool::skin);
+        RollbackSingleCatalogPreview(actor, DistributionPool::futanari);
+        RollbackSingleCatalogPreview(actor, DistributionPool::body);
+        bcn::overlay::QueueCancelPreviews(actor);
 
         if (g_pendingTintBaseline) {
             const auto baseline = *g_pendingTintBaseline;
@@ -1522,9 +1567,6 @@ namespace
             g_selectedTintAssetID.clear();
         }
 
-        g_pendingBody.reset();
-        g_pendingSkin.reset();
-        g_pendingFutanari.reset();
         g_pendingTint.reset();
         g_pendingTintBaseline.reset();
         for (auto& pending : g_pendingOverlays) pending.reset();
@@ -1540,6 +1582,9 @@ namespace
         observe(g_pendingBody); observe(g_pendingSkin); observe(g_pendingFutanari);
         observe(g_pendingTint);
         for (const auto& pending : g_pendingOverlays) observe(pending);
+        if (const auto* actor = SelectedActor(); actor && bcn::overlay::HasActivePreview(actor)) {
+            owner = actor->GetFormID();
+        }
         bcn::frame_tasks::SetPreviewActor(owner);
     }
 
@@ -1623,7 +1668,6 @@ namespace
         const auto navigation = HandleCatalogNavigation(
             visibleItems.size() + (hasDefaultRow ? 1U : 0U), preferredIndex);
         const auto previewRow = [&](const std::size_t row) {
-            if (distributionSelecting) return;
             if (hasDefaultRow && row == 0U) {
                 if (QueueDefaultBody(false)) RememberPending(g_pendingBody, actor, {}, true, confirmedBodyId);
                 return;
@@ -1632,13 +1676,17 @@ namespace
             if (item.compatible && body && QueuePreset(item, bcn::racemenu::ApplyMode::preview)) {
                 RememberPending(g_pendingBody, actor, item.id, false, confirmedBodyId);
             } else if (!item.compatible) {
+                if (distributionSelecting) RollbackSingleCatalogPreview(actor, DistributionPool::body);
                 bcn::ui::Notify(Text("현재 액터와 호환되지 않습니다.", "This item is incompatible with the selected actor.", "与所选角色不兼容。"));
+            } else if (distributionSelecting) {
+                RollbackSingleCatalogPreview(actor, DistributionPool::body);
             }
         };
         const auto confirmRow = [&](const std::size_t row) {
             if (distributionSelecting) {
                 auto& item = *visibleItems[row];
                 SetDistributionItemSelected(item.id, !DistributionItemSelected(item.id));
+                previewRow(row);
                 return;
             }
             if (hasDefaultRow && row == 0U) {
@@ -1675,7 +1723,7 @@ namespace
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText,
                     Text("기본 바디", "Default body", "默认身体"));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)), kCardSubtext,
-                    Text("이 액터의 Body Change NG·기존 OBody 바디 모프 제거", "Remove Body Change NG and legacy OBody body morphs from this actor", "移除此角色的 Body Change NG 与旧版 OBody 身体形态"));
+                    Text("이 액터의 Body Change NG 바디·의상 보정 모프만 제거", "Remove only this actor's Body Change NG body and outfit morphs", "仅移除此角色的 Body Change NG 身体与服装修正形态"));
                 if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
@@ -1709,6 +1757,8 @@ namespace
                     if (CenteredCheckbox("##distributionSelected", selected,
                             rowCursor, cardHeight)) {
                         SetDistributionItemSelected(item.id, selected);
+                        FocusCatalogRow(row);
+                        previewRow(row);
                     }
                 }
                 const auto cursor = ImGui::GetCursorScreenPos();
@@ -1735,8 +1785,8 @@ namespace
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(item.favorite, cardHeight)) ToggleFavorite(item);
                 if (distributionSelecting && clicked) {
-                    SetDistributionItemSelected(item.id, !DistributionItemSelected(item.id));
                     FocusCatalogRow(row);
+                    confirmRow(row);
                 } else if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
@@ -1807,6 +1857,7 @@ namespace
                 Text("BodySkin\\<스킨팩>\\textures\\~에서 바디스킨을 읽습니다.(더블클릭 적용)",
                     "Reads body skins from BodySkin\\<skin pack>\\textures\\~. (Double-click to apply)",
                     "从 BodySkin\\<皮肤包>\\textures\\~ 读取身体皮肤。（双击应用）"));
+        if (distributionSelecting != IsDistributionSelectionFor(DistributionPool::skin)) return;
         const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedSkinId.empty()) {
@@ -1818,7 +1869,6 @@ namespace
         const auto navigation = HandleCatalogNavigation(
             visibleSkins.size() + (hasDefaultRow ? 1U : 0U), preferredIndex);
         const auto previewRow = [&](const std::size_t row) {
-            if (distributionSelecting) return;
             if (hasDefaultRow && row == 0U) {
                 if (QueueDefaultSkin(false)) RememberPending(g_pendingSkin, actor, {}, true, confirmedSkinId);
                 return;
@@ -1828,6 +1878,7 @@ namespace
             if (result == bcn::skin_application::ApplyResult::queued) {
                 RememberPending(g_pendingSkin, actor, skin.id, false, confirmedSkinId);
             } else {
+                if (distributionSelecting) RollbackSingleCatalogPreview(actor, DistributionPool::skin);
                 bcn::ui::Notify(skin.name + " · " + SkinApplyResultMessage(result));
             }
         };
@@ -1835,6 +1886,7 @@ namespace
             if (distributionSelecting) {
                 const auto& skin = *visibleSkins[row];
                 SetDistributionItemSelected(skin.id, !DistributionItemSelected(skin.id));
+                previewRow(row);
                 return;
             }
             if (hasDefaultRow && row == 0U) {
@@ -1913,6 +1965,8 @@ namespace
                     if (CenteredCheckbox("##distributionSelected", selected,
                             rowCursor, height)) {
                         SetDistributionItemSelected(skin.id, selected);
+                        FocusCatalogRow(row);
+                        previewRow(row);
                     }
                 }
                 const auto cursor = ImGui::GetCursorScreenPos();
@@ -1956,8 +2010,8 @@ namespace
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                 if (FavoriteButton(favorite, height)) ToggleSkinFavorite(skin.id);
                 if (distributionSelecting && clicked) {
-                    SetDistributionItemSelected(skin.id, !DistributionItemSelected(skin.id));
                     FocusCatalogRow(row);
+                    confirmRow(row);
                 } else if (doubleClicked) {
                     FocusCatalogRow(row);
                     confirmRow(row);
@@ -2038,6 +2092,7 @@ namespace
             [actor] { [[maybe_unused]] const auto requested = bcn::overlay::RefreshCatalog(actor); },
             [&visibleByArea] {
                 for (auto& ids : g_distributionSelectedOverlayIds) ids.clear();
+                g_overlayDistributionPreviewDirty.fill(true);
                 for (const auto area : bcn::overlay::kAreas) {
                     auto& selected = g_distributionSelectedOverlayIds[bcn::overlay::Index(area)];
                     for (const auto* entry : visibleByArea[bcn::overlay::Index(area)]) {
@@ -2063,11 +2118,12 @@ namespace
         }
 
         const auto applyRow = [&](const OverlayRow& row, const bool confirm) {
+            g_overlayArea = row.area;
+            g_overlayCameraArea = row.entry ? std::optional{ row.area } : std::nullopt;
+            g_overlayFocusedIds[bcn::overlay::Index(row.area)] = row.entry ? row.entry->id : std::string{};
             if (distributionSelecting) {
-                if (row.entry) {
-                    g_overlayArea = row.area;
-                    g_overlayFocusedIds[bcn::overlay::Index(row.area)] = row.entry->id;
-                }
+                // Focus only selects the color editor/camera. Checkmarks,
+                // including Activate toggles, are the complete preview set.
                 if (confirm && row.entry) {
                     SetDistributionOverlaySelected(row.area, row.entry->id,
                         !DistributionOverlaySelected(row.area, row.entry->id));
@@ -2076,11 +2132,11 @@ namespace
             }
             const auto areaIndex = bcn::overlay::Index(row.area);
             auto& pending = g_pendingOverlays[areaIndex];
-            if (!confirm && row.entry && confirmedIds[areaIndex].contains(row.entry->id)) {
-                g_overlayArea = row.area;
+            if (!distributionSelecting && !confirm && row.entry && confirmedIds[areaIndex].contains(row.entry->id)) {
                 return;
             }
-            const auto mode = confirm ?
+            const auto commit = confirm && !distributionSelecting;
+            const auto mode = commit ?
                 bcn::overlay::ApplyMode::manualCommit : bcn::overlay::ApplyMode::preview;
             const auto result = row.entry ?
                 bcn::overlay::QueueApply(actor, row.area, row.entry->id, mode,
@@ -2088,12 +2144,11 @@ namespace
                         static_cast<std::uint8_t>(row.area), row.entry->id)) :
                 bcn::overlay::QueueClear(actor, row.area, mode);
             if (result == bcn::overlay::ApplyResult::queued) {
-                g_overlayArea = row.area;
-                if (confirm) pending.reset();
+                if (commit) pending.reset();
                 else RememberPending(pending, actor, row.entry ? row.entry->id : std::string{},
                     row.entry == nullptr, confirmedIds[areaIndex].empty() ?
                         std::string{} : *confirmedIds[areaIndex].begin());
-            } else {
+            } else if (!distributionSelecting || result != bcn::overlay::ApplyResult::incompatibleActor) {
                 const auto prefix = row.entry ? row.entry->name + " · " : std::string{};
                 bcn::ui::Notify(prefix + OverlayApplyResultMessage(result));
             }
@@ -2143,7 +2198,10 @@ namespace
                     "%s · %s  (%zu)  ·  %s %u/%u",
                     OverlayAreaLabel(area), paintLabel, visible.size(),
                     Text("적용", "Applied", "已应用"), usage.applied, usage.capacity);
-                if (ImGui::IsItemClicked()) g_overlayArea = area;
+                if (ImGui::IsItemClicked()) {
+                    g_overlayArea = area;
+                    g_overlayCameraArea = area;
+                }
                 if (ImGui::IsItemHovered()) {
                     ImGui::SetTooltip("%s", Text(
                         "앞: BCNG 확정 적용 수 · 뒤: 전체 슬롯에서 다른 모드가 차지한 슬롯을 뺀 수\n미리보기는 두 숫자에 포함하지 않습니다.",
@@ -2166,9 +2224,8 @@ namespace
                         if (CenteredCheckbox("##distributionSelected", selected,
                                 rowCursor, height)) {
                             SetDistributionOverlaySelected(area, entry->id, selected);
-                            g_overlayArea = area;
-                            g_overlayFocusedIds[areaIndex] = entry->id;
                             FocusCatalogRow(globalRow);
+                            applyRow(overlayRow, false);
                         }
                     }
                     const auto cursor = ImGui::GetCursorScreenPos();
@@ -2208,15 +2265,12 @@ namespace
                     if (distributionSelecting && entry && clicked) {
                         SetDistributionOverlaySelected(area, entry->id,
                             !DistributionOverlaySelected(area, entry->id));
-                        g_overlayArea = area;
-                        g_overlayFocusedIds[areaIndex] = entry->id;
                         FocusCatalogRow(globalRow);
+                        applyRow(overlayRow, false);
                     } else if (doubleClicked) {
-                        g_overlayFocusedIds[areaIndex] = entry ? entry->id : std::string{};
                         FocusCatalogRow(globalRow);
                         applyRow(overlayRow, true);
                     } else if (clicked) {
-                        g_overlayFocusedIds[areaIndex] = entry ? entry->id : std::string{};
                         FocusCatalogRow(globalRow);
                         applyRow(overlayRow, false);
                     }
@@ -2291,6 +2345,7 @@ namespace
         const auto values = bcn::overlay::UnpackColor(draft.value_or(color.value_or(0xFFFFFFFFU)));
         const auto openColor = [&] {
             g_overlayArea = colorArea;
+            g_overlayCameraArea = colorArea;
             g_overlayColor = values;
             g_overlayColorActor = actor->GetFormID();
             g_overlayColorArea = colorArea;
@@ -2310,15 +2365,16 @@ namespace
         if (ImGui::Button(Text("색상 복원", "Reset color", "还原颜色"))) {
             g_overlayColorDrafts.Set(actor->GetFormID(), static_cast<std::uint8_t>(colorArea),
                 colorEntryId, 0xFFFFFFFFU);
-            if (!distributionSelecting) {
-                const auto result = bcn::overlay::QueueColor(actor, colorArea,
-                    colorEntryId, 0xFFFFFFFFU);
-                if (result != bcn::overlay::ApplyResult::queued) {
-                    bcn::ui::Notify(OverlayApplyResultMessage(result));
-                }
+            if (distributionSelecting) g_overlayDistributionPreviewDirty[bcn::overlay::Index(colorArea)] = true;
+            const auto result = distributionSelecting ? bcn::overlay::ApplyResult::queued :
+                bcn::overlay::QueueColor(actor, colorArea, colorEntryId, 0xFFFFFFFFU);
+            if (result != bcn::overlay::ApplyResult::queued &&
+                (!distributionSelecting || result != bcn::overlay::ApplyResult::incompatibleActor)) {
+                bcn::ui::Notify(OverlayApplyResultMessage(result));
             }
         }
         ImGui::EndDisabled();
+        SyncDistributionOverlayPreviews();
     }
 
     void DrawFutanariCatalog()
@@ -2338,7 +2394,7 @@ namespace
         const auto profiles = bcn::FutanariSkinProfiles::Get().Snapshot();
         const auto actorFamily = actor ?
             bcn::body_family::ResolveActor(actor) : bcn::body_family::Mask{};
-        const auto backendCurrentID = actor && !distributionSelecting ?
+        const auto backendCurrentID = actor ?
             bcn::skin_application::CurrentFutanariProfileId(actor).value_or(std::string{}) :
             std::string{};
         const auto currentID = actor && g_pendingFutanari &&
@@ -2369,6 +2425,7 @@ namespace
         // Installing a supported female addon enables the feature and its NPC
         // rule editor globally. Manual preview/apply is a separate actor-level
         // concern and must not prevent the user from configuring distribution.
+        if (distributionSelecting != IsDistributionSelectionFor(DistributionPool::futanari)) return;
         if (!distributionSelecting && !actor) {
             ImGui::TextUnformatted(Text("액터를 선택하세요.", "Select an actor.", "请选择角色。"));
             return;
@@ -2401,21 +2458,22 @@ namespace
                     SetDistributionItemSelected(selectedID,
                         !DistributionItemSelected(selectedID));
                 }
-                return;
             }
+            const auto commit = bcn::ui_catalog::CommitsActorChoice(confirm, distributionSelecting);
             const auto selectedID = hasDefaultRow && row == 0U ?
                 std::string{} : visible[row - (hasDefaultRow ? 1U : 0U)]->id;
-            const auto mode = confirm ?
+            const auto mode = commit ?
                 bcn::skin_application::FutanariSelectionMode::manual :
                 bcn::skin_application::FutanariSelectionMode::preview;
             const auto result = hasDefaultRow && row == 0U ?
                 bcn::skin_application::QueueClearFutanari(actor, mode) :
                 bcn::skin_application::QueueApplyFutanari(actor, selectedID, mode);
             if (result == bcn::skin_application::ApplyResult::queued) {
-                if (confirm) g_pendingFutanari.reset();
+                if (commit) g_pendingFutanari.reset();
                 else RememberPending(g_pendingFutanari, actor, selectedID,
                     hasDefaultRow && row == 0U, currentID);
             } else {
+                if (distributionSelecting) RollbackSingleCatalogPreview(actor, DistributionPool::futanari);
                 bcn::ui::Notify(SkinApplyResultMessage(result));
             }
         };
@@ -2435,6 +2493,8 @@ namespace
                     if (CenteredCheckbox("##distributionSelected", selected,
                             rowCursor, height)) {
                         SetDistributionItemSelected(id, selected);
+                        FocusCatalogRow(row);
+                        applyRow(row, false);
                     }
                 }
                 const auto cursor = ImGui::GetCursorScreenPos();
@@ -2454,8 +2514,8 @@ namespace
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
                     kCardSubtext, subtitle.c_str());
                 if (distributionSelecting && clicked) {
-                    SetDistributionItemSelected(id, !DistributionItemSelected(id));
                     FocusCatalogRow(row);
+                    applyRow(row, true);
                 } else switch (bcn::ui_catalog::MouseIntent(clicked, doubleClicked)) {
                 case bcn::ui_catalog::ChoiceIntent::confirm:
                     FocusCatalogRow(row);
@@ -2865,15 +2925,20 @@ namespace
                 g_overlayColorDrafts.Set(g_overlayColorActor, static_cast<std::uint8_t>(g_overlayColorArea),
                     g_overlayColorEntryId, bcn::overlay::PackColor(g_overlayColor));
             }
-            // Batch selection edits only its per-entry draft. Do not mutate a
-            // confirmed player paint (or allocate a preview slot) just to pick
-            // the color that a future NPC distribution rule will use.
-            if (!g_overlayColorDistributionDraft &&
-                ((changed && now - g_lastOverlayColorApply >= std::chrono::milliseconds(100)) || finished || done)) {
-                const auto result = bcn::overlay::QueueColor(actor, g_overlayColorArea,
-                    g_overlayColorEntryId, bcn::overlay::PackColor(g_overlayColor));
+            // Batch colors are shown on the transient preview only. Even an
+            // already applied entry must not have its committed color changed.
+            if ((changed && now - g_lastOverlayColorApply >= std::chrono::milliseconds(100)) || finished || done) {
+                if (g_overlayColorDistributionDraft) {
+                    g_overlayDistributionPreviewDirty[bcn::overlay::Index(g_overlayColorArea)] = true;
+                    SyncDistributionOverlayPreviews();
+                }
+                const auto result = g_overlayColorDistributionDraft ? bcn::overlay::ApplyResult::queued :
+                    bcn::overlay::QueueColor(actor, g_overlayColorArea,
+                        g_overlayColorEntryId, bcn::overlay::PackColor(g_overlayColor));
                 if (result == bcn::overlay::ApplyResult::queued) g_lastOverlayColorApply = now;
-                else bcn::ui::Notify(OverlayApplyResultMessage(result));
+                else if (!g_overlayColorDistributionDraft || result != bcn::overlay::ApplyResult::incompatibleActor) {
+                    bcn::ui::Notify(OverlayApplyResultMessage(result));
+                }
             }
             if (done) {
                 g_showOverlayDetails = false;
@@ -3375,15 +3440,12 @@ namespace
         const auto popupTitle = std::string{ Text("모드 설정", "Mod settings", "模组设置") } + "###SettingsPopup";
         ImGui::OpenPopup(popupTitle.c_str());
         const auto settingsWidth = DefaultWindowSize(700.0F, 0.0F).x;
-        // The settings list is intentionally short enough to fit as one
-        // panel. Let ImGui derive its height from the localized wrapped text
-        // so the final reset/close row is visible without a scrollbar at the
-        // current 1080p/2K/4K scale.
+        // Grow to fit localized help, but allow scrolling on smaller screens.
         ImGui::SetNextWindowSizeConstraints(
-            ImVec2(settingsWidth, 0.0F), ImVec2(settingsWidth, FLT_MAX));
+            ImVec2(settingsWidth, 0.0F), ImVec2(settingsWidth,
+                ImGui::GetMainViewport()->WorkSize.y - Scaled(40.0F)));
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showSettings,
-                ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoScrollbar |
-                ImGuiWindowFlags_NoScrollWithMouse, bcn::popup_placement::Kind::settings)) {
+                ImGuiWindowFlags_AlwaysAutoResize, bcn::popup_placement::Kind::settings)) {
             if (EscapePressed()) {
                 g_showSettings = false;
                 bcn::InputSink::Get().CancelHotkeyCapture();
@@ -3425,6 +3487,19 @@ namespace
             TextDisabledWrapped(Text("3인칭에서 선택한 액터를 창 옆에 임시 배치합니다. 캐릭터가 있는 화면 바깥쪽을 우클릭 드래그하거나 게임패드 LT를 누른 채 RS를 좌우로 움직이면 회전하며, 대상 변경·창 닫기 때 카메라와 방향을 복원합니다.", "In third person, temporarily frames the selected actor beside the window. Right-drag the outer character area, or hold gamepad LT and move RS left or right, to rotate; camera and facing restore when the target changes or the window closes.", "第三人称下会临时将所选角色置于窗口旁。右键拖动角色所在的外侧区域，或按住手柄 LT 并左右推动 RS，即可旋转；切换目标或关闭窗口时会恢复镜头和朝向。"));
             settingsChanged |= ImGui::Checkbox(Text("게임 일시정지", "Pause game while open", "打开时暂停游戏"), &settings.pauseGameWhenOpen);
             TextDisabledWrapped(Text("창은 항상 플레이어를 선택한 상태로 열립니다. 일시정지 변경은 다음에 창을 열 때 적용됩니다.", "The window always opens with Player selected. Pause changes apply the next time it opens.", "窗口始终以玩家为当前选择打开。暂停设置会在下次打开窗口时生效。"));
+            ImGui::Separator();
+            if (ImGui::Checkbox(Text("다른 모드의 모프 보존", "Preserve other mods' morphs", "保留其他模组的形态"),
+                    &settings.preserveOtherMorphs)) {
+                settingsChanged = true;
+                // Switching replacement policy must not leave an old-policy
+                // preview active. No committed or foreign values are changed.
+                g_pendingBody.reset();
+                bcn::racemenu::QueueCancelPreview();
+            }
+            TextDisabledWrapped(Text(
+                "기본 켜짐. 다음 바디 프리셋 적용부터 BCNG 모프만 교체합니다. 끄면 다른 모드의 바디 모프도 초기화합니다. 기본 바디 복원은 BCNG 모프만 제거합니다.",
+                "On by default. The next body preset replaces only BCNG morphs. Turning this off also clears other mods' body morphs when applying a preset. Default body removes only BCNG morphs.",
+                "默认开启。下次应用身体预设时仅替换 BCNG 形态。关闭后还会清除其他模组的身体形态。恢复默认身体仅移除 BCNG 形态。"));
             ImGui::Separator();
             ImGui::TextUnformatted(Text("화면 표시", "Display", "显示"));
             ImGui::SetNextItemWidth(Scaled(300.0F));
@@ -3550,6 +3625,7 @@ namespace bcn::ui
         g_showTintDetails = false;
         g_showOverlayDetails = false;
         g_overlayArea.reset();
+        g_overlayCameraArea.reset();
         g_pendingBody.reset();
         g_pendingSkin.reset();
         g_pendingFutanari.reset();
@@ -3582,6 +3658,7 @@ namespace bcn::ui
         racemenu::QueueCancelPreview();
         overlay::QueueCancelPreviews();
         g_overlayArea.reset();
+        g_overlayCameraArea.reset();
         g_showDistribution = false;
         // Loading another save is not a confirmation of the previous save's
         // in-memory editor draft.  OnClosed runs as part of the native close,
@@ -3861,6 +3938,7 @@ namespace bcn::ui
         }
 
         if (g_activeTab == ActiveTab::body) {
+            const auto wasDistributionSelecting = IsDistributionSelectionFor(DistributionPool::body);
             auto items = BodyItems();
             DrawCatalogCommandRow(DistributionPool::body,
                 [] { RefreshFileCatalog(PresetCatalog::Get()); },
@@ -3871,7 +3949,9 @@ namespace bcn::ui
                 Text("CalienteTools\\~에서 바디프리셋을 읽습니다.(더블클릭 적용)",
                     "Reads body presets from CalienteTools\\~. (Double-click to apply)",
                     "从 CalienteTools\\~ 读取身体预设。（双击应用）"));
-            DrawCatalog(items, true);
+            if (wasDistributionSelecting == IsDistributionSelectionFor(DistributionPool::body)) {
+                DrawCatalog(items, true);
+            }
         } else if (g_activeTab == ActiveTab::skin) {
             DrawSkinCatalog();
         } else if (g_activeTab == ActiveTab::overlay) {
@@ -3893,7 +3973,7 @@ namespace bcn::ui
         if (g_activeTab == ActiveTab::tint) {
             bcn::menu_character::Presentation::Get().SetTintFocus(true);
         } else if (g_activeTab == ActiveTab::overlay) {
-            bcn::menu_character::Presentation::Get().SetOverlayFocus(g_overlayArea);
+            bcn::menu_character::Presentation::Get().SetOverlayFocus(g_overlayCameraArea);
         } else {
             bcn::menu_character::Presentation::Get().SetTintFocus(false);
         }

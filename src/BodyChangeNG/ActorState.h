@@ -169,6 +169,16 @@ namespace bcn
         }
     }
 
+    [[nodiscard]] inline bool UpdateAutomaticFutanariSelection(FutanariFeatureState& selection,
+        const std::optional<std::string>& selectedId)
+    {
+        if (selection.manual || !selectedId || selectedId->empty()) return false;
+        if (!selection.useDefault && selection.selectedSkinId == *selectedId) return false;
+        selection.selectedSkinId = *selectedId;
+        selection.useDefault = false;
+        return true;
+    }
+
     enum class RestoredApplicationDecision : std::uint8_t
     {
         apply,

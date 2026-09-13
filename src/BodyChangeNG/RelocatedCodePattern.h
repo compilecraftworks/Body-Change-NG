@@ -3,12 +3,40 @@
 #include <algorithm>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <optional>
 #include <span>
 #include <string_view>
 
 namespace bcn::native_addon
 {
+    struct ImageMemoryRegion final {
+        std::uintptr_t begin{}, allocation{};
+        std::size_t size{};
+        bool committed{}, readable{};
+    };
+
+    // An IAT can cross adjacent VirtualQuery regions with different page
+    // protections. Validate every byte without assuming one protection span.
+    // The image/allocation bounds and read-access checks remain mandatory.
+    template<class Query>
+    [[nodiscard]] bool IsReadableImageRange(std::uintptr_t imageBase, std::size_t imageSize,
+        std::uintptr_t address, std::size_t size, Query query)
+    {
+        if (!size || imageBase > std::numeric_limits<std::uintptr_t>::max() - imageSize ||
+            address < imageBase || address - imageBase > imageSize ||
+            size > imageSize - (address - imageBase)) return false;
+        while (size) {
+            const auto region = query(address);
+            if (!region || !region->committed || !region->readable || region->allocation != imageBase ||
+                address < region->begin || address - region->begin >= region->size) return false;
+            const auto step = (std::min)(size, region->size - (address - region->begin));
+            address += step;
+            size -= step;
+        }
+        return true;
+    }
+
     // Imported OS calls are identified by their resolved IAT value, not an
     // Address Library data ID that is absent in some GOG libraries.
     inline constexpr std::uint64_t kSleepImport = UINT64_MAX;

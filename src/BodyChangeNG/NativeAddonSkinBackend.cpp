@@ -225,13 +225,20 @@ namespace
             if (!iat.VirtualAddress || !iat.Size || iat.Size > 0x100000 ||
                 iat.VirtualAddress > nt->OptionalHeader.SizeOfImage ||
                 iat.Size > nt->OptionalHeader.SizeOfImage - iat.VirtualAddress) return {};
-            MEMORY_BASIC_INFORMATION info{};
             const auto address = base + iat.VirtualAddress;
-            if (!VirtualQuery(reinterpret_cast<const void*>(address), &info, sizeof(info)) ||
-                info.State != MEM_COMMIT || info.AllocationBase != reinterpret_cast<void*>(base) ||
-                (info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) ||
-                address < reinterpret_cast<std::uintptr_t>(info.BaseAddress) ||
-                iat.Size > info.RegionSize - (address-reinterpret_cast<std::uintptr_t>(info.BaseAddress))) return {};
+            if (!IsReadableImageRange(base, nt->OptionalHeader.SizeOfImage, address, iat.Size,
+                    [](const std::uintptr_t current) -> std::optional<ImageMemoryRegion> {
+                        MEMORY_BASIC_INFORMATION info{};
+                        if (!VirtualQuery(reinterpret_cast<const void*>(current), &info, sizeof(info))) return {};
+                        const auto protection = info.Protect & 0xFFU;
+                        const auto readable = protection == PAGE_READONLY || protection == PAGE_READWRITE ||
+                            protection == PAGE_WRITECOPY || protection == PAGE_EXECUTE_READ ||
+                            protection == PAGE_EXECUTE_READWRITE || protection == PAGE_EXECUTE_WRITECOPY;
+                        return ImageMemoryRegion{ reinterpret_cast<std::uintptr_t>(info.BaseAddress),
+                            reinterpret_cast<std::uintptr_t>(info.AllocationBase), info.RegionSize,
+                            info.State == MEM_COMMIT,
+                            readable && !(info.Protect & (PAGE_GUARD | PAGE_NOACCESS)) };
+                    })) return {};
             const auto kernel = GetModuleHandleW(L"kernel32.dll");
             const auto sleep = kernel ? GetProcAddress(kernel, "Sleep") : nullptr;
             return FindUniqueImport({ reinterpret_cast<const std::uint8_t*>(address), iat.Size },

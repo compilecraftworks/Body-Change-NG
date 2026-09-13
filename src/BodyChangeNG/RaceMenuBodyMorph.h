@@ -12,17 +12,16 @@ namespace RE
 
 namespace bcn::racemenu
 {
-    [[nodiscard]] constexpr float AbsolutePresetCorrection(
-        const float desiredPresetValue, const float currentAggregate,
-        const float preservedOutfitValue = 0.0F) noexcept
+    [[nodiscard]] constexpr float PreviewPresetCorrection(
+        const float desiredPresetValue, const float replacedValues) noexcept
     {
-        return desiredPresetValue + preservedOutfitValue - currentAggregate;
+        return desiredPresetValue - replacedValues;
     }
 
     [[nodiscard]] constexpr float OutfitTargetCorrection(
-        const float target, const float aggregateWithoutOutfit) noexcept
+        const float target, const float ownedPresetValue) noexcept
     {
-        return target - aggregateWithoutOutfit;
+        return target - ownedPresetValue;
     }
 
     enum class ApplyMode : std::uint8_t
@@ -72,7 +71,7 @@ namespace bcn::racemenu
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,
         std::uint64_t a_outfitSignature = 0U,
         UpdatePolicy a_updatePolicy = UpdatePolicy::synchronous);
-    // Previews the exact result of removing BCNG and legacy OBody-owned body
+    // Previews the exact result of removing only BCNG-owned body/outfit
     // keys without mutating any committed key. QueueCancelPreview restores the
     // entry state by removing only the transient compensating layer.
     [[nodiscard]] ApplyResult QueuePreviewDefault(RE::Actor* a_actor);

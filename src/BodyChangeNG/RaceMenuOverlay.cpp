@@ -665,7 +665,8 @@ namespace
         const bcn::overlay::ApplyMode mode, std::uint8_t* appliedSlot = nullptr,
         const std::optional<bcn::OverlayItemState>* replacementSource = nullptr,
         const bool force = false, std::function<void()> committed = {},
-        const std::optional<std::uint32_t> requestedColor = std::nullopt)
+        const std::optional<std::uint32_t> requestedColor = std::nullopt,
+        const std::span<const bcn::OverlayItemState> reserved = {})
     {
         const auto interfaces = InterfacesNow();
         if (!interfaces.overlay || !interfaces.override) return bcn::overlay::ApplyResult::unsupportedInterface;
@@ -717,6 +718,9 @@ namespace
         }
         if (!slot) {
             for (std::uint32_t candidate{}; candidate < count; ++candidate) {
+                if (std::ranges::any_of(reserved, [candidate](const auto& item) {
+                        return item.ownedSlot == candidate;
+                    })) continue;
                 const auto node = NodeName(interfaces, area, candidate);
                 if (node && NodeIsFree(interfaces, actor, female, *node)) {
                     slot = static_cast<std::uint8_t>(candidate);
@@ -749,14 +753,58 @@ namespace
         return bcn::overlay::ApplyResult::queued;
     }
 
+    [[nodiscard]] bool ColorOwnedNode(const Interfaces& interfaces, RE::Actor* actor,
+        const bcn::overlay::Area area, const bcn::OverlayItemState& selected,
+        const std::uint32_t color)
+    {
+        if (!actor || !interfaces.overlay || !interfaces.override) return false;
+        const auto node = NodeName(interfaces, area, selected.ownedSlot);
+        if (!node || !NodeOwnedBySelection(interfaces, actor, Female(actor),
+                *node, selected.texturePath)) return false;
+        const auto rgb = static_cast<std::int32_t>(color & 0xFFFFFFU);
+        const auto alpha = static_cast<float>(color >> 24U) / 255.0F;
+        if (interfaces.abi == bcn::racemenu_compat::OverlayStackAbi::legacyV1) {
+            auto* api = static_cast<IOverrideInterfaceV1*>(interfaces.override);
+            const RE::BSFixedString name(*node);
+            auto tintValue = LegacyOverrideVariant::Int(bcn::overlay::kTintKey, bcn::overlay::kScalarIndex, rgb);
+            auto alphaValue = LegacyOverrideVariant::Float(bcn::overlay::kAlphaKey, bcn::overlay::kScalarIndex, alpha);
+            api->AddNodeOverride(actor, Female(actor), name, tintValue);
+            api->AddNodeOverride(actor, Female(actor), name, alphaValue);
+            api->SetNodeProperty(actor, name, &tintValue, true);
+            api->SetNodeProperty(actor, name, &alphaValue, true);
+        } else {
+            auto* api = static_cast<IOverrideInterfaceV2*>(interfaces.override);
+            IntVariant tintValue(rgb);
+            FloatVariant alphaValue(alpha);
+            api->AddNodeOverride(actor, Female(actor), node->c_str(), bcn::overlay::kTintKey, bcn::overlay::kScalarIndex, tintValue);
+            api->AddNodeOverride(actor, Female(actor), node->c_str(), bcn::overlay::kAlphaKey, bcn::overlay::kScalarIndex, alphaValue);
+            for (const bool firstPerson : { false, true }) {
+                if (!actor->Get3D(firstPerson)) continue;
+                api->SetNodeProperty(actor, firstPerson, node->c_str(), bcn::overlay::kTintKey, bcn::overlay::kScalarIndex, tintValue, true);
+                api->SetNodeProperty(actor, firstPerson, node->c_str(), bcn::overlay::kAlphaKey, bcn::overlay::kScalarIndex, alphaValue, true);
+            }
+        }
+        return true; // No DDS reload, node allocation, or persistent selection change.
+    }
+
+    void RemovePreviewItemValue(RE::Actor* actor, const bcn::overlay::Area area,
+        const PreviewState& preview, const bcn::OverlayItemState& value)
+    {
+        const auto interfaces = InterfacesNow();
+        if (!interfaces.overlay || !interfaces.override) return;
+        const auto committed = bcn::ActorRegistry::Get().SelectedOverlays(actor, area);
+        if (const auto* borrowed = preview.BorrowedSelection(value, committed)) {
+            static_cast<void>(ColorOwnedNode(interfaces, actor, area, *borrowed, borrowed->color));
+            return;
+        }
+        static_cast<void>(RemoveExactOwnedOverlay(interfaces, actor, area,
+            value));
+    }
+
     void RemovePreviewLiveValue(RE::Actor* actor, const bcn::overlay::Area area,
         const PreviewState& preview)
     {
-        if (preview.liveDefault || !preview.live) return;
-        const auto interfaces = InterfacesNow();
-        if (!interfaces.overlay || !interfaces.override) return;
-        static_cast<void>(RemoveExactOwnedOverlay(interfaces, actor, area,
-            *preview.live));
+        preview.VisitLive([&](const auto& item) { RemovePreviewItemValue(actor, area, preview, item); });
     }
 
     [[nodiscard]] bcn::overlay::ApplyResult RemoveOneNow(RE::Actor* actor,
@@ -792,6 +840,68 @@ namespace
                     actor->GetFormID(), bcn::overlay::StableName(area), item.selectedId,
                     static_cast<std::uint32_t>(restored));
             }
+        }
+    }
+
+    void ApplyPreviewSetNow(RE::Actor* actor, const bcn::overlay::Area area,
+        std::vector<bcn::OverlayItemState> desired)
+    {
+        if (!actor) return;
+        auto previous = PreviewFor(actor->GetFormID(), area);
+        if (previous && !previous->batchMode) {
+            // Let a normal/Default preview finish restoring before borrowing
+            // committed slots for the checkbox stack.
+            RestorePreviewNow(actor, area);
+            PreviewState intent;
+            intent.original = bcn::ActorRegistry::Get().SelectedOverlays(actor, area);
+            intent.batchMode = true;
+            StorePreview(actor->GetFormID(), area, std::move(intent));
+            const auto handle = actor->GetHandle();
+            [[maybe_unused]] const auto queued = bcn::frame_tasks::Continue(
+                bcn::frame_tasks::CurrentLease(), [handle, area, desired = std::move(desired)]() mutable {
+                    if (const auto current = handle.get()) ApplyPreviewSetNow(current.get(), area, std::move(desired));
+                }, 3U);
+            return;
+        }
+        PreviewState next = previous.value_or(PreviewState{});
+        if (!previous) next.original = bcn::ActorRegistry::Get().SelectedOverlays(actor, area);
+        next.batchMode = true;
+        const auto interfaces = InterfacesNow();
+        bool capacityReached{};
+        next.batch = bcn::overlay::ReconcilePreviewItems(next.batch, desired,
+            [&](const auto& removed) { RemovePreviewItemValue(actor, area, next, removed); },
+            [&](const bcn::OverlayItemState& wanted, const bcn::OverlayItemState* retained,
+                std::span<const bcn::OverlayItemState> reserved) -> std::optional<bcn::OverlayItemState> {
+                auto source = retained ? std::optional{ *retained } :
+                    bcn::ActorRegistry::Get().SelectedOverlay(actor, area, wanted.selectedId);
+                if (source && source->texturePath == wanted.texturePath) {
+                    const auto node = NodeName(interfaces, area, source->ownedSlot);
+                    if (node && NodeOwnedBySelection(interfaces, actor, Female(actor), *node, wanted.texturePath) &&
+                        LiveNodeMatches(actor, *node, wanted.texturePath) &&
+                        (source->color == wanted.color || ColorOwnedNode(interfaces, actor, area, *source, wanted.color))) {
+                        source->color = wanted.color;
+                        return source;
+                    }
+                }
+                if (capacityReached && !source) return std::nullopt;
+                const bcn::overlay::Entry entry{ .id = wanted.selectedId, .name = wanted.selectedId,
+                    .texturePath = wanted.texturePath, .area = area };
+                std::uint8_t slot = bcn::overlay::kNoOwnedSlot;
+                const auto result = ApplyNow(actor, area, entry, bcn::overlay::ApplyMode::preview,
+                    &slot, &source, false, {}, wanted.color, reserved);
+                if (result == bcn::overlay::ApplyResult::noFreeSlot) capacityReached = true;
+                if (result != bcn::overlay::ApplyResult::queued) return std::nullopt;
+                // Reserve ownership immediately: finalization is deferred, and
+                // another item in this batch must not choose the same free node.
+                return bcn::OverlayItemState{ wanted.selectedId, wanted.texturePath, slot, wanted.color };
+            });
+        const auto firstCapacityFailure = capacityReached && !next.capacityLimited;
+        next.capacityLimited = capacityReached;
+        if (desired.empty()) ErasePreview(actor->GetFormID(), area);
+        else StorePreview(actor->GetFormID(), area, std::move(next));
+        if (firstCapacityFailure) {
+            SKSE::log::warn("BCNG overlay checkbox preview exceeded available slots actor={:08X} area={}",
+                actor->GetFormID(), bcn::overlay::StableName(area));
         }
     }
 
@@ -860,9 +970,11 @@ namespace bcn::overlay
                 return item.ownedSlot == slot && NodeOwnedBySelection(interfaces, actor,
                     female, *node, item.texturePath);
             });
-            const auto previewOwns = preview && !preview->liveDefault && preview->live &&
-                preview->live->ownedSlot == slot && NodeOwnedBySelection(interfaces, actor,
-                    female, *node, preview->live->texturePath);
+            bool previewOwns{};
+            if (preview) preview->VisitLive([&](const auto& item) {
+                previewOwns |= item.ownedSlot == slot && NodeOwnedBySelection(interfaces, actor,
+                    female, *node, item.texturePath);
+            });
             accounting.Observe(!NodeIsFree(interfaces, actor, female, *node),
                 committedOwns, previewOwns);
         }
@@ -893,6 +1005,41 @@ namespace bcn::overlay
             if (g_previews.contains(PreviewKey(actor->GetFormID(), area))) return true;
         }
         return false;
+    }
+
+    ApplyResult QueuePreviewSet(RE::Actor* actor, const Area area, std::vector<PreviewChoice> checked)
+    {
+        if (!actor || area == Area::count) return ApplyResult::invalidActor;
+        if (!IsReady()) return ApplyResult::unavailable;
+        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
+        std::ranges::sort(checked, {}, &PreviewChoice::entryId);
+        checked.erase(std::unique(checked.begin(), checked.end(), [](const auto& a, const auto& b) {
+            return a.entryId == b.entryId;
+        }), checked.end());
+        std::vector<OverlayItemState> desired;
+        const auto family = body_family::ResolveActor(actor);
+        const auto female = Female(actor);
+        for (const auto& choice : checked) {
+            const auto entry = Find(choice.entryId);
+            if (!entry || entry->area != area || !EntryMatchesActor(entry->layout, entry->sex, family, female)) continue;
+            desired.push_back({ entry->id, entry->texturePath, kNoOwnedSlot, choice.color });
+        }
+        const auto hadPreview = PreviewFor(actor->GetFormID(), area).has_value();
+        if (!hadPreview && desired.empty()) return ApplyResult::queued;
+        if (!hadPreview) {
+            PreviewState intent;
+            intent.original = ActorRegistry::Get().SelectedOverlays(actor, area);
+            intent.batchMode = true;
+            StorePreview(actor->GetFormID(), area, std::move(intent));
+        }
+        const auto handle = actor->GetHandle();
+        if (!frame_tasks::Queue(actor->GetFormID(), [handle, area, desired = std::move(desired)]() mutable {
+                if (const auto current = handle.get()) ApplyPreviewSetNow(current.get(), area, std::move(desired));
+            }, 1U, Channel(area))) {
+            if (!hadPreview) ErasePreview(actor->GetFormID(), area);
+            return ApplyResult::noTaskInterface;
+        }
+        return ApplyResult::queued;
     }
 
     ApplyResult QueueApply(RE::Actor* actor, const Area area, std::string entryId,
@@ -967,7 +1114,9 @@ namespace bcn::overlay
                 if (mode == ApplyMode::automatic) {
                     const auto saved = ActorRegistry::Get().SelectedOverlays(actorNow, area);
                     if (!saved.empty()) previous = saved.front();
-                } else if (mode == ApplyMode::restore) {
+                } else if (mode == ApplyMode::restore || mode == ApplyMode::preview) {
+                    // A batch preview of an applied entry reuses its node;
+                    // cancel restores its color without duplicating/removing it.
                     previous = ActorRegistry::Get().SelectedOverlay(actorNow, area, entry.id);
                 }
                 const auto appliedSlot = std::make_shared<std::uint8_t>(kNoOwnedSlot);
@@ -1007,8 +1156,9 @@ namespace bcn::overlay
         const std::string_view entryId)
     {
         if (!actor || area == Area::count || entryId.empty()) return std::nullopt;
-        if (const auto preview = PreviewFor(actor->GetFormID(), area);
-            preview && preview->live && preview->live->selectedId == entryId) return preview->live->color;
+        if (const auto preview = PreviewFor(actor->GetFormID(), area); preview) {
+            if (const auto* item = preview->FindLive(entryId)) return item->color;
+        }
         const auto selected = ActorRegistry::Get().SelectedOverlay(actor, area, entryId);
         return selected ? std::optional{ selected->color } : std::nullopt;
     }
@@ -1018,46 +1168,25 @@ namespace bcn::overlay
     {
         if (!actor || area == Area::count) return ApplyResult::invalidActor;
         if (!IsReady()) return ApplyResult::unavailable;
+        // A distribution stack must never fall through to persistent editing.
+        if (const auto preview = PreviewFor(actor->GetFormID(), area); preview && preview->batchMode)
+            return ApplyResult::ownershipConflict;
         if (!CurrentColor(actor, area, entryId)) return ApplyResult::missingEntry;
         const auto handle = actor->GetHandle();
         if (!frame_tasks::Queue(actor->GetFormID(), [handle, area, entryId = std::move(entryId), color] {
                 const auto current = handle.get();
                 if (!current) return;
                 auto preview = PreviewFor(current->GetFormID(), area);
+                if (preview && preview->batchMode) return;
                 const auto coloringPreview = preview && preview->live &&
                     preview->live->selectedId == entryId;
                 auto previous = coloringPreview ? preview->live :
                     ActorRegistry::Get().SelectedOverlay(current.get(), area, entryId);
                 if (!previous || previous->texturePath.empty()) return;
                 const auto interfaces = InterfacesNow();
-                const auto node = NodeName(interfaces, area, previous->ownedSlot);
 
                 previous->color = color;
-                if (node && NodeOwnedBySelection(interfaces, current.get(), Female(current.get()),
-                        *node, previous->texturePath)) {
-                    const auto rgb = static_cast<std::int32_t>(color & 0xFFFFFFU);
-                    const auto alpha = static_cast<float>(color >> 24U) / 255.0F;
-                    if (interfaces.abi == racemenu_compat::OverlayStackAbi::legacyV1) {
-                        auto* api = static_cast<IOverrideInterfaceV1*>(interfaces.override);
-                        const RE::BSFixedString name(*node);
-                        auto tintValue = LegacyOverrideVariant::Int(kTintKey, kScalarIndex, rgb);
-                        auto alphaValue = LegacyOverrideVariant::Float(kAlphaKey, kScalarIndex, alpha);
-                        api->AddNodeOverride(current.get(), Female(current.get()), name, tintValue);
-                        api->AddNodeOverride(current.get(), Female(current.get()), name, alphaValue);
-                        api->SetNodeProperty(current.get(), name, &tintValue, true);
-                        api->SetNodeProperty(current.get(), name, &alphaValue, true);
-                    } else {
-                        auto* api = static_cast<IOverrideInterfaceV2*>(interfaces.override);
-                        IntVariant tintValue(rgb);
-                        FloatVariant alphaValue(alpha);
-                        api->AddNodeOverride(current.get(), Female(current.get()), node->c_str(), kTintKey, kScalarIndex, tintValue);
-                        api->AddNodeOverride(current.get(), Female(current.get()), node->c_str(), kAlphaKey, kScalarIndex, alphaValue);
-                        for (const bool firstPerson : { false, true }) {
-                            if (!current->Get3D(firstPerson)) continue;
-                            api->SetNodeProperty(current.get(), firstPerson, node->c_str(), kTintKey, kScalarIndex, tintValue, true);
-                            api->SetNodeProperty(current.get(), firstPerson, node->c_str(), kAlphaKey, kScalarIndex, alphaValue, true);
-                        }
-                    }
+                if (ColorOwnedNode(interfaces, current.get(), area, *previous, color)) {
                     if (coloringPreview) {
                         preview->live->color = color;
                         StorePreview(current->GetFormID(), area, *preview);
@@ -1211,9 +1340,11 @@ namespace bcn::overlay
         for (const auto area : kAreas) {
             const auto& selected = state->overlay.areas[Index(area)];
             if (!selected.useDefault) continue;
-            if (const auto preview = PreviewFor(actor->GetFormID(), area); preview && preview->live) {
-                [[maybe_unused]] const auto accepted = ActorRegistry::Get().CompleteOverlayApply(
-                    actor, area, *preview->live, ApplyMode::preview, selected.resetRevision - 1U);
+            if (const auto preview = PreviewFor(actor->GetFormID(), area)) {
+                preview->VisitLive([&](const auto& item) {
+                    [[maybe_unused]] const auto accepted = ActorRegistry::Get().CompleteOverlayApply(
+                        actor, area, item, ApplyMode::preview, selected.resetRevision - 1U);
+                });
             }
             ErasePreview(actor->GetFormID(), area);
         }
@@ -1307,11 +1438,6 @@ namespace bcn::overlay
                 auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormID);
                 if (!actor || !ActorRegistry::Get().Snapshot(actor)) return;
                 for (const auto& [area, preview] : abandoned) {
-                    if (!preview.live) continue;
-                    const auto committed = ActorRegistry::Get().SelectedOverlay(
-                        actor, area, preview.live->selectedId);
-                    if (committed && committed->ownedSlot == preview.live->ownedSlot &&
-                        committed->texturePath == preview.live->texturePath) continue;
                     RemovePreviewLiveValue(actor, area, preview);
                 }
                 // If it has already reattached, restore Default-preview originals.

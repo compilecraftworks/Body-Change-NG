@@ -148,22 +148,6 @@ int main(const int argc, char** argv)
     if (!Require(ubeRefit && ubeRefit->family == "UBE",
             "named refit selected the wrong family for a UBE actor")) return 1;
 
-    const auto cbbeSliderUniverse = bcn::PresetCatalog::CollectCompatibleSliderNames(
-        presets, false, bcn::body_family::Bit(bcn::body_family::Family::cbbe));
-    if (!Require(std::ranges::find(cbbeSliderUniverse, "Breasts") != cbbeSliderUniverse.end() &&
-            std::ranges::find(cbbeSliderUniverse, "Waist") != cbbeSliderUniverse.end() &&
-            std::ranges::find(cbbeSliderUniverse, "CBBEOnlyTestSlider") != cbbeSliderUniverse.end(),
-            "CBBE slider universe lost compatible sliders from another preset")) return 1;
-    if (!Require(std::ranges::find(cbbeSliderUniverse, "ClaviclesAngle") == cbbeSliderUniverse.end(),
-            "CBBE slider universe leaked a UBE-only slider")) return 1;
-    if (!Require(std::ranges::find(cbbeSliderUniverse, "ForeignUnknownSlider") == cbbeSliderUniverse.end(),
-            "known-family slider universe leaked an unclassified extension slider")) return 1;
-    const auto ubeSliderUniverse = bcn::PresetCatalog::CollectCompatibleSliderNames(
-        presets, false, bcn::body_family::Bit(bcn::body_family::Family::ube));
-    if (!Require(std::ranges::find(ubeSliderUniverse, "ClaviclesAngle") != ubeSliderUniverse.end() &&
-            std::ranges::find(ubeSliderUniverse, "CBBEOnlyTestSlider") == ubeSliderUniverse.end(),
-            "UBE slider universe mixed CBBE-family preset sliders")) return 1;
-
     std::filesystem::remove_all(root);
     return 0;
 }

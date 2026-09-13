@@ -458,6 +458,10 @@ int main(const int argc, char** argv)
         return 0;
     }
 
+    const bcn::SettingsData defaults;
+    if (!Require(defaults.preserveOtherMorphs && !defaults.pauseGameWhenOpen && !defaults.performanceMode &&
+            defaults.characterPosition == bcn::CharacterPosition::left,
+            "new settings must preserve foreign morphs, place actor left and disable pause/performance modes")) return 1;
     const auto sandbox = std::filesystem::temp_directory_path() / "BodyChangeNGAssetCatalogTests";
     std::filesystem::remove_all(sandbox);
 
@@ -475,6 +479,10 @@ int main(const int argc, char** argv)
     const auto migratedSettings = sandbox / "Data" / "SKSE" / "Plugins" /
         "BodyChangeNG" / "settings.json";
     const auto migratedSnapshot = bcn::Settings::Get().Snapshot();
+    if (!Require(migratedSnapshot.preserveOtherMorphs && !migratedSnapshot.performanceMode &&
+            bcn::Settings::Get().MorphOptions().preserveOtherMorphs &&
+            migratedSnapshot.characterPosition == bcn::CharacterPosition::right,
+            "missing preserve option must default on without replacing an explicit character position")) return 1;
     if (!Require(std::filesystem::is_regular_file(migratedSettings),
             "legacy settings were not copied to the BodyChangeNG path")) return 1;
     if (!Require(migratedSnapshot.openHotkey.key == 66U && migratedSnapshot.openHotkey.ctrl,
@@ -488,6 +496,11 @@ int main(const int argc, char** argv)
     // distribution editors, without changing any appearance/distribution data.
     using PopupKind = bcn::popup_placement::Kind;
     auto& popupSettings = bcn::Settings::Get();
+    auto nonPreserving = popupSettings.Snapshot();
+    nonPreserving.preserveOtherMorphs = false;
+    nonPreserving.pauseGameWhenOpen = true;
+    nonPreserving.performanceMode = true;
+    popupSettings.Update(nonPreserving);
     for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
         const auto kind = static_cast<PopupKind>(index);
         if (!Require(!popupSettings.PopupPosition(kind).set,
@@ -499,6 +512,21 @@ int main(const int argc, char** argv)
     std::filesystem::current_path(sandbox);
     if (!Require(popupSettings.Save(), "popup settings save failed")) return 1;
     popupSettings.Load();
+    if (!Require(!popupSettings.Snapshot().preserveOtherMorphs &&
+            !popupSettings.MorphOptions().preserveOtherMorphs &&
+            popupSettings.Snapshot().pauseGameWhenOpen &&
+            popupSettings.Snapshot().performanceMode &&
+            popupSettings.Snapshot().characterPosition == bcn::CharacterPosition::right,
+            "explicit morph/pause/position settings did not survive reload")) return 1;
+    const auto offSignature = popupSettings.BodyApplicationOptions();
+    auto preserving = popupSettings.Snapshot();
+    preserving.preserveOtherMorphs = true;
+    popupSettings.Update(preserving);
+    if (!Require(popupSettings.Save(), "preserving settings save failed")) return 1;
+    popupSettings.Load();
+    if (!Require(popupSettings.MorphOptions().preserveOtherMorphs &&
+            popupSettings.BodyApplicationOptions() != offSignature,
+            "preserve option reload/signature did not change application policy")) return 1;
     std::filesystem::current_path(originalCurrentPath);
     for (std::size_t index{}; index < bcn::popup_placement::keys.size(); ++index) {
         const auto position = popupSettings.PopupPosition(static_cast<PopupKind>(index));

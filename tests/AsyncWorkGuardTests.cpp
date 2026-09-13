@@ -56,10 +56,10 @@ int main()
         Require(winners == 1 && !concurrent.Take(), "concurrent callback completion was not exactly once");
         for (float external : {-0.4F, 0.0F, 0.35F, 1.2F}) {
             for (float target : {0.0F, -0.3F, 1.0F}) {
-                const auto committed = bcn::racemenu::AbsolutePresetCorrection(0.8F, external);
-                const auto outfit = bcn::racemenu::OutfitTargetCorrection(target, external + committed);
-                Require(std::abs(external + committed + outfit - target) < 0.00001F,
-                    "outfit target depends on foreign morph ownership");
+                const auto committed = 0.8F;
+                const auto outfit = bcn::racemenu::OutfitTargetCorrection(target, committed);
+                Require(std::abs(external + committed + outfit - target - external) < 0.00001F,
+                    "outfit target counteracted foreign morphs");
             }
         }
         using bcn::body_family::Bit;

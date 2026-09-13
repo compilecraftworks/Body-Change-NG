@@ -135,6 +135,16 @@ namespace bcn
         bool includeElderNPCs{ false };
     };
 
+    [[nodiscard]] constexpr bool MatchesDistributionScopeFilters(const DistributionRule& rule,
+        const bool customFollower, const bool elder) noexcept
+    {
+        // These checkboxes belong only to All NPCs. A hidden previous value
+        // must not veto an explicitly selected NPC/name/faction/etc.
+        return rule.scope != DistributionScope::allNPCs ||
+            ((!customFollower || rule.includeCustomFollowers) &&
+                (!elder || rule.includeElderNPCs));
+    }
+
     [[nodiscard]] inline std::uint32_t DistributionOverlayColor(const DistributionRule& rule,
         const overlay::Area area, const std::string_view id)
     {
@@ -235,6 +245,9 @@ namespace bcn
         // Returns true if a body morph or texture-profile application was
         // accepted by the SKSE task queue for this actor.
         [[nodiscard]] bool ApplyActor(RE::Actor* a_actor) const;
+        // Provider registration can finish after the initial distribution pass.
+        // Re-evaluate only this channel; never reroll body/skin/overlays here.
+        void RefreshFutanariSelection(RE::Actor* a_actor) const;
         [[nodiscard]] std::size_t ApplyLoadedNPCs();
     private:
         [[nodiscard]] static std::filesystem::path Path();

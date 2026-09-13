@@ -3,6 +3,7 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/AppearanceEventPolicy.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FutanariSupport.h"
 #include "BodyChangeNG/FaceSkinOverrides.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
@@ -282,7 +283,7 @@ namespace bcn
             const auto female = base && base->GetSex() == RE::SEX::kFemale;
             const auto genitalSlotChanged = UsesGenitalSlot(form);
             const auto hasFutanariSkin = genitalSlotChanged && female &&
-                (tracked || skin_application::CurrentFutanariProfileId(actor).has_value());
+                (tracked || futanari_support::Available());
             const auto hasMaleGenitalSkin = genitalSlotChanged && !female &&
                 (tracked || skin_application::HasCurrentMaleGenitalSkin(actor));
             const auto needsOutfit = Settings::Get().OutfitCorrectionEnabled() ||
@@ -378,8 +379,13 @@ namespace bcn
                 // Notify before registry filtering: an addon-only rebuild can
                 // have a barrier without a general body-skin selection.
                 face_skin::OnNiNodeUpdate(actor);
+                const auto* base = actor->GetActorBase();
+                const auto mayRegisterFutanari = base && base->GetSex() == RE::SEX::kFemale &&
+                    futanari_support::Available();
                 if (!ActorRegistry::Get().Snapshot(actor) &&
-                    !skin_application::HasTrackedSelection(actor)) return RE::BSEventNotifyControl::kContinue;
+                    !skin_application::HasTrackedSelection(actor) && !mayRegisterFutanari) {
+                    return RE::BSEventNotifyControl::kContinue;
+                }
                 const auto handle = actor->GetHandle();
                 frame_tasks::Queue(actor->GetFormID(), [handle] {
                     const auto resolved = handle.get();

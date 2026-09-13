@@ -212,6 +212,13 @@ target("BodyChangeNGOutfitRefitRulesTests")
     add_files("tests/OutfitRefitRulesTests.cpp")
     add_includedirs("src")
 
+target("BodyChangeNGBodyMorphKeyTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_includedirs("src")
+    add_files("tests/BodyMorphKeyTests.cpp")
+
 target("BodyChangeNGAsyncWorkGuardTests")
     set_default(false)
     set_kind("binary")

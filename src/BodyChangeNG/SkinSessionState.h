@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace bcn
 {
@@ -59,6 +60,25 @@ namespace bcn::skin_session
     void MarkAddonReconciled(ActorId actorId, AddonTextureChannel channel,
         std::uint64_t signature);
     void ClearAddonReconciled(ActorId actorId, AddonTextureChannel channel);
+
+    [[nodiscard]] constexpr std::uint64_t FutanariSelectionSignature(
+        const std::uint64_t targetSignature, const std::string_view profileId,
+        const std::uint64_t contentHash) noexcept
+    {
+        if (targetSignature == 0U) return 0U;
+        // Same provider geometry can receive a different rule candidate (or
+        // refreshed DDS). Geometry alone is not proof that this skin is applied.
+        std::uint64_t hash = 1469598103934665603ULL;
+        const auto append = [&hash](const std::uint8_t value) {
+            hash = (hash ^ value) * 1099511628211ULL;
+        };
+        for (std::uint32_t shift{}; shift < 64U; shift += 8U) {
+            append(static_cast<std::uint8_t>(targetSignature >> shift));
+            append(static_cast<std::uint8_t>(contentHash >> shift));
+        }
+        for (const auto character : profileId) append(static_cast<std::uint8_t>(character));
+        return hash == 0U ? 1U : hash;
+    }
 
     void Reset();
     void Forget(ActorId actorId);

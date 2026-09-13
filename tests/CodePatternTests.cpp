@@ -117,7 +117,47 @@ int main()
     std::ifstream uiFile(std::filesystem::path("src") / "BodyChangeNG" /
         "UI.cpp", std::ios::binary);
     Require(uiFile.good());
-    const std::string uiSource((std::istreambuf_iterator<char>(uiFile)), {});
+    std::string uiSource((std::istreambuf_iterator<char>(uiFile)), {});
+    std::erase(uiSource, '\r');
+    const auto uiSection = [&uiSource](std::string_view begin, std::string_view end) {
+        const auto first = uiSource.find(begin);
+        const auto last = uiSource.find(end, first);
+        Require(first != std::string::npos && last != std::string::npos && last > first);
+        return std::string_view(uiSource).substr(first, last - first);
+    };
+    for (const auto section : {
+            uiSection("void DrawCatalog(", "void DrawSkinCatalog()"),
+            uiSection("void DrawSkinCatalog()", "void DrawOverlayCatalog()") }) {
+        Require(!section.contains("if (distributionSelecting) return;") &&
+            section.contains("FocusCatalogRow(row);\n                        previewRow(row);") &&
+            section.contains("FocusCatalogRow(row);\n                    confirmRow(row);") &&
+            section.contains("RollbackSingleCatalogPreview(actor, DistributionPool::"));
+        const auto confirm = section.find("const auto confirmRow =");
+        const auto distribution = section.find("if (distributionSelecting)", confirm);
+        const auto stop = section.find("return;", distribution);
+        const auto branch = section.substr(distribution, stop - distribution);
+        Require(branch.contains("SetDistributionItemSelected") && branch.contains("previewRow(row)") &&
+            !branch.contains("ApplyMode::commit") && !branch.contains("SaveManual"));
+    }
+    const auto futaSelection = uiSection("void DrawFutanariCatalog()", "void DrawPlayerTintCatalog()");
+    Require(futaSelection.contains("CommitsActorChoice(confirm, distributionSelecting)") &&
+        futaSelection.contains("FutanariSelectionMode::preview") &&
+        futaSelection.contains("FocusCatalogRow(row);\n                        applyRow(row, false);") &&
+        futaSelection.contains("FocusCatalogRow(row);\n                    applyRow(row, true);") &&
+        futaSelection.contains("const auto backendCurrentID = actor ?") &&
+        futaSelection.contains("profile.type != *actorType") &&
+        futaSelection.contains("FutanariSkinTypeMatchesActor(profile.type, actorFamily)"));
+    Require(uiSection("void CancelDistributionCatalogSelection()", "bool DistributionItemSelected(")
+        .contains("RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool)"));
+    Require(uiSection("void OpenDistributionEditorFromCatalog()", "template <class Refresh")
+        .contains("RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool)"));
+    const auto singleRollback = uiSection(
+        "void RollbackSingleCatalogPreview(RE::Actor* actor, const", "void RollbackPendingSelections(RE::Actor* actor)\n");
+    Require(singleRollback.contains("IsCurrent(g_uiSessionEpoch.load())") &&
+        singleRollback.contains("FutanariSelectionMode::restore") &&
+        singleRollback.contains("g_pendingSkin->originalId") &&
+        singleRollback.contains("QueueCancelPreview()") &&
+        !singleRollback.contains("SetManual") && !singleRollback.contains("SetDistributionItemSelected"));
     const auto placementBegin = uiSource.find("bool BeginUndimmedPopupModal(");
     const auto placementEnd = uiSource.find("void TextDisabledWrapped", placementBegin);
     Require(placementBegin != std::string::npos && placementEnd != std::string::npos);
@@ -137,12 +177,46 @@ int main()
     Require(!footer.contains("if (distributionSelecting) return;") &&
         footer.contains("!color.has_value() && !distributionColorTarget") &&
         footer.contains("g_overlayColorDistributionDraft = distributionSelecting") &&
-        footer.contains("if (!distributionSelecting)"));
+        footer.contains("g_overlayDistributionPreviewDirty[bcn::overlay::Index(colorArea)] = true") &&
+        footer.contains("SyncDistributionOverlayPreviews();"));
     const auto colorPopupBegin = uiSource.find("void DrawOverlayDetailPopup()");
     const auto colorPopupEnd = uiSource.find("void DrawTintDetailPopup()", colorPopupBegin);
     const auto colorPopup = std::string_view(uiSource).substr(colorPopupBegin, colorPopupEnd - colorPopupBegin);
     Require(colorPopup.contains("g_overlayColorDrafts.Set(") &&
-        colorPopup.contains("if (!g_overlayColorDistributionDraft &&"));
+        colorPopup.contains("bcn::overlay::QueueColor(actor, g_overlayColorArea") &&
+        colorPopup.contains("g_overlayColorDistributionDraft ? bcn::overlay::ApplyResult::queued :") &&
+        colorPopup.contains("SyncDistributionOverlayPreviews();") &&
+        !colorPopup.contains("if (!g_overlayColorDistributionDraft &&"));
+    const auto overlayRows = std::string_view(uiSource).substr(overlayBegin, overlayFooter - overlayBegin);
+    const auto overlayApplyBegin = overlayRows.find("const auto applyRow =");
+    const auto overlayApplyEnd = overlayRows.find("std::size_t preferredIndex", overlayApplyBegin);
+    Require(overlayApplyBegin != std::string::npos && overlayApplyEnd != std::string::npos);
+    const auto overlayApply = overlayRows.substr(overlayApplyBegin, overlayApplyEnd - overlayApplyBegin);
+    // Mouse and keyboard/gamepad share this handler; even an already-applied
+    // row must update focus before its early return. Default keeps clear-area
+    // ownership separate from the normal (nullopt) camera presentation.
+    Require(overlayApply.contains("g_overlayArea = row.area;") &&
+        overlayApply.contains("g_overlayCameraArea = row.entry ? std::optional{ row.area } : std::nullopt;") &&
+        overlayApply.find("g_overlayCameraArea =") < overlayApply.find("return;") &&
+        overlayApply.contains("g_overlayFocusedIds[bcn::overlay::Index(row.area)] = row.entry ? row.entry->id : std::string{};"));
+    Require(!overlayApply.contains("bcn::overlay::QueueCancelPreviews(actor)") &&
+        overlayApply.find("return;") < overlayApply.find("bcn::overlay::QueueApply(actor") &&
+        !overlayApply.contains("g_overlayColorDrafts.Clear()"));
+    const auto syncBegin = uiSource.find("void SyncDistributionOverlayPreviews()");
+    const auto syncEnd = uiSource.find("void RememberPending", syncBegin);
+    Require(syncBegin != std::string::npos && syncEnd != std::string::npos);
+    const auto sync = std::string_view(uiSource).substr(syncBegin, syncEnd - syncBegin);
+    Require(sync.contains("g_distributionSelectedOverlayIds[index]") &&
+        sync.contains("QueuePreviewSet(actor, area, std::move(checked))") &&
+        !sync.contains("QueueApply(") && !sync.contains("SetOverlayColor("));
+    Require(overlayRows.contains("applyRow(rows[navigation.focused], navigation.confirm)") &&
+        uiSource.contains("SetOverlayFocus(g_overlayCameraArea)") &&
+        !uiSource.contains("SetOverlayFocus(g_overlayArea)") &&
+        uiSource.contains("g_overlayCameraArea.reset();"));
+    Require(overlayRows.contains("const auto commit = confirm && !distributionSelecting;") &&
+        overlayRows.contains("if (commit) pending.reset();") &&
+        overlayRows.contains("applyRow(overlayRow, false);") &&
+        overlayRows.contains("SetDistributionOverlaySelected(row.area, row.entry->id,"));
     Require(uiSource.contains("rule.overlayColors[index] = g_overlayColorDrafts.CopySelection"));
     const auto closeBegin = uiSource.find("void OnClosed()");
     const auto closeEnd = uiSource.find("void Notify(", closeBegin);
@@ -237,6 +311,36 @@ int main()
         "Distribution.h", std::ios::binary);
     Require(distributionHeaderFile.good());
     const std::string distributionHeader((std::istreambuf_iterator<char>(distributionHeaderFile)), {});
+    const auto readFeatureSource = [](const char* name) {
+        std::ifstream file(std::filesystem::path("src") / "BodyChangeNG" / name, std::ios::binary);
+        Require(file.good());
+        return std::string((std::istreambuf_iterator<char>(file)), {});
+    };
+    const auto distributionSource = readFeatureSource("Distribution.cpp");
+    const auto refreshStart = distributionSource.find("void Distribution::RefreshFutanariSelection(");
+    const auto refreshEnd = distributionSource.find("bool Distribution::ApplyActor(", refreshStart);
+    Require(refreshStart != std::string::npos && refreshEnd != std::string::npos);
+    const auto futaRefresh = std::string_view(distributionSource).substr(refreshStart, refreshEnd - refreshStart);
+    Require(futaRefresh.contains("IsEligibleNPC(actor, RE::PlayerCharacter::GetSingleton())") &&
+        futaRefresh.contains("frame_tasks::HasPreview") && futaRefresh.contains("previous->futanari.manual") &&
+        futaRefresh.contains("ChooseFutanariRule") && futaRefresh.contains("SetAutomaticFutanariSkin") &&
+        !futaRefresh.contains("SetRuleSelection") && !futaRefresh.contains("QueueApply") &&
+        !futaRefresh.contains("SetManual"));
+    Require(distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\n            !bcn::MatchesDistributionScopeFilters") ||
+        distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\r\n            !bcn::MatchesDistributionScopeFilters"));
+    const auto skinApplicationSource = readFeatureSource("SkinApplication.cpp");
+    const auto reapplyStart = skinApplicationSource.find("void QueueReapplyCurrentFutanari(");
+    const auto reapplyEnd = skinApplicationSource.find("void InvalidateFutanariDetection(", reapplyStart);
+    Require(reapplyStart != std::string::npos && reapplyEnd != std::string::npos);
+    const auto futaReapply = std::string_view(skinApplicationSource).substr(reapplyStart, reapplyEnd - reapplyStart);
+    Require(futaReapply.find("RefreshFutanariSelection(actor)") < futaReapply.find("CurrentFutanariProfileId(actor)") &&
+        futaReapply.contains("FutanariSelectionSignature") && futaReapply.contains("frame_tasks::HasPreview") &&
+        !futaReapply.contains("Distribution::Get().ApplyActor"));
+    Require(skinApplicationSource.find("bcn::skin_session::FutanariSelectionSignature(") < reapplyStart);
+    const auto actorEventsSource = readFeatureSource("ActorEvents.cpp");
+    Require(actorEventsSource.contains("(tracked || futanari_support::Available())") &&
+        actorEventsSource.contains("!mayRegisterFutanari") &&
+        actorEventsSource.contains("appearance::WorkChannel::equipmentVerify"));
     Require(!distributionHeader.contains("bodyExcluded") &&
         !distributionHeader.contains("skinExcluded") &&
         !distributionHeader.contains("overlayExcluded") &&
@@ -346,7 +450,25 @@ int main()
     Require(colorBody.contains("coloringPreview") &&
         colorBody.contains("StorePreview") &&
         colorBody.contains("coloringPreview ? ApplyMode::preview") &&
-        colorBody.contains("NodeOwnedBySelection"));
+        colorBody.contains("ColorOwnedNode") &&
+        colorBody.contains("if (preview && preview->batchMode) return;") &&
+        !colorBody.contains("previewOnly") && !colorBody.contains("return QueueApply("));
+    const auto nodeColorBegin = overlaySource.find("bool ColorOwnedNode(");
+    const auto nodeColorEnd = overlaySource.find("void RemovePreviewItemValue(", nodeColorBegin);
+    Require(nodeColorBegin != std::string::npos && nodeColorEnd != std::string::npos);
+    const auto nodeColorBody = std::string_view(overlaySource).substr(nodeColorBegin, nodeColorEnd - nodeColorBegin);
+    Require(nodeColorBody.contains("NodeOwnedBySelection") &&
+        nodeColorBody.contains("OverlayStackAbi::legacyV1") &&
+        nodeColorBody.contains("SetNodeProperty") &&
+        !nodeColorBody.contains("ApplyNow(") && !nodeColorBody.contains("ActorRegistry::"));
+    const auto removePreviewEnd = overlaySource.find("bcn::overlay::ApplyResult RemoveOneNow", nodeColorEnd);
+    const auto removePreviewBody = std::string_view(overlaySource).substr(nodeColorEnd, removePreviewEnd - nodeColorEnd);
+    Require(removePreviewBody.find("preview.BorrowedSelection(value, committed)") <
+        removePreviewBody.find("RemoveExactOwnedOverlay"));
+    Require(removePreviewBody.contains("preview.VisitLive(") &&
+        overlaySource.contains("ReconcilePreviewItems(next.batch, desired") &&
+        overlaySource.contains("wanted.color, reserved)") &&
+        overlaySource.contains("auto previous = PreviewFor(actor->GetFormID(), area)"));
 
     std::ifstream presentationFile(std::filesystem::path("src") / "BodyChangeNG" /
         "MenuCharacterPresentation.cpp", std::ios::binary);
@@ -432,6 +554,17 @@ int main()
         "RaceMenuBodyMorph.cpp", std::ios::binary);
     Require(morphFile.good());
     const std::string morphSource((std::istreambuf_iterator<char>(morphFile)), {});
+    Require(!morphSource.contains("->GetBodyMorphs(") &&
+        !morphSource.contains("AbsolutePresetCorrection") &&
+        !morphSource.contains("CompatibleSliderUniverse") &&
+        !morphSource.contains("kLegacyOBodyKey") && !morphSource.contains("kLegacyOClotheKey"));
+    Require(morphSource.contains("keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs)") &&
+        morphSource.contains("bodyMorph->GetMorph(actor.get(), name, kCommittedKey)") &&
+        morphSource.contains("PreviewPresetCorrection(desired, replaced[name]) : desired"));
+    Require(morphSource.contains("OutfitRefit::Get().Evaluate(actor.get(), &preset)") &&
+        morphSource.contains("PreviewBaseCollector collector(settings.preserveOtherMorphs, replaceOutfit)") &&
+        morphSource.contains("previewOutfit.insert_or_assign") &&
+        morphSource.contains("rendered_outfit::ValidateApply(actor.get())"));
     const auto defaultPreviewBegin = morphSource.find("ApplyResult QueuePreviewDefault(");
     const auto defaultPreviewEnd = morphSource.find("void QueueReapplyCurrent(", defaultPreviewBegin);
     Require(defaultPreviewBegin != std::string::npos && defaultPreviewEnd != std::string::npos);
@@ -448,6 +581,7 @@ int main()
     Require(nativeFeatureFile.good());
     const std::string nativeFeatureSource((std::istreambuf_iterator<char>(nativeFeatureFile)), {});
     Require(!nativeFeatureSource.contains("BODY_CHANGE_NG_NATIVE_ADDON_TXST_TRIAL") &&
+        nativeFeatureSource.contains("IsReadableImageRange(base, nt->OptionalHeader.SizeOfImage, address, iat.Size") &&
         nativeFeatureSource.contains("patterns::ae") &&
         nativeFeatureSource.contains("MatchRelocatedCode(") &&
         nativeFeatureSource.contains("ResolveRuntimeLayout(version)") &&

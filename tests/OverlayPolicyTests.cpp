@@ -11,6 +11,7 @@
 #include "BodyChangeNG/FrameTaskQueue.h"
 
 #include <iostream>
+#include <set>
 #include <stdexcept>
 
 namespace
@@ -133,6 +134,41 @@ int main()
         preview.live.reset();
         Check(preview.original.size() == 1U && preview.original.front().selectedId == "old",
             "Default preview discarded the committed restoration snapshot");
+        std::vector<bcn::OverlayItemState> committedPaints{ saved };
+        PreviewState borrowedPreview{ .original = committedPaints, .live = saved };
+        for (std::uint32_t color{}; color < 10000U; ++color) {
+            borrowedPreview.live->color = color;
+            const auto* restoreColor = borrowedPreview.BorrowedSelection(committedPaints);
+            Check(restoreColor && restoreColor->color == saved.color &&
+                    restoreColor->ownedSlot == saved.ownedSlot && committedPaints.size() == 1U,
+                "batch color preview duplicated/deleted a committed slot or mutated its saved color");
+            SlotAccounting borrowedAccounting;
+            borrowedAccounting.Observe(true, true, true);
+            const auto usage = borrowedAccounting.Result(16U, committedPaints.size());
+            Check(usage.applied == 1U && usage.capacity == 16U,
+                "borrowed batch preview changed either overlay counter");
+        }
+        // Restoration follows the latest committed state, never an obsolete
+        // snapshot after reset, slot reassignment, or another confirmed edit.
+        committedPaints.front().color = 0xFFFFFFFFU;
+        Check(borrowedPreview.BorrowedSelection(committedPaints)->color == 0xFFFFFFFFU,
+            "cancel restored a stale committed color");
+        committedPaints.front().ownedSlot = 7U;
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "cancel borrowed a reassigned slot");
+        committedPaints.front() = saved;
+        committedPaints.front().texturePath = "foreign.dds";
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "cancel borrowed a foreign texture");
+        committedPaints.clear();
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "cancel resurrected a reset selection");
+        committedPaints = { saved };
+        borrowedPreview.original.clear();
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "new transient paint was mistaken for borrowed paint");
+        borrowedPreview.original = committedPaints;
+        borrowedPreview.liveDefault = true;
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "default preview borrowed an individual paint");
+        borrowedPreview.liveDefault = false;
+        borrowedPreview.live.reset();
+        Check(!borrowedPreview.BorrowedSelection(committedPaints), "pending preview borrowed a nonexistent node");
         Check(PackColor(UnpackColor(0x0044AA22U)) == 0x0044AA22U &&
                 PackColor(UnpackColor(0x8044AA22U)) == 0x8044AA22U &&
                 PackColor(UnpackColor(0xFFFFFFFFU)) == 0xFFFFFFFFU,
@@ -301,6 +337,136 @@ int main()
                 !IsFaceSourceFeature(5U, true) && !IsFaceSourceFeature(0U, false),
             "native FaceGen head rejected or paint mistaken for a face source");
 
+        // Checkbox snapshots accumulate across areas and reconcile against the
+        // same production policy, including deferred node-slot reservations.
+        {
+            using Item = bcn::OverlayItemState;
+            constexpr std::size_t areaCount = 4U, slotCount = 6U;
+            std::array<std::vector<Item>, areaCount> checked, shown;
+            std::array<std::array<std::optional<Item>, slotCount>, areaCount> nodes;
+            for (auto& area : nodes) {
+                area[0] = Item{ "foreign", "foreign.dds", 0U, 0xFF112233U };
+                area[1] = Item{ "committed", "committed.dds", 1U, 0xFF445566U };
+            }
+            const auto initialNodes = nodes;
+            const auto reconcile = [&](const std::size_t area, const std::vector<Item>& wanted) {
+                PreviewState stackOwner{ .original = { *initialNodes[area][1] }, .batchMode = true,
+                    .batch = shown[area] };
+                std::vector<Item> deferred;
+                shown[area] = ReconcilePreviewItems(shown[area], wanted,
+                    [&](const Item& removed) {
+                        const std::vector<Item> committed{ *initialNodes[area][1] };
+                        if (const auto* borrowed = stackOwner.BorrowedSelection(removed, committed)) {
+                            nodes[area][removed.ownedSlot] = *borrowed;
+                        } else {
+                            const auto& node = nodes[area][removed.ownedSlot];
+                            if (node && node->texturePath == removed.texturePath)
+                                nodes[area][removed.ownedSlot].reset();
+                        }
+                    },
+                    [&](const Item& incoming, const Item* previous,
+                        std::span<const Item> reserved) -> std::optional<Item> {
+                        std::optional<std::uint8_t> slot;
+                        if (previous) slot = previous->ownedSlot;
+                        else if (incoming.selectedId == "committed") slot = std::uint8_t{ 1U };
+                        else {
+                            for (std::uint8_t i{}; i < slotCount; ++i) {
+                                if (!nodes[area][i] && std::ranges::none_of(reserved,
+                                    [i](const auto& item) { return item.ownedSlot == i; })) {
+                                    slot = i;
+                                    break;
+                                }
+                            }
+                        }
+                        if (!slot) return {};
+                        auto item = incoming;
+                        item.ownedSlot = *slot;
+                        deferred.push_back(item);
+                        return item;
+                    });
+                // RaceMenu's writes become visible only after the entire batch
+                // has chosen slots. A free-slot scan alone would collide here.
+                std::set<std::uint8_t> slots;
+                for (const auto& item : shown[area]) Check(slots.insert(item.ownedSlot).second,
+                    "deferred checkbox previews allocated a duplicate slot");
+                for (const auto& item : deferred) nodes[area][item.ownedSlot] = item;
+                Check(nodes[area][0]->texturePath == "foreign.dds" &&
+                        nodes[area][0]->color == 0xFF112233U,
+                    "checkbox preview touched a foreign node");
+            };
+            const auto item = [](const char* id, const std::uint32_t color = 0xFFFFFFFFU) {
+                return Item{ id, std::string(id) + ".dds", kNoOwnedSlot, color };
+            };
+            checked[0] = { item("A"), item("B"), item("C") };
+            reconcile(0U, checked[0]);
+            Check(shown[0].size() == 3U, "checkboxes did not accumulate in one area");
+            const auto retainedSlot = shown[0][0].ownedSlot;
+            checked[0] = { item("A", 0x4000FF00U), item("C"), item("D") };
+            reconcile(0U, checked[0]);
+            Check(shown[0].size() == 3U && shown[0][0].ownedSlot == retainedSlot &&
+                    shown[0][0].color == 0x4000FF00U &&
+                    std::ranges::none_of(shown[0], [](const auto& x) { return x.selectedId == "B"; }),
+                "uncheck/color edit removed a retained preview or left an unchecked one");
+            checked[0] = { item("committed", 0x80445566U), item("A"), item("C"), item("D"),
+                item("E"), item("F") };
+            reconcile(0U, checked[0]);
+            Check(shown[0].size() == 5U && checked[0].size() == 6U,
+                "capacity overflow overwrote a foreign slot or lost checked candidates");
+            SlotAccounting stackUsage;
+            PreviewState stackOwner{ .original = { *initialNodes[0][1] }, .batchMode = true, .batch = shown[0] };
+            for (std::uint8_t i{}; i < slotCount; ++i) {
+                bool ownsPreview{};
+                stackOwner.VisitLive([&](const auto& x) { ownsPreview |= x.ownedSlot == i; });
+                stackUsage.Observe(nodes[0][i].has_value(), i == 1U, ownsPreview);
+            }
+            Check(stackUsage.Result(slotCount, 1U).applied == 1U &&
+                    stackUsage.Result(slotCount, 1U).capacity == 5U,
+                "checkbox stack changed committed slot counts");
+            reconcile(0U, {});
+            Check(shown[0].empty() && nodes[0][1]->color == 0xFF445566U &&
+                    std::ranges::count_if(nodes[0], [](const auto& n) { return n.has_value(); }) == 2,
+                "clear selection failed to restore the committed stack/color");
+
+            bcn::async_work::FrameTaskQueue batch;
+            const auto submit = [&](const std::size_t area) {
+                const auto snapshot = checked[area];
+                Check(batch.Submit(0x14U, static_cast<std::uint32_t>(area + 1U),
+                    [&, area, snapshot] { reconcile(area, snapshot); }), "checkbox snapshot queue failed");
+            };
+            const auto settle = [&] {
+                for (unsigned tick{}; tick < 24U; ++tick) {
+                    batch.Advance();
+                    if (auto work = batch.Take()) work->run();
+                }
+                Check(batch.Pending() == 0U, "checkbox preview queue did not settle");
+            };
+            for (std::uint32_t click{}; click < 1000U; ++click) {
+                const auto area = click % areaCount;
+                checked[area] = { item("A", click), item("B", click + 1U) };
+                if (click % 3U == 0U) checked[area].erase(checked[area].begin());
+                submit(area);
+                Check(batch.Pending() <= 4U, "checkbox edits grew the per-area work queue");
+                if (click % 7U == 0U) settle();
+            }
+            settle();
+            for (std::size_t area{}; area < areaCount; ++area) {
+                Check(shown[area].size() == checked[area].size(),
+                    "cross-area selection erased another area's checked previews");
+                for (const auto& desired : checked[area]) {
+                    const auto found = std::ranges::find(shown[area], desired.selectedId, &Item::selectedId);
+                    Check(found != shown[area].end() && found->color == desired.color,
+                        "latest checkbox/color snapshot was not rendered");
+                }
+                checked[area].clear();
+                submit(area); // close/uncheck must supersede a not-yet-run add
+            }
+            settle();
+            for (std::size_t area{}; area < areaCount; ++area) {
+                Check(shown[area].empty() && nodes[area][1]->color == 0xFF445566U &&
+                        std::ranges::count_if(nodes[area], [](const auto& n) { return n.has_value(); }) == 2,
+                    "closing distribution leaked preview nodes or changed saved paints");
+            }
+        }
         // Same lease mechanism as the runtime finalizer: cancellation cannot
         // publish the proposed choice before a provider registration occurs.
         bcn::async_work::FrameTaskQueue queue;

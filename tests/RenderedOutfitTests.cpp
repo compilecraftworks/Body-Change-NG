@@ -100,6 +100,11 @@ namespace
         if (badCount) header->requiredCount = capacity + 1U;
         return reply;
     }
+    abi::Status __cdecl GameTaskQuery(std::uint32_t id, abi::Snapshot* header,
+        abi::Item* items, std::uint32_t capacity, std::uint32_t stride)
+    {
+        return Query(id, header, items, capacity, stride);
+    }
     void Check(bool value, const char* text)
     {
         if (!value) { std::cerr << "FAIL: " << text << '\n'; std::exit(1); }
@@ -122,6 +127,16 @@ namespace
 int main()
 {
     ro::Reader reader;
+    unsigned exportLookups{};
+    Check(ro::ResolveQuery([&](const char* name) -> abi::Query {
+        ++exportLookups;
+        return std::string_view{name} == abi::kGameTaskQueryExport ? GameTaskQuery : Query;
+    }) == GameTaskQuery && exportLookups == 1U, "prefer task-phase export over cached OS-thread API");
+    Check(ro::ResolveQuery([](const char* name) -> abi::Query {
+        return std::string_view{name} == abi::kQueryExport ? Query : nullptr;
+    }) == Query, "older SFS export remains supported");
+    Check(ro::ResolveQuery([](const char*) -> abi::Query { return nullptr; }) == nullptr,
+        "missing exports do not invent an API");
     Check(reader.Read(nullptr, 0x14).route == ro::Route::worn && calls == 0, "absent API keeps worn path without query");
     Check(reader.Read(Query, 0).route == ro::Route::invalidActor && calls == 0, "actor reference zero rejected");
     Check(reader.Read(Query, 0x14).route == ro::Route::rendered, "Ready empty is rendered, never worn fallback");
@@ -225,11 +240,13 @@ int main()
     RE::actors[actor->id] = actor; RE::actors[other->id] = other;
     ro::Initialize(); // no SFSCore loaded: do not force load a plugin
     Check(!ro::Available(), "optional initialization without SFS");
-    ro::g_query.store(Query);
+    ro::g_query.store(GameTaskQuery);
     bcn::frame_tasks::inTask = false;
     const auto offThreadCalls = calls;
     Check(ro::Read(actor.get()).route == ro::Route::defer && calls == offThreadCalls,
         "consumer never queries SFS from render thread");
+    Check(!ro::ValidateApply(actor.get()) && calls == offThreadCalls,
+        "task-phase export also stays behind the apply-time game-task gate");
     bcn::frame_tasks::inTask = true;
     outfit = {registered};
     (void)ro::Read(actor.get()); (void)ro::Read(other.get());
@@ -248,6 +265,25 @@ int main()
         "scene event reevaluates once without a self scheduling loop");
     Send(actor.get(), abi::SceneChanged);
     Check(bcn::frame_tasks::jobs.empty(), "duplicate delivered scene ignored");
+
+    // A hidden/displayed switch may first publish NotReady while attachments
+    // change. Only the later Ready event may permit a fresh correction/clear.
+    for (unsigned transition{}; transition < 128U; ++transition) {
+        reply = Status::NotReady; ++revision; Send(actor.get());
+        bcn::frame_tasks::Pump();
+        Check(!ro::g_tracked.at(actor->id).planned && bcn::frame_tasks::jobs.empty(),
+            "transient unavailable state waits for publication without polling");
+        reply = Status::Ready; ++revision;
+        outfit = transition % 3U == 0U ? std::vector{actual} :
+            transition % 3U == 1U ? std::vector{registered} : std::vector<abi::Item>{};
+        Send(actor.get()); bcn::frame_tasks::Pump();
+        Check(ro::ValidateApply(actor.get()) && bcn::frame_tasks::jobs.empty(),
+            "next Ready event immediately resumes actual/displayed/hidden correction");
+        auto appliedPlan = ro::g_tracked.at(actor->id).planned;
+        ++scene;
+        Check(!ro::CanApply(appliedPlan, reader.Read(GameTaskQuery, actor->id)),
+            "new task export cannot reuse a stale apply-time scene");
+    }
     actor->preview = true;
     Check(!ro::ValidateApply(actor.get()), "body preview does not accept background outfit mutation");
     actor->preview = false;

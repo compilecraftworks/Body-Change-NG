@@ -621,9 +621,7 @@ namespace bcn
         if (!actor || !skinId || skinId->empty() || skinId->size() > kMaxStringLength) return;
         std::scoped_lock lock(lock_);
         auto& selection = EnsureLocked(actor).futanari;
-        if (selection.manual) return;
-        selection.selectedSkinId = std::move(*skinId);
-        selection.useDefault = false;
+        static_cast<void>(UpdateAutomaticFutanariSelection(selection, skinId));
     }
 
     void ActorRegistry::SetOverlayColor(RE::Actor* actor, const overlay::Area area,
@@ -671,17 +669,15 @@ namespace bcn
         auto& state = EnsureLocked(actor);
         UpdateAutomaticSelection(state.body.selection, bodyId, useDefaultBody);
         UpdateAutomaticSelection(state.skin.selection, skinId);
-        if (!state.futanari.manual && futanariSkinId && !futanariSkinId->empty() &&
-            futanariSkinId->size() <= kMaxStringLength) {
-            state.futanari.selectedSkinId = std::move(*futanariSkinId);
-            state.futanari.useDefault = false;
+        if (futanariSkinId && futanariSkinId->size() <= kMaxStringLength) {
+            static_cast<void>(UpdateAutomaticFutanariSelection(state.futanari, futanariSkinId));
         }
     }
 
     std::uint64_t ActorRegistry::BodySignature(const std::string_view bodyId, const bool useDefault)
     {
-        const auto options = useDefault ? 0U : Settings::Get().RandomizationOptions();
-        return StableStateSignature("body", bodyId, useDefault,
+        const auto options = useDefault ? 0U : Settings::Get().BodyApplicationOptions();
+        return StableStateSignature("body-keyed-v2", bodyId, useDefault,
             options, useDefault ? 0 : PresetCatalog::Get().ContentHash(bodyId));
     }
 

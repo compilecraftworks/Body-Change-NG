@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/PresetCatalog.h"
+
 #include <cstddef>
 #include <cstdint>
 #include <mutex>
@@ -34,6 +36,16 @@ namespace bcn
         [[nodiscard]] OBodyOutfitImportReport LoadOBodyRules();
         void ClearLegacyRules();
         void ProcessActor(RE::Actor* a_actor) const;
+        enum class Action { defer, clear, procedural, named };
+        struct Plan final
+        {
+            Action action{ Action::defer };
+            std::uint64_t signature{};
+            std::optional<BodyPreset> preset;
+        };
+        // Same equipment/SFS/rule decision for preview and commit. This only
+        // plans; it never writes a morph or marks persistent state applied.
+        [[nodiscard]] Plan Evaluate(RE::Actor* a_actor, const BodyPreset* a_previewBody = nullptr) const;
         // Re-evaluate every currently loaded actor immediately after the user
         // registers a new OBody/ORefit list. This makes new exclusions clear
         // an already-applied clothing layer without waiting for another equip

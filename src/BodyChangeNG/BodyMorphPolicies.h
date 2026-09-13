@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/RaceMenuBodyMorph.h"
 
 #include <cstdint>
 
@@ -54,5 +55,72 @@ namespace bcn::body_morph_policy
     {
         return !player &&
             (family == FemaleFamily::cbbe3ba || family == FemaleFamily::bhunpUnp);
+    }
+
+    // OBody NG's authored policy mixes target corrections and additive offsets.
+    // Only targets subtract the preset key; offsets must not become targets.
+    // readOwned must read BCNG's preset key, never RaceMenu's aggregate.
+    template <class ReadOwned, class Write>
+    void GenerateOutfitMorphs(const FemaleFamily family, const float weight,
+        const bool nipples, ReadOwned&& readOwned, Write&& write)
+    {
+        const auto derive = [&](const char* name, const float target) {
+            write(name, racemenu::OutfitTargetCorrection(target, readOwned(name)));
+        };
+        const auto fixed = [&](const char* name, const float low, const float high) {
+            write(name, low + (high - low) * weight);
+        };
+        if (family == FemaleFamily::cbbe3ba) {
+            derive("BreastSideShape", 0.0F);
+            derive("BreastUnderDepth", 0.0F);
+            derive("BreastCleavage", 1.0F);
+            fixed("BreastGravity2", -0.1F, -0.05F);
+            fixed("BreastTopSlope", -0.2F, -0.35F);
+            fixed("BreastsTogether", 0.3F, 0.35F);
+            fixed("Breasts", -0.05F, -0.05F);
+            fixed("BreastHeight", 0.15F, 0.15F);
+            derive("ButtDimples", 0.0F);
+            derive("ButtUnderFold", 0.0F);
+            fixed("AppleCheeks", -0.05F, -0.05F);
+            fixed("Butt", -0.05F, -0.05F);
+            derive("Clavicle_v2", 0.0F);
+            derive("NavelEven", 1.0F);
+            derive("HipCarved", 0.0F);
+            if (nipples) {
+                derive("NippleDip", 0.0F);
+                derive("NippleTip", 0.0F);
+                derive("NipplePuffy_v2", 0.0F);
+                derive("AreolaSize", -0.3F);
+                derive("NipBGone", 1.0F);
+                fixed("NippleDistance", 0.05F, 0.08F);
+                fixed("NippleDown", 0.0F, -0.1F);
+                derive("NipplePerkManga", -0.25F);
+            }
+        } else if (family == FemaleFamily::bhunpUnp) {
+            // Retain the verified BHUNP/UNP dialect, not CBBE's v2 names.
+            derive("BreastSideShape", 0.0F);
+            derive("BreastUnderDepth", 0.0F);
+            derive("BreastCleavage", 1.0F);
+            fixed("BreastGravity", -0.1F, -0.05F);
+            fixed("Breasts", -0.05F, -0.05F);
+            fixed("BreastHeight", 0.15F, 0.15F);
+            derive("ButtDimples", 0.0F);
+            derive("ButtUnderFold", 0.0F);
+            fixed("AppleCheeks", -0.05F, -0.05F);
+            fixed("Butt", -0.05F, -0.05F);
+            derive("Clavicle", 0.0F);
+            derive("NavelEven", 1.0F);
+            derive("HipCarved", 0.0F);
+            if (nipples) {
+                derive("NippleTip", 0.0F);
+                derive("NippleErection", 0.0F);
+                derive("NippleInverted", 0.0F);
+                derive("NipplePuffyAreola", 0.0F);
+                derive("NippleAreola", -0.3F);
+                fixed("NippleDistance", 0.05F, 0.08F);
+                fixed("NippleDown", 0.0F, -0.1F);
+                derive("NipplePerkManga", -0.25F);
+            }
+        }
     }
 }

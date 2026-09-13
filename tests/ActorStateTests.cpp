@@ -77,6 +77,23 @@ int main()
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::keyword) == 8U);
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::npcClass) == 9U);
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::combatStyle) == 10U);
+        for (unsigned scope = 0; scope <= 10U; ++scope) {
+            for (unsigned options = 0; options < 4U; ++options) {
+                for (unsigned traits = 0; traits < 4U; ++traits) {
+                    bcn::DistributionRule filter;
+                    filter.scope = static_cast<bcn::DistributionScope>(scope);
+                    filter.includeCustomFollowers = (options & 1U) != 0U;
+                    filter.includeElderNPCs = (options & 2U) != 0U;
+                    const auto follower = (traits & 1U) != 0U;
+                    const auto elder = (traits & 2U) != 0U;
+                    const auto expected = scope != 0U ||
+                        ((!follower || filter.includeCustomFollowers) &&
+                            (!elder || filter.includeElderNPCs));
+                    Require(bcn::MatchesDistributionScopeFilters(filter, follower, elder) == expected,
+                        "All-NPC exclusion leaked into an explicit target or ignored its checkbox");
+                }
+            }
+        }
         using bcn::StableStateSignature;
         const auto body = StableStateSignature("body", "preset-a", false, 0U);
         Require(body == StableStateSignature("body", "preset-a", false, 0U),
@@ -123,24 +140,24 @@ int main()
             "NPC distribution eligibility lost a player/disabled/3D/type safety boundary");
         Require(StableStateSignature("body", "same", false, 0, 1ULL) !=
             StableStateSignature("body", "same", false, 0, 0x100000001ULL), "upper content hash bits lost");
-        const auto omittedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.0F, 0.4F);
+        const auto omittedCorrection = bcn::racemenu::PreviewPresetCorrection(0.0F, 0.4F);
         Require(std::abs(omittedCorrection + 0.4F) < 0.00001F &&
                 std::abs(0.4F + omittedCorrection) < 0.00001F,
-            "an XML-omitted body slider did not normalize to zero");
-        const auto firstCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 0.35F);
-        const auto repeatedCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 0.35F);
+            "an XML-omitted owned body slider was not cancelled by preview");
+        const auto firstCorrection = bcn::racemenu::PreviewPresetCorrection(0.8F, 0.35F);
+        const auto repeatedCorrection = bcn::racemenu::PreviewPresetCorrection(0.8F, 0.35F);
         Require(firstCorrection == repeatedCorrection &&
                 std::abs(0.35F + repeatedCorrection - 0.8F) < 0.00001F,
-            "repeated distribution accumulated body morph values");
-        const auto previewCorrection = bcn::racemenu::AbsolutePresetCorrection(0.8F, 1.05F, 0.1F);
+            "repeated preview accumulated body morph values");
+        const auto previewCorrection = bcn::racemenu::PreviewPresetCorrection(0.8F, 0.95F);
         Require(std::abs(1.05F + previewCorrection - 0.9F) < 0.00001F,
             "preview normalization did not preserve the current outfit correction");
         const auto externalMorph = 0.35F;
-        const auto committedMorph = bcn::racemenu::AbsolutePresetCorrection(0.8F, externalMorph);
+        const auto committedMorph = 0.8F;
         const auto outfitCorrection = bcn::racemenu::OutfitTargetCorrection(
-            0.0F, externalMorph + committedMorph);
-        Require(std::abs(externalMorph + committedMorph + outfitCorrection) < 0.00001F,
-            "procedural outfit correction retained an external RaceMenu morph contribution");
+            0.0F, committedMorph);
+        Require(std::abs(externalMorph + committedMorph + outfitCorrection - externalMorph) < 0.00001F,
+            "procedural outfit correction counteracted an external RaceMenu morph contribution");
 
         bcn::ActorState state{
             .actorFormID = 0x1234U,
