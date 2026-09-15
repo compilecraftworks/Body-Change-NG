@@ -2,6 +2,19 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.4
+
+- Accept valid UBE Zeroed presets without SetSlider entries in preview, confirmation, and saved-selection restoration.
+- Apply standard UBE XML endpoints relative to their actual zeroed build defaults. Preserve omitted endpoints, negative and over-100 values, additive named Refit presets, and the existing calculations for other body families.
+- Check native body-rebuild completion directly so face refresh no longer depends solely on a NiNode notification. Preserve readiness checks, stale-request cancellation, and bounded failure handling.
+- Build missing body/hand/foot Skin TXSTs from the source NIF's actual skin materials instead of hard-coded UBE paths. Preserve full channel baselines and normal-map conventions; route distinct atlases through private per-shape alternate textures instead of forcing one shared texture set. Existing native providers remain authoritative.
+- Prepare reusable body targets independently of the first selected pack. Selecting a face-only pack first no longer leaves later body-containing packs without their native targets; face-only application still leaves the body detached.
+- Improve custom-NPC body-family detection: live skin evidence takes priority over stale form/folder labels, addon evidence is limited to race-compatible body parts, and installed UBE cannot override a confirmed conventional layout. This addresses code-level causes of missing CBBE/UNP presets without forcing every custom NPC into one family.
+- Invalidate the affected actor's cached family on existing 3D-update events and reduce routine classification logging. Reuse constructed skin graphs during pack switching; keep OBody/OClothe cleanup, morph-preservation options, partial DDS support, preview cancellation, and the co-save format.
+- Update English and Korean guides: list OBody NG, Racial Skin Variance - SPID (RSV), and RaceMenu Selector of Skins - Unique Player Character as incompatible simultaneous appearance controllers. Rename the button to Register ORefit outfit-correction rules and link the ORefit JSON Master List.
+- Remove the temporary face-preview diagnostic capture from the release source and build. No RSV/Selector compatibility hooks or automatic conflict-suppression patch are included.
+- Validation: 25 automated test executables, 4,374 actor-family evidence combinations, and 17,045 reconstruction cases using installed UBE OSP data. Reporter-specific gameplay reproduction, including the AE 1.6.1179 body/face asymmetry, is not yet verified.
+
 ## 1.2.3
 
 - Separate body-skin previews from committed application metadata and persistent player face overrides, including NPC-distribution checkboxes and Default Skin previews. Previewing the same pack no longer counts as explicit confirmation.

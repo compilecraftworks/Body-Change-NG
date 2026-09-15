@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.3"
+local version = "1.2.4"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -94,6 +94,15 @@ target("BodyChangeNGPresetCatalogTests")
     set_targetdir("build/v" .. version .. "/tests")
     set_encodings("utf-8")
     add_files("tests/PresetCatalogTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp", "src/BodyChangeNG/CatalogRoots.cpp",
+        "src/BodyChangeNG/BodyFamilyRules.cpp", "third_party/pugixml/src/pugixml.cpp")
+    add_includedirs("src", "third_party/pugixml/src")
+
+target("BodyChangeNGUbeMorphTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/UbeMorphTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp", "src/BodyChangeNG/CatalogRoots.cpp",
         "src/BodyChangeNG/BodyFamilyRules.cpp", "third_party/pugixml/src/pugixml.cpp")
     add_includedirs("src", "third_party/pugixml/src")
 

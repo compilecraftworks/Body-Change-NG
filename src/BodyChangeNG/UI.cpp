@@ -3459,7 +3459,7 @@ namespace
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
             if (playerUbe) ImGui::EndDisabled();
-            if (ImGui::Button(Text("OBody NG 의상 보정 규칙 등록", "Register OBody NG outfit-correction rules", "注册 OBody NG 服装修正规则"))) {
+            if (ImGui::Button(Text("ORefit 의상 보정 규칙 등록", "Register ORefit outfit-correction rules", "注册 ORefit 服装修正规则"))) {
                 const auto report = bcn::OutfitRefit::Get().LoadOBodyRules();
                 if (report.loaded) {
                     g_orefitRulesRegistered = true;
@@ -3476,15 +3476,15 @@ namespace
                             " loaded actors were re-evaluated.",
                             " 名已加载角色已重新判定。"));
                 } else {
-                    bcn::ui::Notify(Text("OBody NG 의상 보정 규칙을 등록하지 못했습니다.", "Could not register OBody NG outfit-correction rules.", "无法注册 OBody NG 服装修正规则。"));
+                    bcn::ui::Notify(Text("ORefit 의상 보정 규칙을 등록하지 못했습니다.", "Could not register ORefit outfit-correction rules.", "无法注册 ORefit 服装修正规则。"));
                 }
             }
             ImGui::SameLine();
             if (g_orefitRulesRegistered) {
                 ImGui::TextColored(ImVec4(.38F, .86F, .62F, 1.0F), "%s",
-                    Text("OBody NG 의상 보정 규칙 등록됨", "OBody NG outfit-correction rules registered", "OBody NG 服装修正规则已注册"));
+                    Text("ORefit 의상 보정 규칙 등록됨", "ORefit outfit-correction rules registered", "ORefit 服装修正规则已注册"));
             } else {
-                ImGui::TextDisabled("%s", Text("OBody NG 의상 보정 규칙", "OBody NG outfit-correction rules", "OBody NG 服装修正规则"));
+                ImGui::TextDisabled("%s", Text("ORefit 의상 보정 규칙", "ORefit outfit-correction rules", "ORefit 服装修正规则"));
             }
             TextDisabledWrapped(Text(
                 "파일 경로: Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json",

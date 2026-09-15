@@ -358,7 +358,7 @@ namespace
             SKSE::log::error("Body Change NG could not apply '{}': RaceMenu BodyMorph is unavailable", preset.name);
             return;
         }
-        if (preset.sliders.empty()) {
+        if (preset.sliders.empty() && !preset.UsesBuildDefaults()) {
             SKSE::log::warn("Body Change NG could not apply '{}': the preset has no sliders", preset.name);
             return;
         }
@@ -542,9 +542,9 @@ namespace
                 for (const auto& [name, value] : replaced) desiredMorphs.try_emplace(name, 0.0F);
             }
             for (const auto& [name, desired] : desiredMorphs) {
-                // Commit stores the authored/interpolated value, never a
-                // compensating delta against another mod. Only preview is a
-                // temporary delta over the unchanged persistent keys.
+                // Catalog values include body-family build-baseline conversion.
+                // Commit never compensates against another mod. Only preview
+                // is a temporary delta over unchanged persistent keys.
                 const auto value = mode == bcn::racemenu::ApplyMode::preview ?
                     bcn::racemenu::PreviewPresetCorrection(desired, replaced[name]) : desired;
                 bodyMorph->SetMorph(actor.get(), name.c_str(), key, value);
@@ -734,7 +734,14 @@ namespace bcn::racemenu
             bodyMorph->HasBodyMorphKey(reference, kLegacyCommittedKey);
         const auto hasOBody = bodyMorph->HasBodyMorphKey(reference, keys::obody) ||
             bodyMorph->HasBodyMorphKey(reference, keys::oclothe);
-        if (!expectDefault) return hasCommitted && !hasOBody;
+        if (!expectDefault) {
+            // An empty UBE Zeroed XML deliberately writes no morph key. Its
+            // saved selection is valid when the competing base keys are gone.
+            const auto id = CurrentPresetId(actor);
+            const auto preset = id ? PresetCatalog::Get().Find(*id) : std::nullopt;
+            const auto usesBuildDefaults = preset && preset->UsesBuildDefaults();
+            return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody;
+        }
         const auto hasAnyOwned = hasCommitted ||
             bodyMorph->HasBodyMorphKey(reference, kPreviewKey) ||
             bodyMorph->HasBodyMorphKey(reference, kOutfitKey) ||
@@ -782,7 +789,7 @@ namespace bcn::racemenu
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         const auto found = PresetCatalog::Get().Find(presetId, mode == ApplyMode::outfit);
         if (!found) return ApplyResult::missingPreset;
-        if (found->sliders.empty()) return ApplyResult::emptyPreset;
+        if (found->sliders.empty() && !found->UsesBuildDefaults()) return ApplyResult::emptyPreset;
         const auto* base = actor->GetActorBase();
         if (!base) return ApplyResult::invalidActor;
         const auto actorMale = base->GetSex() != RE::SEX::kFemale;

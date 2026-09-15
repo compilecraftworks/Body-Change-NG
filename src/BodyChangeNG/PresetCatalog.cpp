@@ -4,6 +4,7 @@
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/SliderName.h"
+#include "BodyChangeNG/UbeMorphPolicy.h"
 
 #include <pugixml.hpp>
 
@@ -95,12 +96,17 @@ namespace
             .male = classification.families != 0U ? classification.male :
                 (IsMaleSet(bodySet) || IsMaleSet(name) || IsMaleSet(source))
         };
-        const auto invertUnp = IsUnpSet(bodySet);
+        const auto isUbe = classification.families == bcn::body_family::Bit(bcn::body_family::Family::ube);
+        const auto invertUnp = !isUbe && IsUnpSet(bodySet);
         for (const auto slider : node.children("SetSlider")) {
             const auto sliderName = std::string_view(slider.attribute("name").as_string());
+            const auto large = std::string_view(slider.attribute("size").as_string()) == "big";
             auto value = slider.attribute("value").as_float() / 100.0F;
             if (invertUnp && IsDefaultUnpSlider(sliderName)) value = 1.0F - value;
-            AddSlider(preset, sliderName, value, std::string_view(slider.attribute("size").as_string()) == "big");
+            // Normal UBE presets are absolute BodySlide targets over a built
+            // Zeroed baseline. Named -Refit files remain additive corrections.
+            if (isUbe && !isRefit) value = bcn::ube_morph::AuthoredDelta(sliderName, value, large);
+            AddSlider(preset, sliderName, value, large);
         }
         return preset;
     }
@@ -111,6 +117,12 @@ namespace bcn
     std::string BodyPreset::PersistentId() const
     {
         return source + '\x1F' + name;
+    }
+
+    bool BodyPreset::UsesBuildDefaults() const
+    {
+        return sliders.empty() && !isRefit &&
+            body_family::PresetMask(family, male) == body_family::Bit(body_family::Family::ube);
     }
 
     PresetCatalog& PresetCatalog::Get()

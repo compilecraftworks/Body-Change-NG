@@ -376,6 +376,9 @@ namespace bcn
         if (event && event->reference) {
             if (auto* actor = event->reference->As<RE::Actor>();
                 actor && frame_tasks::Active()) {
+                // Skin geometry can be replaced below an unchanged root. Drop
+                // only this actor's classification; recompute lazily on demand.
+                body_family::ForgetActorState(actor->GetFormID());
                 // Notify before registry filtering: an addon-only rebuild can
                 // have a barrier without a general body-skin selection.
                 face_skin::OnNiNodeUpdate(actor);

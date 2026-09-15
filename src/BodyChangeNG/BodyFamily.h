@@ -87,6 +87,11 @@ namespace bcn::body_family
     // catalog can preserve its safe show-all fallback.
     [[nodiscard]] Mask ResolveSkinTextureFamily(Mask explicitFamilies, Mask installedFamilies,
         SkinTextureLayout layout, Sex sex);
+    // Actor evidence, strongest first: live UV namespace, actual skin shape
+    // names, compatible Skin Armor/ARMA metadata, installed frameworks.
+    // Never discard a known layout to retry an installed-only guess.
+    [[nodiscard]] Mask ResolveActorFamily(Mask loadedFamilies, Mask metadataFamilies,
+        Mask installedFamilies, SkinTextureLayout layout, Sex sex);
     struct PresetClassification final
     {
         Mask families{};

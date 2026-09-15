@@ -168,6 +168,28 @@ namespace bcn::body_family
         return std::popcount(installedCandidates) == 1 ? installedCandidates : 0U;
     }
 
+    Mask ResolveActorFamily(const Mask loadedFamilies, const Mask metadataFamilies,
+        const Mask installedFamilies, const SkinTextureLayout layout, const Sex sex)
+    {
+        auto allowed = NonVanillaFamilies(sex);
+        if (sex == Sex::female && layout == SkinTextureLayout::ube) {
+            return Bit(Family::ube);
+        }
+        if (sex == Sex::female && layout == SkinTextureLayout::standard) {
+            allowed &= ~Bit(Family::ube);
+        }
+        // An old UNP/UBE folder or form label must not overrule a loaded CBBE
+        // skin shape (and vice versa). Conflicting evidence at the strongest
+        // available level stays unknown rather than falling back to a guess.
+        for (const auto evidence : { loadedFamilies, metadataFamilies }) {
+            const auto candidates = evidence & allowed;
+            if (candidates != 0U) {
+                return std::popcount(candidates) == 1 ? candidates : 0U;
+            }
+        }
+        return ResolveSkinTextureFamily(0U, installedFamilies, layout, sex);
+    }
+
     PresetClassification ClassifyPreset(const std::string_view bodySet, const std::string_view presetName,
         const std::string_view sourcePath, const std::string_view groupNames)
     {

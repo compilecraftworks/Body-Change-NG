@@ -4,6 +4,8 @@
 #include "BodyChangeNG/SkinLayout.h"
 
 #include <cstdint>
+#include <optional>
+#include <span>
 #include <string_view>
 
 namespace bcn::native_skin
@@ -120,46 +122,49 @@ namespace bcn::native_skin
         return TextureRole::unmanaged;
     }
 
-    // UBE 2.0 ships its NakedTorso/Hands/Feet ARMAs without NAM0/NAM1. Their
-    // canonical NIFs instead share one !UBE\Body atlas. A per-ActorBase native
-    // skin therefore needs a synthesized TXST on those three cloned ARMAs.
-    // Restrict synthesis to the verified naked-model paths: an unknown custom
-    // UBE skin armor must fail closed rather than inherit guessed channels.
-    [[nodiscard]] constexpr bool IsCanonicalUbeNakedModel(
-        const TextureRole role, const std::string_view modelPath) noexcept
+    [[nodiscard]] constexpr TextureRole ResolveEmbeddedOrdinaryRole(const std::uint32_t slots,
+        const std::string_view node, const std::string_view diffuse, const SkinUvLayout layout) noexcept
     {
-        if (role == TextureRole::body) {
-            return skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube\\body\\") ||
-                skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube/body/");
-        }
-        if (role == TextureRole::hands) {
-            return skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube\\hands\\") ||
-                skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube/hands/");
-        }
-        if (role == TextureRole::feet) {
-            return skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube\\feet\\") ||
-                skin_geometry::ContainsIgnoreAsciiCase(modelPath, "!ube/feet/");
-        }
-        return false;
+        // Separate SOS/TNG or foreign genital/anal atlases can share a body
+        // ARMA. Being SkinTint does not make them ordinary body skin.
+        if (skin_geometry::IsMaleGenital(node, diffuse) ||
+            skin_geometry::IsKnownGenitalAnalNode(node)) return TextureRole::unmanaged;
+        return ResolveTextureRole(slots, diffuse, layout);
     }
 
-    [[nodiscard]] constexpr bool ShouldSynthesizeUbeTextureSet(
-        const SkinUvLayout layout, const TextureRole role,
-        const std::string_view modelPath, const bool hasDirectTexture,
-        const bool hasSwapList) noexcept
+    [[nodiscard]] constexpr bool IsOrdinarySkinRole(const TextureRole role) noexcept
     {
-        return layout == SkinUvLayout::ube && !hasDirectTexture && !hasSwapList &&
-            IsCanonicalUbeNakedModel(role, modelPath);
+        return role == TextureRole::body || role == TextureRole::hands || role == TextureRole::feet;
     }
 
-    [[nodiscard]] constexpr std::string_view UbeBaselineTexturePath(
-        const std::size_t shaderTextureIndex) noexcept
+    // A missing native Skin TXST can use the actual NIF baseline, independent
+    // of its folder name and of the first selected pack. Existing NAM/FLST
+    // providers remain authoritative. Do not inspect a genital-only addon.
+    [[nodiscard]] constexpr bool NeedsEmbeddedSkinBaseline(const std::uint32_t slots,
+        const SkinUvLayout layout, const bool hasDirectTexture, const bool hasSwapList) noexcept
     {
-        switch (shaderTextureIndex) {
-        case 0U: return "!UBE\\Body\\femalebody_1_d.dds";
-        case 1U: return "!UBE\\Body\\femalebody_1_n.dds";
-        case 2U: return "!UBE\\Body\\femalebody_1_sk.dds";
-        default: return {};
+        const auto supported = slot_mask::body | slot_mask::hands | slot_mask::forearms |
+            slot_mask::feet | slot_mask::calves | slot_mask::tail |
+            (layout == SkinUvLayout::ube ? slot_mask::ubeBody : 0U);
+        return !hasDirectTexture && !hasSwapList && (slots & supported) != 0U;
+    }
+
+    // Targets contain only verified skin-material observations (including an
+    // unmanaged witness when a skin shape cannot be routed). A native NAM1
+    // applies to the addon as a whole: never collapse differing skin atlases,
+    // roles, normal conventions, or 1st/3rd-person providers into one guess.
+    template <class Target>
+    [[nodiscard]] std::optional<std::size_t> SharedEmbeddedSkinBaseline(
+        const std::span<const Target> targets) noexcept
+    {
+        if (targets.empty()) return std::nullopt;
+        const auto& first = targets.front();
+        if (!IsOrdinarySkinRole(first.role) || first.paths[0].empty()) return std::nullopt;
+        for (const auto& target : targets) {
+            if (target.role != first.role || target.paths != first.paths ||
+                target.modelSpaceNormals != first.modelSpaceNormals ||
+                target.provider != first.provider) return std::nullopt;
         }
+        return 0U;
     }
 }

@@ -18,6 +18,8 @@
 #include "BodyChangeNG/SkinTargetResolver.h"
 
 #include <SKSE/Logger.h>
+#include <RE/B/BGSBodyPartDefs.h>
+#include <RE/M/MiddleHighProcessData.h>
 
 #include <cctype>
 #include <optional>
@@ -106,26 +108,19 @@ namespace
         return bcn::skin_session::IsCurrentFutanariChange(actorFormID, generation);
     }
 
-    class NodeUpdateCallback final : public RE::BSScript::IStackCallbackFunctor
+    [[nodiscard]] bool RefreshNativeActor(RE::Actor* actor)
     {
-    public:
-        void operator()(RE::BSScript::Variable) override {}
-        void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
-    };
-
-    [[nodiscard]] bool QueueNiNodeUpdate(
-        RE::BSScript::Internal::VirtualMachine& vm, RE::Actor* actor)
-    {
-        if (!actor) return false;
-        auto* policy = vm.GetObjectHandlePolicy();
-        if (!policy) return false;
-        const auto handle = policy->GetHandleForObject(
-            static_cast<RE::VMTypeID>(actor->GetFormType()), actor);
-        if (handle == policy->EmptyHandle()) return false;
-        RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(
-            new NodeUpdateCallback());
-        return vm.DispatchMethodCall(handle, "Actor", "QueueNiNodeUpdate",
-            RE::MakeFunctionArguments(), callback);
+        if (!actor || !actor->Is3DLoaded() ||
+            bcn::runtime::ResolveGameBranch(REL::Module::get().version()) ==
+                bcn::runtime::GameBranch::unsupported) return false;
+        auto* process = actor->GetActorRuntimeData().currentProcess;
+        if (!process || !process->middleHigh) return false;
+        // The SAME native function used by SKSE Actor.QueueNiNodeUpdate(false):
+        // CommonLib SE 39181 / AE 40255. Keep one facade-owned refresh route.
+        // No Papyrus object binding/VM queue is needed. This runs on the game
+        // task thread; the face barrier observes completion AFTER it returns.
+        actor->DoReset3D(false);
+        return true;
     }
 
     void RefreshNativeSkin3D(RE::Actor* actor)
@@ -134,13 +129,11 @@ namespace
         const auto handle = actor->GetHandle();
         bcn::face_skin::QueueRebuild(actor, [handle] {
             const auto actor = handle.get();
-            auto* vm = RE::BSScript::Internal::VirtualMachine::GetSingleton();
-            if (!actor || !actor->Is3DLoaded() || !vm) return false;
-            const auto queued = QueueNiNodeUpdate(*vm, actor.get());
-            if (queued) {
-            } else {
+            if (!actor) return false;
+            const auto queued = RefreshNativeActor(actor.get());
+            if (!queued) {
                 SKSE::log::warn(
-                    "Body Change NG could not queue Actor.QueueNiNodeUpdate after native Skin Armor mutation for actor {:08X}",
+                    "BCNG native skin refresh unavailable for actor {:08X}",
                     actor->GetFormID());
             }
             return queued;

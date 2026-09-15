@@ -55,7 +55,19 @@ namespace bcn::face_skin
             return true;
         }
         constexpr void Complete() noexcept { inFlight = false; }
+        constexpr void Cancel() noexcept { requested = inFlight = false; }
     };
+
+    enum class RebuildObservation { waiting, ready, failed };
+    // Called only AFTER the native rebuild call has returned. A timeout is a
+    // failure, never permission to write to a still-rebuilding face.
+    [[nodiscard]] constexpr RebuildObservation ObserveRebuild(
+        bool actorAvailable, bool enginePending, bool headReady, bool expired) noexcept
+    {
+        if (!actorAvailable) return RebuildObservation::failed;
+        if (!enginePending && headReady) return RebuildObservation::ready;
+        return expired ? RebuildObservation::failed : RebuildObservation::waiting;
+    }
 
     enum class ReapplyAction { complete, wait, applyFace };
     [[nodiscard]] constexpr ReapplyAction ResolveReapply(bool faceComplete, bool facePending) noexcept

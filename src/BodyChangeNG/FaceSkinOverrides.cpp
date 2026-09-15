@@ -13,9 +13,13 @@
 #include <RE/B/BSLightingShaderMaterialFacegen.h>
 #include <RE/N/NiSourceTexture.h>
 #include <RE/N/NiRTTI.h>
+#include <RE/B/BGSBodyPartDefs.h>
+#include <RE/M/MiddleHighProcessData.h>
+#include <RE/R/RaceSexMenu.h>
 #include <SKSE/Logger.h>
 #include <algorithm>
 #include <cctype>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
@@ -43,11 +47,14 @@ namespace
         RebuildGate rebuild;
         std::function<bool()> rebuildDispatch;
         std::uint64_t rebuildTicket{};
+        std::chrono::steady_clock::time_point rebuildStarted;
+        bool nativeReturned{}, checkQueued{}, eventTaskQueued{};
     };
     std::mutex g_mutex;
     std::unordered_map<std::uint32_t, Request> g_requests;
     std::vector<Baseline> g_baselines;
     std::uint64_t g_epoch{ 1 }, g_generation{};
+    static_assert(offsetof(RE::MiddleHighProcessData, update3DModel) == 0x311);
 
     // Read-only, game-thread observation. Never retain a geometry/material or
     // texture pointer in a request or in the serialized baseline.
@@ -114,6 +121,7 @@ namespace
         return true;
     }
     void Pump(std::uint32_t actor);
+
 
 
     class Callback final : public RE::BSScript::IStackCallbackFunctor
@@ -538,6 +546,119 @@ namespace
         }
     };
 
+    void FailRebuild(std::uint32_t actorId, std::uint64_t ticket, std::uint64_t epoch)
+    {
+        std::function<void(bool)> completion;
+        RE::ActorHandle handle;
+        {
+            std::scoped_lock lock(g_mutex);
+            const auto it = g_requests.find(actorId);
+            if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket) return;
+            auto& request = it->second;
+            request.rebuild.Cancel();
+            request.rebuildDispatch = {};
+            request.nativeReturned = request.checkQueued = false;
+            // Consume once: recovery refresh must not recursively call this
+            // same failed transaction's completion again.
+            completion = std::move(request.completion);
+            handle = request.handle;
+            request.paths = request.goodPaths;
+            request.profile = request.goodProfile;
+            request.mode = request.goodMode;
+            request.complete = false;
+            if (!request.hasSelection && !request.running) g_requests.erase(it);
+        }
+        if (auto actor = handle.get()) bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
+        if (completion) completion(false);
+        SKSE::log::warn("BCNG native skin rebuild did not complete actor={:08X}; selection not marked applied", actorId);
+    }
+
+    // Game-task-thread observation, after the native DoReset3D call returns.
+    // No geometry/material pointers are kept across callbacks. The pending
+    // byte belongs to the pinned flat SE/AE AIProcess layout, not a VR layout.
+    RebuildObservation ReadRebuildState(RE::Actor* actor, bool needsFace, bool expired)
+    {
+        if (!actor || !actor->Is3DLoaded() ||
+            bcn::runtime::ResolveGameBranch(REL::Module::get().version()) ==
+                bcn::runtime::GameBranch::unsupported) return RebuildObservation::failed;
+        auto* process = actor->GetActorRuntimeData().currentProcess;
+        if (!process || !process->middleHigh) return RebuildObservation::failed;
+        bool pending = process->middleHigh->update3DModel.underlying() != 0;
+        if (actor->IsPlayerRef()) {
+            auto* ui = RE::UI::GetSingleton();
+            pending |= ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME);
+        }
+        bool ready = !needsFace;
+        if (needsFace && !pending) {
+            auto* base = actor->GetActorBase();
+            auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
+            auto* root = actor->Get3D(false);
+            auto* object = head && root && !head->formEditorID.empty() ?
+                root->GetObjectByName(head->formEditorID) : nullptr;
+            auto* geometry = object ? object->AsGeometry() : nullptr;
+            auto* shader = geometry ? geometry->lightingShaderProp_cast() : nullptr;
+            ready = shader && shader->material &&
+                shader->material->GetType() == RE::BSShaderMaterial::Type::kLighting;
+            // Missing current DDS is not a reason to reject its replacement.
+            // The applied diffuse/normal GPU resources are verified by Batch.
+        }
+        return ObserveRebuild(true, pending, ready, expired);
+    }
+
+    void CheckRebuild(std::uint32_t actorId, std::uint64_t ticket, std::uint64_t epoch)
+    {
+        RE::ActorHandle handle;
+        bool needsFace{}, expired{};
+        {
+            std::scoped_lock lock(g_mutex);
+            const auto it = g_requests.find(actorId);
+            if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket ||
+                !it->second.rebuild.inFlight || !it->second.nativeReturned) return;
+            handle = it->second.handle;
+            needsFace = it->second.hasSelection;
+            expired = std::chrono::steady_clock::now() - it->second.rebuildStarted >= std::chrono::seconds(5);
+        }
+        const auto actor = handle.get();
+        const auto state = ReadRebuildState(actor.get(), needsFace, expired);
+        if (state == RebuildObservation::failed) { FailRebuild(actorId, ticket, epoch); return; }
+        bool schedule{};
+        {
+            std::scoped_lock lock(g_mutex);
+            const auto it = g_requests.find(actorId);
+            if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket ||
+                !it->second.rebuild.inFlight) return;
+            auto& request = it->second;
+            if (state == RebuildObservation::ready) {
+                request.rebuild.Complete();
+                request.nativeReturned = false;
+                if (!request.hasSelection && !request.rebuild.Blocked() && !request.running) {
+                    g_requests.erase(it);
+                    return;
+                }
+            } else if (!request.checkQueued) {
+                request.checkQueued = true;
+                schedule = true;
+            }
+        }
+        if (state == RebuildObservation::ready) {
+            // Synchronous native completion reaches this in the SAME game
+            // task as the body update; no VM or extra input-frame round trip.
+            Pump(actorId);
+        } else if (schedule) {
+            // At most one check per rebuild, paced by external input ticks.
+            // Do not re-enqueue directly in SKSE's live-draining task FIFO.
+            if (!bcn::frame_tasks::Queue(0, [actorId, ticket, epoch] {
+                    {
+                        std::scoped_lock lock(g_mutex);
+                        const auto it = g_requests.find(actorId);
+                        if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket) return;
+                        it->second.checkQueued = false;
+                    }
+                    CheckRebuild(actorId, ticket, epoch);
+                }, 1U, bcn::appearance::WorkChannel::none, true)) FailRebuild(actorId, ticket, epoch);
+        }
+    }
+
     void Pump(std::uint32_t actorId)
     {
         auto batch = std::make_shared<Batch>();
@@ -551,6 +672,8 @@ namespace
             if (request.rebuild.Begin(false, static_cast<bool>(request.rebuildDispatch))) {
                 rebuild = std::move(request.rebuildDispatch);
                 rebuildTicket = request.rebuildTicket = ++g_generation;
+                request.rebuildStarted = std::chrono::steady_clock::now();
+                request.nativeReturned = request.checkQueued = false;
                 epoch = g_epoch;
             } else {
                 if (!request.rebuild.CanApply(request.running, request.hasSelection, request.complete)) return;
@@ -574,20 +697,15 @@ namespace
         }
         if (rebuild) {
             if (!rebuild()) {
-                std::function<void(bool)> completion;
-                RE::ActorHandle handle;
+                FailRebuild(actorId, rebuildTicket, epoch);
+            } else {
                 {
                     std::scoped_lock lock(g_mutex);
                     const auto it = g_requests.find(actorId);
                     if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != rebuildTicket) return;
-                    it->second.rebuild.Complete();
-                    completion = it->second.completion;
-                    handle = it->second.handle;
-                    if (!it->second.hasSelection && !it->second.rebuild.Blocked()) g_requests.erase(it);
+                    it->second.nativeReturned = true;
                 }
-                if (auto actor = handle.get()) bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
-                if (completion) completion(false);
-                SKSE::log::warn("BCNG face rebuild dispatch failed actor={:08X}; face not marked applied", actorId);
+                CheckRebuild(actorId, rebuildTicket, epoch);
             }
             return;
         }
@@ -682,7 +800,6 @@ namespace bcn::face_skin
             const auto it = g_requests.find(id);
             if (it == g_requests.end()) return;
             auto& request = it->second;
-            request.rebuild.Complete();
             request.generation = ++g_generation;
             request.complete = false;
             epoch = g_epoch;
@@ -690,18 +807,34 @@ namespace bcn::face_skin
                 g_requests.erase(it);
                 return;
             }
+            // DoReset3D can send this event before its native call returns.
+            // It invalidates the face, but must not prematurely open the gate.
+            if (request.eventTaskQueued) return;
+            request.eventTaskQueued = true;
         }
         // This event can arrive outside the game thread, so never touch the
-        // rebuilt head here. Queue directly onto SKSE's game task queue. Going
-        // back through BCNG's input-tick actor queue added a quiet lease tick
-        // after the already-completed rebuild, which was the remaining visible
-        // gap between body and face. Generation/epoch checks still collapse
-        // repeated NiNode events and newer skin selections supersede this task.
+        // rebuilt head here. Coalesce notifications onto the game task queue.
+        // BCNG's own native-return path may already have completed the face
+        // before this runs; Pump then observes complete and does nothing.
         if (auto* tasks = SKSE::GetTaskInterface()) {
             tasks->AddTask([id, epoch] {
-                { std::scoped_lock lock(g_mutex); if (g_epoch != epoch) return; }
-                Pump(id);
+                std::uint64_t ticket{};
+                bool rebuilding{};
+                {
+                    std::scoped_lock lock(g_mutex);
+                    const auto it = g_requests.find(id);
+                    if (g_epoch != epoch || it == g_requests.end()) return;
+                    it->second.eventTaskQueued = false;
+                    rebuilding = it->second.rebuild.inFlight;
+                    ticket = it->second.rebuildTicket;
+                }
+                if (rebuilding) CheckRebuild(id, ticket, epoch);
+                else Pump(id);
             });
+        } else {
+            std::scoped_lock lock(g_mutex);
+            const auto it = g_requests.find(id);
+            if (g_epoch == epoch && it != g_requests.end()) it->second.eventTaskQueued = false;
         }
     }
     void Reset(bool preserveBaselines)

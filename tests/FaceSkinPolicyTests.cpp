@@ -117,6 +117,23 @@ try {
     Check(otherActor.CanApply(false, true, false), "player barrier blocked a separate NPC");
     gate = {}; // Session reset/forget discards the gate, not the serialized selection.
     Check(gate.CanApply(false, true, false), "session reset retained a dead rebuild barrier");
+    // Native completion does not depend on delivery of a NiNode event.
+    Check(ObserveRebuild(true, false, true, false) == RebuildObservation::ready,
+        "eventless synchronous rebuild never releases the face");
+    Check(ObserveRebuild(true, true, true, false) == RebuildObservation::waiting,
+        "old valid head bypassed pending engine rebuild");
+    Check(ObserveRebuild(true, false, false, false) == RebuildObservation::waiting,
+        "head creation was not awaited");
+    Check(ObserveRebuild(true, true, true, true) == RebuildObservation::failed &&
+        ObserveRebuild(true, false, false, true) == RebuildObservation::failed,
+        "timeout was mistaken for safe face application");
+    Check(ObserveRebuild(false, false, true, false) == RebuildObservation::failed,
+        "unloaded actor accepted as a completed rebuild");
+    gate.Request();
+    Check(gate.Begin(false, true), "rebuild failure test did not start");
+    gate.Request();
+    gate.Cancel();
+    Check(!gate.Blocked(), "failed rebuild retained an infinite waiting gate");
     Check(OwnsActiveBatch(1, 1, 10, 10), "active batch rejected");
     Check(!OwnsActiveBatch(1, 2, 10, 10), "callback from previous load modified new session");
     Check(!OwnsActiveBatch(1, 1, 10, 11), "detached actor callback ended newly attached actor batch");

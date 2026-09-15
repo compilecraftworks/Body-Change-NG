@@ -61,9 +61,9 @@ int main()
                     ImGui::Indent();
                     ImGui::Checkbox("Correct nipples while clothed", &enabled);
                     ImGui::Unindent();
-                    ImGui::Button("Register OBody NG outfit-correction rules");
+                    ImGui::Button("Register ORefit outfit-correction rules");
                     ImGui::SameLine();
-                    ImGui::TextDisabled("OBody NG outfit-correction rules");
+                    ImGui::TextDisabled("ORefit outfit-correction rules");
                     ImGui::TextWrapped("File path: Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json");
                     ImGui::Separator();
                     ImGui::Checkbox("Randomize NPC nipple shape", &enabled);

@@ -31,6 +31,9 @@ namespace bcn
 
         [[nodiscard]] std::string PersistentId() const;
         [[nodiscard]] std::uint64_t ContentHash() const;
+        // UBE distributes a valid Zeroed preset with no SetSlider entries.
+        // It selects the built baseline, not an invalid/unknown preset.
+        [[nodiscard]] bool UsesBuildDefaults() const;
     };
 
     class PresetCatalog final

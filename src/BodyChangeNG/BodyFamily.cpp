@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <bit>
 #include <format>
 #include <mutex>
 #include <optional>
@@ -67,13 +66,18 @@ namespace
         if (const auto* name = form->GetName(); name && name[0] != '\0') AppendSignal(target, name);
     }
 
-    [[nodiscard]] Mask SelectSingleExplicitFamily(const Mask detected, const Sex sex)
+    [[nodiscard]] bool IsBodyFamilyAddon(const RE::TESObjectARMA* addon, RE::TESRace* race)
     {
-        const auto candidates = detected & bcn::body_family::NonVanillaFamilies(sex);
-        return std::popcount(candidates) == 1 ? candidates : 0U;
+        using Slot = RE::BGSBipedObjectForm::BipedObjectSlot;
+        constexpr auto bodySlots = static_cast<std::uint32_t>(Slot::kBody) |
+            static_cast<std::uint32_t>(Slot::kHands) | static_cast<std::uint32_t>(Slot::kFeet) |
+            static_cast<std::uint32_t>(Slot::kModLegRight);  // UBE body slot 53
+        return addon && race &&
+            (addon->GetSlotMask().underlying() & bodySlots) != 0U && addon->IsValidRace(race);
     }
 
-    [[nodiscard]] Mask DetectSkinMetadata(const RE::TESObjectARMO* skin, const Sex sex)
+    [[nodiscard]] Mask DetectSkinMetadata(const RE::TESObjectARMO* skin,
+        RE::TESRace* race, const Sex sex)
     {
         if (!skin) return 0U;
         std::string common;
@@ -83,7 +87,9 @@ namespace
         std::string signals = common;
         const auto index = sex == Sex::female ? 1U : 0U;
         for (const auto* addon : skin->armorAddons) {
-            if (!addon) continue;
+            // Skin Armor can contain many races and a separate genital addon.
+            // Their unrelated model labels cannot classify this actor's body.
+            if (!IsBodyFamilyAddon(addon, race)) continue;
             AppendFormSignals(signals, addon);
             const auto appendModel = [&](const RE::TESModelTextureSwap& model) {
                 if (const auto* path = model.GetModel(); path && path[0] != '\0') AppendSignal(signals, path);
@@ -91,7 +97,7 @@ namespace
             appendModel(addon->bipedModels[index]);
             appendModel(addon->bipedModel1stPersons[index]);
         }
-        return SelectSingleExplicitFamily(bcn::body_family::DetectText(signals, sex), sex);
+        return bcn::body_family::DetectText(signals, sex);
     }
 
     struct LoadedShape final
@@ -132,6 +138,7 @@ namespace
     struct LoadedSkinEvidence final
     {
         Mask explicitFamilies{};
+        Mask textureFamilies{};
         bool hasStandardTexture{};
         bool hasUbeTexture{};
         bool hasStandardHeadTexture{};
@@ -152,9 +159,10 @@ namespace
         if (!actor || !actor->Is3DLoaded()) return evidence;
         std::vector<std::string> formTokens;
         if (skin) {
-            formTokens.push_back(std::format("{:08X}", skin->GetFormID()));
             for (const auto* addon : skin->armorAddons) {
-                if (addon) formTokens.push_back(std::format("{:08X}", addon->GetFormID()));
+                if (IsBodyFamilyAddon(addon, actor->GetRace())) {
+                    formTokens.push_back(std::format("{:08X}", addon->GetFormID()));
+                }
             }
         }
         std::unordered_set<RE::NiAVObject*> visited;
@@ -187,12 +195,16 @@ namespace
             }
             // Family-looking names on unrelated hair, jewelry, and weapons
             // must not classify the actor. Restrict explicit mesh-name signals
-            // to the naked Skin Armor/Addons when their FormIDs are present in
+            // to race-compatible body/hand/foot addons whose FormIDs occur in
             // the scene path; texture namespaces above remain safe to inspect
             // globally, including UBE's always-loaded head.
             if (belongsToSkin) {
+                // Scene paths contain arbitrary hexadecimal FormIDs (which
+                // can include "3BA"). Texture folders can keep obsolete body
+                // labels after a conversion. Neither is a live shape name.
                 evidence.explicitFamilies |= bcn::body_family::DetectText(
-                    shape.name + ' ' + shape.diffuse + ' ' + shape.scenePath, sex);
+                    shape.name, sex);
+                evidence.textureFamilies |= bcn::body_family::DetectText(shape.diffuse, sex);
             }
         }
         return evidence;
@@ -276,22 +288,17 @@ namespace bcn::body_family
         }
 
         const auto installedFamilies = DetectInstalledFamilies(sex);
-        auto family = DetectSkinMetadata(skin, sex);
+        const auto metadata = DetectSkinMetadata(skin, actor->GetRace(), sex);
         const auto loaded = DetectLoadedSkin(actor, skin, sex);
-        if (family == 0U) {
-            family = ResolveSkinTextureFamily(
-                loaded.explicitFamilies, installedFamilies, loaded.Layout(), sex);
-        }
-        if (family == 0U) {
-            family = ResolveSkinTextureFamily(0U, installedFamilies, SkinTextureLayout::unknown, sex);
-        }
+        const auto family = ResolveActorFamily(loaded.explicitFamilies,
+            metadata | loaded.textureFamilies, installedFamilies, loaded.Layout(), sex);
         // Still unknown or conflicting means no filter.  Never guess Vanilla
         // and accidentally hide the selected actor's usable presets.
         {
             std::scoped_lock lock(g_cacheLock);
             g_actorCache.insert_or_assign(actor->GetFormID(), ActorCacheEntry{ signature, family });
         }
-        SKSE::log::info(
+        SKSE::log::debug(
             "Body family actor={:08X} skin={:08X} mask={} installed={} loaded-explicit={} texture-layout={}",
             actor->GetFormID(), signature.skinFormID, family, installedFamilies, loaded.explicitFamilies,
             loaded.Layout() == SkinTextureLayout::ube ? "UBE" :

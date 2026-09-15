@@ -603,6 +603,21 @@ int main()
         "NativeSkinBackend.cpp", std::ios::binary);
     Require(nativeSkinFile.good());
     const std::string nativeSkinSource((std::istreambuf_iterator<char>(nativeSkinFile)), {});
+    Require(nativeSkinSource.contains("SharedEmbeddedSkinBaseline(") &&
+        nativeSkinSource.contains("NeedsEmbeddedSkinBaseline(") &&
+        nativeSkinSource.contains("sourceAddon->IsValidRace(race)") &&
+        nativeSkinSource.contains("const auto firstPersonReady = inspectModel(") &&
+        nativeSkinSource.contains("target.modelSpaceNormals") &&
+        nativeSkinSource.contains("CloneTexture(target.provider,") &&
+        nativeSkinSource.contains("SetModelAlternateTextures(*model, pending)") &&
+        !nativeSkinSource.contains("synthesizeMissingUbeTexture") &&
+        !nativeSkinSource.contains("CreateUbeTexture(") &&
+        !nativeSkinSource.contains("UbeBaselineTexturePath("));
+    const auto instanceBegin = nativeSkinSource.find("std::optional<BaseInstance> BuildInstance(");
+    const auto instanceEnd = nativeSkinSource.find("bool RequestStillCurrent(", instanceBegin);
+    Require(instanceBegin != std::string::npos && instanceEnd != std::string::npos);
+    const auto instanceSource = std::string_view(nativeSkinSource).substr(instanceBegin, instanceEnd - instanceBegin);
+    Require(!instanceSource.contains("profile") && !instanceSource.contains("plan.body"));
     Require(nativeSkinSource.contains("RecordsApplication(mode)") &&
         nativeSkinSource.contains("instance.desiredMode != mode") &&
         nativeSkinSource.contains("instance.desiredContentHash != profile->contentHash") &&
@@ -648,7 +663,8 @@ int main()
         !defaultPreviewBody.contains("ClearReplacedBody"));
     Require(morphSource.contains("keys::ClearReplacedBody(*bodyMorph, resolved.get())") &&
         morphSource.contains("keys::ClearReplacedBody(*morph, resolved.get())") &&
-        morphSource.contains("return hasCommitted && !hasOBody") &&
+        morphSource.contains("preset && preset->UsesBuildDefaults()") &&
+        morphSource.contains("return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody") &&
         morphSource.contains("return !hasAnyOwned && !hasOBody"));
     Require(!defaultPreviewBody.contains(
         "ClearBodyMorphKeys(resolved.get(), kCommittedKey)"));
@@ -677,5 +693,17 @@ int main()
         !profilesSource.contains("AuditProfileDds") &&
         !morphSource.contains("LogBodyTriState") &&
         !faceBatchSource.contains("FaceGPU"));
+    std::ifstream familyFile(std::filesystem::path("src") / "BodyChangeNG" / "BodyFamily.cpp",
+        std::ios::binary);
+    Require(familyFile.good());
+    const std::string familySource((std::istreambuf_iterator<char>(familyFile)), {});
+    Require(familySource.contains("ResolveActorFamily(loaded.explicitFamilies,") &&
+        !familySource.contains("ResolveSkinTextureFamily(0U, installedFamilies, SkinTextureLayout::unknown"));
+    Require(familySource.contains("addon->IsValidRace(race)") &&
+        familySource.contains("Slot::kBody") && familySource.contains("Slot::kHands") &&
+        familySource.contains("Slot::kFeet") &&
+        familySource.contains("IsBodyFamilyAddon(addon, actor->GetRace())"));
+    Require(!familySource.contains("shape.name + ' ' + shape.diffuse") &&
+        !familySource.contains("BSModelDB::Demand") && !familySource.contains("recursive_directory_iterator"));
     std::cout<<"CodePatternTests passed: callback, PE bounds, face queue, and preview lifecycle\n";
 }

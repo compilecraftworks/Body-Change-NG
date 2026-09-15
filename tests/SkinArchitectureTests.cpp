@@ -370,29 +370,87 @@ int main()
                 NativeSlot::ubeBody, "unknown.dds",
                 SkinUvLayout::cbbe) == NativeRole::unmanaged,
             "UBE slot 53 escaped its explicit layout boundary")) return 1;
-    if (!Require(bcn::native_skin::ShouldSynthesizeUbeTextureSet(
-            SkinUvLayout::ube, NativeRole::body,
-            "!UBE\\Body\\femalebody_tangent_1.nif", false, false) &&
-            bcn::native_skin::ShouldSynthesizeUbeTextureSet(
-                SkinUvLayout::ube, NativeRole::hands,
-                "!UBE/Hands/femalehands_tangent_1.nif", false, false) &&
-            bcn::native_skin::ShouldSynthesizeUbeTextureSet(
-                SkinUvLayout::ube, NativeRole::feet,
-                "!UBE\\Feet\\femalefeet_tangent_1.nif", false, false) &&
-            !bcn::native_skin::ShouldSynthesizeUbeTextureSet(
-                SkinUvLayout::ube, NativeRole::body,
-                "Custom\\Body\\body.nif", false, false) &&
-            !bcn::native_skin::ShouldSynthesizeUbeTextureSet(
-                SkinUvLayout::ube, NativeRole::body,
-                "!UBE\\Body\\femalebody_tangent_1.nif", true, false) &&
-            bcn::native_skin::UbeBaselineTexturePath(0U) ==
-                "!UBE\\Body\\femalebody_1_d.dds" &&
-            bcn::native_skin::UbeBaselineTexturePath(1U) ==
-                "!UBE\\Body\\femalebody_1_n.dds" &&
-            bcn::native_skin::UbeBaselineTexturePath(2U) ==
-                "!UBE\\Body\\femalebody_1_sk.dds" &&
-            bcn::native_skin::UbeBaselineTexturePath(3U).empty(),
-            "UBE's missing NAM1 synthesis escaped the verified naked graph or guessed an undeclared channel")) return 1;
+    {
+        using bcn::native_skin::NeedsEmbeddedSkinBaseline;
+        using bcn::native_skin::ResolveEmbeddedOrdinaryRole;
+        if (!Require(ResolveEmbeddedOrdinaryRole(NativeSlot::body, "3BA_Anus", "foreign-anus.dds",
+                    SkinUvLayout::cbbe) == NativeRole::unmanaged &&
+                ResolveEmbeddedOrdinaryRole(NativeSlot::body, "Penis", "!UBE/Body/malebody_1_d.dds",
+                    SkinUvLayout::ube) == NativeRole::unmanaged &&
+                ResolveEmbeddedOrdinaryRole(NativeSlot::body, "Schlong", "custom.dds",
+                    SkinUvLayout::maleVanilla) == NativeRole::unmanaged &&
+                ResolveEmbeddedOrdinaryRole(NativeSlot::body, "BaseShape", "custom.dds",
+                    SkinUvLayout::cbbe) == NativeRole::body,
+                "embedded ordinary skin discovery must not capture foreign genital/anal shapes")) return 1;
+        for (const auto layout : { SkinUvLayout::ube, SkinUvLayout::cbbe,
+                 SkinUvLayout::unp, SkinUvLayout::maleVanilla, SkinUvLayout::himbo,
+                 SkinUvLayout::sam, SkinUvLayout::argonian, SkinUvLayout::khajiit,
+                 SkinUvLayout::femaleVanilla, SkinUvLayout::unknown }) {
+            for (const auto slots : { NativeSlot::body, NativeSlot::hands, NativeSlot::feet }) {
+                if (!Require(NeedsEmbeddedSkinBaseline(slots, layout, false, false) &&
+                        !NeedsEmbeddedSkinBaseline(slots, layout, true, false) &&
+                        !NeedsEmbeddedSkinBaseline(slots, layout, false, true),
+                        "NIF baseline must support each body family without replacing native providers")) return 1;
+            }
+            if (!Require(!NeedsEmbeddedSkinBaseline(1U << 22U, layout, false, false),
+                    "genital-only addon must not receive ordinary body textures")) return 1;
+        }
+        if (!Require(NeedsEmbeddedSkinBaseline(NativeSlot::ubeBody, SkinUvLayout::ube, false, false) &&
+                !NeedsEmbeddedSkinBaseline(NativeSlot::ubeBody, SkinUvLayout::cbbe, false, false),
+                "UBE slot 53 remains layout-specific")) return 1;
+        struct Target {
+            NativeRole role;
+            std::array<std::string, 8> paths;
+            bool modelSpaceNormals{};
+            const void* provider{};
+        };
+        const auto baseline = [](std::span<const Target> targets) {
+            return bcn::native_skin::SharedEmbeddedSkinBaseline(targets);
+        };
+        // Actual installed UBE tangent body / hand / foot maps; paths are
+        // evidence, not a whitelist. Custom folders and other maps survive.
+        const std::array<std::string, 8> ubePaths{
+            "!UBE\\Body\\femalebody_1_d.dds", "!UBE\\Body\\femalebody_1_n.dds",
+            "!UBE\\Body\\femalebody_1_sk.dds" };
+        for (const auto role : { NativeRole::body, NativeRole::hands, NativeRole::feet }) {
+            const std::array targets{ Target{ role, ubePaths } };
+            if (!Require(baseline(targets) == 0U, "real UBE embedded baseline must materialize")) return 1;
+        }
+        std::array targets{ Target{ NativeRole::body, ubePaths }, Target{ NativeRole::body, ubePaths } };
+        if (!Require(baseline(targets) == 0U, "matching 1st/3rd skin baselines must share one native TXST")) return 1;
+        for (std::size_t channel{}; channel < 8U; ++channel) {
+            auto different = targets;
+            different[1].paths[channel] = "custom-channel.dds";
+            if (!Require(!baseline(different), "differing maps need per-shape routing, not a shared guessed baseline")) return 1;
+        }
+        targets[1].modelSpaceNormals = true;
+        if (!Require(!baseline(targets), "tangent and model-space normal baselines must stay separate")) return 1;
+        targets[1] = targets[0];
+        targets[1].provider = &targets;
+        if (!Require(!baseline(targets), "distinct native MODS providers must keep their individual form flags")) return 1;
+        targets[1] = targets[0];
+        targets[1].role = NativeRole::hands;
+        if (!Require(!baseline(targets), "body and hand atlases must not collapse into one role")) return 1;
+        targets[1].role = NativeRole::unmanaged;
+        if (!Require(!baseline(targets), "unroutable skin witness must prevent addon-wide texture replacement")) return 1;
+        targets[0].paths[0].clear();
+        if (!Require(!baseline(std::span<const Target>(targets.data(), 1U)) && !baseline({}),
+                "empty or unreadable NIF evidence must not invent a baseline")) return 1;
+        const std::array custom{ Target{ NativeRole::body, {
+            "My NPC\\CustomDiffuse.dds", "My NPC\\CustomNormal.dds", "", "", "", "", "", "My NPC\\Shine.dds" }, true } };
+        if (!Require(baseline(custom) == 0U && custom[0].paths[7] == "My NPC\\Shine.dds",
+                "custom NIF baseline must preserve full channel paths, not canonical UBE guesses")) return 1;
+
+        // Graph capability belongs to the source, not the first chosen pack.
+        // A face-only apply leaves the body detached; a later body pack can
+        // reuse the prepared target. This is a policy check, not a game test.
+        const auto available = bcn::native_skin::RoleBit(custom[0].role);
+        const auto faceOnly = bcn::native_skin::RequiredRoleMask(false, false, false, false, false, false);
+        const auto withBody = bcn::native_skin::RequiredRoleMask(false, true, false, false, false, false);
+        if (!Require(bcn::native_skin::ApplicableRoleMask(available, faceOnly) == 0U &&
+                bcn::native_skin::ApplicableRoleMask(available, withBody) != 0U,
+                "face-only then body selection must preserve later graph capability")) return 1;
+    }
     constexpr auto multiPartMask = NativeSlot::body | NativeSlot::hands | NativeSlot::feet;
     if (!Require(bcn::native_skin::ResolveTextureRole(
             multiPartMask, "femalehands_1.dds", SkinUvLayout::cbbe) == NativeRole::hands &&

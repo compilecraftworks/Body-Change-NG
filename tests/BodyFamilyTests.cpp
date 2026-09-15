@@ -1,5 +1,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 
+#include <array>
+#include <bit>
 #include <iostream>
 #include <stdexcept>
 
@@ -67,6 +69,71 @@ int main()
         Require(ResolveSkinTextureFamily(0U, installedMixed | Bit(Family::unp),
                 SkinTextureLayout::standard, Sex::female) == 0U,
             "ambiguous standard female frameworks must preserve fallback");
+        const auto cbbeFamily = Bit(Family::cbbe);
+        const auto unpFamily = Bit(Family::unp);
+        const auto ubeFamily = Bit(Family::ube);
+        const auto standard = SkinTextureLayout::standard;
+        const auto unknown = SkinTextureLayout::unknown;
+        const auto eilaMetadata = DetectText(
+            "Immersive Wenches.esp IW_SkinNaked_Wench Skyrim.esm NakedTorso "
+            "Actors\\Character\\Character Assets\\FemaleBody_1.nif", Sex::female);
+        Require(eilaMetadata == 0U, "Eila's shared vanilla model path is not an independent family");
+        const auto eilaFamily = ResolveActorFamily(DetectText("3BA", Sex::female),
+            eilaMetadata, installedMixed, standard, Sex::female);
+        Require(eilaFamily == cbbeFamily && Matches(cbbeFamily, eilaFamily) &&
+                !Matches(ubeFamily, eilaFamily), "Eila CBBE shape remains visible beside installed UBE");
+        Require(ResolveActorFamily(0U, eilaMetadata, installedMixed, standard, Sex::female) == cbbeFamily,
+            "standard Eila path retains installed CBBE fallback while body is covered");
+        Require(ResolveActorFamily(0U, 0U, ubeFamily, standard, Sex::female) == 0U,
+            "known standard layout must not be retried as unknown and guessed UBE");
+        Require(ResolveActorFamily(0U, ubeFamily, ubeFamily, standard, Sex::female) == 0U,
+            "obsolete UBE metadata must not defeat a known standard texture layout");
+        Require(ResolveActorFamily(cbbeFamily, unpFamily, cbbeFamily | unpFamily,
+                standard, Sex::female) == cbbeFamily, "actual CBBE shape beats obsolete UNP form/folder label");
+        Require(ResolveActorFamily(cbbeFamily, unpFamily | ubeFamily, installedMixed,
+                standard, Sex::female) == cbbeFamily, "weak texture/form labels cannot pollute CBBE shape evidence");
+        Require(ResolveActorFamily(unpFamily, cbbeFamily, cbbeFamily | unpFamily,
+                standard, Sex::female) == unpFamily, "actual BHUNP shape beats obsolete CBBE label");
+        Require(ResolveActorFamily(ubeFamily, cbbeFamily, installedMixed,
+                unknown, Sex::female) == ubeFamily, "actual UBE shape survives unknown/custom texture namespace");
+        Require(ResolveActorFamily(cbbeFamily, unpFamily, installedMixed,
+                SkinTextureLayout::ube, Sex::female) == ubeFamily, "verified live UBE atlas remains authoritative");
+        Require(ResolveActorFamily(0U, unpFamily, cbbeFamily,
+                unknown, Sex::female) == unpFamily, "independent NPC metadata survives absent live geometry");
+        Require(ResolveActorFamily(cbbeFamily | unpFamily, cbbeFamily, cbbeFamily,
+                standard, Sex::female) == 0U, "conflicting live families must not be forced by weaker hints");
+        Require(ResolveActorFamily(0U, cbbeFamily | unpFamily, cbbeFamily,
+                standard, Sex::female) == 0U, "conflicting metadata retains no-filter fallback");
+        Require(ResolveActorFamily(0U, 0U, 0U, unknown, Sex::female) == 0U &&
+                Matches(cbbeFamily, 0U) && Matches(unpFamily, 0U), "unknown is never a hard preset rejection");
+        Require(ResolveActorFamily(Bit(Family::himbo), Bit(Family::sam),
+                Bit(Family::himbo) | Bit(Family::sam), standard, Sex::male) == Bit(Family::himbo),
+            "HIMBO live skin wins over obsolete SAM labels");
+        Require(ResolveActorFamily(Bit(Family::sam), Bit(Family::himbo),
+                Bit(Family::himbo), unknown, Sex::male) == Bit(Family::sam), "SAM live skin remains supported");
+
+        constexpr std::array<Mask, 9> evidenceMasks{ 0U, Bit(Family::cbbe), Bit(Family::unp),
+            Bit(Family::ube), Bit(Family::cbbe) | Bit(Family::unp),
+            Bit(Family::cbbe) | Bit(Family::ube), Bit(Family::himbo), Bit(Family::sam), 0xFFFFFFFFU };
+        for (const auto sex : { Sex::female, Sex::male }) {
+            for (const auto layout : { unknown, standard, SkinTextureLayout::ube }) {
+                for (const auto live : evidenceMasks) {
+                    for (const auto metadata : evidenceMasks) {
+                        for (const auto installed : evidenceMasks) {
+                            const auto family = ResolveActorFamily(live, metadata, installed, layout, sex);
+                            Require((family & ~NonVanillaFamilies(sex)) == 0U && std::popcount(family) <= 1,
+                                "actor family must remain a single sex-compatible family or unknown");
+                            if (sex == Sex::female && layout == standard) {
+                                Require((family & ubeFamily) == 0U, "standard layout invariant across evidence combinations");
+                            }
+                            if (sex == Sex::female && layout == SkinTextureLayout::ube) {
+                                Require(family == ubeFamily, "UBE atlas invariant across evidence combinations");
+                            }
+                        }
+                    }
+                }
+            }
+        }
         std::cout << "BodyFamilyTests passed\n";
         return 0;
     } catch (const std::exception& error) {

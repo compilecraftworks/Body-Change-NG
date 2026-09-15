@@ -203,8 +203,12 @@ int main()
         std::cerr << "FAILED: native TXST backend regained a second actor-3D refresh route\n";
         clean = false;
     }
-    if (skinApplication.find("QueueNiNodeUpdate(*vm, actor.get())") == std::string::npos ||
-        skinApplication.find("face_skin::QueueRebuild(actor, [handle]") == std::string::npos) {
+    if (skinApplication.find("actor->DoReset3D(false)") == std::string::npos ||
+        skinApplication.find("QueueNiNodeUpdate(*vm, actor.get())") != std::string::npos ||
+        skinApplication.find("face_skin::QueueRebuild(actor, [handle]") == std::string::npos ||
+        faceAdapter.find("CheckRebuild(actorId, rebuildTicket, epoch)") == std::string::npos ||
+        faceAdapter.find("process->middleHigh->update3DModel.underlying()") == std::string::npos ||
+        faceAdapter.find("!it->second.nativeReturned") == std::string::npos) {
         std::cerr << "FAILED: the single facade-owned native skin refresh route is missing\n";
         clean = false;
     }

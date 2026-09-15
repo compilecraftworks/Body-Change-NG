@@ -20,7 +20,7 @@ namespace bcn::native_skin
     // Skin Armor forms. The actor's equipment is never inspected or tracked.
     // afterMutation runs once for each loaded reference sharing the mutated
     // ActorBase, and only after its pointers actually changed. The facade is
-    // the sole owner of the public Actor.QueueNiNodeUpdate route; this backend
+    // the sole owner of the native Actor.QueueNiNodeUpdate equivalent; this backend
     // must never issue a second 3D reset or repaint outfit-owned geometry.
     [[nodiscard]] SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
         std::function<void(RE::Actor*)> afterMutation = {},

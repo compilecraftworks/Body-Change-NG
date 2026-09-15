@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.3
+# Body Change NG — v1.2.4
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,41 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Final user guides and release comparison
+## Current version — v1.2.4
+
+Version 1.2.4 fixes valid empty UBE Zeroed presets, accounts for nonzero standard
+UBE build defaults, removes the face refresh's sole dependence on a NiNode
+completion event, and builds missing native skin targets from actual NIF
+baselines. Custom-NPC classification now prioritizes live body evidence over
+stale metadata. Existing 1.2.3 behavior is retained. See the
+[English changes](CHANGELOG.md#124),
+[한국어 변경 내역](CHANGELOG-KO.md#124), and
+[UBE investigation and verification](docs/UBE-PRESET-SKIN-AUDIT-20260915-KO.md).
+The SE/AE Release build and 25 automated regression executables passed. In local
+TOFU gameplay, RSV face-texture reapplication was identified and the user
+confirmed normal skin switching with RSV disabled. This does not establish
+compatibility with RSV/Selector or gameplay verification of every runtime.
+
+- [v1.2.4 English Nexus description](docs/NEXUS-DESCRIPTION-v1.2.4-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.2.4-KO.html)
+- [v1.2.4 English changelog](docs/NEXUS-CHANGELOG-v1.2.4-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.4-KO.txt)
+
+### Incompatible simultaneous appearance controllers
+
+- **OBody NG:** body distribution and breast/nipple outfit correction overlap with BCNG. Clearing OBody/OClothe keys does not stop a running OBody instance from reapplying them.
+- **Racial Skin Variance - SPID (RSV):** incompatible with BCNG skin control. Its face-texture reapplication after character 3D rebuilds can overwrite the BCNG face and cause a darker face or visible neck seam.
+- **RaceMenu Selector of Skins - Unique Player Character:** incompatible with BCNG skin control. Reapplying its player Skin Armor and face textures can overwrite BCNG selections or disrupt later skin switches.
+
+Do not use RSV or Selector to control skins alongside BCNG. BCNG does not suspend
+their reapplication and includes neither built-in conflict prevention nor a
+separate compatibility patch for them. A successful preview or confirmation can
+be overwritten later; Default Skin is not a compatibility workaround.
+
+Use one controller for the affected features. The outfit-rule JSON from
+**[ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)**
+can be imported with **Register ORefit outfit-correction rules**. **RaceMenu itself
+is required** and is not the separate skin Selector mod.
+
+## Previous version guides — v1.2.3
 
 Version 1.2.3 separates body-skin previews from persistent state and adds recovery
 from partial texture-write failures. It retains the 1.2.2 morph-name fixes and
@@ -115,8 +149,8 @@ takes priority, followed by the selected pack's ordinary channel, then the
 underlying provider if both are absent. UBE and conventional atlas routes are
 separate; catalog recognition is not CBBE/UNP UV conversion.
 
-OBody NG is optional. Its JSON reader remains only for explicit Outfit Correction
-registration, not NPC-rule import. Conventional-female outfit correction and NPC
+The optional OBody ORefit JSON reader is only for explicit Outfit Correction
+registration. Conventional-female outfit correction and NPC
 shape randomization remain in Outfit · randomization. SmoothCam cooperation,
 when installed, uses its public camera API.
 
@@ -127,7 +161,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.2.3/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.2.4/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and
@@ -137,7 +171,7 @@ licenses and are not bundled with Body Change NG.
 
 - OBody NG — established ORefit data and behavior used by the optional Outfit
   Correction compatibility path.
-- [OBody Next Generation ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
+- [ORefit JSON Master List](https://www.nexusmods.com/skyrimspecialedition/mods/105052)
   by SlickSilk — optional JSON-format compatibility and validation target.
 - Skyrim Fitting System — public GPL-3.0 reference for the optional menu
   character presentation and its safe pause/rotation lifecycle.

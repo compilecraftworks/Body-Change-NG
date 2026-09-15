@@ -1,6 +1,18 @@
 # Release documentation
 
-Current version: **Body Change NG v1.2.3**. The [English changelog](../CHANGELOG.md#123) and [한국어 변경 내역](../CHANGELOG-KO.md#123) cover skin preview/save isolation and texture failure recovery while retaining Futanari Skin favorites, OBody/OClothe cleanup and sex-specific NPC preview selection. Previous release documents remain unchanged historical records.
+Current version: **Body Change NG v1.2.4**. See the [English changelog](../CHANGELOG.md#124), [한국어 변경 내역](../CHANGELOG-KO.md#124), and [UBE / NPC / skin audit](UBE-PRESET-SKIN-AUDIT-20260915-KO.md). The v1.2.4 documents below describe the release configuration. Earlier versions remain unchanged historical records.
+
+## Current v1.2.4 documents
+
+| Purpose | English | 한국어 |
+| --- | --- | --- |
+| Full description and usage | [Nexus BBCode](NEXUS-DESCRIPTION-v1.2.4-EN.bbcode) · [Markdown](NEXUS-DESCRIPTION-v1.2.4.md) | [Standalone HTML](NEXUS-DESCRIPTION-v1.2.4-KO.html) |
+| Formatted changelog | [BBCode](NEXUS-CHANGELOG-v1.2.4-EN.bbcode) | [Standalone HTML](NEXUS-CHANGELOG-v1.2.4-KO.html) |
+| Nexus changelog field | [Plain text](NEXUS-CHANGELOG-v1.2.4-EN.txt) | [일반 텍스트](NEXUS-CHANGELOG-v1.2.4-KO.txt) |
+
+The descriptions list OBody NG, Racial Skin Variance - SPID (RSV), and RaceMenu Selector of Skins - Unique Player Character as incompatible simultaneous appearance controllers. RSV/Selector skin reapplication is not blocked by BCNG, and no built-in conflict prevention or separate compatibility patch is provided. The descriptions also cover the separate optional OBody ORefit JSON input, UBE baseline calculation, and improved native skin / custom-NPC detection. Full installation paths and folder-copy examples remain intact.
+
+## Previous version — v1.2.3
 
 | Purpose | English | 한국어 |
 | --- | --- | --- |
