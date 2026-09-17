@@ -9,11 +9,9 @@ namespace bcn::native_ui
     bool Open();
     bool Toggle();
     bool Close();
-    void SubmitMouseWheel(float a_delta) noexcept;
-    // PollInputDevices may consume RMB before Skyrim creates a Scaleform
-    // event. Queue the same button transition directly for ImGui so actor
-    // rotation remains available while gameplay attack/block never sees it.
-    void SubmitRightMouseButton(bool a_down) noexcept;
+    // PollInputDevices is the sole mouse-edge source. Windows/Scaleform may
+    // omit or duplicate these events; neither is allowed to replay them.
+    void SubmitGameMouseButton(std::uint32_t a_button, bool a_down, bool a_up);
     // TextInputFilter removes DirectInput keyboard events before gameplay and
     // other shortcut sinks see them. Preserve the same press/release edge for
     // ImGui so Backspace, Delete, navigation, and clipboard shortcuts keep

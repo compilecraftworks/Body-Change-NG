@@ -1,0 +1,7 @@
+Body Change NG v1.2.6 — Changes from v1.2.5
+
+- Fix the 1.2.5 mouse delivery regression by receiving button and wheel edges from Skyrim's input hook instead of depending on Windows mouse messages. Keep game-cursor coordinates and avoid duplicate Windows/Scaleform delivery.
+- Preserve quick right-button clicks, filter duplicate/held samples, and clear queued mouse state on focus loss, close, and reopen.
+- Skip redundant face DDS reloads after repeated 3D notifications only when live properties, actual textures, renderers, and required saved overrides match. Keep skin changes, texture repair, preview confirmation, Default restoration, and distinct first-person head updates.
+- Retain preset-list optimizations, saved-morph recovery, distribution selections, and the co-save format. No RSV/Selector compatibility patch or Skyrim 1.7.x support is added.
+- Validation: Release build and 26 automated test executables passed, including game-only input replay at 60/15/5 FPS. The reporter's skin flashing has not been reproduced; this is not a claim that every flashing cause is resolved.

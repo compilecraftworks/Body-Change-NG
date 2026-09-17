@@ -20,6 +20,9 @@ namespace
 {
     constexpr auto kRightMouseButton =
         static_cast<std::uint32_t>(RE::BSWin32MouseDevice::Key::kRightButton);
+    static_assert(static_cast<unsigned>(RE::BSWin32MouseDevice::Key::kLeftButton) == 0U &&
+        static_cast<unsigned>(RE::BSWin32MouseDevice::Key::kWheelUp) == 8U &&
+        static_cast<unsigned>(RE::BSWin32MouseDevice::Key::kWheelDown) == 9U);
     // DirectInput scan codes consumed by Body Change NG catalog navigation.
     // They must not reach gameplay or another mod's hotkey sink while this
     // menu owns them.
@@ -249,16 +252,14 @@ namespace
                 if (event->GetEventType() == RE::INPUT_EVENT_TYPE::kButton) {
                     if (const auto* button = event->AsButtonEvent()) {
                         const auto buttonID = button->GetIDCode();
+                        if (mouseSuppressionActive) {
+                            bcn::native_ui::SubmitGameMouseButton(buttonID, button->IsDown(), button->IsUp());
+                        }
                         if (buttonID != kRightMouseButton) {
                             link = &event->next;
                             continue;
                         }
                         const bool release = button->IsUp();
-                        if (mouseSuppressionActive ||
-                            g_swallowedMouseUntilReleaseButtons.contains(buttonID)) {
-                            if (release) bcn::native_ui::SubmitRightMouseButton(false);
-                            else if (button->IsPressed()) bcn::native_ui::SubmitRightMouseButton(true);
-                        }
 
                         if (mouseSuppressionActive) {
                             if (g_swallowedMouseUntilReleaseButtons.contains(buttonID)) {

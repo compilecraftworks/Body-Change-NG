@@ -52,10 +52,7 @@ namespace
     std::atomic_bool g_menuActionHeld{};
     bool g_activateThisFrame{};
     bool g_cancelThisFrame{};
-    std::atomic_int g_mouseWheelSteps{};
-    std::atomic_int g_rightMouseState{ -1 };
     bcn::native_ui::MouseInputQueue g_mouseInput;
-    unsigned g_windowMouseButtons{}; // Window-procedure thread only.
     std::atomic_bool g_wantsTextInput{};
     std::mutex g_rendererLock;
     struct PendingTextInputKey
@@ -115,18 +112,6 @@ namespace
         }
     }
 
-    void QueueWindowButton(HWND window, int button, bool down)
-    {
-        if (down) {
-            if (!g_windowMouseButtons && !GetCapture()) SetCapture(window);
-            g_windowMouseButtons |= 1U << button;
-        } else {
-            g_windowMouseButtons &= ~(1U << button);
-            if (!g_windowMouseButtons && GetCapture() == window) ReleaseCapture();
-        }
-        g_mouseInput.Button(button, down);
-    }
-
     LRESULT CALLBACK BodyChangeWindowProc(const HWND window, const UINT message, const WPARAM wParam, const LPARAM lParam)
     {
         if (message == WM_KILLFOCUS ||
@@ -135,31 +120,11 @@ namespace
             ClearPendingTextInputKeys();
             bcn::text_input::Reset();
             g_mouseInput.Reset();
-            g_windowMouseButtons = 0;
-            if (GetCapture() == window) ReleaseCapture();
         }
-        // A native IMenu has no Scaleform movie that forwards mouse-button
-        // events. Feed them directly to ImGui while this overlay is visible.
-        // Horizontal wheel input has no meaning in this UI. Consuming it here
-        // prevents touchpads and stale Shift modifier state from pushing
-        // catalogs or combo popups sideways.
-        if (g_open.load() && message == WM_MOUSEHWHEEL) return 0;
+        // Skyrim's input hook owns ALL mouse edges, including RMB consumed
+        // before the UI dispatcher. Win32 messages are not guaranteed in
+        // DirectInput configurations and must never duplicate that stream.
         if (g_open.load() && IsImGuiMouseMessage(message)) {
-            switch (message) {
-            case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: QueueWindowButton(window, 0, true); break;
-            case WM_LBUTTONUP: QueueWindowButton(window, 0, false); break;
-            case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: QueueWindowButton(window, 1, true); break;
-            case WM_RBUTTONUP: QueueWindowButton(window, 1, false); break;
-            case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: QueueWindowButton(window, 2, true); break;
-            case WM_MBUTTONUP: QueueWindowButton(window, 2, false); break;
-            case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK:
-                QueueWindowButton(window, HIWORD(wParam) == XBUTTON1 ? 3 : 4, true); break;
-            case WM_XBUTTONUP:
-                QueueWindowButton(window, HIWORD(wParam) == XBUTTON1 ? 3 : 4, false); break;
-            case WM_MOUSEWHEEL:
-                g_mouseInput.Wheel(static_cast<float>(static_cast<short>(HIWORD(wParam))) / WHEEL_DELTA); break;
-            default: break; // Never feed Windows cursor coordinates to ImGui.
-            }
             return 0;
         }
         return g_previousWindowProc ?
@@ -204,7 +169,7 @@ namespace
         const auto previous = SetWindowLongPtr(window, GWLP_WNDPROC,
             reinterpret_cast<LONG_PTR>(&BodyChangeWindowProc));
         if (previous == 0 && GetLastError() != 0) {
-            SKSE::log::warn("Body Change NG could not install the native mouse-wheel fallback");
+            SKSE::log::warn("Body Change NG could not install the window focus hook");
             return false;
         }
         g_previousWindowProc = reinterpret_cast<WNDPROC>(previous);
@@ -652,7 +617,7 @@ namespace
         case RE::GFxEvent::EventType::kMouseDown:
         case RE::GFxEvent::EventType::kMouseUp:
         case RE::GFxEvent::EventType::kMouseWheel: {
-            // Native window input owns the mouse. Do not replay the same
+            // Skyrim's input hook owns the mouse. Do not replay the same
             // edges through Scaleform in a different coordinate/order stream.
             break;
         }
@@ -720,13 +685,6 @@ namespace
             io.AddKeyEvent(ImGuiMod_Alt, (GetAsyncKeyState(VK_MENU) & 0x8000) != 0);
             io.AddKeyEvent(ImGuiMod_Super,
                 (GetAsyncKeyState(VK_LWIN) & 0x8000) != 0 || (GetAsyncKeyState(VK_RWIN) & 0x8000) != 0);
-            const auto wheel = g_mouseWheelSteps.exchange(0);
-            if (wheel != 0) io.AddMouseWheelEvent(0.0F, static_cast<float>(wheel));
-            const auto rightMouse = g_rightMouseState.exchange(-1);
-            if (rightMouse >= 0) {
-                io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-                io.AddMouseButtonEvent(ImGuiMouseButton_Right, rightMouse != 0);
-            }
             DrainTextInputKeys(io);
             ImGui::NewFrame();
             SyncTextInput(false);
@@ -764,8 +722,6 @@ namespace
                 g_openRequested = false;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
-                g_mouseWheelSteps = 0;
-                g_rightMouseState = -1;
                 g_wantsTextInput = false;
                 ClearPendingTextInputKeys();
                 // Preserve consumed press ownership until its release. The
@@ -906,15 +862,9 @@ namespace bcn::native_ui
         return true;
     }
 
-    void SubmitMouseWheel(const float delta) noexcept
+    void SubmitGameMouseButton(const std::uint32_t button, const bool down, const bool up)
     {
-        if (delta > 0.0F) g_mouseWheelSteps.fetch_add(1);
-        if (delta < 0.0F) g_mouseWheelSteps.fetch_sub(1);
-    }
-
-    void SubmitRightMouseButton(const bool down) noexcept
-    {
-        if (g_open) g_rightMouseState.store(down ? 1 : 0, std::memory_order_release);
+        if (g_open) g_mouseInput.GameButton(button, down, up);
     }
 
     void SubmitTextInputKey(const std::uint32_t scanCode, const bool down) noexcept

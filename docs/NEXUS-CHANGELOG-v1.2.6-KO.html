@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Body Change NG v1.2.6 변경 내역</title>
+<style>
+body{margin:0;background:#10151f;color:#e6edf5;font:16px/1.8 system-ui,sans-serif}
+main{max-width:1000px;margin:auto;padding:40px 24px}
+h1{color:#FFD600;line-height:1.3}h2{color:#19D8FF}hr{border:0;border-top:1px solid #46546b;margin:24px 0}
+li{margin:14px 0}
+</style>
+</head>
+<body><main>
+<h1>Body Change NG v1.2.6</h1>
+<hr>
+<h2>v1.2.5 대비 변경 사항</h2>
+<ul>
+<li>Windows 마우스 메시지에 의존하지 않고 Skyrim 입력 훅에서 버튼·휠 입력을 받아 1.2.5의 마우스 전달 회귀를 수정했습니다. 게임 커서 좌표는 유지하며 Windows·Scaleform 중복 전달은 하지 않습니다.</li>
+<li>렌더 프레임 사이의 짧은 우클릭도 보존하고, 중복·누른 상태 입력을 제외하며 포커스 이탈·닫기·재열기 시 대기 입력을 정리합니다.</li>
+<li>반복 3D 알림에서 실제 얼굴의 속성 경로·텍스처·렌더러 및 필요한 저장 오버라이드가 모두 맞으면 동일 DDS 재로드를 생략합니다. 다른 스킨 전환, 손상 텍스처 복구, 미리보기 확정, 기본값 복원 및 별도 1인칭 얼굴 갱신은 유지합니다.</li>
+<li>프리셋 목록 최적화·저장 모프 복구·배포 선택·코세이브 형식은 유지합니다. RSV·Selector 호환 패치나 Skyrim 1.7.x 지원은 추가하지 않습니다.</li>
+<li>검증: Release 빌드와 자동 테스트 26개 통과. 60·15·5 FPS의 게임 입력 재생을 포함합니다. 제보자의 스킨 깜빡임은 재현하지 못했으며, 모든 깜빡임 원인이 해결되었다는 의미는 아닙니다.</li>
+</ul>
+</main></body>
+</html>

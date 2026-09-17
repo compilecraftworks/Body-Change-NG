@@ -58,7 +58,7 @@ namespace
 
     // Read-only, game-thread observation. Never retain a geometry/material or
     // texture pointer in a request or in the serialized baseline.
-    std::string VisibleTextureName(RE::Actor* actor, const std::string& node, unsigned channel)
+    RE::NiSourceTexture* VisibleTexture(RE::Actor* actor, const std::string& node, unsigned channel)
     {
         if (!actor || bcn::runtime::ResolveGameBranch(REL::Module::get().version()) ==
                 bcn::runtime::GameBranch::unsupported) return {};
@@ -85,7 +85,12 @@ namespace
             break;
         case 7: texture = material->specularBackLightingTexture.get(); break;
         }
-        const auto* source = netimmerse_cast<RE::NiSourceTexture*>(texture);
+        return netimmerse_cast<RE::NiSourceTexture*>(texture);
+    }
+
+    std::string VisibleTextureName(RE::Actor* actor, const std::string& node, unsigned channel)
+    {
+        const auto* source = VisibleTexture(actor, node, channel);
         return source && !source->name.empty() ? std::string(source->name.c_str()) : std::string{};
     }
 
@@ -451,6 +456,34 @@ namespace
                     self->beforeSaved[index] = current;
                     PrepareWrite(self->baseline, index, current, desired, self->persistent);
                     if (!Store(self->baseline)) { self->Finish(false); return; }
+                    // Common NiNode/equipment notifications can arrive with
+                    // an already-correct head. Releasing/reloading those DDS
+                    // channels only exposes another transient material update.
+                    // Keep the asynchronous legacy fallback unchanged.
+                    if (self->nodeAccess) {
+                        const auto actor = self->Actor();
+                        std::string property;
+                        if (actor && self->nodeAccess.Read(actor.get(), self->baseline.female,
+                                self->baseline.node, kChannels[index], false, property)) {
+                            const RE::BSFixedString node(self->baseline.node);
+                            auto* firstRoot = actor->Get3D(true);
+                            auto* thirdRoot = actor->Get3D(false);
+                            auto* firstHead = firstRoot ? firstRoot->GetObjectByName(node) : nullptr;
+                            auto* thirdHead = thirdRoot ? thirdRoot->GetObjectByName(node) : nullptr;
+                            const auto* texture = VisibleTexture(actor.get(), self->baseline.node, kChannels[index]);
+                            const std::string_view name = texture && !texture->name.empty() ?
+                                std::string_view(texture->name.c_str()) : std::string_view{};
+                            // NodeAccess::Write also updates a distinct first-
+                            // person head. A third-person match cannot vouch for
+                            // that second material; retain the full write then.
+                            if ((!firstHead || firstHead == thirdHead) &&
+                                CanKeepVisibleTexture(desired, property, name,
+                                    texture && texture->rendererTexture, self->persistent, current)) {
+                                self->Next();
+                                return;
+                            }
+                        }
+                    }
                     self->mutated |= static_cast<std::uint8_t>(1U << index);
                     self->Write(desired, self->persistent, [self, desired] { self->Verify(desired); });
                 });

@@ -396,6 +396,16 @@ int main()
     Require(mouseHostSource.contains("RemoveBackendMousePositions(firstBackendEvent)") &&
         mouseHostSource.contains("g_mouseInput.Drain(io, CurrentMousePosition())") &&
         !mouseHostSource.contains("ImGui_ImplWin32_WndProcHandler(window"));
+    const auto mouseFilter = readFeatureSource("TextInputFilter.cpp");
+    Require(mouseFilter.find("SubmitGameMouseButton(buttonID, button->IsDown(), button->IsUp())") <
+        mouseFilter.find("if (buttonID != kRightMouseButton)"));
+    Require(mouseHostSource.contains("g_mouseInput.GameButton(button, down, up)") &&
+        !mouseHostSource.contains("QueueWindowButton") && !mouseHostSource.contains("g_rightMouseState") &&
+        !mouseHostSource.contains("g_mouseWheelSteps"));
+    const auto faceNoOpSource = readFeatureSource("FaceSkinOverrides.cpp");
+    Require(faceNoOpSource.contains("CanKeepVisibleTexture(desired, property, name,") &&
+        faceNoOpSource.contains("!firstHead || firstHead == thirdHead") &&
+        faceNoOpSource.contains("texture && texture->rendererTexture, self->persistent, current"));
     const auto registrySource = readFeatureSource("ActorRegistry.cpp");
     const auto bodyVerifyBegin = registrySource.find("bool ActorRegistry::NeedsBodyApply(");
     const auto bodyVerifyEnd = registrySource.find("bool ActorRegistry::NeedsSkinApply(", bodyVerifyBegin);

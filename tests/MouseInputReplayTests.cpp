@@ -38,10 +38,11 @@ static int Replay(float fps, bool mismatchedCoordinates, int clicks, bool fixed 
     io.AddMousePosEvent(120, 120);
     frame(); frame();
     for (int i = 0; i < clicks; ++i) {
-        // WM_MOUSEMOVE -> WM_LBUTTONDOWN/UP between two rendered frames.
+        // Game input edges arrive between rendered frames, with NO Win32
+        // messages. This was the missing delivery path in 1.2.5's test.
         if (fixed) {
-            mouse.Button(0, true);
-            mouse.Button(0, false);
+            mouse.GameButton(0, true, false);
+            mouse.GameButton(0, false, true);
         } else {
             io.AddMousePosEvent(mismatchedCoordinates ? 500.0F : 120.0F, 120);
             io.AddMouseButtonEvent(0, true);
@@ -74,7 +75,7 @@ static bool Lifecycle()
         ImGui::Render();
     };
     tick({120,120}); tick({120,120});
-    for (int b = 0; b < 5; ++b) mouse.Button(b, true);
+    for (unsigned b = 0; b < 5; ++b) mouse.GameButton(b, true, false);
     tick({120,120});
     bool ok = true;
     for (int b = 0; b < 5; ++b) ok = ok && io.MouseDown[b];
@@ -82,7 +83,7 @@ static bool Lifecycle()
     tick({150,120});
     ok = ok && ImGui::GetMouseDragDelta(0).x == 30 && ImGui::GetMouseDragDelta(1).x == 30;
     if (!ok) std::cerr << "drag failed: " << ImGui::GetMouseDragDelta(0).x << ',' << ImGui::GetMouseDragDelta(1).x << '\n';
-    for (int b = 0; b < 5; ++b) mouse.Button(b, false);
+    for (unsigned b = 0; b < 5; ++b) mouse.GameButton(b, false, true);
     tick({150,120});
     for (int b = 0; b < 5; ++b) ok = ok && !io.MouseDown[b];
     mouse.Wheel(1); tick({150,120});
@@ -110,6 +111,46 @@ static bool Lifecycle()
     const auto& events = ImGui::GetCurrentContext()->InputEventsQueue;
     ok = ok && events.Size == first + 1 && events[first - 1].Type == ImGuiInputEventType_MousePos;
     if (!ok) std::cerr << "isolation failed: " << first << ',' << events.Size << '\n';
+    // Held/repeat samples must not manufacture edges; ignore unsupported
+    // buttons and wheel releases. A fresh press after reset must still work.
+    mouse.Reset(); tick({120,120});
+    mouse.GameButton(0, false, false);
+    mouse.GameButton(7, true, false);
+    mouse.GameButton(8, false, true);
+    mouse.GameButton(9, false, false);
+    tick({120,120});
+    ok = ok && !io.MouseDown[0] && frameWheel == 0;
+    mouse.GameButton(8, true, false); tick({120,120});
+    ok = ok && frameWheel == 1;
+    mouse.GameButton(9, true, false); tick({120,120});
+    ok = ok && frameWheel == -1;
+    mouse.GameButton(1, true, false);
+    mouse.GameButton(1, true, false); // duplicate source sample is idempotent
+    mouse.GameButton(1, false, false);
+    mouse.GameButton(1, false, true); // quick RMB click between frames
+    tick({120,120});
+    ok = ok && io.MouseDown[1];
+    tick({120,120});
+    ok = ok && !io.MouseDown[1];
+    mouse.GameButton(0, true, false); mouse.Reset();
+    mouse.GameButton(0, false, false); tick({120,120});
+    ok = ok && !io.MouseDown[0];
+    mouse.GameButton(0, false, true);
+    mouse.GameButton(0, true, false); tick({120,120});
+    ok = ok && io.MouseDown[0];
+    mouse.GameButton(0, false, true); tick({120,120});
+    ok = ok && !io.MouseDown[0];
+    // A stalled render thread must not let pending game input grow without
+    // bound. Overflow releases old ownership; closing drops queued edges.
+    for (int click = 0; click < 5000; ++click) {
+        mouse.GameButton(0, true, false);
+        mouse.GameButton(0, false, true);
+    }
+    mouse.Drain(io, {120,120});
+    ok = ok && ImGui::GetCurrentContext()->InputEventsQueue.Size <= 4097;
+    mouse.Reset(); tick({120,120}); tick({120,120});
+    ok = ok && !io.MouseDown[0];
+    if (!ok) std::cerr << "game-input edge/lifecycle regression\n";
     ImGui::DestroyContext();
     std::cout << "drag, double-click, wheel, five buttons, reset and queue isolation: " << (ok ? "PASS" : "FAIL") << '\n';
     return ok;

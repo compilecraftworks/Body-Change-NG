@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.5
+# Body Change NG — v1.2.6
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,19 +7,21 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.2.5
+## Current version — v1.2.6
 
-Version 1.2.5 unifies native mouse input around Skyrim's cursor, avoids copying
-full slider data for every preset-list frame, clips off-screen preset rows, and
-restores missing saved body morph layers at actor-load/3D-update boundaries.
-Existing selections are retained without rerolling NPC distribution or
-interrupting active previews. Generic-NPC selection filters are unchanged.
-The Release build and 26 automated regression executables passed; in-game
-verification of these input and recovery changes remains pending.
+Version 1.2.6 corrects the 1.2.5 mouse delivery regression: button and wheel
+edges come from Skyrim's input hook, independently of Windows mouse messages,
+while coordinates still use Skyrim's cursor. Repeated 3D notifications no
+longer reload an already-correct face DDS through the immediate API when the
+live texture, renderer, and required saved override all match.
+The 1.2.5 preset-list optimizations and saved-morph recovery are retained.
+The Release build and 26 automated regression executables passed. Reporter
+logs and in-game reproduction are unavailable; the reported skin flashing is
+not claimed fully resolved. See the [investigation](docs/INPUT-SKIN-AUDIT-v1.2.6-KO.md).
 CommonLibSSE-NG remains pinned to v6.7.1. Skyrim 1.7.x is not supported.
 
-- [v1.2.5 English changelog](docs/NEXUS-CHANGELOG-v1.2.5-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.5-KO.txt)
-- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.5-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.5-KO.html)
+- [v1.2.6 English changelog](docs/NEXUS-CHANGELOG-v1.2.6-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.6-KO.txt)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.6-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.6-KO.html)
 
 ## Previous version — v1.2.4
 

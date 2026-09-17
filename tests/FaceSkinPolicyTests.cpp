@@ -46,6 +46,28 @@ namespace
 int main()
 try {
     using namespace bcn::face_skin;
+    const std::string desired = "textures/BodyChangeNG/Cache/skin-face/A/head.dds";
+    const std::string visible = "BODYCHANGENG\\Cache\\skin-face\\a\\head.dds";
+    Check(CanKeepVisibleTexture(desired, visible, visible, true, false, ""),
+        "already-loaded transient face should not reload on a repeated 3D event");
+    Check(CanKeepVisibleTexture(desired, visible, visible, true, true, visible),
+        "already-loaded committed face should not reload");
+    Check(!CanKeepVisibleTexture(desired, visible, visible, true, true, "old.dds"),
+        "preview-to-commit promotion was skipped");
+    Check(!CanKeepVisibleTexture(desired, visible, "other/head.dds", true, false, ""),
+        "TXST-only match prevented repair of the actual texture");
+    Check(!CanKeepVisibleTexture(desired, "old.dds", visible, true, false, ""),
+        "stale texture-set property accepted");
+    Check(!CanKeepVisibleTexture(desired, visible, visible, false, false, "") &&
+        !CanKeepVisibleTexture(desired, visible, "", true, false, ""),
+        "missing texture/renderer prevented repair");
+    Check(!CanKeepVisibleTexture("other/head.dds", visible, visible, true, false, "") &&
+        !CanKeepVisibleTexture("", "", "", true, false, ""),
+        "different skin or Default was swallowed by the no-op check");
+    int reloads{};
+    for (int event = 0; event < 1000; ++event)
+        if (!CanKeepVisibleTexture(desired, visible, visible, true, false, "")) ++reloads;
+    Check(reloads == 0, "unchanged 3D notifications keep reloading the same DDS");
     const auto path = CacheOverridePath("textures/BodyChangeNG/Cache/skin-face/ABC/head.dds");
     Check(path && *path == "textures\\BodyChangeNG\\Cache\\skin-face\\ABC\\head.dds",
         "face NiOverride must receive resource path, not native TXST path");

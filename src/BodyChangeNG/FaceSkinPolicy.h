@@ -155,6 +155,17 @@ namespace bcn::face_skin
             std::string_view(value.owned[index]);
     }
 
+    // Rebuild notifications are not proof that a texture changed. A matching
+    // TXST string alone is insufficient: require the live resource and renderer,
+    // and do not skip promotion of a transient preview to a saved override.
+    [[nodiscard]] inline bool CanKeepVisibleTexture(std::string_view desired,
+        std::string_view property, std::string_view texture, bool rendererReady,
+        bool persistent, std::string_view saved) noexcept
+    {
+        return rendererReady && Owns(property, desired) && Owns(texture, desired) &&
+            (!persistent || Owns(saved, desired));
+    }
+
     inline void PrepareWrite(Baseline& value, std::size_t index,
         const std::string& current, const std::string& desired, bool persistent)
     {
