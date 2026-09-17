@@ -111,6 +111,34 @@ int main(const int argc, char** argv)
     }
 
     const auto presets = bcn::PresetCatalog::ScanDirectory(root);
+    const auto displayEntries = bcn::BuildPresetList(presets);
+    if (!Require(displayEntries.size() == presets.size(), "metadata list lost a preset")) return 1;
+    for (std::size_t i = 0; i < presets.size(); ++i) {
+        const auto& p = presets[i]; const auto& entry = displayEntries[i];
+        if (!Require(entry.id == p.PersistentId() && entry.name == p.name &&
+                entry.family == p.family && entry.source == p.source && entry.male == p.male,
+                "metadata projection changed ID, label, sex, family, or ordering")) return 1;
+    }
+    {
+        const auto originalDirectory = std::filesystem::current_path();
+        const auto catalogDirectory = root / "Data/CalienteTools/BodySlide/SliderPresets";
+        std::filesystem::create_directories(catalogDirectory);
+        std::filesystem::copy_file(root / "Nested/example.xml", catalogDirectory / "example.xml");
+        std::filesystem::current_path(root);
+        auto& catalog = bcn::PresetCatalog::Get();
+        catalog.Refresh();
+        const auto first = catalog.ListSnapshot();
+        const auto again = catalog.ListSnapshot();
+        if (!Require(first == again && !first->empty(), "UI read rebuilt or copied the metadata snapshot")) return 1;
+        const auto full = catalog.Find(first->front().id);
+        if (!Require(full && full->name == first->front().name, "metadata ID no longer resolves a complete preset")) return 1;
+        const auto oldSize = first->size();
+        std::filesystem::remove(catalogDirectory / "example.xml");
+        catalog.Refresh();
+        if (!Require(catalog.ListSnapshot()->empty() && first->size() == oldSize,
+                "refresh mutated an in-flight UI snapshot or retained removed entries")) return 1;
+        std::filesystem::current_path(originalDirectory);
+    }
     if (!Require(presets.size() == 14U, "preset scanner accepted an invalid XML or lost a valid preset")) return 1;
     const auto find = [&](const std::string_view name) {
         return std::ranges::find(presets, name, &bcn::BodyPreset::name);

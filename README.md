@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.4
+# Body Change NG — v1.2.5
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,21 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.2.4
+## Current version — v1.2.5
+
+Version 1.2.5 unifies native mouse input around Skyrim's cursor, avoids copying
+full slider data for every preset-list frame, clips off-screen preset rows, and
+restores missing saved body morph layers at actor-load/3D-update boundaries.
+Existing selections are retained without rerolling NPC distribution or
+interrupting active previews. Generic-NPC selection filters are unchanged.
+The Release build and 26 automated regression executables passed; in-game
+verification of these input and recovery changes remains pending.
+CommonLibSSE-NG remains pinned to v6.7.1. Skyrim 1.7.x is not supported.
+
+- [v1.2.5 English changelog](docs/NEXUS-CHANGELOG-v1.2.5-EN.txt) · [한국어 변경 내역](docs/NEXUS-CHANGELOG-v1.2.5-KO.txt)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.5-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.5-KO.html)
+
+## Previous version — v1.2.4
 
 Version 1.2.4 fixes valid empty UBE Zeroed presets, accounts for nonzero standard
 UBE build defaults, removes the face refresh's sole dependence on a NiNode

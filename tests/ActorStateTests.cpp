@@ -233,6 +233,20 @@ int main()
             "current-session verification was not cached");
         Require(bcn::EvaluateRestoredApplication(true, false, false, true) == Decision::apply,
             "a stale persisted signature was accepted from live state alone");
+        // A success earlier in this same session cannot hide lost live keys.
+        for (const bool verified : {false, true}) {
+            bcn::FeatureApplicationState application;
+            application.applied = true;
+            application.verifiedThisSession = verified;
+            Require(bcn::EvaluateLiveBodyApplication(application, true, false) == Decision::apply,
+                "a previously verified NPC with missing morphs skipped recovery");
+            Require(bcn::EvaluateLiveBodyApplication(application, true, true) == Decision::acceptLive,
+                "an intact NPC body unnecessarily scheduled another rebuild");
+            Require(bcn::EvaluateLiveBodyApplication(application, false, true) == Decision::apply,
+                "a changed preset signature retained stale body morphs");
+            Require(bcn::EvaluateLiveBodyApplication(application, true, std::nullopt) == Decision::apply,
+                "an unavailable backend was mistaken for verified live morphs");
+        }
         bcn::DistributionRule rule{
             .female = true,
             .bodyFamily = "CBBE 3BA",

@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.4"
+local version = "1.2.5"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -87,6 +87,24 @@ target("BodyChangeNGHotkeyTests")
     set_encodings("utf-8")
     add_files("tests/HotkeyTests.cpp", "src/BodyChangeNG/Hotkey.cpp")
     add_includedirs("src")
+
+target("BodyChangeNGCatalogPerformanceProbe")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_includedirs("src", "third_party/imgui")
+    add_files("tests/CatalogPerformanceProbe.cpp", "third_party/imgui/imgui.cpp",
+        "third_party/imgui/imgui_draw.cpp", "third_party/imgui/imgui_tables.cpp",
+        "third_party/imgui/imgui_widgets.cpp")
+
+target("BodyChangeNGMouseInputReplayTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_includedirs("src", "third_party/imgui")
+    add_files("tests/MouseInputReplayTests.cpp", "third_party/imgui/imgui.cpp",
+        "third_party/imgui/imgui_draw.cpp", "third_party/imgui/imgui_tables.cpp",
+        "third_party/imgui/imgui_widgets.cpp")
 
 target("BodyChangeNGPresetCatalogTests")
     set_default(false)

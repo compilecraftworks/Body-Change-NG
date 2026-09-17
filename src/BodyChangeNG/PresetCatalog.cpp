@@ -239,10 +239,17 @@ namespace bcn
         }
         std::scoped_lock lock(lock_);
         presets_ = std::move(normal);
+        list_ = std::make_shared<const PresetList>(BuildPresetList(presets_));
         refitPresets_ = std::move(refit);
         contentHashes_.clear();
         for (const auto& preset : presets_) contentHashes_[preset.PersistentId()] = preset.cachedContentHash;
         for (const auto& preset : refitPresets_) contentHashes_[preset.PersistentId()] = preset.cachedContentHash;
+    }
+
+    std::shared_ptr<const PresetList> PresetCatalog::ListSnapshot() const
+    {
+        std::scoped_lock lock(lock_);
+        return list_;
     }
 
     std::vector<BodyPreset> PresetCatalog::Snapshot() const

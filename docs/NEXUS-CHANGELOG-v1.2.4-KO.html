@@ -4,7 +4,7 @@
 <style>body{background:#101419;color:#e7edf3;font:17px/1.8 system-ui,sans-serif;max-width:960px;margin:50px auto;padding:24px}h1{color:#FFD600}h2{color:#19D8FF}li{margin:12px 0}hr{border:0;border-top:1px solid #33414f}a{color:#5CFFA3}</style></head>
 <body><main><h1>Body Change NG v1.2.4</h1><hr><h2>v1.2.3 대비 변경</h2><ul>
 <li>SetSlider가 없는 유효한 UBE Zeroed 프리셋을 미리보기·확정·저장된 선택 복원에서 허용합니다.</li>
-<li>일반 UBE XML 끝값을 실제 Zeroed 빌드 기본값에 대한 차이로 적용합니다. 누락 끝점, 음수·100% 초과 값, 별도 가산 Refit 프리셋과 다른 바디 계열의 기존 계산은 유지합니다.</li>
+<li>일반 UBE XML 끝값을 실제 Zeroed 빌드 기본값에 대한 차이로 적용합니다. 누락 끝점, 음수·100% 초과 값과 다른 바디 계열의 기존 계산은 유지합니다.</li>
 <li>몸 재생성 완료 상태를 직접 확인하여 얼굴 갱신이 NiNode 알림에만 의존하지 않도록 보완했습니다. 실제 준비 상태, 오래된 요청 취소 및 제한된 실패 처리는 유지합니다.</li>
 <li>몸·손·발의 Skin TXST가 없으면 고정된 UBE 경로 대신 원본 NIF의 실제 피부 재질에서 적용 대상을 만듭니다. 전체 채널 기본값과 노멀맵 방식을 보존하며, 서로 다른 아틀라스는 하나로 강제하지 않고 복제 모델의 형상별 대체 텍스처로 처리합니다. 기존 네이티브 텍스처 제공자는 우선 유지합니다.</li>
 <li>처음 선택한 팩과 무관하게 재사용 가능한 몸 적용 대상을 준비합니다. 얼굴 전용 팩을 먼저 선택한 뒤 몸 포함 팩으로 바꿀 때 몸 적용 대상이 빠지던 문제를 수정했으며, 얼굴 전용 적용 자체는 몸에 연결하지 않습니다.</li>

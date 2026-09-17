@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <unordered_map>
@@ -36,6 +37,22 @@ namespace bcn
         [[nodiscard]] bool UsesBuildDefaults() const;
     };
 
+    // Immutable UI projection: deliberately cannot contain slider data.
+    struct PresetListEntry final
+    {
+        std::string id, name, source, family;
+        bool male{};
+    };
+    using PresetList = std::vector<PresetListEntry>;
+    [[nodiscard]] inline PresetList BuildPresetList(const std::vector<BodyPreset>& presets)
+    {
+        PresetList result;
+        result.reserve(presets.size());
+        for (const auto& p : presets)
+            result.push_back({p.PersistentId(), p.name, p.source, p.family, p.male});
+        return result;
+    }
+
     class PresetCatalog final
     {
     public:
@@ -43,6 +60,7 @@ namespace bcn
 
         void Refresh();
         [[nodiscard]] std::vector<BodyPreset> Snapshot() const;
+        [[nodiscard]] std::shared_ptr<const PresetList> ListSnapshot() const;
         [[nodiscard]] std::vector<BodyPreset> RefitSnapshot() const;
         [[nodiscard]] std::optional<BodyPreset> Find(std::string_view id, bool refit = false) const;
         [[nodiscard]] std::optional<BodyPreset> FindRefit(const std::vector<std::string>& names, bool male,
@@ -62,6 +80,7 @@ namespace bcn
     private:
         mutable std::mutex lock_;
         std::vector<BodyPreset> presets_;
+        std::shared_ptr<const PresetList> list_ = std::make_shared<const PresetList>();
         std::vector<BodyPreset> refitPresets_;
         std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };

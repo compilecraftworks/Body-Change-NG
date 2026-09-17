@@ -750,6 +750,33 @@ namespace bcn::racemenu
         return !hasAnyOwned && !hasOBody;
     }
 
+    void QueueVerifySavedBody(RE::Actor* actor)
+    {
+        if (!actor || !ActorRegistry::Get().Snapshot(actor)) return;
+        const auto handle = actor->GetHandle();
+        frame_tasks::Queue(actor->GetFormID(), [handle] {
+            const auto resolved = handle.get();
+            auto* actor = resolved.get();
+            if (!actor || !actor->Is3DLoaded() || !IsReady() ||
+                frame_tasks::HasPreview(actor->GetFormID()) || HasActivePreview(actor) ||
+                frame_tasks::HasActorChannelWork(actor->GetFormID(), appearance::WorkChannel::bodyCommit) ||
+                frame_tasks::HasActorChannelWork(actor->GetFormID(), appearance::WorkChannel::bodyPreviewCleanup)) return;
+            const auto state = ActorRegistry::Get().Snapshot(actor);
+            if (!state) return;
+            const auto& selection = state->body.selection;
+            if (!selection.useDefault && selection.selectedId.empty()) return;
+            if (!ActorRegistry::Get().NeedsBodyApply(actor, selection.selectedId, selection.useDefault)) return;
+            if (selection.useDefault) {
+                QueueClearBodyChangeMorphs(actor);
+            } else if (QueueApply(actor, selection.selectedId, ApplyMode::commit, 0U,
+                           UpdatePolicy::deferred) == ApplyResult::queued) {
+                // Restore the outfit layer through its normal policy after
+                // the base layer is queued; never reroll distribution rules.
+                OutfitRefit::Get().ProcessActor(actor);
+            }
+        }, 2U, appearance::WorkChannel::bodyVerify);
+    }
+
     bool HasOutfitCorrection(const RE::Actor* actor)
     {
         auto* bodyMorph = Interface();

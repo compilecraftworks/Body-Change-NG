@@ -697,21 +697,21 @@ namespace bcn
             const auto* state = FindValidatedLocked(actor);
             if (!state || !state->body.application.applied ||
                 state->body.application.signature != expectedSignature) return true;
-            if (state->body.application.verifiedThisSession) return false;
+            // BodyMorph keys can disappear after an earlier successful apply
+            // (NPC unload/rebuild or another morph writer). Recheck at these
+            // event-driven reconciliation boundaries, not once per session.
         }
 
         const auto liveMatches = racemenu::LiveBodyChangeStateMatches(actor, useDefault);
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
         if (!state) return true;
-        const auto decision = EvaluateRestoredApplication(state->body.application.applied,
-            state->body.application.verifiedThisSession,
+        const auto decision = EvaluateLiveBodyApplication(state->body.application,
             state->body.application.signature == expectedSignature, liveMatches);
         if (decision == RestoredApplicationDecision::acceptLive) {
             state->body.application.verifiedThisSession = true;
             return false;
         }
-        if (decision == RestoredApplicationDecision::skipVerified) return false;
         state->body.application.applied = false;
         state->body.application.verifiedThisSession = false;
         return true;

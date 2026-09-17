@@ -666,7 +666,7 @@ namespace
 
     [[nodiscard]] std::vector<CatalogItem> BodyItems()
     {
-        const auto presets = bcn::PresetCatalog::Get().Snapshot();
+        const auto presets = bcn::PresetCatalog::Get().ListSnapshot();
         const auto actor = bcn::ActorCatalog::Get().Resolve(g_selectedActorFormID);
         const auto actorBase = actor ? actor->GetActorBase() : nullptr;
         const auto actorMale = actorBase && actorBase->GetSex() == RE::SEX::kMale;
@@ -676,8 +676,8 @@ namespace
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto currentPreset = bcn::racemenu::CurrentPresetId(actor);
         std::vector<CatalogItem> items;
-        items.reserve(presets.size());
-        for (const auto& preset : presets) {
+        items.reserve(presets->size());
+        for (const auto& preset : *presets) {
             if (preset.male != selectedMale) continue;
             const auto presetMask = bcn::body_family::PresetMask(preset.family, preset.male);
             if (distributionSelecting) {
@@ -686,7 +686,7 @@ namespace
             } else if (!bcn::body_family::Matches(presetMask, actorFamily)) {
                 continue;
             }
-            const auto id = preset.PersistentId();
+            const auto& id = preset.id;
             items.push_back(CatalogItem{
                 .id = id,
                 .name = preset.name,
@@ -1821,8 +1821,10 @@ namespace
                     ImGui::Spacing();
                 }
             }
-            for (auto* itemPointer : visibleItems) {
-                auto& item = *itemPointer;
+            const auto entryRowBegin = row;
+            const auto drawBodyRow = [&](const std::size_t index) {
+                const auto row = entryRowBegin + index;
+                auto& item = *visibleItems[index];
                 ImGui::PushID(item.id.c_str());
                 const auto rowCursor = ImGui::GetCursorScreenPos();
                 const auto cardHeight = Scaled(48.0F);
@@ -1872,7 +1874,15 @@ namespace
                 ImGui::SetCursorScreenPos(ImVec2(rowCursor.x, cursor.y + cardHeight + Scaled(5.0F)));
                 ImGui::Dummy(ImVec2(0.0F, 0.0F));
                 ImGui::PopID();
-                ++row;
+            };
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(visibleItems.size()), Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y);
+            if (navigation.hasFocus && navigation.focused >= entryRowBegin &&
+                navigation.focused < entryRowBegin + visibleItems.size())
+                clipper.IncludeItemByIndex(static_cast<int>(navigation.focused - entryRowBegin));
+            while (clipper.Step()) {
+                for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index)
+                    drawBodyRow(static_cast<std::size_t>(index));
             }
         }
         ImGui::EndChild();

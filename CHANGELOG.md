@@ -2,10 +2,17 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.5
+
+- Use one game-cursor coordinate source for native UI mouse input. Buffer Windows button edges until rendering instead of mixing OS cursor positions with Skyrim's cursor; avoid duplicate Scaleform mouse delivery.
+- Share immutable preset-list metadata built on refresh instead of copying every preset's slider data each UI frame. Clip off-screen body-preset rows while retaining keyboard focus/navigation.
+- Recheck saved body morph layers at actor reconciliation and 3D-update boundaries instead of trusting an earlier session-local success. Recover missing layers from the existing selection without rerolling distribution or interrupting previews.
+- Generic-NPC selection filters are unchanged pending clarification of the report. In-game verification of the input and recovery changes remains pending.
+
 ## 1.2.4
 
 - Accept valid UBE Zeroed presets without SetSlider entries in preview, confirmation, and saved-selection restoration.
-- Apply standard UBE XML endpoints relative to their actual zeroed build defaults. Preserve omitted endpoints, negative and over-100 values, additive named Refit presets, and the existing calculations for other body families.
+- Apply standard UBE XML endpoints relative to their actual zeroed build defaults. Preserve omitted endpoints, negative and over-100 values, and the existing calculations for other body families.
 - Check native body-rebuild completion directly so face refresh no longer depends solely on a NiNode notification. Preserve readiness checks, stale-request cancellation, and bounded failure handling.
 - Build missing body/hand/foot Skin TXSTs from the source NIF's actual skin materials instead of hard-coded UBE paths. Preserve full channel baselines and normal-map conventions; route distinct atlases through private per-shape alternate textures instead of forcing one shared texture set. Existing native providers remain authoritative.
 - Prepare reusable body targets independently of the first selected pack. Selecting a face-only pack first no longer leaves later body-containing packs without their native targets; face-only application still leaves the body detached.

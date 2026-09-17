@@ -386,7 +386,25 @@ int main()
         futaReapply.contains("FutanariSelectionSignature") && futaReapply.contains("frame_tasks::HasPreview") &&
         !futaReapply.contains("Distribution::Get().ApplyActor"));
     Require(skinApplicationSource.find("bcn::skin_session::FutanariSelectionSignature(") < reapplyStart);
+    const auto bodyItemsSource = uiSection("std::vector<CatalogItem> BodyItems()", "RE::Actor* SelectedActor()");
+    Require(bodyItemsSource.contains("PresetCatalog::Get().ListSnapshot()") &&
+        !bodyItemsSource.contains("PresetCatalog::Get().Snapshot()"));
+    const auto bodyRowsSource = uiSection("void DrawCatalog(", "void DrawSkinCatalog()");
+    Require(bodyRowsSource.contains("ImGuiListClipper") && bodyRowsSource.contains("IncludeItemByIndex") &&
+        bodyRowsSource.contains("Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y"));
+    const auto mouseHostSource = readFeatureSource("NativeImGuiHost.cpp");
+    Require(mouseHostSource.contains("RemoveBackendMousePositions(firstBackendEvent)") &&
+        mouseHostSource.contains("g_mouseInput.Drain(io, CurrentMousePosition())") &&
+        !mouseHostSource.contains("ImGui_ImplWin32_WndProcHandler(window"));
+    const auto registrySource = readFeatureSource("ActorRegistry.cpp");
+    const auto bodyVerifyBegin = registrySource.find("bool ActorRegistry::NeedsBodyApply(");
+    const auto bodyVerifyEnd = registrySource.find("bool ActorRegistry::NeedsSkinApply(", bodyVerifyBegin);
+    Require(bodyVerifyBegin != std::string::npos && bodyVerifyEnd != std::string::npos);
+    const auto bodyVerifySource = std::string_view(registrySource).substr(bodyVerifyBegin, bodyVerifyEnd - bodyVerifyBegin);
+    Require(bodyVerifySource.contains("EvaluateLiveBodyApplication") &&
+        !bodyVerifySource.contains("if (state->body.application.verifiedThisSession) return false"));
     const auto actorEventsSource = readFeatureSource("ActorEvents.cpp");
+    Require(actorEventsSource.contains("racemenu::QueueVerifySavedBody(actor)"));
     Require(actorEventsSource.contains("(tracked || futanari_support::Available())") &&
         actorEventsSource.contains("!mayRegisterFutanari") &&
         actorEventsSource.contains("appearance::WorkChannel::equipmentVerify"));
@@ -666,6 +684,19 @@ int main()
         morphSource.contains("preset && preset->UsesBuildDefaults()") &&
         morphSource.contains("return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody") &&
         morphSource.contains("return !hasAnyOwned && !hasOBody"));
+    const auto savedVerifyBegin = morphSource.find("void QueueVerifySavedBody(");
+    const auto savedVerifyEnd = morphSource.find("bool HasOutfitCorrection(", savedVerifyBegin);
+    Require(savedVerifyBegin != std::string::npos && savedVerifyEnd != std::string::npos);
+    const auto savedVerifySource = std::string_view(morphSource).substr(savedVerifyBegin, savedVerifyEnd - savedVerifyBegin);
+    Require(savedVerifySource.contains("frame_tasks::HasPreview") &&
+        savedVerifySource.contains("HasActivePreview") &&
+        savedVerifySource.contains("appearance::WorkChannel::bodyCommit") &&
+        savedVerifySource.contains("appearance::WorkChannel::bodyPreviewCleanup") &&
+        savedVerifySource.contains("appearance::WorkChannel::bodyVerify") &&
+        savedVerifySource.contains("NeedsBodyApply") &&
+        savedVerifySource.contains("selection.selectedId") &&
+        savedVerifySource.contains("UpdatePolicy::deferred") &&
+        !savedVerifySource.contains("Distribution::"));
     Require(!defaultPreviewBody.contains(
         "ClearBodyMorphKeys(resolved.get(), kCommittedKey)"));
     Require(!defaultPreviewBody.contains(

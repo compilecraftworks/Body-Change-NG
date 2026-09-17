@@ -196,6 +196,16 @@ namespace bcn
             RestoredApplicationDecision::apply;
     }
 
+    // Body verification is event-driven and must not trust an earlier
+    // session-local success after the backend layer has disappeared.
+    [[nodiscard]] inline RestoredApplicationDecision EvaluateLiveBodyApplication(
+        const FeatureApplicationState& application, const bool signatureMatches,
+        const std::optional<bool> liveStateMatches) noexcept
+    {
+        return EvaluateRestoredApplication(application.applied, false,
+            signatureMatches, liveStateMatches);
+    }
+
     inline void PrepareRestoredState(ActorState& state) noexcept
     {
         state.body.application.verifiedThisSession = false;

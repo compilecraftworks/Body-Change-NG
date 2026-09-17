@@ -382,6 +382,7 @@ namespace bcn
                 // Notify before registry filtering: an addon-only rebuild can
                 // have a barrier without a general body-skin selection.
                 face_skin::OnNiNodeUpdate(actor);
+                racemenu::QueueVerifySavedBody(actor);
                 const auto* base = actor->GetActorBase();
                 const auto mayRegisterFutanari = base && base->GetSex() == RE::SEX::kFemale &&
                     futanari_support::Available();

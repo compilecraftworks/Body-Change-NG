@@ -16,6 +16,12 @@ BCNG ships no body meshes, skin packs, tattoo collections, or preset collection.
 - [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444), with the database for that runtime. Choose the appropriate SE/AE package.
 - [RaceMenu](https://www.nexusmods.com/skyrimspecialedition/mods/19080), including its matching SKSE plugin and scripts. BCNG uses RaceMenu's BodyMorph, NiOverride, and overlay services.
 
+**Incompatible — do not use together**
+
+- OBody NG
+- Racial Skin Variance - SPID (RSV)
+- RaceMenu Selector of Skins - Unique Player Character
+
 **Required for the feature you use**
 - **Body presets:** a supported morph-enabled body, compatible outfits, and BodySlide preset XMLs. To reproduce the XML's intended shape, build **both the character body and the outfits you use** in [BodySlide](https://www.nexusmods.com/skyrimspecialedition/mods/201) with the matching **Zeroed Sliders** preset and **Build Morphs checked**. Install the generated meshes and TRI files together. Building only the body is not sufficient for outfits to follow correctly.
 - **Skins and tint masks:** compatible loose DDS files, arranged as shown below.
@@ -92,7 +98,7 @@ Slider names are case-insensitive: Breasts and breasts identify the same morph. 
 
 UNP-family presets have a small set of reverse-defined base sliders, including Breasts and NippleDistance. BCNG converts those endpoints with 1 - (XML value / 100) before interpolation; it does not reverse every slider. Optional NPC nipple/genital randomization can separately replace its selected anatomical sliders, and does not apply to the player.
 
-**UBE baseline:** UBE uses its own zeroed build baseline. For standard UBE presets, each explicitly supplied XML endpoint is converted to (XML value / 100) minus that endpoint's UBE build default before weight interpolation. NipplesShowUp has a default of 1 at both weights; SkinnyMorph has a default of 1 at weight 0 and 0 at weight 100. Other supported body sliders default to 0. Omitted endpoints leave a zero delta, and valid UBE Zeroed presets without slider entries are selectable. Named Refit presets stay additive; UBE slider names containing n|p are not treated as UNP reverse sliders. Use matching UBE zeroed meshes and TRI files.
+**UBE baseline:** UBE uses its own zeroed build baseline. For standard UBE presets, each explicitly supplied XML endpoint is converted to (XML value / 100) minus that endpoint's UBE build default before weight interpolation. NipplesShowUp has a default of 1 at both weights; SkinnyMorph has a default of 1 at weight 0 and 0 at weight 100. Other supported body sliders default to 0. Omitted endpoints leave a zero delta, and valid UBE Zeroed presets without slider entries are selectable. UBE slider names containing n|p are not treated as UNP reverse sliders. Use matching UBE zeroed meshes and TRI files.
 
 With **Preserve other mods' morphs** on, BCNG's previous preset/correction keys and the exact OBody/OClothe keys are removed before application; other morph keys remain preserved; preserved keys can also affect the final shape according to RaceMenu's morph-combination setting. With it off, confirming a preset clears existing RaceMenu body morph keys before writing the new values. Previewing does not permanently delete those keys; closing without confirmation restores the committed state.
 

@@ -18,6 +18,7 @@ namespace bcn::appearance
         raceMenuRestore = 103,
         equipmentVerify = 104,
         renderedOutfitReconcile = 105,
+        bodyVerify = 106,
 
         bodyPreview = 200,
         bodyCommit = 201,

@@ -205,6 +205,42 @@ int main()
             ImGui::Render();
         }
     }
+    // Match the body's custom-card cursor advance, including Dummy's trailing
+    // item spacing. A clipper using only card+gap overlaps/skips rows.
+    for (const bool clipped : {false, true}) {
+        for (int settle = 0; settle < 2; ++settle) {
+            ImGui::NewFrame();
+            ImGui::SetNextWindowPos({0, 0});
+            ImGui::SetNextWindowSize({700, 700});
+            ImGui::Begin("BodyClipGeometry");
+            ImGui::BeginChild("Rows", {650, 600});
+            const auto origin = ImGui::GetCursorScreenPos();
+            const auto stride = 53.0F + ImGui::GetStyle().ItemSpacing.y;
+            int rendered{}; bool focused{};
+            const auto row = [&](int index) {
+                const auto position = ImGui::GetCursorScreenPos();
+                Require(std::abs(position.y - (origin.y + index * stride)) < 1.0F);
+                ImGui::PushID(index);
+                ImGui::InvisibleButton("card", {550, 48});
+                ImGui::SetCursorScreenPos({position.x, position.y + 53});
+                ImGui::Dummy({0, 0});
+                ImGui::PopID();
+                ++rendered; focused |= index == 900;
+            };
+            if (clipped) {
+                ImGuiListClipper clipper;
+                clipper.Begin(1000, stride);
+                clipper.IncludeItemByIndex(900);
+                while (clipper.Step())
+                    for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) row(i);
+            } else {
+                for (int i = 0; i < 1000; ++i) row(i);
+            }
+            Require(focused && (!clipped || rendered < 30));
+            Require(std::abs(ImGui::GetCursorScreenPos().y - (origin.y + 1000 * stride)) < 1.0F);
+            ImGui::EndChild(); ImGui::End(); ImGui::Render();
+        }
+    }
     ImGui::DestroyContext();
     std::cout << "PopupPlacementTests passed: 8 popup positions, centering, repeated reopen, drag guard, smaller viewport, fitted one-line help, title hint clip/alignment/scaling\n";
 }

@@ -78,6 +78,9 @@ namespace bcn::racemenu
     // RaceMenu recreates the player's 3D when character generation closes.
     // Reapply the already selected preset to that fresh geometry.
     void QueueReapplyCurrent(RE::Actor* a_actor);
+    // Event-driven live-key verification; never changes the saved selection
+    // or takes ownership from an interactive preview.
+    void QueueVerifySavedBody(RE::Actor* a_actor);
     [[nodiscard]] ApplyResult QueueApplyOutfit(RE::Actor* a_actor, std::string a_refitPresetId,
         std::uint64_t a_outfitSignature);
     // Reverts the transient single-click preview on the exact actor that owns

@@ -4,6 +4,7 @@
 #include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/TextInputFilter.h"
 #include "BodyChangeNG/UI.h"
+#include "BodyChangeNG/MouseInputQueue.h"
 
 #include <SKSE/Logger.h>
 #include <RE/C/ControlMap.h>
@@ -14,11 +15,6 @@
 #include <imgui_impl_win32.h>
 
 #include <vector>
-
-// Dear ImGui intentionally keeps this declaration behind an #if 0 in the
-// Win32 backend header so consumers that do not use Windows headers do not
-// inherit them. This translation unit already uses HWND/WPARAM directly.
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace RE
 {
@@ -58,6 +54,8 @@ namespace
     bool g_cancelThisFrame{};
     std::atomic_int g_mouseWheelSteps{};
     std::atomic_int g_rightMouseState{ -1 };
+    bcn::native_ui::MouseInputQueue g_mouseInput;
+    unsigned g_windowMouseButtons{}; // Window-procedure thread only.
     std::atomic_bool g_wantsTextInput{};
     std::mutex g_rendererLock;
     struct PendingTextInputKey
@@ -117,6 +115,18 @@ namespace
         }
     }
 
+    void QueueWindowButton(HWND window, int button, bool down)
+    {
+        if (down) {
+            if (!g_windowMouseButtons && !GetCapture()) SetCapture(window);
+            g_windowMouseButtons |= 1U << button;
+        } else {
+            g_windowMouseButtons &= ~(1U << button);
+            if (!g_windowMouseButtons && GetCapture() == window) ReleaseCapture();
+        }
+        g_mouseInput.Button(button, down);
+    }
+
     LRESULT CALLBACK BodyChangeWindowProc(const HWND window, const UINT message, const WPARAM wParam, const LPARAM lParam)
     {
         if (message == WM_KILLFOCUS ||
@@ -124,6 +134,9 @@ namespace
             g_wantsTextInput.store(false, std::memory_order_release);
             ClearPendingTextInputKeys();
             bcn::text_input::Reset();
+            g_mouseInput.Reset();
+            g_windowMouseButtons = 0;
+            if (GetCapture() == window) ReleaseCapture();
         }
         // A native IMenu has no Scaleform movie that forwards mouse-button
         // events. Feed them directly to ImGui while this overlay is visible.
@@ -131,11 +144,22 @@ namespace
         // prevents touchpads and stale Shift modifier state from pushing
         // catalogs or combo popups sideways.
         if (g_open.load() && message == WM_MOUSEHWHEEL) return 0;
-        if (g_open.load() && g_rendererReady && g_context && IsImGuiMouseMessage(message)) {
-            const auto previous = ImGui::GetCurrentContext();
-            ImGui::SetCurrentContext(g_context);
-            ImGui_ImplWin32_WndProcHandler(window, message, wParam, lParam);
-            ImGui::SetCurrentContext(previous);
+        if (g_open.load() && IsImGuiMouseMessage(message)) {
+            switch (message) {
+            case WM_LBUTTONDOWN: case WM_LBUTTONDBLCLK: QueueWindowButton(window, 0, true); break;
+            case WM_LBUTTONUP: QueueWindowButton(window, 0, false); break;
+            case WM_RBUTTONDOWN: case WM_RBUTTONDBLCLK: QueueWindowButton(window, 1, true); break;
+            case WM_RBUTTONUP: QueueWindowButton(window, 1, false); break;
+            case WM_MBUTTONDOWN: case WM_MBUTTONDBLCLK: QueueWindowButton(window, 2, true); break;
+            case WM_MBUTTONUP: QueueWindowButton(window, 2, false); break;
+            case WM_XBUTTONDOWN: case WM_XBUTTONDBLCLK:
+                QueueWindowButton(window, HIWORD(wParam) == XBUTTON1 ? 3 : 4, true); break;
+            case WM_XBUTTONUP:
+                QueueWindowButton(window, HIWORD(wParam) == XBUTTON1 ? 3 : 4, false); break;
+            case WM_MOUSEWHEEL:
+                g_mouseInput.Wheel(static_cast<float>(static_cast<short>(HIWORD(wParam))) / WHEEL_DELTA); break;
+            default: break; // Never feed Windows cursor coordinates to ImGui.
+            }
             return 0;
         }
         return g_previousWindowProc ?
@@ -604,21 +628,18 @@ namespace
         return true;
     }
 
-    void UpdateMousePosition()
+    ImVec2 CurrentMousePosition()
     {
-        auto& io = ImGui::GetIO();
         if (auto* ui = RE::UI::GetSingleton(); ui && ui->IsMenuOpen(RE::CursorMenu::MENU_NAME)) {
             if (const auto* cursor = RE::MenuCursor::GetSingleton()) {
-                io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-                io.AddMousePosEvent(cursor->cursorPosX, cursor->cursorPosY);
-                return;
+                return {cursor->cursorPosX, cursor->cursorPosY};
             }
         }
         POINT point{};
         if (g_window && GetCursorPos(&point) && ScreenToClient(g_window, &point)) {
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMousePosEvent(static_cast<float>(point.x), static_cast<float>(point.y));
+            return {static_cast<float>(point.x), static_cast<float>(point.y)};
         }
+        return {-FLT_MAX, -FLT_MAX};
     }
 
     void FeedScaleformEvent(const RE::BSUIScaleformData* data)
@@ -629,15 +650,10 @@ namespace
         const auto* event = data->scaleformEvent;
         switch (event->type.get()) {
         case RE::GFxEvent::EventType::kMouseDown:
-        case RE::GFxEvent::EventType::kMouseUp: {
-            const auto* mouse = reinterpret_cast<const RE::GFxMouseEvent*>(event);
-            io.AddMouseSourceEvent(ImGuiMouseSource_Mouse);
-            io.AddMouseButtonEvent(static_cast<int>(mouse->button), event->type == RE::GFxEvent::EventType::kMouseDown);
-            break;
-        }
+        case RE::GFxEvent::EventType::kMouseUp:
         case RE::GFxEvent::EventType::kMouseWheel: {
-            const auto* mouse = reinterpret_cast<const RE::GFxMouseEvent*>(event);
-            io.AddMouseWheelEvent(0.0F, mouse->scrollDelta);
+            // Native window input owns the mouse. Do not replay the same
+            // edges through Scaleform in a different coordinate/order stream.
             break;
         }
         case RE::GFxEvent::EventType::kKeyDown:
@@ -692,11 +708,13 @@ namespace
         {
             if (!g_rendererReady || !g_context || !g_win32Ready || !g_dx11Ready) return;
             ScopedContext context(g_context);
+            const auto firstBackendEvent = g_context->InputEventsQueue.Size;
             ImGui_ImplWin32_NewFrame();
+            bcn::native_ui::RemoveBackendMousePositions(firstBackendEvent);
             ImGui_ImplDX11_NewFrame();
             ApplyConfiguredScale();
-            UpdateMousePosition();
             auto& io = ImGui::GetIO();
+            g_mouseInput.Drain(io, CurrentMousePosition());
             io.AddKeyEvent(ImGuiMod_Ctrl, (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0);
             io.AddKeyEvent(ImGuiMod_Shift, (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0);
             io.AddKeyEvent(ImGuiMod_Alt, (GetAsyncKeyState(VK_MENU) & 0x8000) != 0);
@@ -731,6 +749,7 @@ namespace
             switch (message.type.get()) {
             case RE::UI_MESSAGE_TYPE::kShow:
                 g_open = true;
+                g_mouseInput.Reset();
                 g_openRequested = true;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
@@ -741,6 +760,7 @@ namespace
             case RE::UI_MESSAGE_TYPE::kHide:
                 bcn::ui::OnClosed();
                 g_open = false;
+                g_mouseInput.Reset();
                 g_openRequested = false;
                 g_cursorShowPending = false;
                 g_escapeRequested = false;
