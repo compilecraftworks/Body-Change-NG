@@ -137,6 +137,10 @@ int main()
         metadataRequest.contains("g_distributionTargets.Current(ticket)") &&
         metadataRequest.contains("g_distributionTargets.Publish") &&
         metadataRequest.find("frame_tasks::Queue(0") < metadataRequest.find("CollectDistributionTargetOptions"));
+    const auto targetRead = uiSection("void AddFormTargetOption(",
+        "[[nodiscard]] std::optional<DistributionTargetSnapshot> CollectDistributionTargetOptions(");
+    Require(targetRead.contains("distribution_target::Read<T>") &&
+        !targetRead.contains("->GetName()") && !targetRead.contains("->GetFormEditorID()"));
     const auto ensureEditor = uiSection("void EnsureDistributionEditor()", "void SynchronizeDistributionRuleNames()");
     Require(ensureEditor.contains("g_distributionTargets.Read()") &&
         !ensureEditor.contains("GetFormArray") && !ensureEditor.contains("CollectDistributionTargetOptions("));

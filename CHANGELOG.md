@@ -4,6 +4,8 @@ All notable public changes to Body Change NG are documented here.
 
 ## 1.2.7
 
+- Harden distribution condition-list reads against invalid faction/race/class/keyword objects: verify runtime type and current form identity before reading metadata. Read validated full-name data without invoking the unsafe name virtual; retain editor-ID hooks and use the existing ID label fallback if only the name component is unavailable. No faction is excluded by name or ID.
+
 - Reset distribution checkbox mode, sex, candidate selections, and preview-dirty flags consistently when closing/reopening the main window or changing game sessions. Keep candidates intact when entering the condition popup so adding another rule still works.
 - Collect faction/race/keyword/class/plugin options on the game task instead of walking engine arrays during UI drawing. Publish an owned, immutable result; reject late results after close/load and avoid per-frame scans or repeated failure retries. Saved rules and the All NPC/name targets do not depend on the options being ready.
 - Add UI cleanup at serialization revert and New Game/PostLoadGame boundaries. Discard old actor/camera presentation references without restoring them into a new world, and invalidate queued camera updates from the previous session.
@@ -11,7 +13,7 @@ All notable public changes to Body Change NG are documented here.
 
 - Add an explicit Enter-triggered name/hex RefID search for existing actor references, independent of the nearby dropdown's distance/32-NPC limit. Resolve names in bounded batches and discard stale searches after close/load/replacement; searching does not spawn NPCs or load cells.
 - Allow validated manual body/skin/futanari/overlay choices to be stored for actors whose 3D is unloaded. Preview still requires loaded 3D. The existing attach queue rechecks compatibility and applies saved selections when the actor loads; saving the game preserves pending choices in the existing co-save format. Unspawned NPC bases require distribution rules rather than an individual RefID selection.
-- Validation: Release build and 27 regression executables passed, including current production reset helpers, cancellation checkpoints, stale-result rejection, snapshot lifetime, 400 publication/reset races, and pending-selection co-save round trips. The reported new-game distribution-popup CTD has not been reproduced or confirmed fixed in-game; remote selection/attachment also still needs in-game verification. No co-save format or supported-runtime change.
+- Validation: Release build and all 28 regression executables passed, including invalid metadata entries, editor-ID hooks, current production reset helpers, cancellation checkpoints, snapshot lifetime, 400 publication/reset races, and pending-selection co-save round trips. Required relocation coverage was checked against the 12 supported SE/AE Address Library databases. The supplied 1.2.6 crash path is now guarded, but confirmation on the reporter's setup and remote selection/attachment still need in-game testing. The source of the invalid object is not established. Existing RaceMenu contracts, saved rules, and co-save format are unchanged.
 - Allow hostile as well as non-hostile NPCs in the actor dropdown, including bandits. Keep the 4,096-unit radius, nearest-32 limit, and existing name/NPC/live-3D safety checks. Distribution rule matching is unchanged.
 
 ## 1.2.6

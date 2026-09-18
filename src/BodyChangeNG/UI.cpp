@@ -32,6 +32,8 @@
 #include <imgui.h>
 #include <misc/cpp/imgui_stdlib.h>
 #include <RE/T/TESClass.h>
+#include <RE/RTTI.h>
+#include "BodyChangeNG/DistributionTargetRead.h"
 
 #include <algorithm>
 #include <charconv>
@@ -872,36 +874,37 @@ namespace
         return form && file ? form->GetFormID() & (file->IsLight() ? 0xFFFU : 0xFFFFFFU) : 0U;
     }
 
+    template <class T>
     void AddFormTargetOption(std::vector<DistributionTargetOption>& options,
-        std::unordered_set<std::string>& known, RE::TESForm* form,
+        std::unordered_set<std::string>& known, T* candidate,
         const std::string_view unnamed)
     {
-        const auto* file = form ? form->GetFile(0) : nullptr;
-        if (!form || !file || file->GetFilename().empty()) return;
-        const auto localFormID = LocalFormID(form, file);
-        if (localFormID == 0U) return;
-        const auto plugin = std::string{ file->GetFilename() };
-        const auto identity = Lower(plugin) + ":" + std::format("{:06X}", localFormID);
-        if (!known.insert(identity).second) return;
+        bcn::distribution_target::Read<T>(candidate, [&](T* form, const char* rawName, const char* rawEditorID) {
+            const auto* file = form->GetFile(0);
+            if (!file || file->GetFilename().empty()) return;
+            const auto localFormID = LocalFormID(form, file);
+            if (localFormID == 0U) return;
+            const auto plugin = std::string{ file->GetFilename() };
+            const auto identity = Lower(plugin) + ":" + std::format("{:06X}", localFormID);
+            if (!known.insert(identity).second) return;
 
-        const auto* rawName = form->GetName();
-        const auto* rawEditorID = form->GetFormEditorID();
-        const auto name = rawName && rawName[0] != '\0' ? std::string{ rawName } : std::string{};
-        const auto editorID = rawEditorID && rawEditorID[0] != '\0' ? std::string{ rawEditorID } : std::string{};
-        std::string display;
-        if (!name.empty()) display = name;
-        if (!editorID.empty() && Lower(name) != Lower(editorID)) {
-            if (!display.empty()) display += " · ";
-            display += editorID;
-        }
-        if (display.empty()) display = unnamed;
-        display += std::format(" · {}:{:06X}", plugin, localFormID);
-        options.push_back({
-            .display = std::move(display),
-            .editorID = editorID,
-            .plugin = plugin,
-            .localFormID = localFormID,
-            .runtimeFormID = form->GetFormID()
+            const auto name = rawName && rawName[0] != '\0' ? std::string{ rawName } : std::string{};
+            const auto editorID = rawEditorID && rawEditorID[0] != '\0' ? std::string{ rawEditorID } : std::string{};
+            std::string display;
+            if (!name.empty()) display = name;
+            if (!editorID.empty() && Lower(name) != Lower(editorID)) {
+                if (!display.empty()) display += " · ";
+                display += editorID;
+            }
+            if (display.empty()) display = unnamed;
+            display += std::format(" · {}:{:06X}", plugin, localFormID);
+            options.push_back({
+                .display = std::move(display),
+                .editorID = editorID,
+                .plugin = plugin,
+                .localFormID = localFormID,
+                .runtimeFormID = form->GetFormID()
+            });
         });
     }
 
