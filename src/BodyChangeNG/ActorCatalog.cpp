@@ -1,13 +1,29 @@
 #include "BodyChangeNG/ActorCatalog.h"
+#include "BodyChangeNG/ActorSearchPolicy.h"
+#include "BodyChangeNG/FrameTasks.h"
 
 #include <RE/T/TES.h>
 
 #include <algorithm>
 #include <ranges>
 #include <unordered_set>
+#include <mutex>
+#include <memory>
 
 namespace
 {
+    std::mutex g_searchLock;
+    bcn::ActorSearchResult g_search;
+    std::uint64_t g_searchGeneration{};
+    struct SearchJob
+    {
+        std::uint64_t generation{}, epoch{};
+        std::string query;
+        std::vector<RE::FormID> references;
+        std::vector<bcn::ActorEntry> results;
+        std::size_t next{};
+        bool collected{};
+    };
     // Match Skyrim Fitting System's workbench discovery boundary.  ProcessLists
     // also contains loaded/detached temporary actors outside the local scene;
     // listing those can leave a stale FFxxxxxx selection whose camera target
@@ -28,8 +44,10 @@ namespace
 
     [[nodiscard]] bool IsSelectableActor(RE::Actor* actor, RE::Actor* player)
     {
+        // Appearance selection is independent of hostility/combat state.
+        // Keep the live-target safety checks for both friendly and enemy NPCs.
         return actor && player && !actor->IsDisabled() && actor->Is3DLoaded() && !actor->IsDead() &&
-            HasMeaningfulName(actor) && !actor->IsHostileToActor(player) &&
+            HasMeaningfulName(actor) &&
             (actor->IsPlayerTeammate() || actor->HasKeywordString("ActorTypeNPC"));
     }
 
@@ -53,10 +71,91 @@ namespace
         const auto reference = handle.get();
         return reference ? reference->As<RE::Actor>() : nullptr;
     }
+
+    void SearchStep(const std::shared_ptr<SearchJob>& job)
+    {
+        {
+            std::scoped_lock lock(g_searchLock);
+            if (job->generation != g_searchGeneration || !bcn::frame_tasks::IsCurrent(job->epoch)) return;
+        }
+        if (!job->collected) {
+            // Hold the form-map lock only while copying reference IDs. Naming,
+            // lookup and keyword checks must run AFTER releasing that lock.
+            const auto [forms, lock] = RE::TESForm::GetAllForms();
+            const RE::BSReadLockGuard guard(lock);
+            if (forms) for (const auto& [id, form] : *forms)
+                if (form && form->Is(RE::FormType::ActorCharacter)) job->references.push_back(id);
+            job->collected = true;
+        }
+        // Spread actor/name resolution across real game ticks; never scan all
+        // forms each frame or for every typed character.
+        const auto end = (std::min)(job->references.size(), job->next + 256U);
+        for (; job->next < end; ++job->next) {
+            auto* actor = RE::TESForm::LookupByID<RE::Actor>(job->references[job->next]);
+            if (!actor || actor->IsDisabled() || actor->IsDead() || !HasMeaningfulName(actor) ||
+                (!actor->IsPlayerTeammate() && !actor->HasKeywordString("ActorTypeNPC"))) continue;
+            const auto name = DisplayName(actor, "NPC");
+            if (!bcn::actor_search::Matches(job->query, name, actor->GetFormID())) continue;
+            const auto* base = actor->GetActorBase();
+            job->results.push_back({actor->GetFormID(), name,
+                base && base->GetSex() == RE::SEX::kFemale, actor == RE::PlayerCharacter::GetSingleton()});
+        }
+        if (job->next < job->references.size()) {
+            if (bcn::frame_tasks::Queue(0U, [job] { SearchStep(job); }, 1U,
+                    bcn::appearance::WorkChannel::actorSearch)) return;
+            std::scoped_lock lock(g_searchLock);
+            if (job->generation == g_searchGeneration) {
+                g_search.running = false;
+                g_search.failed = true;
+            }
+            return; // Do not present a partial scan as a complete result.
+        }
+        std::ranges::sort(job->results, {}, &bcn::ActorEntry::formID);
+        std::scoped_lock lock(g_searchLock);
+        if (job->generation == g_searchGeneration && bcn::frame_tasks::IsCurrent(job->epoch)) {
+            g_search.entries = std::make_shared<const std::vector<bcn::ActorEntry>>(std::move(job->results));
+            g_search.running = false;
+        }
+    }
 }
 
 namespace bcn
 {
+    void ActorCatalog::Search(std::string query)
+    {
+        query = actor_search::Normalize(query);
+        CancelSearch();
+        if (query.empty() || !frame_tasks::Active()) return;
+        auto job = std::make_shared<SearchJob>();
+        job->query = query;
+        job->epoch = frame_tasks::Epoch();
+        {
+            std::scoped_lock lock(g_searchLock);
+            job->generation = g_searchGeneration;
+            g_search = {std::move(query), {}, true};
+        }
+        if (!frame_tasks::Queue(0U, [job] { SearchStep(job); }, 1U, appearance::WorkChannel::actorSearch)) {
+            std::scoped_lock lock(g_searchLock);
+            if (job->generation == g_searchGeneration) {
+                g_search.running = false;
+                g_search.failed = true;
+            }
+        }
+    }
+
+    void ActorCatalog::CancelSearch()
+    {
+        std::scoped_lock lock(g_searchLock);
+        ++g_searchGeneration;
+        g_search = {};
+    }
+
+    ActorSearchResult ActorCatalog::SearchSnapshot() const
+    {
+        std::scoped_lock lock(g_searchLock);
+        return g_search;
+    }
+
     ActorCatalog& ActorCatalog::Get()
     {
         static ActorCatalog catalog;

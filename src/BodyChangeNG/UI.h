@@ -10,5 +10,6 @@ namespace bcn::ui
     void OnOpened();
     void OnClosed();
     void OnLoadStart();
+    void OnSessionReset();
     void Notify(std::string a_message);
 }

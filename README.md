@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.6
+# Body Change NG — v1.2.7
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,26 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.2.6
+## Current version — v1.2.7
+
+Version 1.2.7 resets distribution/UI drafts consistently across close, load, and
+new-game boundaries. Distribution target metadata is collected on a game task
+and handed to the UI as owned values, with stale results discarded. Body/skin
+work rechecks cancellation before mutation. This is lifecycle hardening, not an
+in-game confirmation of the reported distribution-popup CTD.
+
+Hostile NPCs can appear in the nearby actor dropdown. Explicit name/hex RefID
+search also finds existing references outside its radius/32-NPC limit; compatible
+manual choices can be saved for unloaded actors and applied when they load.
+Searching does not spawn actors or force cells to load.
+
+See [English changelog](CHANGELOG.md#127), [한국어 변경 내역](CHANGELOG-KO.md#127),
+and the [investigation and validation scope](docs/DISTRIBUTION-POPUP-CTD-AUDIT-20260918-KO.md).
+
+- [v1.2.7 English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.7-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.7-KO.html)
+- [English plain text](docs/NEXUS-CHANGELOG-v1.2.7-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.2.7-KO.txt)
+
+## Previous version — v1.2.6
 
 Version 1.2.6 corrects the 1.2.5 mouse delivery regression: button and wheel
 edges come from Skyrim's input hook, independently of Windows mouse messages,

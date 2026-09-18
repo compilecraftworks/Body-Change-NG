@@ -5,9 +5,11 @@
 #include "BodyChangeNG/PopupPlacementUI.h"
 #include "BodyChangeNG/FittedTextUI.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/SessionSnapshot.h"
 #include "BodyChangeNG/FutanariSupport.h"
 
 #include "BodyChangeNG/ActorCatalog.h"
+#include "BodyChangeNG/ActorSearchPolicy.h"
 #include "BodyChangeNG/ActorSettingsReset.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
@@ -92,6 +94,14 @@ namespace
         std::uint32_t runtimeFormID{};
     };
 
+    struct DistributionTargetSnapshot
+    {
+        std::vector<DistributionTargetOption> factions, races, keywords, classes;
+        std::vector<std::string> plugins;
+    };
+    bcn::async_work::SessionSnapshot<DistributionTargetSnapshot> g_distributionTargets;
+    std::shared_ptr<const DistributionTargetSnapshot> g_distributionTargetOptions;
+
     ActiveTab g_activeTab{ ActiveTab::body };
     DistributionPool g_distributionPool{ DistributionPool::body };
     std::array<bool, static_cast<std::size_t>(ActiveTab::count)> g_favoritesOnlyByTab{};
@@ -115,11 +125,6 @@ namespace
     std::size_t g_selectedDistributionRule{};
     std::uint32_t g_nextDraftRuleID{ 1U };
     std::optional<bcn::UiLanguage> g_distributionRuleNameLanguage;
-    std::vector<DistributionTargetOption> g_distributionFactionOptions;
-    std::vector<std::string> g_distributionPluginOptions;
-    std::vector<DistributionTargetOption> g_distributionRaceOptions;
-    std::vector<DistributionTargetOption> g_distributionKeywordOptions;
-    std::vector<DistributionTargetOption> g_distributionClassOptions;
     std::uint32_t g_selectedActorFormID{};
     std::string g_actorSearch;
     std::string g_search;
@@ -393,14 +398,9 @@ namespace
     [[nodiscard]] bool ActorMatchesSearch(const bcn::ActorEntry& entry)
     {
         if (g_actorSearch.empty()) return true;
-        const auto needle = Lower(g_actorSearch);
-        auto id = std::format("{:08x}", entry.formID);
-        auto shortID = id;
-        while (shortID.size() > 1U && shortID.front() == '0') shortID.erase(shortID.begin());
-        const auto searchableName = entry.player ?
-            std::string{ Text("플레이어", "Player", "玩家") } : entry.name;
-        return Lower(searchableName).find(needle) != std::string::npos || id.find(needle) != std::string::npos ||
-            shortID.find(needle) != std::string::npos || (needle.starts_with("0x") && id.find(needle.substr(2)) != std::string::npos);
+        const auto needle = bcn::actor_search::Normalize(g_actorSearch);
+        return needle.empty() || bcn::actor_search::Matches(needle, entry.name, entry.formID) ||
+            (entry.player && bcn::actor_search::Matches(needle, Text("플레이어", "Player", "玩家"), entry.formID));
     }
 
     [[nodiscard]] std::optional<RE::FormID> ExactActorFormID(std::string_view text)
@@ -723,6 +723,7 @@ namespace
             ResetCatalogNavigation();
         }
         g_actorSearch.clear();
+        bcn::ActorCatalog::Get().CancelSearch();
         const auto settings = bcn::Settings::Get().Snapshot();
         bcn::menu_character::Presentation::Get().Apply(settings.characterPosition, SelectedActor());
         if (g_activeTab == ActiveTab::overlay) {
@@ -736,11 +737,8 @@ namespace
         g_distributionRules.clear();
         g_selectedDistributionRule = 0;
         g_distributionPool = DistributionPool::body;
-        g_distributionFactionOptions.clear();
-        g_distributionPluginOptions.clear();
-        g_distributionRaceOptions.clear();
-        g_distributionKeywordOptions.clear();
-        g_distributionClassOptions.clear();
+        g_distributionTargets.Reset();
+        g_distributionTargetOptions.reset();
     }
 
     void ClearDistributionCatalogSelection()
@@ -748,6 +746,20 @@ namespace
         g_distributionSelectedIds.clear();
         for (auto& ids : g_distributionSelectedOverlayIds) ids.clear();
         g_overlayDistributionPreviewDirty.fill(true);
+    }
+
+    // Only a main-window/session boundary ends this selection context. Opening
+    // the condition popup must retain candidates for its Add rule button.
+    void ResetDistributionSelectionSession()
+    {
+        g_distributionSelectionMode = false;
+        g_distributionFemale = true;
+        g_distributionPool = DistributionPool::body;
+        g_showDistribution = false;
+        ClearDistributionCatalogSelection();
+        g_overlayDistributionPreviewDirty.fill(false);
+        ++g_distributionCatalogRevision;
+        ResetCatalogNavigation();
     }
 
     [[nodiscard]] bool IsDistributionSelectionFor(const DistributionPool pool) noexcept
@@ -861,7 +873,8 @@ namespace
     }
 
     void AddFormTargetOption(std::vector<DistributionTargetOption>& options,
-        std::unordered_set<std::string>& known, RE::TESForm* form)
+        std::unordered_set<std::string>& known, RE::TESForm* form,
+        const std::string_view unnamed)
     {
         const auto* file = form ? form->GetFile(0) : nullptr;
         if (!form || !file || file->GetFilename().empty()) return;
@@ -881,7 +894,7 @@ namespace
             if (!display.empty()) display += " · ";
             display += editorID;
         }
-        if (display.empty()) display = Text("이름 없음", "Unnamed", "未命名");
+        if (display.empty()) display = unnamed;
         display += std::format(" · {}:{:06X}", plugin, localFormID);
         options.push_back({
             .display = std::move(display),
@@ -892,37 +905,34 @@ namespace
         });
     }
 
-    void RefreshDistributionTargetOptions()
+    [[nodiscard]] std::optional<DistributionTargetSnapshot> CollectDistributionTargetOptions(
+        const std::string_view unnamed)
     {
-        g_distributionFactionOptions.clear();
-        g_distributionPluginOptions.clear();
-        g_distributionRaceOptions.clear();
-        g_distributionKeywordOptions.clear();
-        g_distributionClassOptions.clear();
+        DistributionTargetSnapshot result;
         auto* dataHandler = RE::TESDataHandler::GetSingleton();
-        if (!dataHandler) return;
+        if (!dataHandler) return {};
 
         std::unordered_set<std::string> knownFactions;
         for (auto* faction : dataHandler->GetFormArray<RE::TESFaction>()) {
-            AddFormTargetOption(g_distributionFactionOptions, knownFactions, faction);
+            AddFormTargetOption(result.factions, knownFactions, faction, unnamed);
         }
         std::unordered_set<std::string> knownRaces;
         for (auto* race : dataHandler->GetFormArray<RE::TESRace>()) {
-            AddFormTargetOption(g_distributionRaceOptions, knownRaces, race);
+            AddFormTargetOption(result.races, knownRaces, race, unnamed);
         }
         std::unordered_set<std::string> knownKeywords;
         for (auto* keyword : dataHandler->GetFormArray<RE::BGSKeyword>()) {
-            AddFormTargetOption(g_distributionKeywordOptions, knownKeywords, keyword);
+            AddFormTargetOption(result.keywords, knownKeywords, keyword, unnamed);
         }
         std::unordered_set<std::string> knownClasses;
         for (auto* npcClass : dataHandler->GetFormArray<RE::TESClass>()) {
-            AddFormTargetOption(g_distributionClassOptions, knownClasses, npcClass);
+            AddFormTargetOption(result.classes, knownClasses, npcClass, unnamed);
         }
         std::unordered_set<std::string> knownPlugins;
         const auto appendPlugins = [&](const RE::TESFile* const* files, const std::size_t count) {
             if (!files) return;
             for (std::size_t index{}; index < count; ++index) {
-                AddUniqueTargetOption(g_distributionPluginOptions, knownPlugins,
+                AddUniqueTargetOption(result.plugins, knownPlugins,
                     files[index] ? files[index]->GetFilename() : std::string_view{});
             }
         };
@@ -934,21 +944,50 @@ namespace
                 return Lower(left.display) < Lower(right.display);
             });
         };
-        sortFormOptions(g_distributionFactionOptions);
-        std::ranges::sort(g_distributionPluginOptions, [](const auto& left, const auto& right) {
+        sortFormOptions(result.factions);
+        std::ranges::sort(result.plugins, [](const auto& left, const auto& right) {
             return Lower(left) < Lower(right);
         });
-        sortFormOptions(g_distributionRaceOptions);
-        sortFormOptions(g_distributionKeywordOptions);
-        sortFormOptions(g_distributionClassOptions);
+        sortFormOptions(result.races);
+        sortFormOptions(result.keywords);
+        sortFormOptions(result.classes);
+        return result;
+    }
+
+    void RequestDistributionTargetOptions()
+    {
+        const auto ticket = g_distributionTargets.Begin();
+        if (!ticket) return;
+        const auto epoch = bcn::frame_tasks::Epoch();
+        auto unnamed = std::string{ Text("이름 없음", "Unnamed", "未命名") };
+        const auto queued = bcn::frame_tasks::Queue(0,
+            [ticket = *ticket, epoch, unnamed = std::move(unnamed)] {
+                if (!bcn::frame_tasks::IsCurrent(epoch) ||
+                    !g_distributionTargets.Current(ticket)) return;
+                try {
+                    // Engine arrays are walked on the game task, not during
+                    // ImGui rendering. Only owned values cross back to UI.
+                    auto result = CollectDistributionTargetOptions(unnamed);
+                    if (result && bcn::frame_tasks::IsCurrent(epoch)) {
+                        g_distributionTargets.Publish(ticket, std::move(*result));
+                    } else {
+                        g_distributionTargets.Fail(ticket);
+                    }
+                } catch (...) {
+                    g_distributionTargets.Fail(ticket);
+                    throw;
+                }
+            }, 1U, bcn::appearance::WorkChannel::distributionTargets);
+        if (!queued) g_distributionTargets.Fail(*ticket);
     }
 
     void EnsureDistributionEditor()
     {
+        RequestDistributionTargetOptions();
+        g_distributionTargetOptions = g_distributionTargets.Read();
         if (g_distributionEditorLoaded) return;
         g_distributionRules = bcn::Distribution::Get().SavedRulesSnapshot();
         g_selectedDistributionRule = 0;
-        RefreshDistributionTargetOptions();
         g_distributionEditorLoaded = true;
     }
 
@@ -1410,7 +1449,7 @@ namespace
         case bcn::racemenu::ApplyResult::missingPreset:
             return Text("새로고침 후 사라진 프리셋입니다.", "The preset disappeared after refresh.", "刷新后该预设已不存在。");
         case bcn::racemenu::ApplyResult::actor3DUnavailable:
-            return Text("액터의 3D가 로드되지 않아 즉시 적용할 수 없습니다.", "The actor's 3D is not loaded, so it cannot be applied immediately.", "角色的 3D 尚未加载，无法立即应用。");
+            return Text("미로드 액터는 미리볼 수 없습니다. 더블클릭해 선택을 저장하세요.", "Unloaded actors cannot be previewed. Double-click to save the choice.", "未加载角色无法预览。双击保存选择。");
         case bcn::racemenu::ApplyResult::emptyPreset:
             return Text("이 프리셋에는 적용할 슬라이더가 없습니다.", "This preset has no applicable sliders.", "该预设没有可应用的滑块。");
         case bcn::racemenu::ApplyResult::incompatibleSex:
@@ -1427,6 +1466,10 @@ namespace
     [[nodiscard]] const char* SkinApplyResultMessage(const bcn::skin_application::ApplyResult result)
     {
         switch (result) {
+        case bcn::skin_application::ApplyResult::actor3DUnavailable:
+            return Text("미로드 액터는 미리볼 수 없습니다. 더블클릭해 선택을 저장하세요.",
+                "Unloaded actors cannot be previewed. Double-click to save the choice.",
+                "未加载角色无法预览。双击保存选择。");
         case bcn::skin_application::ApplyResult::queued:
             return Text("스킨을 즉시 반영했습니다.", "Applied the skin immediately.", "已立即应用皮肤。");
         case bcn::skin_application::ApplyResult::missingProfile:
@@ -1467,7 +1510,7 @@ namespace
             // Distribution ignores the player, but ActorRegistry is also the
             // single ASTR co-save owner used by player load restoration.
             bcn::Distribution::Get().SetManualAssignment(actor, item.id);
-            bcn::OutfitRefit::Get().ProcessActor(actor);
+            if (actor->Is3DLoaded()) bcn::OutfitRefit::Get().ProcessActor(actor);
         }
         if (result != bcn::racemenu::ApplyResult::queued) {
             bcn::ui::Notify(std::string(item.name) + " · " + ApplyResultMessage(result));
@@ -1505,7 +1548,11 @@ namespace
             return false;
         }
         if (!actor->Is3DLoaded()) {
-            bcn::ui::Notify(Text("액터의 3D가 로드되지 않아 기본 바디를 즉시 복원할 수 없습니다.", "The actor's 3D is not loaded, so the default body cannot be restored immediately.", "角色的 3D 尚未加载，无法立即恢复默认身体。"));
+            if (persistSelection) {
+                SaveManualDefaultBodyIfNeeded(actor);
+                return true;
+            }
+            bcn::ui::Notify(Text("미로드 액터는 미리볼 수 없습니다. 더블클릭해 기본값을 저장하세요.", "Unloaded actors cannot be previewed. Double-click to save Default.", "未加载角色无法预览。双击保存默认值。"));
             return false;
         }
         if (!SKSE::GetTaskInterface()) {
@@ -3248,40 +3295,50 @@ namespace
                     ImGui::TextUnformatted(TargetLabel(rule.scope));
                     ImGui::SameLine();
                     ImGui::SetNextItemWidth(-1.0F);
-                    switch (rule.scope) {
-                    case bcn::DistributionScope::factionEditorID: {
-                        [[maybe_unused]] const auto factionChanged =
-                            DistributionFormTargetCombo("##ruleFaction", rule,
-                                g_distributionFactionOptions);
-                        break;
-                    }
-                    case bcn::DistributionScope::pluginFile: {
-                        [[maybe_unused]] const auto pluginChanged =
-                            DistributionTargetCombo("##rulePlugin", rule.target,
-                                g_distributionPluginOptions);
-                        break;
-                    }
-                    case bcn::DistributionScope::raceEditorID: {
-                        [[maybe_unused]] const auto raceChanged =
-                            DistributionFormTargetCombo("##ruleRace", rule,
-                                g_distributionRaceOptions);
-                        break;
-                    }
-                    case bcn::DistributionScope::keyword: {
-                        [[maybe_unused]] const auto keywordChanged =
-                            DistributionFormTargetCombo("##ruleKeyword", rule,
-                                g_distributionKeywordOptions);
-                        break;
-                    }
-                    case bcn::DistributionScope::npcClass: {
-                        [[maybe_unused]] const auto classChanged =
-                            DistributionFormTargetCombo("##ruleClass", rule,
-                                g_distributionClassOptions);
-                        break;
-                    }
-                    default:
-                        ImGui::TextDisabled("%s", DistributionScopeLabel(rule.scope));
-                        break;
+                    if (!g_distributionTargetOptions) {
+                        const auto failed = g_distributionTargets.Status() ==
+                            decltype(g_distributionTargets)::State::failed;
+                        ImGui::TextDisabled("%s", failed ? Text(
+                            "조건 목록을 읽지 못했습니다. 창을 다시 열어주세요.",
+                            "Could not read targets. Reopen the window to retry.",
+                            "无法读取条件列表，请重新打开窗口。") : Text(
+                            "조건 목록을 읽는 중...", "Loading targets...", "正在读取条件列表..."));
+                    } else {
+                        switch (rule.scope) {
+                        case bcn::DistributionScope::factionEditorID: {
+                            [[maybe_unused]] const auto factionChanged =
+                                DistributionFormTargetCombo("##ruleFaction", rule,
+                                    g_distributionTargetOptions->factions);
+                            break;
+                        }
+                        case bcn::DistributionScope::pluginFile: {
+                            [[maybe_unused]] const auto pluginChanged =
+                                DistributionTargetCombo("##rulePlugin", rule.target,
+                                    g_distributionTargetOptions->plugins);
+                            break;
+                        }
+                        case bcn::DistributionScope::raceEditorID: {
+                            [[maybe_unused]] const auto raceChanged =
+                                DistributionFormTargetCombo("##ruleRace", rule,
+                                    g_distributionTargetOptions->races);
+                            break;
+                        }
+                        case bcn::DistributionScope::keyword: {
+                            [[maybe_unused]] const auto keywordChanged =
+                                DistributionFormTargetCombo("##ruleKeyword", rule,
+                                    g_distributionTargetOptions->keywords);
+                            break;
+                        }
+                        case bcn::DistributionScope::npcClass: {
+                            [[maybe_unused]] const auto classChanged =
+                                DistributionFormTargetCombo("##ruleClass", rule,
+                                    g_distributionTargetOptions->classes);
+                            break;
+                        }
+                        default:
+                            ImGui::TextDisabled("%s", DistributionScopeLabel(rule.scope));
+                            break;
+                        }
                     }
                 }
 
@@ -3703,8 +3760,11 @@ namespace bcn::ui
 
     void OnOpened()
     {
+        ActorCatalog::Get().CancelSearch();
         std::scoped_lock lifecycle(g_uiLifecycleLock);
         g_uiSessionEpoch = frame_tasks::Epoch();
+        ResetDistributionSelectionSession();
+        ResetDistributionEditor();
         g_overlayColorDrafts.Clear();
         g_tintColorDrafts.Clear();
         for (std::size_t layer{}; layer < g_tintSessionColors.size(); ++layer) {
@@ -3748,8 +3808,9 @@ namespace bcn::ui
         }
     }
 
-    void OnLoadStart()
+    static void ResetForLoad(const bool restorePresentation)
     {
+        ActorCatalog::Get().CancelSearch();
         std::scoped_lock lifecycle(g_uiLifecycleLock);
         g_uiSessionEpoch = 0;
         g_overlayColorDrafts.Clear();
@@ -3763,35 +3824,56 @@ namespace bcn::ui
         g_pendingTint.reset();
         g_pendingTintBaseline.reset();
         for (auto& pending : g_pendingOverlays) pending.reset();
-        racemenu::QueueCancelPreview();
-        overlay::QueueCancelPreviews();
+        if (restorePresentation) {
+            racemenu::QueueCancelPreview();
+            overlay::QueueCancelPreviews();
+        }
         g_overlayArea.reset();
         g_overlayCameraArea.reset();
+        g_overlayFocusedIds = {};
+        g_overlayColorActor = 0U;
+        g_overlayColorEntryId.clear();
+        g_overlayColorDistributionDraft = false;
+        g_showTintDetails = false;
+        g_showOverlayDetails = false;
+        g_showSettings = false;
+        g_showOutfit = false;
+        g_selectedActorFormID = 0U;
+        g_actorSearch.clear();
         g_showDistribution = false;
         // Loading another save is not a confirmation of the previous save's
         // in-memory editor draft.  OnClosed runs as part of the native close,
         // so clear it first to prevent cross-save JSON leakage.
+        ResetDistributionSelectionSession();
         ResetDistributionEditor();
-        bcn::menu_character::Presentation::Get().Restore();
+        if (restorePresentation) menu_character::Presentation::Get().Restore();
+        else menu_character::Presentation::Get().DiscardSession();
         [[maybe_unused]] const auto closed = native_ui::Close();
     }
 
+    void OnLoadStart() { ResetForLoad(true); }
+    void OnSessionReset() { ResetForLoad(false); }
+
     void OnClosed()
     {
+        ActorCatalog::Get().CancelSearch();
         std::scoped_lock lifecycle(g_uiLifecycleLock);
         // A preview is never a selection. Only an explicit double click or
         // activation command commits; closing restores the entry state.
-        RollbackPendingSelections(SelectedActor());
+        const auto currentSession = frame_tasks::IsCurrent(g_uiSessionEpoch.load());
+        if (currentSession) RollbackPendingSelections(SelectedActor());
+        g_uiSessionEpoch = 0U;
         g_overlayColorDrafts.Clear();
         g_tintColorDrafts.Clear();
         g_tintSessionColors = {};
         g_showTintDetails = false;
         g_showOverlayDetails = false;
         DiscardDistributionDraft();
-        g_showDistribution = false;
+        ResetDistributionSelectionSession();
+        ResetDistributionEditor();
         InputSink::Get().ResetTransientState();
         [[maybe_unused]] const auto settingsSaved = Settings::Get().Save();
-        bcn::menu_character::Presentation::Get().Restore();
+        if (currentSession) bcn::menu_character::Presentation::Get().Restore();
     }
 
     void Notify(std::string message)
@@ -3906,7 +3988,8 @@ namespace bcn::ui
             buttonWidth(settingsLabel) + ImGui::GetStyle().ItemSpacing.x * 3.0F;
         const auto actorWidth = (std::max)(Scaled(150.0F), ImGui::GetContentRegionAvail().x - reservedWidth);
         ImGui::SetNextItemWidth(actorWidth);
-        PrepareResizableDropdown(actors.size() + 2U);
+        const auto actorSearch = ActorCatalog::Get().SearchSnapshot();
+        PrepareResizableDropdown((actorSearch.entries ? actorSearch.entries->size() : actors.size()) + 3U);
         if (ImGui::BeginCombo("##actor", selectedName.c_str())) {
             // Opening the actor combo must not immediately enter typing mode.
             // Give the popup a tiny non-text default navigation item; the
@@ -3917,7 +4000,7 @@ namespace bcn::ui
             ImGui::SetItemDefaultFocus();
             ImGui::SetNextItemWidth(-FLT_MIN);
             const auto exactActorRequested = ImGui::InputTextWithHint("##actorSearch",
-                Text("이름 또는 FormID 입력", "Type a name or FormID", "输入名称或 FormID"), &g_actorSearch,
+                Text("이름 또는 RefID 입력 후 Enter로 전체 검색", "Name or RefID, Enter to search beyond nearby actors", "名称或 RefID，按 Enter 全局搜索"), &g_actorSearch,
                 ImGuiInputTextFlags_EnterReturnsTrue);
             if (exactActorRequested) {
                 if (const auto formID = ExactActorFormID(g_actorSearch)) {
@@ -3926,28 +4009,57 @@ namespace bcn::ui
                         ImGui::CloseCurrentPopup();
                         bcn::ui::Notify(exactActor->Is3DLoaded() ?
                             Text("FormID 액터를 선택했습니다.", "Selected the FormID actor.", "已选择该 FormID 角色。") :
-                            Text("액터를 선택했습니다. 3D가 로드되면 목록 선택을 즉시 적용할 수 있습니다.", "Selected the actor. List selections can be applied once its 3D is loaded.", "已选择角色。其 3D 加载后即可应用列表选择。"));
+                            Text("미로드 액터입니다. 더블클릭해 선택을 저장하면 3D 로드 시 적용합니다.", "Unloaded actor: double-click to save a choice for application when its 3D loads.", "未加载角色：双击保存选择，3D 加载后应用。"));
                     } else {
-                        bcn::ui::Notify(Text("해당 FormID의 액터를 찾지 못했습니다.", "No actor was found for that FormID.", "未找到该 FormID 对应的角色。"));
+                        ActorCatalog::Get().Search(g_actorSearch);
+                        bcn::ui::Notify(Text("개별 NPC의 RefID를 사용하세요. BaseID는 개별 액터가 아닙니다.", "Use the NPC's RefID; a BaseID is not an individual actor.", "请使用 NPC 的 RefID；BaseID 不是独立角色。"));
                     }
-                }
+                } else ActorCatalog::Get().Search(g_actorSearch);
             }
             ImGui::Separator();
-            for (const auto& entry : actors) {
-                if (!ActorMatchesSearch(entry)) continue;
+            const auto search = ActorCatalog::Get().SearchSnapshot();
+            const auto globalSearch = !search.query.empty() &&
+                search.query == bcn::actor_search::Normalize(g_actorSearch);
+            if (globalSearch) {
+                ImGui::TextDisabled("%s", search.failed ?
+                    Text("검색을 완료하지 못했습니다. Enter로 다시 검색하세요.", "Search could not complete. Press Enter to retry.", "搜索未完成，请按 Enter 重试。") : search.running ?
+                    Text("거리 제한 없이 검색 중...", "Searching beyond nearby actors...", "正在全局搜索...") :
+                    Text("거리·32명 제한 없는 검색 결과", "Search results without the nearby/32-NPC limit", "不限距离和32人限制的结果"));
+                if (!search.running && !search.failed && (!search.entries || search.entries->empty()))
+                    ImGui::TextWrapped("%s", Text("현재 게임에 등록된 개별 액터를 찾지 못했습니다. 아직 생성되지 않은 NPC 원본은 배포 조건을 사용하세요.",
+                        "No existing actor reference found. Use distribution rules for NPC bases that have not spawned yet.",
+                        "未找到独立角色。尚未生成的 NPC 请使用分发规则。"));
+            }
+            const auto drawActor = [&](const ActorEntry& entry) {
+                if (!ActorMatchesSearch(entry)) return;
                 const auto label = ActorLabel(entry);
                 ImGui::PushID(static_cast<int>(entry.formID));
                 if (ImGui::Selectable(label.c_str(), entry.formID == g_selectedActorFormID)) {
-                    SelectActor(entry.formID);
-                    ImGui::CloseCurrentPopup();
+                    if (ActorCatalog::Get().Resolve(entry.formID)) {
+                        SelectActor(entry.formID);
+                        ImGui::CloseCurrentPopup();
+                    } else {
+                        bcn::ui::Notify(Text("더 이상 존재하지 않는 액터입니다. 다시 검색하세요.",
+                            "This actor no longer exists. Search again.", "该角色已不存在，请重新搜索。"));
+                    }
                 }
                 ImGui::PopID();
-            }
+            };
+            if (globalSearch) {
+                if (search.entries) {
+                    ImGuiListClipper clipper;
+                    clipper.Begin(static_cast<int>(search.entries->size()));
+                    while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+                        drawActor((*search.entries)[i]);
+                }
+            } else for (const auto& entry : actors) drawActor(entry);
             ImGui::EndCombo();
         }
         ImGui::SameLine();
         if (ImGui::Button(refreshActorsLabel)) {
             ActorCatalog::Get().Refresh(false);
+            if (!bcn::actor_search::Normalize(g_actorSearch).empty())
+                ActorCatalog::Get().Search(g_actorSearch);
             actors = ActorCatalog::Get().Snapshot();
             if (std::ranges::find(actors, g_selectedActorFormID, &ActorEntry::formID) == actors.end() && !actors.empty() &&
                 !ActorCatalog::Get().Resolve(g_selectedActorFormID)) {
@@ -4031,6 +4143,12 @@ namespace bcn::ui
             bcn::Distribution::Get().HasManualAssignment(actor)) {
             ImGui::TextColored(ImVec4(.48F, .82F, .96F, 1.0F), "%s", Text(
                 "직접 선택 우선", "Direct selection takes priority", "优先使用直接选择"));
+        }
+        if (const auto* actor = SelectedActor(); actor && !actor->Is3DLoaded()) {
+            ImGui::TextWrapped("%s", Text(
+                "미로드 액터: 미리보기 불가 · 더블클릭 저장, 3D 로드 시 적용 · 게임 저장 필요",
+                "Unloaded actor: no preview. Double-click to store choices for 3D load; save your game to keep them.",
+                "未加载角色：无法预览。双击保存选择，3D 加载后应用；请保存游戏。"));
         }
 
         std::string notification;

@@ -22,6 +22,9 @@ namespace bcn::frame_tasks
     void Reset(bool active);
     bool Active();
     bool InGameTask();
+    // Cooperative mutation checkpoint. Does not interrupt an engine call that
+    // has already begun; direct non-queued callers keep their existing policy.
+    bool CurrentWorkAllowed();
     // One UI actor can own uncommitted previews; automatic reconciliation waits.
     void SetPreviewActor(std::uint32_t actor);
     bool HasPreview(std::uint32_t actor);

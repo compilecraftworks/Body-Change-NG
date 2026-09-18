@@ -21,6 +21,9 @@ namespace bcn::menu_character
 
         void Apply(CharacterPosition a_side, RE::Actor* a_actor);
         void Restore();
+        // Session teardown: release owned state without touching old actors,
+        // scene nodes, or camera-state pointers from the previous world.
+        void DiscardSession();
         void SetTintFocus(bool a_tintTab);
         void SetOverlayFocus(std::optional<overlay::Area> a_area);
         void UpdateRotationInteraction();

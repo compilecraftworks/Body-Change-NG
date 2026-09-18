@@ -128,6 +128,9 @@ namespace
         }
         if (message->type == SKSE::MessagingInterface::kPostLoadGame ||
             message->type == SKSE::MessagingInterface::kNewGame) {
+            // New Game need not emit PreLoadGame. Invalidate UI drafts and
+            // stale presentation state before admitting the new world's jobs.
+            bcn::ui::OnSessionReset();
             bcn::frame_tasks::Reset(true);
             bcn::rendered_outfit::Reset();
             bcn::ActorWorkQueue::Get().ResetSession();

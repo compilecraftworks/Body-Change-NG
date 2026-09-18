@@ -1,4 +1,5 @@
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/ActorSearchPolicy.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
@@ -45,6 +46,17 @@ int main()
         }), "reset discarded native ownership before removal");
     }
     try {
+        using bcn::actor_search::Matches;
+        using bcn::actor_search::Normalize;
+        Require(Normalize("  BaNdIt\t") == "bandit", "search normalization failed");
+        Require(Matches("bandit", "Bandit Marauder", 0xAB123456U), "name search failed");
+        Require(Matches("산적", "산적 두목", 0xAB123456U), "UTF-8 name search failed");
+        Require(Matches("bandit", "Bandit", 0x100U) && Matches("bandit", "Bandit", 0x200U),
+            "same-named references must not be deduplicated by name");
+        Require(Matches(Normalize("0XAB123456"), "NPC", 0xAB123456U) &&
+            Matches("123456", "NPC", 0xAB123456U), "hex RefID search failed");
+        Require(!Matches("", "NPC", 0xAB123456U) && !Matches("0x", "NPC", 0xAB123456U) &&
+            !Matches("0x12345678", "NPC", 0xAB123456U), "empty/unmatched search accepted");
         for (const auto mode : { bcn::overlay::ApplyMode::preview,
                 bcn::overlay::ApplyMode::manualCommit, bcn::overlay::ApplyMode::automatic,
                 bcn::overlay::ApplyMode::restore }) {

@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.6"
+local version = "1.2.7"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -61,6 +61,36 @@ target("BodyChangeNGCatalogRefreshTests")
     set_encodings("utf-8")
     add_files("tests/CatalogRefreshTests.cpp")
     add_includedirs("src")
+
+target("BodyChangeNGDistributionLifecycleTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/DistributionLifecycleTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "distribution-lifecycle")
+        target:add("includedirs", generated)
+        local source = io.readfile("src/BodyChangeNG/UI.cpp")
+        local functions = {}
+        for _, name in ipairs({"ResetDistributionEditor", "ClearDistributionCatalogSelection",
+                               "ResetDistributionSelectionSession", "DiscardDistributionDraft"}) do
+            local start = assert(source:find("    void " .. name .. "()", 1, true))
+            local finish = assert(source:find("\n    }", start, true)) + #"\n    }" - 1
+            table.insert(functions, source:sub(start, finish))
+        end
+        os.mkdir(generated)
+        local file = path.join(generated, "DistributionLifecycleFunctions.inl")
+        local content = table.concat(functions, "\n\n") .. "\n"
+        if not os.isfile(file) or io.readfile(file) ~= content then io.writefile(file, content) end
+        local queue = io.readfile("src/BodyChangeNG/FrameTasks.cpp")
+        local start = assert(queue:find("    bool CurrentWorkAllowed()", 1, true))
+        local finish = assert(queue:find("\n    }", start, true)) + #"\n    }" - 1
+        file = path.join(generated, "MutationCheckpoint.inl")
+        content = queue:sub(start, finish) .. "\n"
+        if not os.isfile(file) or io.readfile(file) ~= content then io.writefile(file, content) end
+    end)
 
 target("BodyChangeNGPopupPlacementTests")
     set_default(false)

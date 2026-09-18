@@ -34,7 +34,9 @@ namespace bcn::appearance
         overlayFeetApply = 211,
         overlayCatalog = 212,
         overlayCatalogRequest = 213,
-        skinFaceRefresh = 214
+        skinFaceRefresh = 214,
+        actorSearch = 215,
+        distributionTargets = 216
     };
 
     [[nodiscard]] constexpr std::uint32_t ChannelValue(const WorkChannel channel) noexcept

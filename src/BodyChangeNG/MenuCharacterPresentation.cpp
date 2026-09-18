@@ -57,6 +57,7 @@ namespace
     };
 
     std::atomic_bool g_cameraUpdateQueued{};
+    std::atomic_uint64_t g_cameraSession{};
     std::atomic<CameraZoomUpdate> g_pendingCameraZoomUpdate{ CameraZoomUpdate::refresh };
     std::atomic<float> g_savedTargetZoom{};
     std::atomic<float> g_savedCurrentZoom{};
@@ -191,7 +192,8 @@ namespace
         }
         if (g_cameraUpdateQueued.exchange(true, std::memory_order_acq_rel)) return;
 
-        const auto update = [] {
+        const auto update = [session = g_cameraSession.load()] {
+            if (session != g_cameraSession.load()) return;
             g_cameraUpdateQueued.store(false, std::memory_order_release);
             const auto requestedZoomUpdate =
                 g_pendingCameraZoomUpdate.exchange(CameraZoomUpdate::refresh, std::memory_order_acq_rel);
@@ -497,6 +499,30 @@ namespace bcn::menu_character
         // left/right presentation. Apply it on the game task instead.
         QueueCameraUpdate(CameraZoomUpdate::snapCurrentToTarget);
         presentedActor->Update3DPosition(true);
+    }
+
+    void Presentation::DiscardSession()
+    {
+        ++g_cameraSession;
+        g_cameraUpdateQueued = false;
+        g_pendingCameraZoomUpdate = CameraZoomUpdate::refresh;
+        g_presentationProjectionActive = false;
+        {
+            const std::scoped_lock lock(g_fovRestoreLock);
+            g_presentationFovCamera.reset();
+            g_restoreFovCamera.reset();
+            g_restoreViewFrustum = {};
+            g_restoreViewFrustumSaved = false;
+        }
+        if (state_) {
+            // These are process-lifetime INI settings, not per-save forms.
+            // Restore them even when the old scene itself can no longer be used.
+            for (const auto& [setting, originalValue] : state_->cameraSettings) {
+                if (setting) setting->data.f = originalValue;
+            }
+            *state_ = State{};
+        }
+        smoothcam::ReleaseCameraControl();
     }
 
     void Presentation::Restore()

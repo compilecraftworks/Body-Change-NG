@@ -380,6 +380,7 @@ namespace bcn::skin_application
         const auto profile = SkinProfiles::Get().Find(profileId);
         const auto result = native_skin::QueueApply(actor, profileId,
             [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
+        if (actor && !actor->Is3DLoaded()) return result;
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actorFormID);
             skin_session::TrackSkinSelection(actorFormID, std::move(profileId));
@@ -400,6 +401,12 @@ namespace bcn::skin_application
 
     ApplyResult QueueClear(RE::Actor* actor, skin_transaction::Mode mode)
     {
+        if (actor && !actor->Is3DLoaded()) {
+            if (!frame_tasks::Active()) return ApplyResult::noTaskInterface;
+            if (runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported)
+                return ApplyResult::unsupportedRuntime;
+            return mode == skin_transaction::Mode::commit ? ApplyResult::queued : ApplyResult::actor3DUnavailable;
+        }
         const auto result = native_skin::QueueClear(actor,
             [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
         if (result == ApplyResult::queued && actor) {
@@ -413,6 +420,7 @@ namespace bcn::skin_application
     std::optional<std::string> CurrentProfileId(const RE::Actor* actor)
     {
         if (!actor) return std::nullopt;
+        if (!actor->Is3DLoaded()) return ActorRegistry::Get().SelectedSkinId(actor);
         if (skin_session::HasTrackedSelection(actor->GetFormID())) {
             return skin_session::RuntimeProfileId(actor->GetFormID());
         }
@@ -525,6 +533,8 @@ namespace bcn::skin_application
         }
         if (!SKSE::GetTaskInterface()) return ApplyResult::noTaskInterface;
 
+        if (!actor->Is3DLoaded() && mode == FutanariSelectionMode::preview)
+            return ApplyResult::actor3DUnavailable;
         if (mode == FutanariSelectionMode::manual) {
             ActorRegistry::Get().SetManualFutanariSkin(actor, profile->id, false);
         } else if (mode == FutanariSelectionMode::automatic) {
@@ -582,6 +592,8 @@ namespace bcn::skin_application
             runtime::GameBranch::unsupported) return ApplyResult::unsupportedRuntime;
         auto* base = actor->GetActorBase();
         if (!base || base->GetSex() != RE::SEX::kFemale) return ApplyResult::incompatibleSex;
+        if (!actor->Is3DLoaded() && mode == FutanariSelectionMode::preview)
+            return ApplyResult::actor3DUnavailable;
         if (mode == FutanariSelectionMode::manual) {
             ActorRegistry::Get().SetManualFutanariSkin(actor, {}, true);
         }

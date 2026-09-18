@@ -19,6 +19,7 @@ namespace bcn
         unsupportedRuntime,
         actorBaseUnavailable,
         sharedActorBaseConflict,
-        ownershipConflict
+        ownershipConflict,
+        actor3DUnavailable
     };
 }

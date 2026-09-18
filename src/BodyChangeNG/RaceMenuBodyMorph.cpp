@@ -290,11 +290,13 @@ namespace
 
     void ClearPreviewNow(const RE::ActorHandle actorHandle)
     {
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         auto* bodyMorph = Interface();
         const auto actor = actorHandle.get();
         if (!bodyMorph || !actor || !actor->Is3DLoaded()) return;
         const auto hadPreview = bodyMorph->HasBodyMorphKey(actor.get(), kPreviewKey) ||
             bodyMorph->HasBodyMorphKey(actor.get(), kLegacyPreviewKey);
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         bodyMorph->ClearBodyMorphKeys(actor.get(), kPreviewKey);
         bodyMorph->ClearBodyMorphKeys(actor.get(), kLegacyPreviewKey);
         if (hadPreview) ApplyVisibleMorphs(*bodyMorph, actor.get(), false);
@@ -350,6 +352,7 @@ namespace
                       bcn::racemenu::UpdatePolicy::synchronous)
     {
         const auto startedAt = std::chrono::steady_clock::now();
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
             return;
         }
@@ -391,6 +394,7 @@ namespace
             mode == bcn::racemenu::ApplyMode::outfit ? kOutfitKey : kCommittedKey;
         // Replace BCNG and OBody's competing base-body/refit keys. Unrelated
         // keys survive by default. Preview must never clear persistent keys.
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         if (mode == bcn::racemenu::ApplyMode::commit) {
             bcn::racemenu::keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs);
         }
@@ -713,6 +717,7 @@ namespace bcn::racemenu
     std::optional<std::string> CurrentPresetId(const RE::Actor* actor)
     {
         if (!actor) return std::nullopt;
+        if (!actor->Is3DLoaded()) return bcn::ActorRegistry::Get().SelectedBodyId(actor);
         {
             std::scoped_lock lock(g_selectionLock);
             const auto found = g_currentPresetIds.find(actor->GetFormID());
@@ -813,7 +818,6 @@ namespace bcn::racemenu
         if (!bcn::frame_tasks::Active()) return ApplyResult::noTaskInterface;
         if (!IsReady()) return ApplyResult::unavailable;
         if (!actor) return ApplyResult::invalidActor;
-        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         const auto found = PresetCatalog::Get().Find(presetId, mode == ApplyMode::outfit);
         if (!found) return ApplyResult::missingPreset;
         if (found->sliders.empty() && !found->UsesBuildDefaults()) return ApplyResult::emptyPreset;
@@ -824,6 +828,11 @@ namespace bcn::racemenu
         if (!bcn::body_family::Matches(
             bcn::body_family::PresetMask(found->family, found->male),
             bcn::body_family::ResolveActor(actor))) return ApplyResult::incompatibleBodyFamily;
+        // The caller records accepted commit intent in ActorRegistry. No
+        // geometry, morph key or preview is touched for an unloaded actor;
+        // the normal attach queue validates and applies that saved intent.
+        if (!actor->Is3DLoaded()) return mode == ApplyMode::commit ?
+            ApplyResult::queued : ApplyResult::actor3DUnavailable;
         const auto actorHandle = actor->GetHandle();
         const auto applyGeneration = BeginApply(actor->GetFormID(), mode);
         if (const auto* tasks = SKSE::GetTaskInterface()) {

@@ -813,6 +813,8 @@ namespace
         const auto interfaces = InterfacesNow();
         if (!interfaces.overlay || !interfaces.override) return bcn::overlay::ApplyResult::unsupportedInterface;
         if (!actor) return bcn::overlay::ApplyResult::invalidActor;
+        // A deferred choice has not claimed a native slot yet.
+        if (selected.ownedSlot == bcn::overlay::kNoOwnedSlot) return bcn::overlay::ApplyResult::queued;
         return RemoveExactOwnedOverlay(interfaces, actor, area, selected) ?
             bcn::overlay::ApplyResult::queued : bcn::overlay::ApplyResult::ownershipConflict;
     }
@@ -1061,10 +1063,14 @@ namespace bcn::overlay
             return ApplyResult::incompatibleActor;
         }
         if (!IsReady()) return ApplyResult::unavailable;
-        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         if (mode == ApplyMode::manualCommit &&
             ActorRegistry::Get().SelectedOverlay(actor, area, entryId)) {
             return QueueRemove(actor, area, std::move(entryId));
+        }
+        if (!actor->Is3DLoaded()) {
+            if (mode != ApplyMode::manualCommit) return ApplyResult::actor3DUnavailable;
+            if (!frame_tasks::Active()) return ApplyResult::noTaskInterface;
+            if (TextureLayers(entry->texturePath).empty()) return ApplyResult::missingEntry;
         }
         const auto hadPreview = PreviewFor(actor->GetFormID(), area).has_value();
         if (mode == ApplyMode::preview && !hadPreview) {
@@ -1078,6 +1084,16 @@ namespace bcn::overlay
                 if (!current) return;
                 auto* actorNow = current.get();
                 const auto actorFormID = actorNow->GetFormID();
+                if (!actorNow->Is3DLoaded() && mode == ApplyMode::manualCommit) {
+                    // Finish exact-slot reset cleanup on the game thread before
+                    // replacing cleanup tombstones with a deferred selection.
+                    ClearPendingResetNow(actorNow, area);
+                    ActorRegistry::Get().AddManualOverlay(actorNow, area, entry.id,
+                        entry.texturePath, kNoOwnedSlot, false);
+                    ActorRegistry::Get().SetOverlayColor(actorNow, area, entry.id,
+                        color.value_or(0xFFFFFFFFU));
+                    return;
+                }
                 auto preview = PreviewFor(actorFormID, area);
                 if (mode == ApplyMode::manualCommit && preview &&
                     !preview->liveDefault && preview->live &&
@@ -1172,6 +1188,15 @@ namespace bcn::overlay
         if (const auto preview = PreviewFor(actor->GetFormID(), area); preview && preview->batchMode)
             return ApplyResult::ownershipConflict;
         if (!CurrentColor(actor, area, entryId)) return ApplyResult::missingEntry;
+        if (!actor->Is3DLoaded()) {
+            if (!frame_tasks::Active()) return ApplyResult::noTaskInterface;
+            const auto selected = ActorRegistry::Get().SelectedOverlay(actor, area, entryId);
+            if (!selected) return ApplyResult::missingEntry;
+            ActorRegistry::Get().AddManualOverlay(actor, area, selected->selectedId,
+                selected->texturePath, selected->ownedSlot, false);
+            ActorRegistry::Get().SetOverlayColor(actor, area, entryId, color);
+            return ApplyResult::queued;
+        }
         const auto handle = actor->GetHandle();
         if (!frame_tasks::Queue(actor->GetFormID(), [handle, area, entryId = std::move(entryId), color] {
                 const auto current = handle.get();
@@ -1230,6 +1255,7 @@ namespace bcn::overlay
     {
         if (!actor || area == Area::count) return ApplyResult::invalidActor;
         if (!IsReady()) return ApplyResult::unavailable;
+        if (!actor->Is3DLoaded() && mode == ApplyMode::preview) return ApplyResult::actor3DUnavailable;
         const auto hadPreview = PreviewFor(actor->GetFormID(), area).has_value();
         if (mode == ApplyMode::preview && !hadPreview) {
             PreviewState intent;
@@ -1299,7 +1325,6 @@ namespace bcn::overlay
         const auto selected = ActorRegistry::Get().SelectedOverlay(actor, area, entryId);
         if (!selected) return ApplyResult::missingEntry;
         if (!IsReady()) return ApplyResult::unavailable;
-        if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
         const auto handle = actor->GetHandle();
         if (!frame_tasks::Queue(actor->GetFormID(), [handle, area, entryId = std::move(entryId), selected = *selected] {
                 const auto current = handle.get();
@@ -1409,6 +1434,8 @@ namespace bcn::overlay
                         Entry entry{ .id = item.selectedId, .name = item.selectedId,
                             .texturePath = item.texturePath, .area = area };
                         ResolveInstalledEntryMetadata(entry);
+                        if (!EntryMatchesActor(entry.layout, entry.sex,
+                                body_family::ResolveActor(current.get()), Female(current.get()))) continue;
                         const std::optional<OverlayItemState> replacement{ item };
                         [[maybe_unused]] const auto result = ApplyNow(current.get(), area,
                             entry, ApplyMode::restore, nullptr, &replacement, true);

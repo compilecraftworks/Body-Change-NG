@@ -1,4 +1,5 @@
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/UI.h"
 #include "BodyChangeNG/ActorStateSerialization.h"
 #include "BodyChangeNG/PlayerTintSerialization.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -294,6 +295,7 @@ namespace
     void RevertState(SKSE::SerializationInterface*)
     {
         bcn::frame_tasks::Reset(false);
+        bcn::ui::OnSessionReset();
         bcn::rendered_outfit::Reset();
         bcn::ActorRegistry::Get().Revert();
         bcn::player_tint::ResetPersistedState();

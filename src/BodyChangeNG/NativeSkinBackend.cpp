@@ -1054,6 +1054,7 @@ namespace
         const bcn::body_family::Mask sourceFamily,
         std::function<void(RE::Actor*)> afterMutation, bcn::skin_transaction::Mode mode)
     {
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, profile.id) ||
             profile.contentHash != bcn::SkinProfiles::Get().ContentHash(profile.id)) return;
@@ -1064,6 +1065,7 @@ namespace
         auto found = g_instances.find(baseId);
         if (found == g_instances.end() || found->second.generation != generation ||
             found->second.desiredProfileId != profile.id) return;
+        if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         auto& instance = found->second;
         const auto graphAction = bcn::native_skin::ResolveGraphAction(
             instance.skin.armor != nullptr,
@@ -1310,6 +1312,10 @@ namespace bcn::native_skin
         if (!SKSE::GetTaskInterface()) return SkinApplyResult::noTaskInterface;
 
         const auto baseId = base->GetFormID();
+        // Accept validated commit intent without cloning/mutating shared
+        // native forms. The UI persists it; actor attachment applies it later.
+        if (!actor->Is3DLoaded()) return mode == skin_transaction::Mode::commit ?
+            SkinApplyResult::queued : SkinApplyResult::actor3DUnavailable;
         const auto actorId = actor->GetFormID();
         std::uint64_t generation{};
         std::string faceDetailBaseline;

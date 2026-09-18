@@ -49,6 +49,26 @@ namespace
 int main()
 {
     try {
+        // An unloaded actor has desired selections but no application/slot.
+        // Use the real co-save codec: this must not require live geometry.
+        bcn::ActorState pending{ .actorFormID = 0xAB123456U, .basePlugin = "Example.esp" };
+        pending.body.selection = { "Body_Pending", true, false };
+        pending.skin.selection = { "Skin_Pending", true, false };
+        pending.futanari = { .selectedSkinId = "TRX_Pending", .manual = true };
+        auto& pendingArea = pending.overlay.areas[0];
+        pendingArea.manual = true;
+        pendingArea.items.push_back({ "Paint_Pending", "pending.dds", bcn::overlay::kNoOwnedSlot, 0x12345678U });
+        const auto restoredPending = RoundTrip(pending);
+        Check(restoredPending.body.selection.selectedId == "Body_Pending" &&
+            restoredPending.skin.selection.selectedId == "Skin_Pending" &&
+            restoredPending.futanari.selectedSkinId == "TRX_Pending" &&
+            restoredPending.body.selection.manual && restoredPending.skin.selection.manual &&
+            !restoredPending.body.application.applied && !restoredPending.skin.application.applied,
+            "unapplied manual choices were lost or incorrectly marked applied");
+        const auto& restoredPaint = restoredPending.overlay.areas[0].items;
+        Check(restoredPaint.size() == 1U && restoredPaint[0].ownedSlot == bcn::overlay::kNoOwnedSlot &&
+            restoredPaint[0].color == 0x12345678U && restoredPaint[0].selectedId == "Paint_Pending",
+            "deferred overlay ownership/color did not survive the co-save");
         namespace session = bcn::skin_session;
         using Channel = session::AddonTextureChannel;
         bcn::futanari_support::Availability installedWithoutActors{

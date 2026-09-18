@@ -15,6 +15,7 @@ namespace
     std::uint32_t g_previewActor{};
     thread_local bcn::frame_tasks::Lease g_lease;
     thread_local bool g_inPump{}, g_urgent{}, g_interactive{};
+    thread_local std::uint64_t g_workEpoch{};
 
     void Pump(std::uint64_t epoch)
     {
@@ -33,7 +34,7 @@ namespace
             }
             if (!job) break;
             // A UI/lifecycle cancellation can happen after Take releases the
-            // queue lock. Never run a cancelled continuation against live 3D.
+            // queue lock. Reject work already cancelled at this checkpoint.
             if (!bcn::async_work::FrameTaskQueue::ValidLease(job->lease)) continue;
             if (job->actor) ++actorJobs;
             // RaceMenu owns the player's rebuilding geometry. Its close
@@ -47,13 +48,17 @@ namespace
             const auto previousPump = std::exchange(g_inPump, true);
             const auto previousUrgent = std::exchange(g_urgent, job->urgent);
             const auto previousInteractive = std::exchange(g_interactive, job->interactive);
-            try { job->run(); }
+            const auto previousEpoch = std::exchange(g_workEpoch, epoch);
+            try {
+                if (bcn::frame_tasks::CurrentWorkAllowed()) job->run();
+            }
             catch (const std::exception& error) { SKSE::log::error("BCNG queued work failed: {}", error.what()); }
             catch (...) { SKSE::log::error("BCNG queued work failed with an unknown C++ exception"); }
             g_lease = std::move(previous);
             g_inPump = previousPump;
             g_urgent = previousUrgent;
             g_interactive = previousInteractive;
+            g_workEpoch = previousEpoch;
             if (std::chrono::steady_clock::now() - started >= budget) break;
         }
         std::scoped_lock lock(g_lock);
@@ -124,6 +129,10 @@ namespace bcn::frame_tasks
     }
     bool Active() { std::scoped_lock lock(g_lock); return g_available && g_queue.Active(); }
     bool InGameTask() { return g_inPump; }
+    bool CurrentWorkAllowed()
+    {
+        return !g_inPump || (ValidLease(g_lease) && IsCurrent(g_workEpoch));
+    }
     std::uint64_t Epoch() { std::scoped_lock lock(g_lock); return g_queue.Epoch(); }
     bool IsCurrent(std::uint64_t epoch)
     {

@@ -125,6 +125,29 @@ int main()
         Require(first != std::string::npos && last != std::string::npos && last > first);
         return std::string_view(uiSource).substr(first, last - first);
     };
+    const auto editorEntry = uiSection("void OpenDistributionEditorFromCatalog(",
+        "void DrawCatalogCommandRow(");
+    Require(editorEntry.contains("SetRuleDistributionSelection") &&
+        !editorEntry.contains("ResetDistributionSelectionSession") &&
+        !editorEntry.contains("ClearDistributionCatalogSelection"));
+    const auto metadataRequest = uiSection("void RequestDistributionTargetOptions()",
+        "void EnsureDistributionEditor()");
+    Require(metadataRequest.contains("frame_tasks::Queue(0") &&
+        metadataRequest.contains("WorkChannel::distributionTargets") &&
+        metadataRequest.contains("g_distributionTargets.Current(ticket)") &&
+        metadataRequest.contains("g_distributionTargets.Publish") &&
+        metadataRequest.find("frame_tasks::Queue(0") < metadataRequest.find("CollectDistributionTargetOptions"));
+    const auto ensureEditor = uiSection("void EnsureDistributionEditor()", "void SynchronizeDistributionRuleNames()");
+    Require(ensureEditor.contains("g_distributionTargets.Read()") &&
+        !ensureEditor.contains("GetFormArray") && !ensureEditor.contains("CollectDistributionTargetOptions("));
+    Require(uiSection("void OnOpened()", "static void ResetForLoad(")
+        .contains("ResetDistributionSelectionSession()"));
+    const auto loadReset = uiSection("static void ResetForLoad(", "void OnClosed()");
+    Require(loadReset.contains("g_uiSessionEpoch = 0") &&
+        loadReset.contains("ResetDistributionEditor()") &&
+        loadReset.contains("ResetDistributionSelectionSession()") &&
+        loadReset.contains("Presentation::Get().DiscardSession()") &&
+        !loadReset.contains("RollbackPendingSelections"));
     for (const auto section : {
             uiSection("void DrawCatalog(", "void DrawSkinCatalog()"),
             uiSection("void DrawSkinCatalog()", "void DrawOverlayCatalog()") }) {
@@ -241,6 +264,9 @@ int main()
     Require(closeBegin != std::string::npos && closeEnd != std::string::npos);
     const auto closeBody = std::string_view(uiSource).substr(closeBegin, closeEnd - closeBegin);
     Require(closeBody.contains("RollbackPendingSelections(SelectedActor())"));
+    Require(closeBody.contains("if (currentSession) RollbackPendingSelections") &&
+        closeBody.find("RollbackPendingSelections") < closeBody.find("ResetDistributionSelectionSession()") &&
+        closeBody.contains("ResetDistributionEditor()"));
     Require(closeBody.contains("DiscardDistributionDraft()") &&
         !uiSource.contains("SaveDistributionDraft"));
     const auto popupStart = uiSource.find("void DrawDistributionPopup()");
@@ -364,8 +390,29 @@ int main()
     };
     const auto distributionSource = readFeatureSource("Distribution.cpp");
     Require(distributionSource.contains("return IsCustomFollower(actor, actor ? actor->GetActorBase() : nullptr)"));
-    Require(!readFeatureSource("ActorCatalog.cpp").contains("IsCustomFollowerActor") &&
-        !readFeatureSource("ActorCatalog.cpp").contains("IsElderActor"));
+    const auto actorCatalogSource = readFeatureSource("ActorCatalog.cpp");
+    const auto searchStart = actorCatalogSource.find("void SearchStep(");
+    const auto searchEnd = actorCatalogSource.find("void ActorCatalog::Search(", searchStart);
+    Require(searchStart != std::string::npos && searchEnd != std::string::npos);
+    const auto searchCode = std::string_view(actorCatalogSource).substr(searchStart, searchEnd - searchStart);
+    Require(searchCode.contains("RE::FormType::ActorCharacter") && searchCode.contains("job->next + 256U") &&
+        searchCode.contains("job->generation != g_searchGeneration") &&
+        searchCode.contains("IsCurrent(job->epoch)") && searchCode.contains("std::make_shared<const std::vector"));
+    Require(!searchCode.contains("Is3DLoaded") && !searchCode.contains("kNearbyActorRadius") &&
+        !searchCode.contains("MoveTo") && !searchCode.contains("QueueNiNodeUpdate"));
+    Require(readFeatureSource("RaceMenuBodyMorph.cpp").contains(
+        "if (!actor->Is3DLoaded()) return mode == ApplyMode::commit ?"));
+    Require(readFeatureSource("SkinApplication.cpp").contains("if (actor && !actor->Is3DLoaded()) return result;"));
+    Require(!actorCatalogSource.contains("IsCustomFollowerActor") &&
+        !actorCatalogSource.contains("IsElderActor"));
+    Require(!actorCatalogSource.contains("IsHostileToActor") &&
+        !actorCatalogSource.contains("IsInCombat"));
+    Require(actorCatalogSource.contains("!actor->IsDisabled() && actor->Is3DLoaded() && !actor->IsDead()") &&
+        actorCatalogSource.contains("HasMeaningfulName(actor)") &&
+        actorCatalogSource.contains("actor->IsPlayerTeammate() || actor->HasKeywordString(\"ActorTypeNPC\")") &&
+        actorCatalogSource.contains("kNearbyActorRadius = 4096.0F") &&
+        actorCatalogSource.contains("kMaximumNearbyActors = 32") &&
+        actorCatalogSource.contains("seen.insert(actor->GetFormID())"));
     const auto refreshStart = distributionSource.find("void Distribution::RefreshFutanariSelection(");
     const auto refreshEnd = distributionSource.find("bool Distribution::ApplyActor(", refreshStart);
     Require(refreshStart != std::string::npos && refreshEnd != std::string::npos);
@@ -728,6 +775,10 @@ int main()
     const std::string mainFeatureSource((std::istreambuf_iterator<char>(mainFeatureFile)), {});
     Require(mainFeatureSource.contains("racemenu_form_delete::InstallInGame()") &&
         !mainFeatureSource.contains("BODY_CHANGE_NG_FORM_DELETE_GUARD_TRIAL"));
+    const auto newGameBoundary = mainFeatureSource.find("message->type == SKSE::MessagingInterface::kNewGame");
+    Require(newGameBoundary != std::string::npos &&
+        mainFeatureSource.find("bcn::ui::OnSessionReset()", newGameBoundary) <
+        mainFeatureSource.find("bcn::frame_tasks::Reset(true)", newGameBoundary));
     Require(mainFeatureSource.find("(void)bcn::catalog_refresh::Get()") >
         mainFeatureSource.find("bcn::player_tint::Catalog::Get().Refresh()"));
     Require(profilesSource.contains("~ClearRefreshFlag()") &&
