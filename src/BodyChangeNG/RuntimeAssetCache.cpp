@@ -402,12 +402,23 @@ namespace bcn::runtime_assets
             return {};
         }
         const auto normalizedResult = NormalizeGamePath(result);
-        {
-            std::scoped_lock lock(g_registeredSourcesLock);
-            if (g_verifiedCachePaths.contains(normalizedResult)) return result;
-        }
         const auto destination = std::filesystem::current_path() / "Data" /
             path_text::FromUtf8(result);
+        bool previouslyVerified{};
+        {
+            std::scoped_lock lock(g_registeredSourcesLock);
+            previouslyVerified = g_verifiedCachePaths.contains(normalizedResult);
+        }
+        if (previouslyVerified) {
+            // Preparation is off the render/actor hot path. A user can remove
+            // the cache while the game runs; an old positive must not make a
+            // new apply publish a missing DDS forever. The native visitor
+            // still performs no disk access.
+            if (std::filesystem::is_regular_file(destination, error) && !error) return result;
+            std::scoped_lock lock(g_registeredSourcesLock);
+            g_verifiedCachePaths.erase(normalizedResult);
+            error.clear();
+        }
 
         std::filesystem::create_directories(destination.parent_path(), error);
         if (error) {

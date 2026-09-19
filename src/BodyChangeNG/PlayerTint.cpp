@@ -564,11 +564,19 @@ namespace bcn::player_tint
         std::ranges::sort(loaded, {}, [](const Asset& asset) {
             return std::tuple{ asset.pack, static_cast<std::uint8_t>(asset.layer), asset.name, asset.id };
         });
-        std::scoped_lock lock(lock_);
-        assets_ = std::move(loaded);
+        auto published = std::make_shared<const std::vector<Asset>>(std::move(loaded));
+        {
+            std::scoped_lock lock(lock_);
+            assets_.swap(published);
+        }
     }
 
     std::vector<Asset> Catalog::Snapshot() const
+    {
+        return *SharedSnapshot();
+    }
+
+    std::shared_ptr<const std::vector<Asset>> Catalog::SharedSnapshot() const
     {
         std::scoped_lock lock(lock_);
         return assets_;
@@ -577,8 +585,8 @@ namespace bcn::player_tint
     std::optional<Asset> Catalog::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(assets_, id, &Asset::id);
-        return found != assets_.end() ? std::optional<Asset>{ *found } : std::nullopt;
+        const auto found = std::ranges::find(*assets_, id, &Asset::id);
+        return found != assets_->end() ? std::optional<Asset>{ *found } : std::nullopt;
     }
 
     std::string_view LayerName(const Layer layer)
@@ -617,7 +625,7 @@ namespace bcn::player_tint
 
     std::optional<Asset> BestAssetForPlayer(const std::string_view pack, const Layer layer)
     {
-        return ::BestAssetForPlayer(RE::PlayerCharacter::GetSingleton(), Catalog::Get().Snapshot(), pack, layer);
+        return ::BestAssetForPlayer(RE::PlayerCharacter::GetSingleton(), *Catalog::Get().SharedSnapshot(), pack, layer);
     }
 
     std::optional<Color> CurrentColor(const Layer layer)
@@ -653,10 +661,10 @@ namespace bcn::player_tint
     {
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
-        const auto catalog = Catalog::Get().Snapshot();
-        auto selected = BestPackAssetsForPlayer(player, catalog, pack);
+        const auto catalog = Catalog::Get().SharedSnapshot();
+        auto selected = BestPackAssetsForPlayer(player, *catalog, pack);
         if (selected.empty()) {
-            const auto packExists = std::ranges::any_of(catalog,
+            const auto packExists = std::ranges::any_of(*catalog,
                 [pack](const Asset& asset) { return asset.pack == pack; });
             return packExists ? ApplyResult::incompatibleBodyFamily : ApplyResult::invalidAsset;
         }
@@ -699,7 +707,7 @@ namespace bcn::player_tint
         auto* player = RE::PlayerCharacter::GetSingleton();
         if (!player) return ApplyResult::unavailable;
         if (!state.pack) return ApplyResult::invalidAsset;
-        auto selected = BestPackAssetsForPlayer(player, Catalog::Get().Snapshot(), *state.pack);
+        auto selected = BestPackAssetsForPlayer(player, *Catalog::Get().SharedSnapshot(), *state.pack);
         if (selected.empty()) return ApplyResult::invalidAsset;
         auto layers = state.layers;
         for (auto& layer : layers) {
@@ -744,6 +752,27 @@ namespace bcn::player_tint
             RestoreAllNow(handle, backups, generation);
         });
         return ApplyResult::queued;
+    }
+
+    bool OriginalStateRestored()
+    {
+        const auto backups = Backups();
+        if (backups.empty()) return true;
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!player || !player->Is3DLoaded()) return false;
+        for (const auto& backup : backups) {
+            bool matches = true;
+            const auto count = ForEachPlayerMask(player, static_cast<Layer>(backup.type),
+                [&](RE::TintMask& mask) {
+                    matches = matches && mask.texture &&
+                        std::string_view(mask.texture->textureName.c_str()) == backup.texturePath &&
+                        mask.color.red == backup.color[0] && mask.color.green == backup.color[1] &&
+                        mask.color.blue == backup.color[2] &&
+                        std::abs(mask.alpha - std::clamp(backup.alpha, 0.0F, 1.0F)) < 0.0001F;
+                });
+            if (!count || !matches) return false;
+        }
+        return true;
     }
 
     PersistedState SnapshotPersistedState()

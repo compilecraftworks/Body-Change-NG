@@ -41,7 +41,8 @@ namespace bcn::skin_application
     // provider's later native Skin Armor/TXST graph is never removed, so RSV
     // becomes visible again after a clear.
     [[nodiscard]] ApplyResult QueueClear(RE::Actor* a_actor,
-        skin_transaction::Mode mode = skin_transaction::Mode::commit);
+        skin_transaction::Mode mode = skin_transaction::Mode::commit,
+        bool a_resetSharedBase = false);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* a_actor);
     // True only for actors whose skin was explicitly managed this session,
     // including an explicit Default Skin selection.

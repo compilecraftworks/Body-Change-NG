@@ -21,4 +21,14 @@ namespace bcn::skin_transaction
                 restored = write(row, channel, rows[row][channel]) && restored;
         return restored;
     }
+
+    template<class Bindings, class Writer>
+    bool RestoreOriginalTextures(Bindings& bindings, Writer write)
+    {
+        bool restored = true;
+        for (auto& binding : bindings)
+            for (decltype(binding.originalPaths.size()) channel{}; channel < binding.originalPaths.size(); ++channel)
+                restored = write(binding, channel, binding.originalPaths[channel]) && restored;
+        return restored;
+    }
 }

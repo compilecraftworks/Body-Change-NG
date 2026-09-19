@@ -92,6 +92,7 @@ namespace bcn
         popup_placement::Positions popupPositions{};
         bool pauseGameWhenOpen{ false };
         bool performanceMode{ false };
+        bool removalMode{ false };
         bool preserveOtherMorphs{ true };
         FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
         MaleNpcBodyType maleNpcBodyType{ MaleNpcBodyType::himbo };
@@ -126,6 +127,7 @@ namespace bcn
         [[nodiscard]] UiLanguage Language() const;
         [[nodiscard]] float TextScale() const;
         [[nodiscard]] bool PerformanceMode() const;
+        [[nodiscard]] bool RemovalMode() const;
         [[nodiscard]] bool OutfitCorrectionEnabled() const;
         [[nodiscard]] std::uint32_t BodyApplicationOptions() const;
         [[nodiscard]] BodyMorphOptions MorphOptions() const;

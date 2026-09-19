@@ -1,6 +1,7 @@
 #include "BodyChangeNG/NativeSkinBackend.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
+#include "BodyChangeNG/Settings.h"
 #include "BodyChangeNG/AppearanceWork.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -10,6 +11,9 @@
 #include "BodyChangeNG/NativeSkinOwnership.h"
 #include "BodyChangeNG/NativeAddonCopy.h"
 #include "BodyChangeNG/NativeTextureData.h"
+#include "BodyChangeNG/NativeTextureConstruction.h"
+#include "BodyChangeNG/NativeModelArray.h"
+#include "BodyChangeNG/NativeGraphConstruction.h"
 #include "BodyChangeNG/NativeTexturePath.h"
 #include "BodyChangeNG/RuntimeAssetCache.h"
 #include "BodyChangeNG/RuntimeCompatibility.h"
@@ -54,6 +58,7 @@ namespace
 {
     using TextureRole = bcn::native_skin::TextureRole;
     using TextureLayers = std::vector<bcn::SkinTextureLayer>;
+    using GraphConstruction = bcn::native_skin::GraphConstruction<RE::TESForm, RE::BGSTextureSet>;
     constexpr std::size_t kTextureCount = RE::BSTextureSet::Textures::kUsedTotal;
     constexpr auto kGenitalSlot = static_cast<std::uint32_t>(
         RE::BGSBipedObjectForm::BipedObjectSlot::kModPelvisSecondary);
@@ -121,6 +126,17 @@ namespace
     {
         ModelTextureTarget target;
         TextureBinding binding;
+        bcn::native_skin::TextureConstruction<RE::BGSTextureSet> construction;
+
+        PendingModelTexture(ModelTextureTarget targetValue, TextureBinding bindingValue) :
+            target(std::move(targetValue)), binding(std::move(bindingValue)),
+            construction(binding.textureSet) {}
+    };
+
+    struct ModelArrayHeap
+    {
+        static void* Allocate(std::size_t bytes) { return RE::malloc(bytes); }
+        static void Free(void* memory) { RE::free(memory); }
     };
 
     struct BaseInstance final
@@ -215,7 +231,14 @@ namespace
         RE::BGSTextureSet* source, const std::uint32_t slotMask,
         const bcn::SkinUvLayout layout)
     {
-        auto* clone = DuplicateForm(source);
+        if (!source) return std::nullopt;
+        // DuplicateForm adds no TXST data (its Copy is a no-op). Use the
+        // same reference-owned factory as the native addon supplier so an
+        // unpublished failure can release its construction reference safely.
+        auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::BGSTextureSet>();
+        bcn::native_skin::TextureConstruction<RE::BGSTextureSet> pending{
+            factory ? factory->Create() : nullptr };
+        auto* clone = pending.get();
         if (!clone) return std::nullopt;
         // BGSTextureSet also inherits the no-op TESForm::Copy. In particular
         // the model-space-normal flag must survive along with the DDS paths.
@@ -236,6 +259,7 @@ namespace
         }
         result.role = bcn::native_skin::ResolveTextureRole(
             slotMask, result.originalPaths[RE::BSTextureSet::Textures::kDiffuse], layout);
+        static_cast<void>(pending.release()); // persistent graph owns the initial reference
         return result;
     }
 
@@ -338,7 +362,9 @@ namespace
             return binding;
         }
         auto* factory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::BGSTextureSet>();
-        auto* textureSet = factory ? factory->Create() : nullptr;
+        bcn::native_skin::TextureConstruction<RE::BGSTextureSet> pending{
+            factory ? factory->Create() : nullptr };
+        auto* textureSet = pending.get();
         if (!textureSet) {
             SKSE::log::error(
                 "BCNG could not create private embedded TXST index3D={} name='{}' role={}",
@@ -362,6 +388,7 @@ namespace
                 return std::nullopt;
             }
         }
+        static_cast<void>(pending.release());
         return result;
     }
 
@@ -384,14 +411,15 @@ namespace
             if (!exists) ++additions;
         }
         const auto capacity = static_cast<std::size_t>(oldCount) + additions;
-        auto* replacement = RE::calloc<Entry>(capacity);
-        if (!replacement) return false;
+        using Array = bcn::native_skin::ModelArrayConstruction<Entry, ModelArrayHeap>;
+        Array replacement;
+        if (!replacement.Allocate(capacity)) return false;
         for (std::uint32_t index{}; index < oldCount; ++index) {
-            std::construct_at(replacement + index, model.alternateTextures[index]);
+            if (!replacement.Append(model.alternateTextures[index])) return false;
         }
         auto used = oldCount;
         for (const auto& item : pending) {
-            const auto current = std::span{ replacement, used };
+            const auto current = std::span{ replacement.data(), used };
             const auto match = std::ranges::find_if(
                 current, [&](const Entry& entry) {
                     return entry.index3D == item.target.index3D &&
@@ -401,31 +429,24 @@ namespace
                 match->textureSet = item.binding.textureSet;
                 continue;
             }
-            if (used >= capacity) {
-                std::destroy_n(replacement, used);
-                RE::free(replacement);
-                return false;
-            }
-            std::construct_at(replacement + used, Entry{
+            if (!replacement.Append(Entry{
                 .textureSet = item.binding.textureSet,
                 .index3D = item.target.index3D,
                 .unk0C = 0U,
                 .name3D = RE::BSFixedString(item.target.name3D)
-            });
+            })) return false;
             ++used;
         }
-        if (model.alternateTextures) {
-            std::destroy_n(model.alternateTextures, oldCount);
-            RE::free(model.alternateTextures);
-        }
-        model.alternateTextures = replacement;
+        Array::Destroy(model.alternateTextures);
+        model.alternateTextures = replacement.release();
         model.numAlternateTextures = used;
         return true;
     }
 
     [[nodiscard]] bool MaterializeEmbeddedSkinAtlases(RE::TESModelTextureSwap& model,
         const std::uint32_t slotMask, const bcn::SkinUvLayout layout,
-        std::vector<TextureBinding>& bindings, std::vector<ModelTextureTarget>* skinBaselines)
+        std::vector<TextureBinding>& bindings, std::vector<ModelTextureTarget>* skinBaselines,
+        GraphConstruction& construction)
     {
         if (model.numAlternateTextures && !model.alternateTextures) return false;
         const auto targets = DiscoverModelTextureTargets(model, layout, slotMask, skinBaselines != nullptr);
@@ -466,6 +487,7 @@ namespace
         }
         if (!SetModelAlternateTextures(model, pending)) return false;
         for (auto& item : pending) {
+            construction.OwnTexture(item.construction.release());
             bindings.push_back(std::move(item.binding));
         }
         return true;
@@ -484,12 +506,14 @@ namespace
 
     [[nodiscard]] std::optional<ArmorGraph> CloneArmorGraph(
         RE::TESObjectARMO* source, const RE::SEX sex, const bcn::SkinUvLayout layout,
-        RE::TESRace* race, const bool prepareForTng = false)
+        RE::TESRace* race, GraphConstruction& construction, const bool prepareForTng = false)
     {
         if (!source) return ArmorGraph{};
-        auto* armor = DuplicateForm(source);
         const auto* sourceAddons = EffectiveArmorAddons(source);
-        if (!armor || !sourceAddons) return std::nullopt;
+        const auto sexIndex = static_cast<std::uint32_t>(sex);
+        if (!sourceAddons || sexIndex >= RE::SEXES::kTotal) return std::nullopt;
+        auto* armor = DuplicateForm(source);
+        if (!armor) return std::nullopt;
         if (armor->GetSlotMask() != source->GetSlotMask() ||
             (!armor->armorAddons.empty() && armor->armorAddons.data() == sourceAddons->data())) {
             SKSE::log::error("BCNG rejected invalid/shared ARMO clone source={:08X} clone={:08X}",
@@ -497,6 +521,9 @@ namespace
             return std::nullopt;
         }
 
+        // Only validated independent clones enter the construction owner.
+        // A provider's unexpected shared-storage Copy result is never freed.
+        construction.OwnForm(armor);
         ArmorGraph graph{ .armor = armor };
         if (prepareForTng) {
             // A TNG child is private to its provider map. Use its current body
@@ -513,13 +540,12 @@ namespace
         // let the engine walk back into the provider's source armor and would
         // defeat both TXST isolation and ownership-aware restoration.
         armor->templateArmor = nullptr;
-        const auto sexIndex = static_cast<std::uint32_t>(sex);
         for (auto* sourceAddon : *sourceAddons) {
             if (prepareForTng && sourceAddon &&
                 (static_cast<std::uint32_t>(sourceAddon->GetSlotMask().underlying()) &
                     kGenitalSlot) != 0U) continue;
             auto* addon = DuplicateForm(sourceAddon);
-            if (!addon || sexIndex >= RE::SEXES::kTotal) return std::nullopt;
+            if (!addon) return std::nullopt;
             bcn::native_skin::CopyAddonData(*addon, *sourceAddon,
                 [](auto& destination, auto& original) { destination.CopyComponent(&original); });
             const auto sameModel = [](const RE::TESModelTextureSwap& copy,
@@ -541,6 +567,7 @@ namespace
                     sourceAddon->GetFormID(), addon->GetFormID());
                 return std::nullopt;
             }
+            construction.OwnForm(addon);
             const auto slotMask = static_cast<std::uint32_t>(
                 sourceAddon->GetSlotMask().underlying());
             auto* sourceTexture = sourceAddon->skinTextures[sexIndex];
@@ -553,7 +580,7 @@ namespace
             const auto inspectModel = [&](RE::TESModelTextureSwap& model) {
                 return !race || !sourceAddon->IsValidRace(race) ||
                     MaterializeEmbeddedSkinAtlases(model, slotMask, layout,
-                        graph.textures, missingSkin ? &skinBaselines : nullptr);
+                        graph.textures, missingSkin ? &skinBaselines : nullptr, construction);
             };
             const auto thirdPersonReady = inspectModel(addon->bipedModels[sexIndex]);
             const auto firstPersonReady = inspectModel(addon->bipedModel1stPersons[sexIndex]);
@@ -571,6 +598,7 @@ namespace
             if (sourceTexture) {
                 auto binding = CloneTexture(sourceTexture, slotMask, layout);
                 if (!binding) return std::nullopt;
+                construction.OwnTexture(binding->textureSet);
                 addon->skinTextures[sexIndex] = binding->textureSet;
                 graph.textures.push_back(std::move(*binding));
             }
@@ -578,6 +606,7 @@ namespace
             if (sourceList) {
                 auto* list = DuplicateForm(sourceList);
                 if (!list) return std::nullopt;
+                construction.OwnForm(list);
                 // FLST has no Copy override either. Materialize the current
                 // list into private storage before replacing any texture entry.
                 list->forms = sourceList->forms;
@@ -594,6 +623,7 @@ namespace
                     if (!listedTexture) continue;
                     auto binding = CloneTexture(listedTexture, slotMask, layout);
                     if (!binding) return std::nullopt;
+                    construction.OwnTexture(binding->textureSet);
                     list->forms[index] = binding->textureSet;
                     graph.textures.push_back(std::move(*binding));
                 }
@@ -607,6 +637,7 @@ namespace
                 if (baseline) {
                     auto binding = CreateModelTexture(skinBaselines[*baseline], slotMask);
                     if (!binding) return std::nullopt;
+                    construction.OwnTexture(binding->textureSet);
                     // Keep cloned MODS aliases coherent with the new NAM1.
                     // The provider's arrays and TXSTs are never modified.
                     for (const auto& target : skinBaselines) {
@@ -636,7 +667,10 @@ namespace
                             }
                         }
                         if (!SetModelAlternateTextures(*model, pending)) continue;
-                        for (auto& item : pending) graph.textures.push_back(std::move(item.binding));
+                        for (auto& item : pending) {
+                            construction.OwnTexture(item.construction.release());
+                            graph.textures.push_back(std::move(item.binding));
+                        }
                     }
                 }
             }
@@ -902,9 +936,17 @@ namespace
             });
     }
 
-    void RestoreOwnedPointers(BaseInstance& instance)
+    bool RestorePrivateTextures(ArmorGraph& graph)
     {
-        if (!instance.base) return;
+        return bcn::skin_transaction::RestoreOriginalTextures(graph.textures,
+            [](TextureBinding& binding, std::size_t index, const std::string& path) {
+                return WriteTexturePath(binding, index, path);
+            });
+    }
+
+    bool RestoreOwnedPointers(BaseInstance& instance)
+    {
+        if (!instance.base) return false;
         if (instance.skinAttached && instance.skin.armor &&
             (instance.base->skin == instance.skin.armor ||
                 IsTngChildOfGraph(instance.base->skin, instance.skin))) {
@@ -916,6 +958,17 @@ namespace
         }
         instance.skinAttached = false;
         instance.farSkinAttached = false;
+        // TNG can retain a composed ARMO which shares these PRIVATE ARMAs.
+        // Detaching TESNPC::skin alone leaves that cached child pointing at
+        // the previous selection's DDS on Default or a subsequent save load.
+        // Restore only our clones, never the provider's original forms.
+        const auto restoredSkin = RestorePrivateTextures(instance.skin);
+        const auto restoredFarSkin = RestorePrivateTextures(instance.farSkin);
+        if (!restoredSkin || !restoredFarSkin) {
+            SKSE::log::warn("BCNG could not restore every private skin texture for ActorBase {:08X}",
+                instance.base->GetFormID());
+        }
+        return restoredSkin && restoredFarSkin;
     }
 
     std::shared_ptr<AppliedSnapshot> CaptureApplied(const BaseInstance& instance)
@@ -1019,19 +1072,23 @@ namespace
         instance.ownerActor = actor->GetFormID();
         instance.originalSkin = currentSkin;
         instance.originalFarSkin = base->farSkin;
+        GraphConstruction construction;
         // Build reusable source evidence, not a graph limited to the first
         // pack. Face-only application never attaches these private forms;
         // a later body pack must still have its native targets available.
         auto skin = CloneArmorGraph(currentSkin, base->GetSex(), runtimeUvLayout,
-            actor->GetRace(), prepareForTng);
+            actor->GetRace(), construction, prepareForTng);
         if (!skin || !skin->armor) return std::nullopt;
         instance.skin = std::move(*skin);
         if (base->farSkin) {
             auto farSkin = CloneArmorGraph(base->farSkin, base->GetSex(), runtimeUvLayout,
-                actor->GetRace());
+                actor->GetRace(), construction);
             if (!farSkin) return std::nullopt;
             instance.farSkin = std::move(*farSkin);
         }
+        // A complete persistent graph may later be cached by another provider.
+        // Its lifetime is deliberately NOT tied to g_instances or a save load.
+        construction.Release();
         return instance;
     }
 
@@ -1088,7 +1145,9 @@ namespace
             // remaining pointer that BCNG still owns before taking the new
             // provider snapshot, otherwise an old BCNG face/far-skin clone
             // would become its own restoration source and survive Default.
-            RestoreOwnedPointers(instance);
+            // Keep the old restoration evidence if even one private TXST
+            // failed to restore. TNG may still reference that exact graph.
+            if (!RestoreOwnedPointers(instance)) return;
             instance = {};
             instance.base = base;
             instance.ownerActor = owner;
@@ -1216,9 +1275,13 @@ namespace
         if (!base || base->GetFormID() != baseId) return;
         std::unique_lock lock(g_lock);
         const auto found = g_instances.find(baseId);
-        if (found == g_instances.end() || found->second.generation != generation ||
-            !found->second.desiredProfileId.empty()) return;
+        if (found == g_instances.end() || !bcn::native_skin::CanRunDefaultRestore(
+                found->second.generation == generation, found->second.desiredProfileId.empty())) return;
         auto& instance = found->second;
+        // Coalesced Default requests retain EVERY reference's independent
+        // face cleanup. Only the first body detachment refreshes shared 3D.
+        const auto refreshBody = instance.skinAttached || instance.farSkinAttached;
+        const auto completionGeneration = instance.generation;
         RestoreOwnedPointers(instance);
         instance.appliedProfileId.clear();
         instance.appliedContentHash = 0U;
@@ -1226,10 +1289,11 @@ namespace
         instance.tracked = true;
         const auto completed = CaptureApplied(instance);
         lock.unlock();
-        bcn::face_skin::Clear(actor.get(), [handle, baseId, generation, mode, completed, afterMutation](bool success) {
-            CompleteMutation(handle, baseId, generation, {}, mode, completed, afterMutation, success);
-        }, static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode);
-        RefreshLoadedActors(actor.get(), afterMutation);
+        bcn::face_skin::Clear(actor.get(), [handle, baseId, completionGeneration, mode, completed, afterMutation](bool success) {
+            CompleteMutation(handle, baseId, completionGeneration, {}, mode, completed, afterMutation, success);
+        }, refreshBody && static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode,
+            bcn::Settings::Get().RemovalMode());
+        if (refreshBody) RefreshLoadedActors(actor.get(), afterMutation);
     }
 
     [[nodiscard]] std::vector<bcn::runtime_assets::TexturePreparation> Preparations(
@@ -1381,7 +1445,7 @@ namespace bcn::native_skin
     }
 
     SkinApplyResult QueueClear(RE::Actor* actor,
-        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode)
+        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode, bool resetSharedBase)
     {
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         if (!actor) return SkinApplyResult::invalidActor;
@@ -1399,7 +1463,8 @@ namespace bcn::native_skin
             auto& instance = g_instances[baseId];
             const auto sharedAction = bcn::native_skin::ResolveSharedBaseAction(
                 instance.ownerActor, actorId, instance.desiredProfileId, {});
-            if (sharedAction == bcn::native_skin::SharedBaseAction::rejectConflict) {
+            if (sharedAction == bcn::native_skin::SharedBaseAction::rejectConflict &&
+                !resetSharedBase && !bcn::Settings::Get().RemovalMode()) {
                 return SkinApplyResult::sharedActorBaseConflict;
             }
             if (instance.ownerActor == 0U ||
@@ -1411,11 +1476,14 @@ namespace bcn::native_skin
                 instance.originalSkin = base->skin;
                 instance.originalFarSkin = base->farSkin;
             }
+            if (!bcn::native_skin::ReuseDefaultGeneration(instance.generation != 0U,
+                    instance.desiredProfileId.empty(), instance.desiredMode == mode)) {
+                instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
+            }
             instance.desiredProfileId.clear();
             instance.desiredMode = mode;
             instance.desiredContentHash = 0;
             instance.tracked = true;
-            instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
             generation = instance.generation;
         }
         const auto handle = actor->GetHandle();
@@ -1480,6 +1548,22 @@ namespace bcn::native_skin
         return instance.appliedProfileId == profileId &&
             instance.appliedContentHash == SkinProfiles::Get().ContentHash(profileId) &&
             OwnsCurrentPointers(instance) && bcn::face_skin::Matches(actor, profileId);
+    }
+
+    bool PrivateTexturesRestored()
+    {
+        std::scoped_lock lock(g_lock);
+        for (const auto& [baseId, instance] : g_instances) {
+            if (instance.skinAttached || instance.farSkinAttached) return false;
+            for (const auto* graph : { &instance.skin, &instance.farSkin }) {
+                for (const auto& binding : graph->textures) {
+                    for (std::size_t index{}; index < binding.originalPaths.size(); ++index) {
+                        if (TexturePath(binding.textureSet, index) != binding.originalPaths[index]) return false;
+                    }
+                }
+            }
+        }
+        return true;
     }
 
     void ResetSessionState()

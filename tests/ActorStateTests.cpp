@@ -1,4 +1,5 @@
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/ActorRecordBatches.h"
 #include "BodyChangeNG/ActorSearchPolicy.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/Distribution.h"
@@ -15,6 +16,74 @@ namespace
     void Require(const bool value, const char* message)
     {
         if (!value) throw std::runtime_error(message);
+    }
+
+    void CheckRecordBatches()
+    {
+        namespace codec = bcn::actor_serialization;
+        for (const std::size_t count : {0U, 1U, 16383U, 16384U, 16385U, 33000U}) {
+            std::vector<bcn::ActorState> states(count);
+            for (std::size_t i{}; i < count; ++i) {
+                states[i].actorFormID = static_cast<std::uint32_t>(i + 1U);
+                states[i].body.selection = { .selectedId = "body-" + std::to_string(i), .manual = true };
+                if (i % 3U == 0U) bcn::ResetActorSelectionsToDefaults(states[i]);
+            }
+            std::size_t restored{}, records{};
+            Require(codec::WriteActorRecords(states, [&](const auto& strings, const auto& actors) {
+                ++records;
+                Require(strings.size() <= codec::kMaxRecordStrings && actors.size() <= codec::kMaxRecordActors,
+                    "record exceeded legacy loader limits");
+                for (const auto& actor : actors) {
+                    const auto decoded = codec::DecodeV6(actor.state, actor.overlays, strings);
+                    Require(decoded && decoded->actorFormID == states[restored].actorFormID &&
+                        decoded->body.selection.selectedId == states[restored].body.selection.selectedId &&
+                        decoded->body.selection.useDefault == states[restored].body.selection.useDefault &&
+                        decoded->body.selection.manual, "record split lost an actor/default/manual selection");
+                    ++restored;
+                }
+                return true;
+            }), "actor record write failed");
+            Require(restored == count && records == (std::max)(std::size_t{1}, (count + 16383U) / 16384U),
+                "actor cap silently truncated state");
+        }
+        // Hit the independent string-table bound well before the actor bound.
+        std::vector<bcn::ActorState> dense(600U);
+        for (std::size_t i{}; i < dense.size(); ++i) {
+            dense[i].actorFormID = static_cast<std::uint32_t>(i + 1U);
+            for (unsigned slot{}; slot < 64U; ++slot) {
+                const auto id = std::to_string(i) + "-" + std::to_string(slot);
+                for (unsigned area{}; area < 2U; ++area)
+                    dense[i].overlay.areas[area].items.push_back({id + "-" + std::to_string(area),
+                        id + "-" + std::to_string(area) + ".dds", static_cast<std::uint8_t>(slot), 0x12345678U});
+            }
+        }
+        std::size_t restored{}, records{};
+        Require(codec::WriteActorRecords(dense, [&](const auto& strings, const auto& actors) {
+            ++records;
+            Require(strings.size() <= codec::kMaxRecordStrings, "string-table cap exceeded");
+            for (const auto& actor : actors) {
+                const auto decoded = codec::DecodeV6(actor.state, actor.overlays, strings);
+                Require(decoded && decoded->overlay.areas[1].items.size() == 64U &&
+                    decoded->overlay.areas[1].items.back().color == 0x12345678U, "overlay batch lost ownership/color");
+                ++restored;
+            }
+            return true;
+        }) && restored == dense.size() && records > 1U, "string-boundary save lost records");
+        records = 0U;
+        Require(!codec::WriteActorRecords(dense, [&](const auto&, const auto&) { ++records; return false; }) &&
+            records == 1U, "failed record write did not stop");
+        bcn::ActorState empty;
+        empty.body.outfitSignature = 17U;
+        Require(!bcn::HasPersistentAppearance(empty), "transient refit cache became a saved appearance");
+        auto selected = empty;
+        selected.skin.selection.useDefault = true;
+        Require(bcn::HasPersistentAppearance(selected), "Default intent discarded");
+        selected = empty;
+        selected.overlay.areas[0].items.push_back({.ownedSlot = 3U});
+        Require(bcn::HasPersistentAppearance(selected), "pending owned overlay discarded");
+        selected = empty;
+        selected.futanari.manual = true;
+        Require(bcn::HasPersistentAppearance(selected), "manual futanari lock discarded");
     }
 }
 
@@ -46,6 +115,7 @@ int main()
         }), "reset discarded native ownership before removal");
     }
     try {
+        CheckRecordBatches();
         using bcn::actor_search::Matches;
         using bcn::actor_search::Normalize;
         Require(Normalize("  BaNdIt\t") == "bandit", "search normalization failed");

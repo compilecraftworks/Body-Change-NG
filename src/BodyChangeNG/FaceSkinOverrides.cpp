@@ -23,6 +23,7 @@
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <utility>
 
 namespace
 {
@@ -44,6 +45,7 @@ namespace
         bool running{};
         bool complete{};
         bool hasSelection{};
+        bool allowUnloadedRestore{};
         RebuildGate rebuild;
         std::function<bool()> rebuildDispatch;
         std::uint64_t rebuildTicket{};
@@ -131,18 +133,54 @@ namespace
 
     class Callback final : public RE::BSScript::IStackCallbackFunctor
     {
+        struct Delivery
+        {
+            std::function<void(Result)> response;
+            std::function<void()> abandoned;
+            std::mutex mutex;
+            ~Delivery()
+            {
+                // A released VM callback (or discarded SKSE task) can no
+                // longer respond. Do not time out a VM that still owns it.
+                // Destruction may run off-thread; rollback belongs to the
+                // paced game queue and retains the batch's epoch checks.
+                if (abandoned) bcn::frame_tasks::Queue(0, std::move(abandoned));
+            }
+            void Invoke(Result result)
+            {
+                std::function<void(Result)> fn;
+                {
+                    std::scoped_lock lock(mutex);
+                    fn = std::exchange(response, {});
+                    abandoned = {};
+                }
+                if (fn) fn(result);
+            }
+            void Cancel()
+            {
+                std::scoped_lock lock(mutex);
+                response = {};
+                abandoned = {};
+            }
+        };
     public:
-        explicit Callback(std::function<void(Result)> fn) : fn_(std::move(fn)) {}
+        Callback(std::function<void(Result)> fn, std::function<void()> abandoned) :
+            delivery_(std::make_shared<Delivery>())
+        {
+            delivery_->response = std::move(fn);
+            delivery_->abandoned = std::move(abandoned);
+        }
         void operator()(Result result) override
         {
             // Papyrus completion is not guaranteed to run on the game thread.
             if (auto* tasks = SKSE::GetTaskInterface()) {
-                tasks->AddTask([fn = std::move(fn_), result]() mutable { fn(result); });
+                tasks->AddTask([delivery = delivery_, result] { delivery->Invoke(result); });
             }
         }
+        void Cancel() { delivery_->Cancel(); }
         void SetObject(const RE::BSTSmartPointer<RE::BSScript::Object>&) override {}
     private:
-        std::function<void(Result)> fn_;
+        std::shared_ptr<Delivery> delivery_;
     };
 
     struct Batch : std::enable_shared_from_this<Batch>
@@ -158,7 +196,7 @@ namespace
         bool hadBaseline{}, rollingBack{}, rollbackDone{}, rollbackFailed{};
         std::vector<Baseline> oldTargets;
         std::size_t oldTarget{}, channel{};
-        bool capturing{}, persistent{}, finished{}, cleaningOld{};
+        bool capturing{}, persistent{}, finished{}, cleaningOld{}, storedOnly{};
 
         bool Current()
         {
@@ -282,12 +320,14 @@ namespace
             auto* vm = VM::GetSingleton();
             if (!actor || !vm || !bcn::frame_tasks::Active()) { Finish(false); return; }
             auto self = shared_from_this();
-            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(new Callback(
+            auto* receiver = new Callback(
                 [self, continuation = std::move(continuation)](Result result) {
                     if (!self->Current()) { self->Finish(false); return; }
                     continuation(result);
-                }));
+                }, [self] { self->Finish(false); });
+            RE::BSTSmartPointer<RE::BSScript::IStackCallbackFunctor> callback(receiver);
             if (!vm->DispatchStaticCall("NiOverride", name, RE::MakeFunctionArguments(std::move(args)...), callback)) {
+                receiver->Cancel(); // Finish below, not a second abandoned delivery.
                 SKSE::log::error("BCNG face could not dispatch NiOverride.{} actor={:08X}", name, actorId);
                 Finish(false);
             }
@@ -297,7 +337,7 @@ namespace
             if (!Current()) { Finish(false); return; }
             auto actor = Actor();
             if (!actor) { Finish(false); return; }
-            if (nodeAccess && !cleaningOld) {
+            if (nodeAccess) {
                 std::string value;
                 if (!bcn::frame_tasks::Active() || !nodeAccess.Read(actor.get(), baseline.female,
                         baseline.node, kChannels[channel], saved, value)) { Finish(false); return; }
@@ -340,7 +380,7 @@ namespace
             if (!Current()) { Finish(false); return; }
             auto actor = Actor();
             if (!actor) { Finish(false); return; }
-            if (nodeAccess && !cleaningOld) {
+            if (nodeAccess) {
                 if (!bcn::frame_tasks::Active() || !nodeAccess.Remove(actor.get(), baseline.female,
                         baseline.node, kChannels[channel])) { Finish(false); return; }
                 next();
@@ -505,7 +545,7 @@ namespace
                         if (!Store(self->baseline)) { self->Finish(false); return; }
                     }
                 }
-                if (!CanRestoreChannel(kChannels[index], !visible.empty())) {
+                if (!self->storedOnly && !CanRestoreChannel(kChannels[index], !visible.empty())) {
                     SKSE::log::warn("BCNG face refuses empty required Default actor={:08X} channel={}",
                         self->actorId, kChannels[index]);
                     self->Finish(false);
@@ -533,7 +573,15 @@ namespace
                         if (!Store(self->baseline)) { self->Finish(false); return; }
                         self->Next();
                     };
-                    if (self->cleaningOld) commit();
+                    if (self->storedOnly) {
+                        self->Read(true, [self, commit = std::move(commit)](std::string value) {
+                            if (Owns(value, OwnedValue(self->baseline, self->channel, value))) {
+                                self->Finish(false);
+                                return;
+                            }
+                            commit();
+                        });
+                    } else if (self->cleaningOld) commit();
                     else self->Write(visible, false, [self, visible, commit = std::move(commit)] {
                         self->Verify(visible, commit);
                     });
@@ -555,6 +603,7 @@ namespace
                 ApplyChannel();
                 return;
             }
+            if (storedOnly) { Finish(true); return; }
             cleaningOld = false;
             mutated = 0;
             auto actor = request.handle.get();
@@ -713,7 +762,9 @@ namespace
                 auto actor = it->second.handle.get();
                 auto* base = actor ? actor->GetActorBase() : nullptr;
                 auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
-                if (!actor || !actor->Is3DLoaded() || !head || head->formEditorID.empty()) return;
+                if (!actor || !base) return;
+                batch->storedOnly = request.allowUnloadedRestore && !actor->Is3DLoaded();
+                if (!batch->storedOnly && (!actor->Is3DLoaded() || !head || head->formEditorID.empty())) return;
                 it->second.running = true;
                 it->second.activeGeneration = it->second.generation;
                 batch->actorId = actorId;
@@ -722,7 +773,7 @@ namespace
                 batch->request = it->second;
                 for (const auto& value : g_baselines) {
                     if (value.actor == actorId && value.base == base->GetFormID() &&
-                        (value.node != head->formEditorID.c_str() || value.female != (base->GetSex() == RE::SEX::kFemale))) {
+                        (batch->storedOnly || value.node != head->formEditorID.c_str() || value.female != (base->GetSex() == RE::SEX::kFemale))) {
                         batch->oldTargets.push_back(value);
                     }
                 }
@@ -746,7 +797,7 @@ namespace
         batch->BeginTarget();
     }
     void Submit(RE::Actor* actor, Paths paths, std::string profile, std::function<void(bool)> completion,
-        bool deferForRebuild, bcn::skin_transaction::Mode mode)
+        bool deferForRebuild, bcn::skin_transaction::Mode mode, bool allowUnloadedRestore = false)
     {
         if (!actor || !bcn::frame_tasks::Active()) { if (completion) completion(false); return; }
         bool capacityExceeded{};
@@ -759,6 +810,7 @@ namespace
                 request.paths = std::move(paths);
                 request.profile = std::move(profile);
                 request.mode = mode;
+                request.allowUnloadedRestore = allowUnloadedRestore;
                 request.completion = std::move(completion);
                 request.generation = ++g_generation;
                 request.complete = false;
@@ -796,9 +848,9 @@ namespace bcn::face_skin
         Submit(actor, std::move(paths), std::move(profileId), std::move(completion), deferForRebuild, mode);
     }
     void Clear(RE::Actor* actor, std::function<void(bool)> completion, bool deferForRebuild,
-        skin_transaction::Mode mode)
+        skin_transaction::Mode mode, bool allowUnloadedRestore)
     {
-        Submit(actor, {}, {}, std::move(completion), deferForRebuild, mode);
+        Submit(actor, {}, {}, std::move(completion), deferForRebuild, mode, allowUnloadedRestore);
     }
     void QueueRebuild(RE::Actor* actor, std::function<bool()> dispatch)
     {
@@ -904,6 +956,13 @@ namespace bcn::face_skin
     {
         std::scoped_lock lock(g_mutex);
         return g_baselines;
+    }
+    bool HasActiveWork()
+    {
+        std::scoped_lock lock(g_mutex);
+        return std::ranges::any_of(g_requests, [](const auto& item) {
+            return item.second.running || item.second.rebuild.Blocked() || item.second.eventTaskQueued;
+        });
     }
     void RestoreBaselines(std::vector<Baseline> values)
     {

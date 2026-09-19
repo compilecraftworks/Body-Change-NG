@@ -16,7 +16,7 @@ namespace bcn::face_skin
         std::string profileId, std::function<void(bool)> completion = {}, bool deferForRebuild = false,
         skin_transaction::Mode mode = skin_transaction::Mode::commit);
     void Clear(RE::Actor* actor, std::function<void(bool)> completion = {}, bool deferForRebuild = false,
-        skin_transaction::Mode mode = skin_transaction::Mode::commit);
+        skin_transaction::Mode mode = skin_transaction::Mode::commit, bool allowUnloadedRestore = false);
     // Drain an already-dispatched face call before requesting a BCNG rebuild.
     // The callback runs the native rebuild on the game task thread and returns
     // after that call. Engine flags/head readiness decide actual completion;
@@ -32,5 +32,6 @@ namespace bcn::face_skin
     [[nodiscard]] bool Pending(const RE::Actor* actor, std::string_view profileId,
         skin_transaction::Mode mode = skin_transaction::Mode::commit);
     [[nodiscard]] std::vector<Baseline> SnapshotBaselines();
+    [[nodiscard]] bool HasActiveWork();
     void RestoreBaselines(std::vector<Baseline> values);
 }

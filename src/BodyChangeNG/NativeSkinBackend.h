@@ -27,7 +27,8 @@ namespace bcn::native_skin
         skin_transaction::Mode mode = skin_transaction::Mode::commit);
     [[nodiscard]] SkinApplyResult QueueClear(RE::Actor* actor,
         std::function<void(RE::Actor*)> afterMutation = {},
-        skin_transaction::Mode mode = skin_transaction::Mode::commit);
+        skin_transaction::Mode mode = skin_transaction::Mode::commit,
+        bool resetSharedBase = false);
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* actor);
     [[nodiscard]] bool HasTrackedSelection(const RE::Actor* actor);
     // A DDS replacement does not change the body's UV family. Only return
@@ -39,4 +40,5 @@ namespace bcn::native_skin
     // Restores only pointers still owned by this backend. An external change
     // made after BCNG attached its clones is never overwritten.
     void ResetSessionState();
+    [[nodiscard]] bool PrivateTexturesRestored();
 }

@@ -25,6 +25,13 @@ namespace bcn::racemenu::keys
     }
 
     template <class API, class Actor>
+    void ClearPreview(API& api, Actor* actor)
+    {
+        api.ClearBodyMorphKeys(actor, preview);
+        api.ClearBodyMorphKeys(actor, legacyPreview);
+    }
+
+    template <class API, class Actor>
     void ClearOwned(API& api, Actor* actor)
     {
         for (const auto* key : owned) api.ClearBodyMorphKeys(actor, key);

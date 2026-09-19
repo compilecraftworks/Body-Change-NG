@@ -938,11 +938,28 @@ namespace bcn
             }
         }
         std::ranges::sort(loaded, {}, &SkinProfile::name);
-        std::scoped_lock lock(lock_);
-        profiles_ = std::move(loaded);
-        contentHashes_.clear();
-        for (const auto& profile : profiles_) contentHashes_[profile.id] = profile.contentHash;
-        SKSE::log::info("Body Change NG loaded {} shared texture skin profiles from {}", profiles_.size(), bcn::path_text::Utf8(root));
+        for (auto& skin : loaded) {
+            std::unordered_set<std::string_view> paths;
+            const auto collect = [&](const auto& layers) {
+                for (const auto& layer : layers) paths.insert(layer.path);
+            };
+            collect(skin.body); collect(skin.cbbeGenitalAnal); collect(skin.unpGenitalAnal);
+            collect(skin.hands); collect(skin.feet); collect(skin.face); collect(skin.vampireFace);
+            collect(skin.elderBody); collect(skin.elderHands); collect(skin.elderFace);
+            for (const auto& race : skin.raceFace) collect(race);
+            collect(skin.faceDetails);
+            skin.textureCount = paths.size();
+        }
+        auto published = std::make_shared<const std::vector<SkinProfile>>(std::move(loaded));
+        std::unordered_map<std::string, std::uint64_t> hashes;
+        for (const auto& profile : *published) hashes[profile.id] = profile.contentHash;
+        const auto count = published->size();
+        {
+            std::scoped_lock lock(lock_);
+            profiles_.swap(published);
+            contentHashes_.swap(hashes);
+        }
+        SKSE::log::info("Body Change NG loaded {} shared texture skin profiles from {}", count, bcn::path_text::Utf8(root));
     }
 
     bool SkinProfiles::RefreshAsync()
@@ -976,6 +993,11 @@ namespace bcn
 
     std::vector<SkinProfile> SkinProfiles::Snapshot() const
     {
+        return *SharedSnapshot();
+    }
+
+    std::shared_ptr<const std::vector<SkinProfile>> SkinProfiles::SharedSnapshot() const
+    {
         std::scoped_lock lock(lock_);
         return profiles_;
     }
@@ -990,8 +1012,8 @@ namespace bcn
     std::optional<SkinProfile> SkinProfiles::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
-        return found != profiles_.end() ? std::optional<SkinProfile>{ *found } : std::nullopt;
+        const auto found = std::ranges::find(*profiles_, id, &SkinProfile::id);
+        return found != profiles_->end() ? std::optional<SkinProfile>{ *found } : std::nullopt;
     }
 
     std::vector<std::string> SkinProfiles::CompatibleIds(
@@ -1002,8 +1024,8 @@ namespace bcn
         std::vector<std::string> compatible;
         compatible.reserve(ids.size());
         for (const auto& id : ids) {
-            const auto found = std::ranges::find(profiles_, id, &SkinProfile::id);
-            if (found != profiles_.end() &&
+            const auto found = std::ranges::find(*profiles_, id, &SkinProfile::id);
+            if (found != profiles_->end() &&
                 SkinProfileCompatibility(*found, sex, actorRace, actorFamily).Compatible()) {
                 compatible.push_back(id);
             }
@@ -1113,15 +1135,25 @@ namespace bcn
             if (left.name != right.name) return left.name < right.name;
             return static_cast<unsigned>(left.type) < static_cast<unsigned>(right.type);
         });
-        std::scoped_lock lock(lock_);
-        profiles_ = std::move(loaded);
-        contentHashes_.clear();
-        for (const auto& profile : profiles_) contentHashes_[profile.id] = profile.contentHash;
+        auto published = std::make_shared<const std::vector<FutanariSkinProfile>>(std::move(loaded));
+        std::unordered_map<std::string, std::uint64_t> hashes;
+        for (const auto& profile : *published) hashes[profile.id] = profile.contentHash;
+        const auto count = published->size();
+        {
+            std::scoped_lock lock(lock_);
+            profiles_.swap(published);
+            contentHashes_.swap(hashes);
+        }
         SKSE::log::info("Body Change NG loaded {} futanari skin profiles from {}",
-            profiles_.size(), bcn::path_text::Utf8(root));
+            count, bcn::path_text::Utf8(root));
     }
 
     std::vector<FutanariSkinProfile> FutanariSkinProfiles::Snapshot() const
+    {
+        return *SharedSnapshot();
+    }
+
+    std::shared_ptr<const std::vector<FutanariSkinProfile>> FutanariSkinProfiles::SharedSnapshot() const
     {
         std::scoped_lock lock(lock_);
         return profiles_;
@@ -1130,8 +1162,8 @@ namespace bcn
     std::optional<FutanariSkinProfile> FutanariSkinProfiles::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(profiles_, id, &FutanariSkinProfile::id);
-        return found == profiles_.end() ? std::nullopt : std::optional<FutanariSkinProfile>{ *found };
+        const auto found = std::ranges::find(*profiles_, id, &FutanariSkinProfile::id);
+        return found == profiles_->end() ? std::nullopt : std::optional<FutanariSkinProfile>{ *found };
     }
 
     std::uint64_t FutanariSkinProfiles::ContentHash(const std::string_view id) const

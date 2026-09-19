@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -104,6 +105,7 @@ namespace bcn
         std::vector<SkinTextureLayer> faceDetails;
         std::filesystem::path source;
         std::uint64_t contentHash{};
+        std::size_t textureCount{}; // Computed once when publishing the catalog.
     };
 
     enum class FutanariSkinType : std::uint8_t
@@ -199,6 +201,7 @@ namespace bcn
         [[nodiscard]] bool Refreshing() const noexcept { return refreshing_.load(std::memory_order_acquire); }
         [[nodiscard]] static std::vector<SkinProfile> ScanDirectory(const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<SkinProfile> Snapshot() const;
+        [[nodiscard]] std::shared_ptr<const std::vector<SkinProfile>> SharedSnapshot() const;
         [[nodiscard]] std::optional<SkinProfile> Find(std::string_view a_id) const;
         [[nodiscard]] std::uint64_t ContentHash(std::string_view a_id) const;
         [[nodiscard]] std::vector<std::string> CompatibleIds(
@@ -210,7 +213,7 @@ namespace bcn
     private:
         mutable std::mutex lock_;
         std::atomic_bool refreshing_{};
-        std::vector<SkinProfile> profiles_;
+        std::shared_ptr<const std::vector<SkinProfile>> profiles_ = std::make_shared<const std::vector<SkinProfile>>();
         std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };
 
@@ -226,6 +229,7 @@ namespace bcn
         [[nodiscard]] static std::vector<FutanariSkinProfile> ScanDirectory(
             const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<FutanariSkinProfile> Snapshot() const;
+        [[nodiscard]] std::shared_ptr<const std::vector<FutanariSkinProfile>> SharedSnapshot() const;
         [[nodiscard]] std::optional<FutanariSkinProfile> Find(std::string_view a_id) const;
         [[nodiscard]] std::uint64_t ContentHash(std::string_view a_id) const;
 
@@ -233,7 +237,7 @@ namespace bcn
 
     private:
         mutable std::mutex lock_;
-        std::vector<FutanariSkinProfile> profiles_;
+        std::shared_ptr<const std::vector<FutanariSkinProfile>> profiles_ = std::make_shared<const std::vector<FutanariSkinProfile>>();
         std::unordered_map<std::string, std::uint64_t> contentHashes_;
     };
 }

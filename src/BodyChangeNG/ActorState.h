@@ -132,6 +132,24 @@ namespace bcn
         FutanariFeatureState futanari;
     };
 
+    // Outfit signatures alone are a transient recomputation cache. Explicit
+    // Default, manual locks and pending overlay removals MUST survive unload.
+    [[nodiscard]] inline bool HasPersistentAppearance(const ActorState& state)
+    {
+        const auto selected = [](const FeatureSelectionState& value) {
+            return value.manual || value.useDefault || !value.selectedId.empty();
+        };
+        const auto applied = [](const FeatureApplicationState& value) {
+            return value.applied || value.appliedDefault || !value.appliedId.empty();
+        };
+        return selected(state.body.selection) || applied(state.body.application) ||
+            selected(state.skin.selection) || applied(state.skin.application) ||
+            state.futanari.manual || state.futanari.useDefault || !state.futanari.selectedSkinId.empty() ||
+            std::ranges::any_of(state.overlay.areas, [](const auto& area) {
+                return area.manual || area.useDefault || !area.items.empty();
+            });
+    }
+
     // A settings reset is an explicit, persistent Default choice for every
     // actor-owned appearance channel.  Keeping the manual Default sentinel is
     // intentional: an old automatic distribution result must not reappear on

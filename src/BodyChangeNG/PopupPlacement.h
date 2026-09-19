@@ -11,12 +11,14 @@ namespace bcn::popup_placement
     {
         outfit, settings, tintColor, overlayColor,
         distributionBody, distributionSkin, distributionFutanari, distributionOverlay,
+        removalConfirmation,
         count
     };
 
     inline constexpr std::array keys{
         "outfit", "settings", "tintColor", "overlayColor",
-        "distributionBody", "distributionSkin", "distributionFutanari", "distributionOverlay"
+        "distributionBody", "distributionSkin", "distributionFutanari", "distributionOverlay",
+        "removalConfirmation"
     };
     static_assert(keys.size() == static_cast<std::size_t>(Kind::count));
 

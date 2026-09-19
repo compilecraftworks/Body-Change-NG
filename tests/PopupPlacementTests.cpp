@@ -205,15 +205,19 @@ int main()
             ImGui::Render();
         }
     }
+    // Match all custom-card catalogs, including distribution checkboxes and
+    // Default-row offsets. The three appearance catalogs use this same stride.
     // Match the body's custom-card cursor advance, including Dummy's trailing
     // item spacing. A clipper using only card+gap overlaps/skips rows.
     for (const bool clipped : {false, true}) {
+      for (const bool checkboxMode : {false, true}) for (const int defaultRows : {0, 1}) {
         for (int settle = 0; settle < 2; ++settle) {
             ImGui::NewFrame();
             ImGui::SetNextWindowPos({0, 0});
             ImGui::SetNextWindowSize({700, 700});
             ImGui::Begin("BodyClipGeometry");
             ImGui::BeginChild("Rows", {650, 600});
+            if (defaultRows) { ImGui::Dummy({550, 48}); ImGui::Dummy({0, 5}); }
             const auto origin = ImGui::GetCursorScreenPos();
             const auto stride = 53.0F + ImGui::GetStyle().ItemSpacing.y;
             int rendered{}; bool focused{};
@@ -221,6 +225,12 @@ int main()
                 const auto position = ImGui::GetCursorScreenPos();
                 Require(std::abs(position.y - (origin.y + index * stride)) < 1.0F);
                 ImGui::PushID(index);
+                if (checkboxMode) {
+                    bool checked = (index % 2) == 0;
+                    ImGui::SetCursorScreenPos({position.x, position.y + (48.0F - ImGui::GetFrameHeight()) * 0.5F});
+                    ImGui::Checkbox("##selected", &checked);
+                    ImGui::SetCursorScreenPos({ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x, position.y});
+                }
                 ImGui::InvisibleButton("card", {550, 48});
                 ImGui::SetCursorScreenPos({position.x, position.y + 53});
                 ImGui::Dummy({0, 0});
@@ -230,7 +240,8 @@ int main()
             if (clipped) {
                 ImGuiListClipper clipper;
                 clipper.Begin(1000, stride);
-                clipper.IncludeItemByIndex(900);
+                const auto focusedRow = 900 + defaultRows;
+                clipper.IncludeItemByIndex(focusedRow - defaultRows);
                 while (clipper.Step())
                     for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) row(i);
             } else {
@@ -240,7 +251,38 @@ int main()
             Require(std::abs(ImGui::GetCursorScreenPos().y - (origin.y + 1000 * stride)) < 1.0F);
             ImGui::EndChild(); ImGui::End(); ImGui::Render();
         }
+      }
+    }
+    // Cancel belongs to the deepest popup, including a removal confirmation
+    // opened from either Settings or the standalone removal-mode screen.
+    for (const bool nested : {false, true}) {
+        unsigned confirmationFrames{};
+        for (int frame{}; frame < 5; ++frame) {
+            ImGui::NewFrame();
+            ImGui::Begin("CancelHost");
+            if (nested && frame == 0) ImGui::OpenPopup("SettingsCancelTest");
+            if (nested && frame < 4) Require(!CanConsumeCancel());
+            const bool parent = nested && ImGui::BeginPopupModal("SettingsCancelTest");
+            if (parent || !nested) {
+                if (frame == 0) ImGui::OpenPopup("RemovalCancelTest");
+                Require(CanConsumeCancel() == (frame >= 3));
+                if (modals.Begin("RemovalCancelTest", nullptr, ImGuiWindowFlags_AlwaysAutoResize,
+                        Kind::removalConfirmation, {}).began) {
+                    ++confirmationFrames;
+                    Require(CanConsumeCancel());
+                    ImGui::TextUnformatted("Removal confirmation");
+                    if (frame == 2) ImGui::CloseCurrentPopup();
+                    ImGui::EndPopup();
+                }
+            }
+            if (parent) {
+                if (frame == 3) ImGui::CloseCurrentPopup();
+                ImGui::EndPopup();
+            }
+            ImGui::End(); ImGui::Render();
+        }
+        Require(confirmationFrames == 3U);
     }
     ImGui::DestroyContext();
-    std::cout << "PopupPlacementTests passed: 8 popup positions, centering, repeated reopen, drag guard, smaller viewport, fitted one-line help, title hint clip/alignment/scaling\n";
+    std::cout << "PopupPlacementTests passed: " << keys.size() << " popup positions, nested Cancel, centering, repeated reopen, drag guard, smaller viewport, fitted one-line help, title hint clip/alignment/scaling\n";
 }

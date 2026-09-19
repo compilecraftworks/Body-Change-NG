@@ -5,6 +5,13 @@
 
 namespace bcn::popup_placement
 {
+    // Call at the parent's popup depth, before consuming BCNG's one-shot
+    // Cancel latch. A nested confirmation must get the input first.
+    [[nodiscard]] inline bool CanConsumeCancel()
+    {
+        return !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
+    }
+
     struct ModalFrame
     {
         bool began{};

@@ -969,6 +969,7 @@ namespace bcn
 
     std::size_t Distribution::ApplyLoadedNPCs()
     {
+        if (Settings::Get().RemovalMode()) return 0;
         auto* player = RE::PlayerCharacter::GetSingleton();
         auto* processes = RE::ProcessLists::GetSingleton();
         if (!player || !processes) return 0;
@@ -989,6 +990,7 @@ namespace bcn
 
     void Distribution::RefreshFutanariSelection(RE::Actor* actor) const
     {
+        if (Settings::Get().RemovalMode()) return;
         if (!IsEligibleNPC(actor, RE::PlayerCharacter::GetSingleton()) ||
             frame_tasks::HasPreview(actor->GetFormID()) ||
             racemenu::HasActivePreview(actor) || overlay::HasActivePreview(actor)) return;
@@ -1003,6 +1005,7 @@ namespace bcn
 
     bool Distribution::ApplyActor(RE::Actor* actor) const
     {
+        if (Settings::Get().RemovalMode()) return false;
         // User preview owns this actor until confirm/close. Automatic
         // distribution must not replace the interactive body or skin.
         if (actor && (frame_tasks::HasPreview(actor->GetFormID()) ||

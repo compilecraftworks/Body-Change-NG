@@ -228,6 +228,43 @@ int main()
         clean = false;
     }
 
+    const auto removal = Read(sourceRoot / "RemovalPreparation.cpp");
+    const auto reset = Read(sourceRoot / "ActorSettingsReset.cpp");
+    const auto settings = Read(sourceRoot / "Settings.cpp");
+    if (removal.find("frame_tasks::HasWork() || face_skin::HasActiveWork()") == std::string::npos ||
+        removal.find("RemainingOwnedMorphActors()") == std::string::npos ||
+        removal.find("PrivateTexturesRestored()") == std::string::npos ||
+        removal.find("OriginalStateRestored()") == std::string::npos ||
+        removal.find("if (!removal::CleanupComplete(status))") == std::string::npos ||
+        removal.find("QueueAll(true)") == std::string::npos ||
+        removal.find("SaveRulesForNextGame") != std::string::npos ||
+        removal.find("remove_all") != std::string::npos ||
+        reset.find("face_skin::SnapshotBaselines()") == std::string::npos ||
+        settings.find("\"removalMode\"") == std::string::npos ||
+        skinApplication.find("!actor->Is3DLoaded() && !Settings::Get().RemovalMode()") == std::string::npos ||
+        faceAdapter.find("request.allowUnloadedRestore && !actor->Is3DLoaded()") == std::string::npos ||
+        faceAdapter.find("if (storedOnly) { Finish(true); return; }") == std::string::npos ||
+        nativeSkinBackend.find("CanRunDefaultRestore(") == std::string::npos ||
+        nativeSkinBackend.find("ReuseDefaultGeneration(") == std::string::npos ||
+        nativeSkinBackend.find("if (refreshBody) RefreshLoadedActors") == std::string::npos ||
+        nativeSkinBackend.find("!resetSharedBase && !bcn::Settings::Get().RemovalMode()") == std::string::npos ||
+        nativeSkinBackend.find("RestorePrivateTextures(instance.skin)") == std::string::npos ||
+        nativeSkinBackend.find("RestorePrivateTextures(instance.farSkin)") == std::string::npos ||
+        nativeSkinBackend.find("if (!RestoreOwnedPointers(instance)) return;") == std::string::npos) {
+        std::cerr << "FAILED: removal ownership/verification/unloaded/shared-base routing regressed\n";
+        clean = false;
+    }
+    if (nativeSkinBackend.find("RE::calloc<Entry>(capacity)") != std::string::npos ||
+        nativeSkinBackend.find("RE::free(model.alternateTextures)") != std::string::npos ||
+        nativeSkinBackend.find("ModelArrayConstruction<Entry, ModelArrayHeap>") == std::string::npos ||
+        nativeSkinBackend.find("GraphConstruction construction;") == std::string::npos ||
+        nativeSkinBackend.find("construction.Release();") == std::string::npos ||
+        nativeSkinBackend.find("construction.OwnForm(addon);") == std::string::npos ||
+        nativeSkinBackend.find("construction.OwnForm(list);") == std::string::npos ||
+        nativeSkinBackend.find("construction.OwnTexture(item.construction.release())") == std::string::npos) {
+        std::cerr << "FAILED: native graph construction/engine model-array ownership regressed\n";
+        clean = false;
+    }
     if (!clean) return 1;
     std::cout << "Texture path isolation tests passed\n";
     return 0;

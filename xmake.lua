@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.7"
+local version = "1.2.8"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -54,6 +54,14 @@ target("BodyChangeNG")
     add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32")
     set_pcxxheader("src/PCH.h")
 
+target("BodyChangeNGRemovalPreparationTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/RemovalPreparationTests.cpp")
+    add_includedirs("src")
+
 target("BodyChangeNGDistributionTargetReadTests")
     set_default(false)
     set_kind("binary")
@@ -61,6 +69,27 @@ target("BodyChangeNGDistributionTargetReadTests")
     set_encodings("utf-8")
     add_includedirs("src")
     add_files("tests/DistributionTargetReadTests.cpp")
+
+target("BodyChangeNGDistributionPersistenceTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_packages("nlohmann_json")
+    add_includedirs("src")
+    add_files("tests/DistributionPersistenceTests.cpp")
+    on_load(function (target)
+        local source = io.readfile("src/BodyChangeNG/Distribution.cpp")
+        local start = assert(source:find("    [[nodiscard]] bool WriteDistributionFile(", 1, true))
+        local finish = assert(source:find("\n    }", start, true)) + #"\n    }" - 1
+        local schema = assert(source:match("constexpr auto kSchemaVersion = %d+;"))
+        local generated = path.join(target:autogendir(), "distribution-persistence")
+        os.mkdir(generated)
+        local file = path.join(generated, "DistributionWriter.inl")
+        local contents = schema .. "\n" .. source:sub(start, finish)
+        if not os.isfile(file) or io.readfile(file) ~= contents then io.writefile(file, contents) end
+        target:add("includedirs", generated)
+    end)
 
 target("BodyChangeNGCatalogRefreshTests")
     set_default(false)
@@ -201,6 +230,41 @@ target("BodyChangeNGFaceSkinPolicyTests")
     set_encodings("utf-8")
     add_files("tests/FaceSkinPolicyTests.cpp")
     add_includedirs("src")
+
+for _, probeName in ipairs({"BodyChangeNGFailurePathTests", "BodyChangeNGOfflineMemoryProbe"}) do
+target(probeName)
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_files("tests/FailurePathTests.cpp")
+    add_includedirs("src")
+    if probeName == "BodyChangeNGOfflineMemoryProbe" then
+        add_defines("BCNG_OFFLINE_MEMORY_PROBE")
+        set_targetdir("build/v" .. version .. "/trials/offline-memory")
+    end
+    on_load(function (target)
+        -- Compile exact production function bodies with fake VM/allocator
+        -- dependencies. Generated includes are diagnostic build artifacts.
+        local generated = path.join(target:autogendir(), "failure-paths")
+        target:add("includedirs", generated)
+        local function extract(file, first, last, output)
+            local source = io.readfile(file)
+            local begin = assert(source:find(first, 1, true))
+            local finish = assert(source:find(last, begin + #first, true))
+            io.writefile(path.join(generated, output), source:sub(begin, finish - 1))
+        end
+        extract("src/BodyChangeNG/FaceSkinOverrides.cpp", "    class Callback final", "    struct Batch :", "face_callback.inc")
+        extract("src/BodyChangeNG/FaceSkinOverrides.cpp", "        template<class... Args>", "        void Read(bool saved", "face_call.inc")
+        extract("src/BodyChangeNG/FaceSkinOverrides.cpp", "        void Finish(bool success)", "        void RollbackChannel()", "face_finish.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    template <class T>", "    [[nodiscard]] RE::BGSTextureSet* CurrentFaceTexture", "duplicate_form.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<TextureBinding> CloneTexture(", "    [[nodiscard]] std::string NativeFormPath", "clone_texture.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<TextureBinding> CreateModelTexture(", "    [[nodiscard]] bool SetModelAlternateTextures", "model_texture.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    struct PendingModelTexture final", "    struct ModelArrayHeap", "pending_model.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] bool SetModelAlternateTextures", "    [[nodiscard]] bool MaterializeEmbeddedSkinAtlases", "model_array.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    bool RestoreOwnedPointers(BaseInstance& instance)", "    std::shared_ptr<AppliedSnapshot> CaptureApplied", "restore_owned.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "    [[nodiscard]] bool RequestStillCurrent(", "build_instance.inc")
+    end)
+end
 
 target("BodyChangeNGFormDeleteGuardProbe")
     set_default(false)

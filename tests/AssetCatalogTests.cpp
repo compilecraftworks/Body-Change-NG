@@ -459,7 +459,7 @@ int main(const int argc, char** argv)
     }
 
     const bcn::SettingsData defaults;
-    if (!Require(defaults.preserveOtherMorphs && !defaults.pauseGameWhenOpen && !defaults.performanceMode &&
+    if (!Require(defaults.preserveOtherMorphs && !defaults.pauseGameWhenOpen && !defaults.performanceMode && !defaults.removalMode &&
             defaults.characterPosition == bcn::CharacterPosition::left,
             "new settings must preserve foreign morphs, place actor left and disable pause/performance modes")) return 1;
     const auto sandbox = std::filesystem::temp_directory_path() / "BodyChangeNGAssetCatalogTests";
@@ -502,6 +502,7 @@ int main(const int argc, char** argv)
     nonPreserving.preserveOtherMorphs = false;
     nonPreserving.pauseGameWhenOpen = true;
     nonPreserving.performanceMode = true;
+    nonPreserving.removalMode = true;
     nonPreserving.favoriteBodyPresets = { "body-preset" };
     nonPreserving.favoriteSkinProfiles = { "auto:skin-pack:female" };
     nonPreserving.favoriteTintPacks = { "tint-pack" };
@@ -529,15 +530,18 @@ int main(const int argc, char** argv)
             !popupSettings.MorphOptions().preserveOtherMorphs &&
             popupSettings.Snapshot().pauseGameWhenOpen &&
             popupSettings.Snapshot().performanceMode &&
+            popupSettings.RemovalMode() &&
             popupSettings.Snapshot().characterPosition == bcn::CharacterPosition::right,
             "explicit morph/pause/position settings did not survive reload")) return 1;
     const auto offSignature = popupSettings.BodyApplicationOptions();
     auto preserving = popupSettings.Snapshot();
     preserving.preserveOtherMorphs = true;
+    preserving.removalMode = false;
     popupSettings.Update(preserving);
     if (!Require(popupSettings.Save(), "preserving settings save failed")) return 1;
     popupSettings.Load();
     if (!Require(popupSettings.MorphOptions().preserveOtherMorphs &&
+            !popupSettings.RemovalMode() &&
             popupSettings.BodyApplicationOptions() != offSignature,
             "preserve option reload/signature did not change application policy")) return 1;
     auto unfavorited = popupSettings.Snapshot();
@@ -1436,6 +1440,13 @@ int main(const int argc, char** argv)
     if (!Require(repairedPath == afterPath &&
             bcn::runtime_assets::CachedTextureExists(repairedPath),
             "deleted runtime texture cache alias was not repaired from its source")) return 1;
+    // Also repair without a catalog refresh: the old positive-cache entry is
+    // still present in this case. Native callbacks retain their O(1) lookup.
+    std::filesystem::remove(sandbox / "Data" / std::filesystem::path{ repairedPath });
+    const auto repairedWithoutRefresh = bcn::runtime_assets::TexturePathFromGameRelative(refreshKey, "test");
+    if (!Require(repairedWithoutRefresh == repairedPath &&
+            std::filesystem::is_regular_file(sandbox / "Data" / std::filesystem::path{ repairedPath }),
+            "preparation trusted an obsolete cached-positive after file deletion")) return 1;
 
     // Mu Dynamic NormalMap derives optional detail, mask, and overlay files
     // from the active normal-map basename. A private cache directory prevents
@@ -1566,6 +1577,43 @@ int main(const int argc, char** argv)
         } else if (!Require(profile.raceFace[static_cast<std::size_t>(bcn::HumanoidSkinRace::nord)].empty(),
                 "male race normal leaked into female profile")) return 1;
     }
+    // Publish new immutable catalogs while readers still own the previous one.
+    const auto snapshotRoot = sandbox / "SnapshotAudit";
+    std::filesystem::create_directories(snapshotRoot);
+    std::filesystem::current_path(snapshotRoot);
+    const auto snapshotSkin = bcn::SkinProfiles::RootPath() / "A" / "textures" / "actors" / "character";
+    Touch(snapshotSkin / "female" / "femalebody_1.dds");
+    Touch(snapshotSkin / "female" / "femalehead.dds");
+    Touch(snapshotSkin / "character assets" / "tintmasks" / "femalehead_lips.dds");
+    const auto snapshotFuta = bcn::FutanariSkinProfiles::RootPath() / "TRX" / "textures" /
+        "[TRX] Futa addon" / "Regular" / "Default";
+    Touch(snapshotFuta / "schlong.dds");
+    auto& skinsCatalog = bcn::SkinProfiles::Get();
+    auto& futaCatalog = bcn::FutanariSkinProfiles::Get();
+    auto& tintCatalog = bcn::player_tint::Catalog::Get();
+    skinsCatalog.Refresh(); futaCatalog.Refresh(); tintCatalog.Refresh();
+    auto skinView = skinsCatalog.SharedSnapshot();
+    auto futaView = futaCatalog.SharedSnapshot();
+    auto tintView = tintCatalog.SharedSnapshot();
+    if (!Require(skinView->size() == 1U && skinView->front().textureCount == 2U &&
+            futaView->size() == 1U && tintView->size() == 1U &&
+            skinView == skinsCatalog.SharedSnapshot() && futaView == futaCatalog.SharedSnapshot() &&
+            tintView == tintCatalog.SharedSnapshot(), "catalog read copied or lost published data")) return 1;
+    std::weak_ptr oldSkin = skinView;
+    std::weak_ptr oldFuta = futaView;
+    std::weak_ptr oldTint = tintView;
+    Touch(snapshotSkin / "female" / "femalehands_1.dds");
+    Touch(snapshotFuta / "schlong_s.dds");
+    Touch(snapshotSkin / "character assets" / "tintmasks" / "femalehead_cheeks.dds");
+    skinsCatalog.Refresh(); futaCatalog.Refresh(); tintCatalog.Refresh();
+    if (!Require(skinView->front().textureCount == 2U && skinsCatalog.SharedSnapshot()->front().textureCount == 3U &&
+            futaView->front().layers.size() == 1U && futaCatalog.SharedSnapshot()->front().layers.size() == 2U &&
+            tintView->size() == 1U && tintCatalog.SharedSnapshot()->size() == 2U,
+            "refresh invalidated existing readers or failed to publish new metadata")) return 1;
+    skinView.reset(); futaView.reset(); tintView.reset();
+    if (!Require(oldSkin.expired() && oldFuta.expired() && oldTint.expired(),
+            "catalog retained retired snapshots without readers")) return 1;
+    std::filesystem::current_path(originalCurrentPath);
     std::filesystem::remove_all(sandbox);
     return 0;
 }

@@ -87,6 +87,10 @@ namespace bcn
             frame_tasks::Queue(actorFormID,
                 [handle, actorFormID, generation, session, retries] {
                 if (!IsCurrentEquipmentChange(actorFormID, generation, session)) return;
+                if (Settings::Get().RemovalMode()) {
+                    FinishEquipmentChange(actorFormID, generation);
+                    return;
+                }
                 const auto actor = handle.get();
                 if (!actor || actor->GetFormID() != actorFormID) {
                     FinishEquipmentChange(actorFormID, generation);
@@ -126,6 +130,7 @@ namespace bcn
             const auto* tasks = SKSE::GetTaskInterface();
             if (!tasks) return;
             frame_tasks::Queue(0, [handle, remainingLoadRetries, remainingVerificationPasses, generation] {
+                if (Settings::Get().RemovalMode()) return;
                 if (g_raceMenuRestoreGeneration.load(std::memory_order_acquire) != generation) return;
                 const auto actor = handle.get();
                 auto* player = RE::PlayerCharacter::GetSingleton();
@@ -186,6 +191,7 @@ namespace bcn
 
     void ActorEvents::QueuePlayerLoadRestoration()
     {
+        if (Settings::Get().RemovalMode()) return;
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             const auto generation = g_raceMenuRestoreGeneration.load(std::memory_order_acquire);
             // Use the existing skin/body restoration queue and its bounded
@@ -243,8 +249,10 @@ namespace bcn
                 body_family::ForgetActorState(actor->GetFormID());
                 rendered_outfit::Forget(actor->GetFormID());
                 racemenu::ForgetActorState(actor->GetFormID());
+                racemenu::QueueClearInactivePreview(actor);
                 overlay::ForgetActorState(actor->GetFormID());
                 skin_application::ForgetActorState(actor->GetFormID());
+                ActorRegistry::Get().ForgetTransient(actor->GetFormID());
             }
         }
         return RE::BSEventNotifyControl::kContinue;
@@ -382,6 +390,7 @@ namespace bcn
                 // Notify before registry filtering: an addon-only rebuild can
                 // have a barrier without a general body-skin selection.
                 face_skin::OnNiNodeUpdate(actor);
+                if (Settings::Get().RemovalMode()) return RE::BSEventNotifyControl::kContinue;
                 racemenu::QueueVerifySavedBody(actor);
                 const auto* base = actor->GetActorBase();
                 const auto mayRegisterFutanari = base && base->GetSex() == RE::SEX::kFemale &&

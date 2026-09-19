@@ -156,6 +156,7 @@ namespace bcn
 
     void OutfitRefit::ProcessActor(RE::Actor* actor) const
     {
+        if (Settings::Get().RemovalMode()) return;
         if (!actor || !actor->Is3DLoaded()) return;
         const auto useSFS = rendered_outfit::Available();
         if (useSFS && !frame_tasks::InGameTask()) {

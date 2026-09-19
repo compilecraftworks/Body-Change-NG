@@ -53,6 +53,18 @@ int main()
         using bcn::body_morph_policy::FemaleFamily;
         Actor actor;
         {
+            Morphs morphs;
+            morphs.values["Nipple"][keys::preview] = -0.4F;
+            morphs.values["Nipple"][keys::legacyPreview] = 0.2F;
+            morphs.values["Nipple"][keys::body] = 0.7F;
+            morphs.values["Nipple"][keys::obody] = 0.1F;
+            morphs.values["Nipple"]["Foreign"] = 0.3F;
+            keys::ClearPreview(morphs, &actor); // No 3D API required.
+            Check(Near(morphs.Sum("Nipple"), 1.1F), "preview cleanup changed committed or foreign morphs");
+            keys::ClearPreview(morphs, &actor);
+            Check(Near(morphs.Sum("Nipple"), 1.1F), "preview cleanup was not idempotent");
+        }
+        {
             bcn::slider_name::Map<float> names;
             names.insert_or_assign("HipBone", 1.2F);
             names.insert_or_assign("Hipbone", -1.5F);

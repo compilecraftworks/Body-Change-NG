@@ -86,9 +86,14 @@ namespace bcn::racemenu
     // Reverts the transient single-click preview on the exact actor that owns
     // it. Safe to call repeatedly when switching actors, tabs, or closing UI.
     void QueueCancelPreview();
+    // Detach-safe cleanup of abandoned preview keys; never touches an active
+    // preview or committed/foreign morphs, and never forces an actor 3D load.
+    void QueueClearInactivePreview(RE::Actor* a_actor);
     void QueueApplyProceduralOutfit(RE::Actor* a_actor, std::uint64_t a_outfitSignature);
     void QueueClearOutfit(RE::Actor* a_actor, std::uint64_t a_outfitSignature);
     void CancelPendingOutfit(RE::Actor* a_actor);
-    void QueueClearBodyChangeMorphs(RE::Actor* a_actor);
-    [[nodiscard]] bool QueueClearAllBodyChangeMorphs(std::vector<std::uint32_t> a_alreadyReset);
+    void QueueClearBodyChangeMorphs(RE::Actor* a_actor, bool a_ownedOnly = false);
+    [[nodiscard]] bool QueueClearAllBodyChangeMorphs(std::vector<std::uint32_t> a_alreadyReset, bool a_ownedOnly = false);
+    // One-shot removal verification, never used by per-frame appearance work.
+    [[nodiscard]] std::optional<std::size_t> RemainingOwnedMorphActors();
 }

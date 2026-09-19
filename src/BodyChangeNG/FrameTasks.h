@@ -32,6 +32,7 @@ namespace bcn::frame_tasks
     bool IsCurrent(std::uint64_t epoch);
     void CancelActor(std::uint32_t actor);
     bool HasActorWork(std::uint32_t actor);
+    bool HasWork();
     bool HasActorChannelWork(std::uint32_t actor, appearance::WorkChannel channel);
     async_work::FrameTaskQueue::WorkStatus Status(std::uint32_t actor);
 }

@@ -175,6 +175,7 @@ namespace bcn::async_work
         bool Active() const { return active_; }
         std::uint64_t Epoch() const { return epoch_; }
         std::size_t Pending() const { return jobs_.size(); }
+        bool HasWork() const { return !jobs_.empty() || !busy_.empty(); }
         std::uint64_t Tick() const { return tick_; }
         bool HasActorWork(std::uint32_t actor) const { return actorPending_.contains(actor) || busy_.contains(actor); }
         bool HasActorChannelWork(std::uint32_t actor, std::uint32_t channel) const

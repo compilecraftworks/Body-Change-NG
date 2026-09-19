@@ -6,6 +6,7 @@
 #include <array>
 #include <filesystem>
 #include <mutex>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -103,12 +104,13 @@ namespace bcn::player_tint
         void Refresh();
         [[nodiscard]] static std::vector<Asset> ScanDirectory(const std::filesystem::path& a_root);
         [[nodiscard]] std::vector<Asset> Snapshot() const;
+        [[nodiscard]] std::shared_ptr<const std::vector<Asset>> SharedSnapshot() const;
         [[nodiscard]] std::optional<Asset> Find(std::string_view a_id) const;
         [[nodiscard]] static std::filesystem::path RootPath();
 
     private:
         mutable std::mutex lock_;
-        std::vector<Asset> assets_;
+        std::shared_ptr<const std::vector<Asset>> assets_ = std::make_shared<const std::vector<Asset>>();
     };
 
     [[nodiscard]] std::string_view LayerName(Layer a_layer);
@@ -170,4 +172,6 @@ namespace bcn::player_tint
     [[nodiscard]] PersistedState SnapshotPersistedState();
     void RestorePersistedState(PersistedState a_state, bool a_restoreBackups = true);
     void ResetPersistedState();
+    // Called only on the game task after the restore queue has drained.
+    [[nodiscard]] bool OriginalStateRestored();
 }

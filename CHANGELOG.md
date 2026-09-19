@@ -2,6 +2,24 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.8
+
+- Restore each reference's face during ordinary all-actor reset, including references sharing an ActorBase. Coalesce equal Default requests and refresh the shared body once; an intervening skin selection invalidates older reset requests.
+- Clear abandoned body-preview keys across NPC detach/cancel boundaries without loading 3D or deleting active previews, committed morphs, or foreign keys.
+- Let the overlay color popup consume Esc/mapped Cancel without closing the main UI.
+- Keep Cancel in the innermost removal-confirmation popup rather than closing its parent. Remember that confirmation's position like the other popups.
+- Share immutable skin/futanari/tint catalogs, cache texture counts and tint-pack grouping, and clip off-screen rows while preserving keyboard focus and distribution checkboxes.
+- Save actor choices in multiple bounded, existing-format ASTR records instead of truncating at 16,384 actors. Avoid empty records for unchanged distribution outcomes; discard only transient outfit-cache records on detach, preserving selections, Default intent, and restoration ownership.
+- Recover face batches when the VM releases a callback without a response or its queued delivery is discarded. Keep rollback and request-generation checks; do not time out callbacks still held by the VM. Use the existing native reader/remover for old-node cleanup where available.
+- Fix the allocation/deallocation contract for model alternate-texture arrays, including the engine's element-count header. Retain the previous array on allocation failure and release unpublished texture construction references. The relevant engine code was read on SE 1.5.97 and AE 1.6.1170; no live game memory was modified.
+- Reclaim validated, unpublished ARMO/ARMA/FLST clones and TXST construction references if body/far-skin graph construction fails. Do not destroy completed persistent graphs that TNG may cache. Preserve restoration evidence if any private texture channel fails to restore before a graph replacement. Expanded fault tests cover callback loss, rollback routing, texture failures, array replacement and body/far-skin construction; these are not live leak measurements or a reproduction of the reported TNG texture issue.
+- Restore the DDS paths in BCNG's retained private skin graphs on Default and session reset, not only the ActorBase pointers. A provider such as TNG can retain a composed armor referencing those private armatures; it must not retain the last BCNG selection through that graph. Original provider forms are not edited.
+- Revalidate a previously prepared cache file when preparing a new texture application, and recreate a deleted alias from its still-available source. No filesystem checks were added to the native addon visitor or per-frame rendering.
+- Add **Prepare for mod removal** to settings, with confirmation, persistent suspension of distribution/corrections, ownership-scoped cleanup, and a verified/incomplete result. Keep rule files and foreign morph keys. Restore saved face registrations for unloaded references through the existing public NiOverride path; clear each reference separately even when several actors share one body base. Retain restoration records if cleanup cannot be verified. After verification, save to a new slot, exit completely, then uninstall. This is not a general damaged-save repair tool.
+- Keep the existing 12 SE/AE runtime targets and RaceMenu BodyMorph v4/v5, Override/Overlay v1/v2 adapters. No 1.7.x or VR support is added. The TNG/SOS size-change investigation found a TNG menu path that reselects an addon and rebuilds 3D before choosing size; the reported half-purple rendering has not been reproduced in-game.
+
+- Validation covers existing features as well as these changes: Release build, 31 regression executables, 19 offline audit-tool tests, 12-runtime metadata relocation coverage, and separate allocation/catalog probes. The production distribution writer passed 88 scope/sex/feature cases and real file-replacement failure/retry tests. See [full feature verification](docs/RELEASE-VERIFICATION-v1.2.8-KO.md). No new in-game tests were performed; this is not a guarantee of zero bugs or whole-game leaks.
+
 ## 1.2.7
 
 - Harden distribution condition-list reads against invalid faction/race/class/keyword objects: verify runtime type and current form identity before reading metadata. Read validated full-name data without invoking the unsafe name virtual; retain editor-ID hooks and use the existing ID label fallback if only the name component is unavailable. No faction is excluded by name or ID.

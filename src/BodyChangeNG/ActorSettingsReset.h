@@ -16,5 +16,5 @@ namespace bcn::actor_settings_reset
     };
 
     [[nodiscard]] Result QueueActor(RE::Actor* a_actor);
-    [[nodiscard]] Result QueueAll();
+    [[nodiscard]] Result QueueAll(bool a_ownedMorphsOnly = false);
 }

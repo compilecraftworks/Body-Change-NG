@@ -27,7 +27,11 @@ namespace {
 int main()
 {
     using namespace bcn::popup_placement;
-    Require(keys.size() == 8U);
+    Require(keys.size() == 9U);
+    constexpr std::array<std::string_view, 9> savedPopupKeys{
+        "outfit", "settings", "tintColor", "overlayColor", "distributionBody",
+        "distributionSkin", "distributionFutanari", "distributionOverlay", "removalConfirmation"};
+    for (std::size_t index{}; index < keys.size(); ++index) Require(keys[index] == savedPopupKeys[index]);
     Require(Changed({}, 320.0F, 240.0F));
     Require(!Changed({ true, 320.0F, 240.0F }, 320.25F, 240.25F));
     Require(Changed({ true, 320.0F, 240.0F }, 350.0F, 240.0F));
@@ -635,6 +639,12 @@ int main()
         !navigationSource.contains("ImGuiKey_GamepadFaceDown"));
     Require(uiSource.contains("native_ui::CancelPressed()") &&
         !uiSource.contains("ImGuiKey_GamepadFaceRight"));
+    Require(uiSource.contains("!g_showOverlayDetails && bcn::popup_placement::CanConsumeCancel() && EscapePressed()") &&
+        uiSource.contains("Kind::removalConfirmation") &&
+        uiSource.contains("skinSnapshot = bcn::SkinProfiles::Get().SharedSnapshot()") &&
+        uiSource.contains("profileSnapshot = bcn::FutanariSkinProfiles::Get().SharedSnapshot()") &&
+        uiSource.contains("assetSnapshot = bcn::player_tint::Catalog::Get().SharedSnapshot()") &&
+        !uiSource.contains("std::unordered_set<std::string> texturePaths"));
 
     std::ifstream catalogFile(std::filesystem::path("src") / "BodyChangeNG" /
         "OverlayCatalog.cpp", std::ios::binary);
@@ -716,6 +726,13 @@ int main()
         "RaceMenuBodyMorph.cpp", std::ios::binary);
     Require(morphFile.good());
     const std::string morphSource((std::istreambuf_iterator<char>(morphFile)), {});
+    const auto cleanupStart = morphSource.find("void ClearPreviewNow(");
+    const auto cleanupEnd = morphSource.find("std::uint64_t StableRandomSeed(", cleanupStart);
+    Require(cleanupStart != std::string::npos && cleanupEnd != std::string::npos);
+    const auto cleanup = std::string_view(morphSource).substr(cleanupStart, cleanupEnd - cleanupStart);
+    Require(cleanup.contains("keys::ClearPreview(*bodyMorph, actor.get())") &&
+        cleanup.contains("HasActivePreview(actor.get())") &&
+        cleanup.find("keys::ClearPreview") < cleanup.find("actor->Is3DLoaded()"));
     Require(morphSource.contains("bcn::slider_name::Map<float> desiredMorphs") &&
         morphSource.contains("bcn::slider_name::Map<float> replaced") &&
         morphSource.contains("bcn::slider_name::Map<float> previewOutfit") &&

@@ -1,0 +1,16 @@
+Body Change NG v1.2.8
+Changes from v1.2.7
+
+- Add Prepare for mod removal in Mod settings. It resets BCNG-owned appearance, suspends automatic distribution/corrections, and reports whether cleanup was verified. Rules and other mods' morphs are preserved. Back up a save first; after successful cleanup, save to a NEW slot, fully exit Skyrim, then uninstall. Do not uninstall if cleanup is incomplete.
+- Restore the original DDS paths inside retained private skin graphs on Default and session reset, as well as restoring the actor's pointers. This addresses stale BCNG paths in skin compositions retained by addon providers. The original provider forms are not edited.
+- Recheck prepared texture-cache aliases before a new application and recreate deleted aliases when their source is available. No filesystem checks were added to per-frame rendering or the addon texture visitor.
+- Fix model alternate-texture array allocation/deallocation to match the engine's element-count header. Preserve the previous array if replacement fails and release unpublished texture construction references.
+- Clean up validated unpublished body/far-skin clones after construction failures. Keep restoration evidence if private texture restoration fails. Completed graphs that another mod may still reference are not forcibly freed.
+- Recover face batches when the VM drops a callback without replying or queued delivery is discarded. Preserve rollback, request-generation and session checks; callbacks still held by the VM are not arbitrarily timed out.
+- Restore each NPC reference's face when resetting actors that share a body base, while avoiding repeated shared-body refreshes. A newer skin selection invalidates earlier Default requests.
+- Clear abandoned body-preview keys even if an NPC's 3D has unloaded. Keep active previews, committed morphs and unrelated morph keys; do not force actors to load.
+- Reuse immutable body-skin/futanari/tint catalogs, cached texture counts and tint grouping. Clip off-screen rows while retaining keyboard focus and NPC-distribution checkbox behavior.
+- Save actor selections in multiple existing-format records instead of truncating at 16,384 actors. Avoid empty distribution records and discard only transient outfit-cache entries on detach.
+- Fix Cancel/Esc routing for the overlay color popup and nested removal confirmation. Remember the removal confirmation's position like the other popups.
+- Keep the existing 12 Skyrim SE/AE runtime targets and RaceMenu interface adapters. No Skyrim 1.7.x, VR, RSV or Selector compatibility support is added.
+- Verification includes existing features, not only the changes: Release build, 31 regression executables, 19 audit-tool tests, 12-runtime metadata relocation checks, and offline memory/catalog probes. Distribution file tests cover 88 scope/sex/feature rows, per-candidate colors and atomic replacement failure/retry. No new in-game tests were performed; the reported TNG half-purple rendering and whole-game leak-free behavior are not claimed verified.

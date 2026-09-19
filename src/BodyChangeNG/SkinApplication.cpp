@@ -1,4 +1,5 @@
 #include "BodyChangeNG/SkinApplication.h"
+#include "BodyChangeNG/Settings.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/Distribution.h"
@@ -399,16 +400,16 @@ namespace bcn::skin_application
         return result;
     }
 
-    ApplyResult QueueClear(RE::Actor* actor, skin_transaction::Mode mode)
+    ApplyResult QueueClear(RE::Actor* actor, skin_transaction::Mode mode, bool resetSharedBase)
     {
-        if (actor && !actor->Is3DLoaded()) {
+        if (actor && !actor->Is3DLoaded() && !Settings::Get().RemovalMode()) {
             if (!frame_tasks::Active()) return ApplyResult::noTaskInterface;
             if (runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported)
                 return ApplyResult::unsupportedRuntime;
             return mode == skin_transaction::Mode::commit ? ApplyResult::queued : ApplyResult::actor3DUnavailable;
         }
         const auto result = native_skin::QueueClear(actor,
-            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
+            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode, resetSharedBase);
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actor->GetFormID());
             skin_session::TrackSkinSelection(actor->GetFormID(), {});
@@ -451,6 +452,7 @@ namespace bcn::skin_application
     void QueueReapplyCurrentMaleGenitals(
         RE::Actor* actor, const bool onlyIfAddonChanged)
     {
+        if (Settings::Get().RemovalMode()) return;
         if (!native_addon::Available()) return;
         if (!actor || !actor->GetActorBase() ||
             actor->GetActorBase()->GetSex() != RE::SEX::kMale) return;
@@ -618,6 +620,7 @@ namespace bcn::skin_application
     void QueueReapplyCurrentFutanari(
         RE::Actor* actor, const bool onlyIfAddonChanged)
     {
+        if (Settings::Get().RemovalMode()) return;
         if (!native_addon::Available()) return;
         if (!actor || !frame_tasks::Active() || frame_tasks::HasPreview(actor->GetFormID())) return;
         // Registration / addon switches can occur after the actor-load pass.

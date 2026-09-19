@@ -100,6 +100,7 @@ namespace bcn
         void InvalidateBody(RE::Actor* a_actor);
         void InvalidateSkin(RE::Actor* a_actor);
         void InvalidateOutfit(RE::Actor* a_actor);
+        void ForgetTransient(std::uint32_t a_actorFormID);
 
         // Serialization entry point. Records are still base-identity validated
         // before any caller can use them for a live actor.

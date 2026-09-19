@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.7
+# Body Change NG — v1.2.8
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,39 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.2.7
+## Current version — v1.2.8
+
+Version 1.2.8 adds **Prepare for mod removal**, hardens private-skin restoration
+and failed graph construction, recovers abandoned face callbacks, fixes shared-NPC
+Default cleanup, and reduces skin/futanari/tint catalog work. Large actor registries
+save in multiple existing-format records instead of truncating at 16,384 entries.
+Overlay color and nested confirmation popups keep Cancel local to the popup.
+
+The audit includes existing body presets, skins, addons, tint, overlays, distribution,
+input, settings, persistence and SFS outfit correction—not only the changed paths.
+The Release build, 31 regression executables and 19 audit-tool tests passed.
+See the [complete feature verification and limits](docs/RELEASE-VERIFICATION-v1.2.8-KO.md).
+No new in-game testing was performed. Whole-game zero leaks and resolution of every
+reported TNG/SOS rendering issue are not claimed.
+
+- [English changelog](CHANGELOG.md#128) · [한국어 변경 내역](CHANGELOG-KO.md#128)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.8-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.8-KO.html)
+- [English plain text](docs/NEXUS-CHANGELOG-v1.2.8-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.2.8-KO.txt)
+
+### Preparing to uninstall
+
+Back up your save. Open **Mod settings → Prepare for mod removal → Start cleanup**.
+Wait for **Cleanup verified**. Then close BCNG, save to a **new slot**, fully exit
+Skyrim, and uninstall BCNG. If cleanup is incomplete, do not uninstall; let updates
+finish/load remaining actors and retry. This is ownership-scoped cleanup, not a
+general damaged-save repair tool.
+
+Removal mode persists in `Data\SKSE\Plugins\BodyChangeNG\settings.json` and suspends
+automatic distribution/corrections. Rules and other mods' morph keys are preserved.
+**Resume BCNG** exits this mode but does not restore selections erased by cleanup.
+Preserve your customized rule JSON and asset packs when updating the mod.
+
+## Previous version — v1.2.7
 
 Version 1.2.7 resets distribution/UI drafts consistently across close, load, and
 new-game boundaries. Distribution target metadata is collected on a game task
@@ -109,8 +141,8 @@ Explicit targets:
 No VR, LE, Epic 1.6.678, Store/Game Pass, or unlisted runtimes including 1.7.x.
 Do not assume the newest dependency download matches an older game.
 
-The v1.2.3 Release build and 24 automated test executables passed. This is not
-complete in-game/leak verification.
+The current Release build and 31 automated test executables passed. This is not
+complete in-game/leak verification; see the v1.2.8 verification report above.
 
 ## Installation
 
@@ -196,7 +228,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.2.4/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.2.8/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

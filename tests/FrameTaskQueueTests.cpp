@@ -9,6 +9,16 @@ int main()
 {
     try {
         FrameTaskQueue queue;
+        Check(!queue.HasWork(), "empty queue incorrectly blocks removal");
+        queue.Submit(10, 20, [] {});
+        queue.Advance();
+        {
+            auto job = queue.Take();
+            Check(job && queue.Pending() == 0 && queue.HasWork(),
+                "removal missed an asynchronous lease with no queued callbacks");
+        }
+        queue.Advance(); queue.Advance();
+        Check(!queue.HasWork(), "completed lease permanently blocks removal");
         // A native face refresh completes an already-committed TXST change.
         // A new body UI choice must not cancel it; repeated rebuild events
         // coalesce, and unrelated equipment work keeps a different key.

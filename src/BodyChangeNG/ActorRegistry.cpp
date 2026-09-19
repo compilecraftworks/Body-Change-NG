@@ -1,6 +1,7 @@
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/UI.h"
 #include "BodyChangeNG/ActorStateSerialization.h"
+#include "BodyChangeNG/ActorRecordBatches.h"
 #include "BodyChangeNG/PlayerTintSerialization.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/RenderedOutfit.h"
@@ -36,8 +37,8 @@ namespace
     constexpr std::uint32_t kLegacyActorRecordVersion = 1U;
     constexpr std::uint32_t kPreviousActorRecordVersion = 2U;
     constexpr std::uint32_t kTintRecordVersion = bcn::player_tint::kStateVersion;
-    constexpr std::uint32_t kMaxActors = 16384U;
-    constexpr std::uint32_t kMaxStrings = 131072U;
+    constexpr auto kMaxActors = bcn::actor_serialization::kMaxRecordActors;
+    constexpr auto kMaxStrings = bcn::actor_serialization::kMaxRecordStrings;
     constexpr std::uint32_t kMaxOverlayItemsPerActor = 256U;
     constexpr std::uint32_t kMaxStringLength = 1024U;
 
@@ -125,34 +126,11 @@ namespace
     void SaveState(SKSE::SerializationInterface* output)
     {
         auto states = bcn::ActorRegistry::Get().SnapshotAll();
-        if (states.size() > kMaxActors) {
-            SKSE::log::warn("Body Change NG actor registry exceeded {}; only the first entries will be saved",
-                kMaxActors);
-            states.resize(kMaxActors);
-        }
-        if (output && output->OpenRecord(kActorRecord, kActorRecordVersion)) {
-            std::vector<std::string> strings{ std::string{} };
-            std::unordered_map<std::string, std::uint32_t> indexByString{ { {}, 0U } };
-            auto indexFor = [&](const std::string& value) {
-                const auto found = indexByString.find(value);
-                if (found != indexByString.end()) return found->second;
-                const auto index = static_cast<std::uint32_t>(strings.size());
-                strings.push_back(value);
-                indexByString.emplace(value, index);
-                return index;
-            };
-            struct EncodedActor final
-            {
-                SerializedActorStateV5 state;
-                std::vector<SerializedOverlayItemV5> overlays;
-            };
-            std::vector<EncodedActor> serialized;
-            serialized.reserve(states.size());
-            for (const auto& state : states) {
-                EncodedActor encoded;
-                encoded.state = bcn::actor_serialization::EncodeV6(state, indexFor, encoded.overlays);
-                serialized.push_back(std::move(encoded));
-            }
+        std::erase_if(states, [](const auto& state) { return !bcn::HasPersistentAppearance(state); });
+        std::ranges::sort(states, {}, &bcn::ActorState::actorFormID);
+        const auto saved = bcn::actor_serialization::WriteActorRecords(states,
+            [output](const auto& strings, const auto& serialized) {
+            if (!output || !output->OpenRecord(kActorRecord, kActorRecordVersion)) return false;
             const auto stringCount = static_cast<std::uint32_t>(strings.size());
             const auto actorCount = static_cast<std::uint32_t>(serialized.size());
             auto ok = WriteValue(output, stringCount);
@@ -162,8 +140,9 @@ namespace
                 ok = WriteValue(output, actor.state) && ok;
                 for (const auto& overlay : actor.overlays) ok = WriteValue(output, overlay) && ok;
             }
-            if (!ok) SKSE::log::error("Body Change NG could not write its actor registry cosave record");
-        }
+            return ok;
+        });
+        if (!saved) SKSE::log::error("Body Change NG could not write its actor registry cosave records");
 
         if (output && output->OpenRecord(kFaceRecord, 1U)) {
             const auto ok = bcn::face_skin::WriteBaselines(bcn::face_skin::SnapshotBaselines(),
@@ -580,7 +559,7 @@ namespace bcn
     void ActorRegistry::SetAutomaticOverlaySelection(RE::Actor* actor, const overlay::Area area,
         std::optional<std::string> overlayId)
     {
-        if (!actor || area == overlay::Area::count ||
+        if (!actor || !overlayId || area == overlay::Area::count ||
             (overlayId && (overlayId->empty() || overlayId->size() > kMaxStringLength))) return;
         std::scoped_lock lock(lock_);
         auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
@@ -666,7 +645,7 @@ namespace bcn
         std::optional<std::string> skinId, const bool useDefaultBody,
         std::optional<std::string> futanariSkinId)
     {
-        if (!actor) return;
+        if (!actor || (!bodyId && !skinId && !useDefaultBody && !futanariSkinId)) return;
         std::scoped_lock lock(lock_);
         auto& state = EnsureLocked(actor);
         UpdateAutomaticSelection(state.body.selection, bodyId, useDefaultBody);
@@ -790,7 +769,9 @@ namespace bcn
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        auto& state = EnsureLocked(actor);
+        auto* existing = const_cast<ActorState*>(FindValidatedLocked(actor));
+        if (!existing) return;
+        auto& state = *existing;
         state.body.application.applied = false;
         state.body.application.verifiedThisSession = false;
         state.body.application.signature = 0U;
@@ -800,7 +781,9 @@ namespace bcn
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        auto& state = EnsureLocked(actor);
+        auto* existing = const_cast<ActorState*>(FindValidatedLocked(actor));
+        if (!existing) return;
+        auto& state = *existing;
         state.skin.application.applied = false;
         state.skin.application.verifiedThisSession = false;
         state.skin.application.signature = 0U;
@@ -810,15 +793,22 @@ namespace bcn
     {
         if (!actor) return;
         std::scoped_lock lock(lock_);
-        EnsureLocked(actor).body.outfitSignature = 0U;
+        if (auto* state = const_cast<ActorState*>(FindValidatedLocked(actor))) state->body.outfitSignature = 0U;
     }
 
     void ActorRegistry::RestoreSerialized(ActorState state)
     {
-        if (state.actorFormID == 0U) return;
+        if (state.actorFormID == 0U || !HasPersistentAppearance(state)) return;
         PrepareRestoredState(state);
         std::scoped_lock lock(lock_);
         states_.insert_or_assign(state.actorFormID, std::move(state));
+    }
+
+    void ActorRegistry::ForgetTransient(const std::uint32_t actorFormID)
+    {
+        std::scoped_lock lock(lock_);
+        const auto found = states_.find(actorFormID);
+        if (found != states_.end() && !HasPersistentAppearance(found->second)) states_.erase(found);
     }
 
     void ActorRegistry::Revert()

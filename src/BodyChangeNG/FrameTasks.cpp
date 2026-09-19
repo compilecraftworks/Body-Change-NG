@@ -141,6 +141,7 @@ namespace bcn::frame_tasks
     }
     void CancelActor(std::uint32_t actor) { std::scoped_lock lock(g_lock); g_queue.CancelActor(actor); }
     bool HasActorWork(std::uint32_t actor) { std::scoped_lock lock(g_lock); return g_queue.HasActorWork(actor); }
+    bool HasWork() { std::scoped_lock lock(g_lock); return g_queue.HasWork(); }
     bool HasActorChannelWork(std::uint32_t actor, const appearance::WorkChannel channel)
     {
         std::scoped_lock lock(g_lock);

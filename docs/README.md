@@ -1,8 +1,18 @@
 # Release documentation
 
-Current version: **Body Change NG v1.2.4**. See the [English changelog](../CHANGELOG.md#124), [한국어 변경 내역](../CHANGELOG-KO.md#124), and [UBE / NPC / skin audit](UBE-PRESET-SKIN-AUDIT-20260915-KO.md). The v1.2.4 documents below describe the release configuration. Earlier versions remain unchanged historical records.
+Current version: **Body Change NG v1.2.8**. See the [English changelog](../CHANGELOG.md#128), [한국어 변경 내역](../CHANGELOG-KO.md#128), [current usage / removal preparation](../README.md), and [whole-feature verification](RELEASE-VERIFICATION-v1.2.8-KO.md). Earlier version files remain historical records.
 
-## Current v1.2.4 documents
+## Current v1.2.8 release documents
+
+| Purpose | English | 한국어 |
+| --- | --- | --- |
+| Formatted changelog | [Nexus BBCode](NEXUS-CHANGELOG-v1.2.8-EN.bbcode) | [Standalone HTML](NEXUS-CHANGELOG-v1.2.8-KO.html) |
+| Nexus changelog field | [Plain text](NEXUS-CHANGELOG-v1.2.8-EN.txt) | [일반 텍스트](NEXUS-CHANGELOG-v1.2.8-KO.txt) |
+
+The detailed v1.2.4 descriptions below remain the base installation guides; the
+current README and changelogs document later behavior and removal preparation.
+
+## Base usage documents — v1.2.4
 
 | Purpose | English | 한국어 |
 | --- | --- | --- |
@@ -29,7 +39,7 @@ Installation paths are written in full, relative to the game's Data folder. Copy
 
 Prior version files and dated engineering reports remain historical records. In particular, an old v1.2.0 experiment mentioning a Face TXST/HeadPart swap, preview commit on close, or rule auto-save on close does not describe the final release.
 
-Current verification evidence: [v1.2.3 build and test results](RELEASE-NOTES-v1.2.3.md). Historical audits: [compatibility and UI](COMPATIBILITY-UI-20260912-KO.md) · [raw tests](COMPATIBILITY-UI-20260912-TESTS.json) · [full audit](FULL-AUDIT-20260912-KO.md).
+Current verification evidence: [v1.2.8 whole-feature results](RELEASE-VERIFICATION-v1.2.8-KO.md). Historical audits: [compatibility and UI](COMPATIBILITY-UI-20260912-KO.md) · [raw tests](COMPATIBILITY-UI-20260912-TESTS.json) · [full audit](FULL-AUDIT-20260912-KO.md).
 
 Latest documentation includes optional [SFS](https://www.nexusmods.com/skyrimspecialedition/mods/187128) outfit-correction integration, remembered popup positions, per-candidate colors in NPC-distribution checkbox mode, the fitted title-bar rotation hint, and keyboard/gamepad Activate/Cancel bindings. See the [SFS integration audit](SFS-OREFIT-INTEGRATION-20260913-KO.md).
 

@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FaceSkinOverrides.h"
 #include "BodyChangeNG/RuntimeCompatibility.h"
 #include "BodyChangeNG/PlayerTint.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
@@ -13,7 +14,8 @@
 namespace
 {
     [[nodiscard]] bcn::actor_settings_reset::Result QueueActorReset(
-        RE::Actor* actor, const bool includeTint)
+        RE::Actor* actor, const bool includeTint, const bool ownedMorphsOnly = false,
+        const bool resetSharedBase = false)
     {
         if (!actor || !actor->GetActorBase() || !bcn::frame_tasks::Active() ||
             !SKSE::GetTaskInterface() || bcn::runtime::ResolveGameBranch(REL::Module::get().version()) ==
@@ -22,9 +24,9 @@ namespace
         bcn::ActorRegistry::Get().ResetSelectionsToDefaults(actor);
         bcn::overlay::DiscardPreviewsForReset(actor);
         if (bcn::racemenu::IsReady()) {
-            bcn::racemenu::QueueClearBodyChangeMorphs(actor);
+            bcn::racemenu::QueueClearBodyChangeMorphs(actor, ownedMorphsOnly);
         }
-        (void)bcn::skin_application::QueueClear(actor);
+        (void)bcn::skin_application::QueueClear(actor, bcn::skin_transaction::Mode::commit, resetSharedBase);
 
         if (const auto* base = actor->GetActorBase();
             base && base->GetSex() == RE::SEX::kFemale) {
@@ -51,7 +53,7 @@ namespace bcn::actor_settings_reset
         return QueueActorReset(actor, true);
     }
 
-    Result QueueAll()
+    Result QueueAll(const bool ownedMorphsOnly)
     {
         if (!frame_tasks::Active() || !SKSE::GetTaskInterface() ||
             runtime::ResolveGameBranch(REL::Module::get().version()) ==
@@ -62,6 +64,8 @@ namespace bcn::actor_settings_reset
         for (const auto& state : saved) {
             if (state.actorFormID != 0U) actorIds.insert(state.actorFormID);
         }
+        // Face ownership has an independent co-save record, including older saves.
+        for (const auto& face : face_skin::SnapshotBaselines()) actorIds.insert(face.actor);
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
             actorIds.insert(player->GetFormID());
         }
@@ -70,15 +74,14 @@ namespace bcn::actor_settings_reset
         for (const auto actorId : actorIds) {
             auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorId);
             if (!actor) continue;
-            if (!actor->IsPlayerRef() && !ActorRegistry::Get().Snapshot(actor)) continue;
-            const auto queued = QueueActorReset(actor, true);
+            const auto queued = QueueActorReset(actor, true, ownedMorphsOnly, true);
             result.actors += queued.actors;
             result.accepted = result.accepted || queued.accepted;
         }
 
         // RaceMenu may still contain an owned morph key from an older save
         // schema even when that actor no longer has an ASTR registry record.
-        result.accepted = racemenu::QueueClearAllBodyChangeMorphs({ actorIds.begin(), actorIds.end() }) || result.accepted;
+        result.accepted = racemenu::QueueClearAllBodyChangeMorphs({ actorIds.begin(), actorIds.end() }, ownedMorphsOnly) || result.accepted;
         ActorRegistry::Get().ResetAllSelectionsToDefaults();
         result.accepted = result.accepted || !saved.empty();
         return result;

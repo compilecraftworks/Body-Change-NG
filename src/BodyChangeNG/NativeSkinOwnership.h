@@ -5,6 +5,20 @@
 
 namespace bcn::native_skin
 {
+    [[nodiscard]] constexpr bool CanRunDefaultRestore(bool sameGeneration,
+        bool desiredDefault) noexcept
+    {
+        return desiredDefault && sameGeneration;
+    }
+
+    // Every reference still restores its own face, but a repeated Default
+    // intent shares one base generation. A selection/mode change invalidates it.
+    [[nodiscard]] constexpr bool ReuseDefaultGeneration(bool hasGeneration,
+        bool desiredDefault, bool sameMode) noexcept
+    {
+        return hasGeneration && desiredDefault && sameMode;
+    }
+
     enum class GraphAction : std::uint8_t
     {
         reuse,

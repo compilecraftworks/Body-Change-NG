@@ -153,6 +153,7 @@ namespace bcn
                 }
             }
             ReadIfPresent(root, "performanceMode", data_.performanceMode);
+            ReadIfPresent(root, "removalMode", data_.removalMode);
             ReadIfPresent(root, "preserveOtherMorphs", data_.preserveOtherMorphs);
             int femaleNpcBodyType = static_cast<int>(data_.femaleNpcBodyType);
             int maleNpcBodyType = static_cast<int>(data_.maleNpcBodyType);
@@ -264,6 +265,7 @@ namespace bcn
                 { "textScale", copy.textScale },
                 { "pauseGameWhenOpen", copy.pauseGameWhenOpen },
                 { "performanceMode", copy.performanceMode },
+                { "removalMode", copy.removalMode },
                 { "preserveOtherMorphs", copy.preserveOtherMorphs },
                 { "femaleNpcBodyType", static_cast<int>(copy.femaleNpcBodyType) },
                 { "maleNpcBodyType", static_cast<int>(copy.maleNpcBodyType) },
@@ -339,6 +341,12 @@ namespace bcn
     {
         std::scoped_lock lock(lock_);
         return data_.textScale;
+    }
+
+    bool Settings::RemovalMode() const
+    {
+        std::scoped_lock lock(lock_);
+        return data_.removalMode;
     }
 
     bool Settings::PerformanceMode() const

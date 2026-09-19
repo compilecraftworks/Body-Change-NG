@@ -11,6 +11,7 @@
 #include "BodyChangeNG/ActorCatalog.h"
 #include "BodyChangeNG/ActorSearchPolicy.h"
 #include "BodyChangeNG/ActorSettingsReset.h"
+#include "BodyChangeNG/RemovalPreparation.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
@@ -1952,7 +1953,8 @@ namespace
         const bool female = distributionSelecting ? g_distributionFemale :
             (!base || base->GetSex() == RE::SEX::kFemale);
 
-        const auto skins = bcn::SkinProfiles::Get().Snapshot();
+        const auto skinSnapshot = bcn::SkinProfiles::Get().SharedSnapshot();
+        const auto& skins = *skinSnapshot;
         const auto settings = bcn::Settings::Get().Snapshot();
         // Skin UV compatibility must use the same live evidence as the
         // executor. Distribution defaults are suitable for morph filtering,
@@ -2093,8 +2095,15 @@ namespace
                     "Use BodySkin\\<skin pack>\\Textures\\actors\\character\\... for standard skins, or BodySkin\\<skin pack>\\Textures\\!UBE\\Body and Head for UBE skins, then press Refresh.",
                     "普通皮肤请使用 BodySkin\\<皮肤包>\\Textures\\actors\\character\\...；UBE 皮肤请使用 BodySkin\\<皮肤包>\\Textures\\!UBE\\Body 和 Head 结构，然后点击‘刷新’。"));
             }
-            for (const auto* skinPointer : visibleSkins) {
-                const auto& skin = *skinPointer;
+            const auto entryRowBegin = row;
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(visibleSkins.size()), Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y);
+            if (navigation.hasFocus && navigation.focused >= entryRowBegin &&
+                navigation.focused < entryRowBegin + visibleSkins.size())
+                clipper.IncludeItemByIndex(static_cast<int>(navigation.focused - entryRowBegin));
+            while (clipper.Step()) for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
+                row = entryRowBegin + static_cast<std::size_t>(index);
+                const auto& skin = *visibleSkins[static_cast<std::size_t>(index)];
                 const bool favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
                     settings.favoriteSkinProfiles.end();
                 ImGui::PushID(skin.id.c_str());
@@ -2124,23 +2133,7 @@ namespace
                     kCardHovered : kCardNormal, Scaled(4.0F));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)),
                     kCardText, skin.name.c_str());
-                std::unordered_set<std::string> texturePaths;
-                const auto collectPaths = [&texturePaths](const auto& layers) {
-                    for (const auto& layer : layers) texturePaths.insert(layer.path);
-                };
-                collectPaths(skin.body);
-                collectPaths(skin.cbbeGenitalAnal);
-                collectPaths(skin.unpGenitalAnal);
-                collectPaths(skin.hands);
-                collectPaths(skin.feet);
-                collectPaths(skin.face);
-                collectPaths(skin.vampireFace);
-                collectPaths(skin.elderBody);
-                collectPaths(skin.elderHands);
-                collectPaths(skin.elderFace);
-                for (const auto& raceFace : skin.raceFace) collectPaths(raceFace);
-                collectPaths(skin.faceDetails);
-                const auto textureCount = texturePaths.size();
+                const auto textureCount = skin.textureCount;
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
                     " · " + bcn::SkinFamilyLabel(skin.layout, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
@@ -2536,7 +2529,8 @@ namespace
         const auto actorType = actor ?
             bcn::futanari_support::RegisteredType(actor) : std::nullopt;
 
-        const auto profiles = bcn::FutanariSkinProfiles::Get().Snapshot();
+        const auto profileSnapshot = bcn::FutanariSkinProfiles::Get().SharedSnapshot();
+        const auto& profiles = *profileSnapshot;
         const auto settings = bcn::Settings::Get().Snapshot();
         const std::unordered_set<std::string_view> favorites(settings.favoriteFutanariSkins.begin(),
             settings.favoriteFutanariSkins.end());
@@ -2707,7 +2701,15 @@ namespace
                     "No matching skin was found. Use Textures\\!UBE\\Body for UBE SOS/TNG, Textures\\[TRX] Futa addon\\Regular\\Default for CBBE 3BA+TRX, or Textures\\ERF_Futanari\\FairSkinCBBE for ERF.",
                     "未找到匹配皮肤。UBE SOS/TNG 使用 Textures\\!UBE\\Body，CBBE 3BA+TRX 使用 Textures\\[TRX] Futa addon\\Regular\\Default，ERF 使用 Textures\\ERF_Futanari\\FairSkinCBBE。"));
             }
-            for (const auto* profile : visible) {
+            const auto entryRowBegin = row;
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(visible.size()), Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y);
+            if (navigation.hasFocus && navigation.focused >= entryRowBegin &&
+                navigation.focused < entryRowBegin + visible.size())
+                clipper.IncludeItemByIndex(static_cast<int>(navigation.focused - entryRowBegin));
+            while (clipper.Step()) for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
+                row = entryRowBegin + static_cast<std::size_t>(index);
+                const auto* profile = visible[static_cast<std::size_t>(index)];
                 auto subtitle = bcn::FutanariSkinTypeLabel(profile->type) + " · " +
                     Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(profile->layers.size()) +
                     Text("개", "", " 个");
@@ -2777,7 +2779,8 @@ namespace
         const auto* base = selectedActor->GetActorBase();
         const bool female = base && base->GetSex() == RE::SEX::kFemale;
         const auto actorFamily = bcn::body_family::ResolveActor(selectedActor);
-        const auto assets = bcn::player_tint::Catalog::Get().Snapshot();
+        const auto assetSnapshot = bcn::player_tint::Catalog::Get().SharedSnapshot();
+        const auto& assets = *assetSnapshot;
         const auto settings = bcn::Settings::Get().Snapshot();
         struct TintPackRow final
         {
@@ -2785,16 +2788,26 @@ namespace
             std::size_t count{};
             bcn::body_family::Mask bodyFamilies{};
         };
-        std::vector<TintPackRow> packs;
-        for (const auto& asset : assets) {
-            if (!bcn::player_tint::TintAssetMatchesActor(asset.sex,
-                    asset.bodyFamilies, actorFamily, female)) continue;
-            const auto found = std::ranges::find(packs, asset.pack, &TintPackRow::name);
-            if (found == packs.end()) packs.push_back({ asset.pack, 1U, asset.bodyFamilies });
-            else {
-                ++found->count;
-                found->bodyFamilies |= asset.bodyFamilies;
+        static std::weak_ptr<const std::vector<bcn::player_tint::Asset>> packSource;
+        static bcn::body_family::Mask packFamily{};
+        static bool packFemale{};
+        static std::vector<TintPackRow> packs;
+        if (packSource.lock() != assetSnapshot || packFamily != actorFamily || packFemale != female) {
+            packs.clear();
+            std::unordered_map<std::string_view, std::size_t> indices;
+            for (const auto& asset : assets) {
+                if (!bcn::player_tint::TintAssetMatchesActor(asset.sex,
+                        asset.bodyFamilies, actorFamily, female)) continue;
+                const auto [found, inserted] = indices.try_emplace(asset.pack, packs.size());
+                if (inserted) packs.push_back({ asset.pack, 1U, asset.bodyFamilies });
+                else {
+                    ++packs[found->second].count;
+                    packs[found->second].bodyFamilies |= asset.bodyFamilies;
+                }
             }
+            packSource = assetSnapshot;
+            packFamily = actorFamily;
+            packFemale = female;
         }
         if (std::ranges::find(packs, g_selectedTintPack, &TintPackRow::name) == packs.end()) {
             g_selectedTintPack = packs.empty() ? std::string{} : packs.front().name;
@@ -2929,8 +2942,15 @@ namespace
                 ImGui::Spacing();
             }
 
-            for (const auto* packPointer : visiblePacks) {
-                const auto& pack = *packPointer;
+            const auto entryRowBegin = row;
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(visiblePacks.size()), Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y);
+            if (navigation.hasFocus && navigation.focused >= entryRowBegin &&
+                navigation.focused < entryRowBegin + visiblePacks.size())
+                clipper.IncludeItemByIndex(static_cast<int>(navigation.focused - entryRowBegin));
+            while (clipper.Step()) for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
+                row = entryRowBegin + static_cast<std::size_t>(index);
+                const auto& pack = *visiblePacks[static_cast<std::size_t>(index)];
                 const auto favorite = std::ranges::find(settings.favoriteTintPacks, pack.name) !=
                     settings.favoriteTintPacks.end();
                 ImGui::PushID(pack.name.c_str());
@@ -3602,6 +3622,74 @@ namespace
         }
     }
 
+    void DrawRemovalControls()
+    {
+        using bcn::removal::Phase;
+        const auto state = bcn::removal::Snapshot();
+        const bool busy = state.phase == Phase::queued || state.phase == Phase::running;
+        const bool removalMode = bcn::Settings::Get().RemovalMode();
+        ImGui::Separator();
+        ImGui::TextUnformatted(Text("모드 삭제 준비", "Prepare for mod removal", "准备卸载模组"));
+        TextDisabledWrapped(Text(
+            "BCNG가 적용한 외형을 원복하고 자동 배포·보정을 중단합니다. 배포 규칙 파일과 다른 모드의 값은 삭제하지 않습니다. 먼저 별도 세이브를 백업하세요.",
+            "Restores BCNG-owned appearance and suspends automatic distribution/corrections. Keeps your rule file and other mods' values. Back up a separate save first.",
+            "还原 BCNG 外观并暂停自动分发和修正。保留规则文件与其他模组数据。请先备份存档。"));
+        if (state.phase == Phase::ready) {
+            TextDisabledWrapped(Text(
+                "정리 확인 완료. 창을 닫고 새 슬롯에 저장한 뒤 게임을 완전히 종료하고 BCNG를 제거하세요. 기존 세이브의 손상 복구를 보장하는 기능은 아닙니다.",
+                "Cleanup verified. Close this window, save to a NEW slot, fully exit the game, then remove BCNG. This does not guarantee repair of an already damaged save.",
+                "清理已验证。关闭窗口，保存到新存档，完全退出游戏后移除 BCNG。此功能不保证修复已损坏的存档。"));
+        } else if (busy) {
+            TextDisabledWrapped(Text("정리 중입니다. 완료 안내 전에는 저장하거나 모드를 제거하지 마세요.",
+                "Cleanup in progress. Do not save or remove the mod before completion.", "正在清理。完成前请勿保存或移除模组。"));
+        } else if (state.phase == Phase::incomplete || state.phase == Phase::failed) {
+            TextDisabledWrapped(Text(
+                "정리 미완료: 지금 제거하지 마세요. 남은 액터를 로드하거나 진행 중인 갱신이 끝난 뒤 다시 시도하세요. 복원 정보는 유지됩니다.",
+                "Cleanup incomplete: do NOT uninstall yet. Load remaining actors or let pending updates finish, then retry. Restoration records are retained.",
+                "清理未完成：请勿卸载。加载剩余角色或等待更新完成后重试。还原记录已保留。"));
+            ImGui::Text(Text("남은 액터: %zu · 모프 %d · 스킨 %d · 얼굴 %d · 틴트 %d",
+                "Pending actors: %zu | morphs %d | skin %d | face %d | tint %d",
+                "剩余角色: %zu | 形态 %d | 皮肤 %d | 面部 %d | 色调 %d"),
+                state.pendingActors, state.morphsPending, state.nativeSkinPending, state.facePending, state.tintPending);
+        } else if (removalMode) {
+            TextDisabledWrapped(Text("삭제 준비 모드가 유지되고 있습니다. 현재 세이브의 정리를 다시 확인하세요.",
+                "Removal mode is still active. Run cleanup again to verify the current save.", "卸载准备模式仍有效。请再次清理并验证当前存档。"));
+        }
+        const auto* title = Text("모드 삭제 준비 확인##removalConfirm", "Confirm removal preparation##removalConfirm", "确认卸载准备##removalConfirm");
+        ImGui::BeginDisabled(busy);
+        if (ImGui::Button(Text("모드 삭제 준비...", "Prepare for removal...", "准备卸载..."))) ImGui::OpenPopup(title);
+        if (removalMode) {
+            ImGui::SameLine();
+            if (ImGui::Button(Text("BCNG 다시 사용", "Resume BCNG", "重新启用 BCNG")) && !bcn::removal::Resume()) {
+                bcn::ui::Notify(Text("진행 중인 정리 또는 설정 저장 실패로 재개하지 못했습니다.",
+                    "Could not resume: cleanup is pending or settings could not be saved.", "无法恢复：清理尚未完成或设置保存失败。"));
+            }
+        }
+        ImGui::EndDisabled();
+        if (BeginUndimmedPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize,
+                bcn::popup_placement::Kind::removalConfirmation)) {
+            ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + Scaled(470.0F));
+            ImGui::TextUnformatted(Text(
+                "BCNG의 전체 액터 선택을 초기화합니다. 완료 뒤 새 슬롯에 저장하세요. 계속하시겠습니까?",
+                "This resets BCNG selections for all actors. Save to a new slot after cleanup completes. Continue?",
+                "这将重置全部角色的 BCNG 选择。清理完成后请保存到新存档。是否继续？"));
+            ImGui::PopTextWrapPos();
+            if (ImGui::Button(Text("정리 시작", "Start cleanup", "开始清理"))) {
+                if (bcn::removal::Begin()) {
+                    DiscardPendingSelectionsAfterReset(true);
+                    ResetDistributionSelectionSession();
+                    ResetDistributionEditor();
+                    g_showDistribution = g_showOutfit = g_showTintDetails = g_showOverlayDetails = false;
+                } else bcn::ui::Notify(Text("삭제 준비를 시작하지 못했습니다. 실행 환경과 설정 저장을 확인하세요.",
+                    "Could not start removal preparation. Check runtime availability and settings access.", "无法开始卸载准备。请检查运行环境与设置保存权限。"));
+                ImGui::CloseCurrentPopup();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(Text("취소", "Cancel", "取消")) || EscapePressed()) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+    }
+
     void DrawSettingsPopup()
     {
         if (!g_showSettings) return;
@@ -3614,7 +3702,7 @@ namespace
                 ImGui::GetMainViewport()->WorkSize.y - Scaled(40.0F)));
         if (BeginUndimmedPopupModal(popupTitle.c_str(), &g_showSettings,
                 ImGuiWindowFlags_AlwaysAutoResize, bcn::popup_placement::Kind::settings)) {
-            if (EscapePressed()) {
+            if (bcn::popup_placement::CanConsumeCancel() && EscapePressed()) {
                 g_showSettings = false;
                 bcn::InputSink::Get().CancelHotkeyCapture();
                 [[maybe_unused]] const auto saved = bcn::Settings::Get().Save();
@@ -3716,6 +3804,14 @@ namespace
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
             }
+            DrawRemovalControls();
+            if (bcn::Settings::Get().RemovalMode()) {
+                ImGui::CloseCurrentPopup(); // Close the parent settings modal too.
+                g_showSettings = false;
+                ImGui::EndPopup();
+                return;
+            }
+            ImGui::BeginDisabled(bcn::Settings::Get().RemovalMode());
             if (ImGui::Button(Text("선택 액터 설정 값 초기화", "Reset selected actor settings", "重置所选角色设置值"))) {
                 const auto reset = bcn::actor_settings_reset::QueueActor(SelectedActor());
                 if (reset.accepted) DiscardPendingSelectionsAfterReset(false);
@@ -3731,6 +3827,7 @@ namespace
                     Text("저장에 남아 있는 전체 액터의 바디·바디스킨·성기·후타스킨·오버레이와 플레이어 틴트마스크 초기화를 시작했습니다.", "Started resetting body, body skin, genitals, futanari skin, and overlays for all saved actors, plus player tint masks.", "已开始重置全部已保存角色的身体、身体皮肤、生殖器、扶她皮肤和覆盖层，以及玩家色调遮罩。") :
                     Text("전체 액터 설정 값 초기화를 시작하지 못했습니다.", "Could not start resetting all actor settings.", "无法开始重置全部角色设置值。"));
             }
+            ImGui::EndDisabled();
             const auto* closeLabel = Text("닫기", "Close", "关闭");
             const auto closeWidth = ImGui::CalcTextSize(closeLabel).x +
                 ImGui::GetStyle().FramePadding.x * 2.0F;
@@ -3948,8 +4045,18 @@ namespace bcn::ui
         // Let the active popup consume Escape first.  Checking the popup state
         // before EscapePressed() is important because the event is a one-shot
         // latch shared by every Body Change NG window in this frame.
-        if (!g_showDistribution && !g_showOutfit && !g_showSettings && !g_showTintDetails && EscapePressed()) {
+        if (!g_showDistribution && !g_showOutfit && !g_showSettings && !g_showTintDetails &&
+            !g_showOverlayDetails && bcn::popup_placement::CanConsumeCancel() && EscapePressed()) {
             native_ui::Close();
+            ImGui::End();
+            return;
+        }
+
+        if (bcn::Settings::Get().RemovalMode()) {
+            DrawRemovalControls();
+            if (ImGui::Button(Text("닫기", "Close", "关闭"))) native_ui::Close();
+            // Do not leave an older settings modal above the removal screen.
+            g_showSettings = false;
             ImGui::End();
             return;
         }

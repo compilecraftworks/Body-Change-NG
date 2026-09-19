@@ -6,6 +6,7 @@
 #include "BodyChangeNG/OutfitRefit.h"
 #include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/SkinApplication.h"
+#include "BodyChangeNG/Settings.h"
 #include <mutex>
 #include <unordered_map>
 
@@ -29,7 +30,8 @@ namespace
                 if (found == g_pending.end() || found->second.revision != request.revision) return;
             }
             const auto actor = request.handle.get();
-            if (bcn::ActorRegistry::Get().SessionGeneration() != request.session || !actor ||
+            if (bcn::Settings::Get().RemovalMode() ||
+                bcn::ActorRegistry::Get().SessionGeneration() != request.session || !actor ||
                 actor->GetFormID() != id) {
                 std::scoped_lock lock(g_lock);
                 const auto found = g_pending.find(id);
@@ -81,6 +83,7 @@ namespace bcn
     ActorWorkQueue& ActorWorkQueue::Get() { static ActorWorkQueue queue; return queue; }
     bool ActorWorkQueue::Request(RE::Actor* actor, ActorWorkReason reason)
     {
+        if (Settings::Get().RemovalMode()) return false;
         if (!frame_tasks::Active() || !actor || !actor->GetFormID() ||
             actor == RE::PlayerCharacter::GetSingleton()) return false;
         const auto id = actor->GetFormID();
