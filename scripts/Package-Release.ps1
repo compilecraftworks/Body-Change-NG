@@ -70,6 +70,7 @@ try {
         Copy-ReleaseFile (Join-Path 'package' $relative) $binary $relative
     }
     Copy-ReleaseFile "build\v$version\windows\x64\release\BodyChangeNG.dll" $binary 'SKSE\Plugins\BodyChangeNG.dll'
+    Copy-ReleaseFile "build\v$version\tools\BodyChangeNGCache.exe" $binary 'Tools\BodyChangeNGCache.exe'
     # MO2 needs runtime files and the current folder-placement guides, not
     # release/source docs. Tint masks share BodySkin packs in v1.2.0.
     # Required license terms are consolidated into these two files.
@@ -83,13 +84,15 @@ try {
         'LICENSE',
         'SKSE/Plugins/BodyChangeNG.dll',
         'SKSE/Plugins/BodyChangeNGdistribution.json',
+        'Tools/BodyChangeNGCache.exe',
+        'Tools/BodyChangeNGCache-README.txt',
         'THIRD_PARTY_NOTICES.md'
     )
     $actualBinaryFiles = @(Get-ChildItem -LiteralPath $binary -File -Recurse -Force | ForEach-Object {
         [IO.Path]::GetRelativePath($binary, $_.FullName).Replace('\', '/')
     })
     if (Compare-Object ($expectedBinaryFiles | Sort-Object) ($actualBinaryFiles | Sort-Object)) {
-        throw 'MO2 archive must contain only runtime files, asset-folder guidance, and two license documents.'
+        throw 'MO2 archive must contain only runtime files, the cache utility/guide, asset-folder guidance, and two license documents.'
     }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
     if ($starter.schemaVersion -ne 7 -or $starter.rules.Count -ne 0) {

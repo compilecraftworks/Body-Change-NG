@@ -1,4 +1,4 @@
-# Body Change NG — v1.3.0
+# Body Change NG — v1.3.1
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,32 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.0
+## Current version — v1.3.1
+
+Version 1.3.1 adds optional **offline cache maintenance**. Close Skyrim, run
+`Tools\BodyChangeNGCache.exe` directly (not through MO2), and select MO2 Overwrite
+or its `textures\BodyChangeNG\Cache` folder. A read-only scan runs first; choose
+Yes to compact eligible duplicates and remove recognized unpublished staging files.
+The default confirmation is No. See the [bilingual utility guide](package/Tools/BodyChangeNGCache-README.txt).
+
+DDS paths and bytes are preserved, including older saves' paths. Only identical
+copies with matching timestamps and cache-local ownership are merged into hard
+links. Unique textures, external hard links, read-only/locked files and reparse
+points are retained. This is not an all-save reference scanner or a bulk cache
+deletion feature. Savings vary; folder-size totals may look unchanged. Do not edit
+compacted cache DDS files directly—edit the source pack and Refresh in BCNG.
+
+Runtime texture preparation now stages a complete DDS before atomic publication;
+failures keep the previous good alias and clean up private temporary files.
+The utility runs only on demand outside the game; no frame-time cache scan is added.
+The Release build, 35 offline regression executables and 19 audit-tool tests passed.
+See the [verification and limits](docs/RELEASE-VERIFICATION-v1.3.1-KO.md).
+
+- [English changelog](CHANGELOG.md#131) · [한국어 변경 내역](CHANGELOG-KO.md#131)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.1-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.1-KO.html)
+- [English plain text](docs/NEXUS-CHANGELOG-v1.3.1-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.1-KO.txt)
+
+## Preserved v1.3.0 restoration fixes
 
 Version 1.3.0 fixes cross-feature restoration issues: multiple saved overlays
 now reserve distinct slots before deferred writes, automatic Default-body checks

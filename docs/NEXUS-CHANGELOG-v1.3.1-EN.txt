@@ -1,0 +1,7 @@
+Body Change NG v1.3.1
+
+- Added an optional offline cache-maintenance utility. Close Skyrim, run Tools\BodyChangeNGCache.exe directly, select MO2 Overwrite, review the read-only scan, and confirm to compact.
+- Merge eligible identical DDS copies into hard links without removing their resource paths. Old saves and 1.2.7 cache paths remain available. Unique textures and files with external links, differing timestamps, read-only/locked status or unknown layout are retained. Actual savings vary.
+- Remove recognized unpublished preparation/link staging files left after the game exits. Source packs, saves and distribution rules are not modified. This is not an all-save reference scanner or an age-based DDS deletion feature.
+- Stage new runtime DDS files before atomic publication. A failed preparation keeps any previous good alias and cleans up its own temporary file; read-only source attributes are preserved.
+- Existing features, 1.3.0 restoration fixes, supported runtimes and dependencies remain unchanged. No gameplay cache scan is added. Release build, 35 offline regression executables and 19 audit-tool tests passed; no new in-game tests were performed.

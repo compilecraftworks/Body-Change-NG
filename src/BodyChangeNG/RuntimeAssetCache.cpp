@@ -1,5 +1,6 @@
 #include "BodyChangeNG/RuntimeAssetCache.h"
 #include "BodyChangeNG/ContentSignature.h"
+#include "BodyChangeNG/CacheFilePublication.h"
 #include <Windows.h>
 #include <fstream>
 #include <array>
@@ -427,19 +428,7 @@ namespace bcn::runtime_assets
             return {};
         }
         if (!SameFile(destination, source)) {
-            std::filesystem::remove(destination, error);
-            error.clear();
-            std::filesystem::create_hard_link(source, destination, error);
-            if (error) {
-                error.clear();
-                std::filesystem::copy_file(source, destination,
-                    std::filesystem::copy_options::overwrite_existing, error);
-                if (!error) {
-                    const auto sourceTime = std::filesystem::last_write_time(source, error);
-                    if (!error) std::filesystem::last_write_time(destination, sourceTime, error);
-                }
-            }
-            if (error) {
+            if (!cache_files::Publish(source, destination, error)) {
                 SKSE::log::error("Body Change NG could not materialize texture cache {} from {}: {}",
                     path_text::Utf8(destination), path_text::Utf8(source), error.message());
                 return {};
@@ -455,20 +444,7 @@ namespace bcn::runtime_assets
         for (const auto& companion : companions) {
             const auto companionDestination = destination.parent_path() / companion.filename();
             if (SameFile(companionDestination, companion)) continue;
-            error.clear();
-            std::filesystem::remove(companionDestination, error);
-            error.clear();
-            std::filesystem::create_hard_link(companion, companionDestination, error);
-            if (error) {
-                error.clear();
-                std::filesystem::copy_file(companion, companionDestination,
-                    std::filesystem::copy_options::overwrite_existing, error);
-                if (!error) {
-                    const auto sourceTime = std::filesystem::last_write_time(companion, error);
-                    if (!error) std::filesystem::last_write_time(companionDestination, sourceTime, error);
-                }
-            }
-            if (error) {
+            if (!cache_files::Publish(companion, companionDestination, error)) {
                 // The primary normal remains valid even if an optional Mu
                 // detail/mask/overlay companion cannot be cached.
                 SKSE::log::warn("Body Change NG could not materialize optional normal-map companion {}: {}",

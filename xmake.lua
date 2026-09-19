@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.0"
+local version = "1.3.1"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -53,6 +53,22 @@ target("BodyChangeNG")
     add_includedirs("src", "third_party/imgui", "third_party/imgui/backends", "third_party/pugixml/src")
     add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32")
     set_pcxxheader("src/PCH.h")
+
+target("BodyChangeNGCache")
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tools")
+    set_encodings("utf-8")
+    add_files("tools/cache/main.cpp", "tools/cache/CacheCompaction.cpp")
+    add_syslinks("bcrypt", "ole32", "uuid", "user32")
+
+target("BodyChangeNGCacheMaintenanceTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src", "tools/cache")
+    add_files("tests/CacheMaintenanceTests.cpp", "tools/cache/CacheCompaction.cpp")
+    add_syslinks("bcrypt")
 
 target("BodyChangeNGRemovalPreparationTests")
     set_default(false)

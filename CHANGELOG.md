@@ -2,6 +2,16 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.1
+
+- Add an optional offline cache-maintenance utility. Scan MO2 Overwrite without changing files, then explicitly compact byte-identical DDS copies with matching timestamps into hard links. Keep every DDS resource path, including paths used by older saves and v1.2.7 caches.
+- Exclude files linked outside the selected cache, read-only/locked files, reparse points and unknown layouts. Do not delete unique DDS files based on age or the current actor's selection. Savings depend on actual eligible duplicates; folder size can still look unchanged.
+- Remove only recognized, unpublished preparation/link staging files after the game exits. The utility refuses a running Skyrim process and does not modify source packs, saves or distribution rules.
+- Publish new runtime DDS files through a private staging path and atomic replacement. Preparation failure preserves an existing good alias and cleans up its own temporary file; read-only source attributes are preserved. Body, face, genital and companion-map paths continue to use the existing cache identity.
+- Preserve the v1.3.0 restoration fixes, existing appearance features, supported runtimes, RaceMenu contracts and dependency pins. The maintenance utility does not run during gameplay or add frame-time scanning.
+- Verification: Release build, 35 regression executables, 19 audit-tool tests and the cache AddressSanitizer run passed. Tests cover byte/path preservation, external-link isolation, locked-file failure/retry and temporary-file cleanup. No new in-game testing or installed-cache compaction was performed. See [verification](docs/RELEASE-VERIFICATION-v1.3.1-KO.md).
+
+
 ## 1.3.0
 
 - Reserve separate slots when restoring multiple saved overlays before their deferred node writes finish. Restore unique existing slots first, allocate unassigned/out-of-range or duplicate saved slots afterward, preserve colors, and leave other mods' occupied slots untouched.

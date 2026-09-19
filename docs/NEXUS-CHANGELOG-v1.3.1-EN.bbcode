@@ -1,0 +1,16 @@
+[center][size=6][color=#FFD600][b]Body Change NG v1.3.1[/b][/color][/size][/center]
+[hr]
+[size=4][color=#19D8FF][b]Cache space maintenance[/b][/color][/size]
+[list]
+[*]Added an optional offline utility. Close Skyrim, run [b]Tools\BodyChangeNGCache.exe[/b] directly (not through MO2), select MO2 Overwrite, review the read-only scan, and confirm to compact. No is the default.
+[*]Merge eligible identical DDS copies into hard links while keeping every resource path and byte. Older saves and v1.2.7 cache paths remain available. Folder size can look unchanged because the data is shared; actual savings vary.
+[*]Keep unique textures, external hard links, files with differing timestamps, read-only/locked files, reparse points and unknown layouts. Do not delete DDS files based only on age or current selection.
+[*]Remove recognized unpublished preparation/link staging files after Skyrim exits. Source packs, saves and distribution rules are not modified. This is not an all-save reference scanner.
+[/list]
+[hr]
+[size=4][color=#19D8FF][b]Texture preparation and checks[/b][/color][/size]
+[list]
+[*]Stage new DDS files before atomic publication. Preparation failure preserves the previous good alias and cleans up private temporary files. Read-only source attributes and existing texture identities are preserved.
+[*]Existing features, v1.3.0 restoration fixes, supported runtimes and dependencies remain unchanged. No gameplay cache scan is added.
+[*]Release build, 35 offline regression executables and 19 audit-tool tests passed. No new in-game tests were performed.
+[/list]
