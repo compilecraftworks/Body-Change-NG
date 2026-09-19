@@ -107,6 +107,11 @@ try {
         "skin preview creates a saved RaceMenu key");
     Check(RecordsApplication(Mode::commit) && !RecordsApplication(Mode::preview),
         "preview becomes the registry's serialized applied skin");
+    Check(RecordsApplication(Mode::restore) && PersistsFace(true, Mode::restore) &&
+        !PersistsFace(false, Mode::restore), "undo changed the original player/NPC persistence rules");
+    Check(bcn::skin_transaction::RestoresPreview(Mode::restore) &&
+        !bcn::skin_transaction::RestoresPreview(Mode::commit) &&
+        !bcn::skin_transaction::RestoresPreview(Mode::preview), "ordinary selection bypassed unloaded intent-only handling");
     // Production gate: no face writes between selection and engine completion.
     RebuildGate gate;
     Check(gate.CanApply(false, true, false), "unchanged body cannot retry face without a rebuild");

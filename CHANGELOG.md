@@ -2,6 +2,14 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.2.9
+
+- Restore an already-applied skin preview when its NPC unloads before cancellation. Distinguish undo from a new unloaded selection; restore owned native skin state without forcing 3D to load. Keep session and newer-selection guards, and recheck committed face state after detach.
+- Clean up detached single and checkbox-batch overlay previews even when the actor has no committed BCNG record. Preserve newer previews, committed paints/colors, and foreign textures instead of allowing old cleanup to erase them.
+- Record Default skin completion only when both private-body restoration and face cleanup succeed. Preserve restoration evidence after failure and do not describe a failed recovery as success.
+- Keep normal application, compatibility checks, distribution rules, co-save schemas, dependencies, and supported SE/AE versions unchanged. No new permanent cache, polling loop, or engine-form destruction path was introduced.
+- Verification: Release build, 32 regression executables, 19 audit-tool tests, and 12-runtime metadata relocation checks passed. Product-function tests cover partial failures/retry and 10,000 preview-detach cycles; queue tests cover detach, newer choices and session reset. These are offline checks, not whole-game leak or rendering guarantees. See [verification](docs/RELEASE-VERIFICATION-v1.2.9-KO.md).
+
 ## 1.2.8
 
 - Restore each reference's face during ordinary all-actor reset, including references sharing an ActorBase. Coalesce equal Default requests and refresh the shared body once; an intervening skin selection invalidates older reset requests.

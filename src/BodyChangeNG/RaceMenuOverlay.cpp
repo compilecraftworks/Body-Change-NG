@@ -807,6 +807,32 @@ namespace
         preview.VisitLive([&](const auto& item) { RemovePreviewItemValue(actor, area, preview, item); });
     }
 
+    void RemoveDetachedPreviewValue(RE::Actor* actor, const bcn::overlay::Area area,
+        const PreviewState& abandoned)
+    {
+        const auto newer = PreviewFor(actor->GetFormID(), area);
+        const auto committed = bcn::ActorRegistry::Get().SelectedOverlays(actor, area);
+        abandoned.VisitLive([&](const auto& item) {
+            // A reattached actor may have accepted a new preview/commit before
+            // this session-scoped cleanup runs. That slot now has a new owner.
+            bool reused{};
+            if (newer) newer->VisitLive([&](const auto& value) {
+                reused |= value.ownedSlot == item.ownedSlot;
+            });
+            if (reused) return;
+            const auto current = std::ranges::find(committed, item.ownedSlot,
+                &bcn::OverlayItemState::ownedSlot);
+            if (current != committed.end()) {
+                // Undo a borrowed color using the CURRENT committed value;
+                // never erase a paint promoted from preview to committed.
+                if (current->texturePath == item.texturePath)
+                    static_cast<void>(ColorOwnedNode(InterfacesNow(), actor, area, *current, current->color));
+                return;
+            }
+            RemovePreviewItemValue(actor, area, abandoned, item);
+        });
+    }
+
     [[nodiscard]] bcn::overlay::ApplyResult RemoveOneNow(RE::Actor* actor,
         const bcn::overlay::Area area, const bcn::OverlayItemState& selected)
     {
@@ -1463,9 +1489,9 @@ namespace bcn::overlay
         [[maybe_unused]] const auto queued = frame_tasks::Queue(0U,
             [actorFormID, abandoned = std::move(abandoned)] {
                 auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormID);
-                if (!actor || !ActorRegistry::Get().Snapshot(actor)) return;
+                if (!actor) return;
                 for (const auto& [area, preview] : abandoned) {
-                    RemovePreviewLiveValue(actor, area, preview);
+                    RemoveDetachedPreviewValue(actor, area, preview);
                 }
                 // If it has already reattached, restore Default-preview originals.
                 // A newer accepted request wins over this restore.

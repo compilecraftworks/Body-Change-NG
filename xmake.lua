@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.8"
+local version = "1.2.9"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -265,6 +265,35 @@ target(probeName)
         extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "    [[nodiscard]] bool RequestStillCurrent(", "build_instance.inc")
     end)
 end
+
+target("BodyChangeNGPreviewRestoreTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/PreviewRestoreTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "preview-restore")
+        target:add("includedirs", generated)
+        local function extract(file, first, last, output)
+            local source = io.readfile(file)
+            local begin = assert(source:find(first, 1, true))
+            local finish = assert(source:find(last, begin + #first, true))
+            local destination = path.join(generated, output)
+            local content = source:sub(begin, finish - 1)
+            if not os.isfile(destination) or io.readfile(destination) ~= content then
+                io.writefile(destination, content)
+            end
+        end
+        extract("src/BodyChangeNG/ActorRegistry.cpp", "    void ActorRegistry::ForgetTransient(", "    void ActorRegistry::Revert(", "registry_forget.inc")
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void RemoveDetachedPreviewValue(", "    [[nodiscard]] bcn::overlay::ApplyResult RemoveOneNow(", "overlay_cleanup.inc")
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void ForgetActorState(", "    void ResetSessionState(", "overlay_forget.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void CompleteMutation(", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "native_complete.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void ClearNow(", "    [[nodiscard]] std::vector<bcn::runtime_assets::TexturePreparation> Preparations(", "native_clear.inc")
+        extract("src/BodyChangeNG/SkinApplication.cpp", "    ApplyResult QueueClear(", "    std::optional<std::string> CurrentProfileId(", "skin_clear.inc")
+        extract("src/BodyChangeNG/SkinApplication.cpp", "    ApplyResult QueueApply(", "    ApplyResult QueueClear(", "skin_apply.inc")
+    end)
 
 target("BodyChangeNGFormDeleteGuardProbe")
     set_default(false)

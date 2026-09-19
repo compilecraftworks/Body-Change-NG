@@ -1637,8 +1637,9 @@ namespace
             if (pool == DistributionPool::skin && g_pendingSkin &&
                 g_pendingSkin->actorFormID == actorFormID) {
                 const auto result = g_pendingSkin->originalId.empty() ?
-                    bcn::skin_application::QueueClear(actor) :
-                    bcn::skin_application::QueueApply(actor, g_pendingSkin->originalId);
+                    bcn::skin_application::QueueClear(actor, bcn::skin_transaction::Mode::restore) :
+                    bcn::skin_application::QueueApply(actor, g_pendingSkin->originalId,
+                        bcn::skin_transaction::Mode::restore);
                 if (result != bcn::skin_application::ApplyResult::queued) {
                     bcn::ui::Notify(SkinApplyResultMessage(result));
                 }

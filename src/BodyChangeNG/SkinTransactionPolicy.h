@@ -2,10 +2,15 @@
 
 namespace bcn::skin_transaction
 {
-    enum class Mode { commit, preview };
+    enum class Mode { commit, preview, restore };
 
     [[nodiscard]] constexpr bool RecordsApplication(Mode mode) noexcept
-    { return mode == Mode::commit; }
+    { return mode == Mode::commit || mode == Mode::restore; }
+
+    // Unlike a new unloaded commit (selection intent only), cancelling a
+    // preview must undo native forms that were already changed while loaded.
+    [[nodiscard]] constexpr bool RestoresPreview(Mode mode) noexcept
+    { return mode == Mode::restore; }
 
     [[nodiscard]] constexpr bool PersistsFace(bool player, Mode mode) noexcept
     { return player && RecordsApplication(mode); }

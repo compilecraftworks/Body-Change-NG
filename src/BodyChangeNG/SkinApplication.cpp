@@ -381,7 +381,7 @@ namespace bcn::skin_application
         const auto profile = SkinProfiles::Get().Find(profileId);
         const auto result = native_skin::QueueApply(actor, profileId,
             [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
-        if (actor && !actor->Is3DLoaded()) return result;
+        if (actor && !actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)) return result;
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actorFormID);
             skin_session::TrackSkinSelection(actorFormID, std::move(profileId));
@@ -402,7 +402,8 @@ namespace bcn::skin_application
 
     ApplyResult QueueClear(RE::Actor* actor, skin_transaction::Mode mode, bool resetSharedBase)
     {
-        if (actor && !actor->Is3DLoaded() && !Settings::Get().RemovalMode()) {
+        if (actor && !actor->Is3DLoaded() && !Settings::Get().RemovalMode() &&
+            !skin_transaction::RestoresPreview(mode)) {
             if (!frame_tasks::Active()) return ApplyResult::noTaskInterface;
             if (runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported)
                 return ApplyResult::unsupportedRuntime;
@@ -675,6 +676,10 @@ namespace bcn::skin_application
     void ForgetActorState(const std::uint32_t actorFormID)
     {
         face_skin::Forget(actorFormID);
+        // Face requests are reference/3D-specific even though body graphs are
+        // shared and survive detach. Re-verify a committed face on attachment.
+        if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormID))
+            ActorRegistry::Get().InvalidateSkin(actor);
         native_addon::Forget(actorFormID);
         if (actorFormID != 0U) skin_session::Forget(actorFormID);
     }

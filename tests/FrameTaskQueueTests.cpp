@@ -251,6 +251,26 @@ int main()
         Check(completed == std::vector<int>{206,207,208,209,210,211} &&
             result == 9999 && queue.Pending() == 0U && !queue.Status(80).busy,
             "cross-feature work lost, stale body applied, or lease leaked");
+        // An accepted skin undo outlives actor detach, but not the session.
+        // Per-base generations discard old undo after a newer accepted choice.
+        queue.Reset(true);
+        unsigned generation = 1, restored{};
+        for (unsigned cycle = 1; cycle <= 10000; ++cycle) {
+            generation = cycle;
+            queue.Submit(0, 0, [&, accepted = generation] { if (accepted == generation) ++restored; });
+            queue.CancelActor(80);
+            queue.Advance();
+            while (auto undo = queue.Take()) undo->run();
+        }
+        Check(restored == 10000 && !queue.HasWork(), "detach undo lost or retained completed work");
+        queue.Submit(0, 0, [&, accepted = generation] { if (accepted == generation) ++restored; });
+        ++generation; queue.Advance();
+        while (auto undo = queue.Take()) undo->run();
+        Check(restored == 10000, "old undo overwrote new selection");
+        const auto undoEpoch = queue.Epoch();
+        queue.Submit(0, 0, [&] { ++restored; });
+        queue.Reset(true); queue.Advance();
+        Check(queue.Epoch() != undoEpoch && !queue.Take() && !queue.HasWork(), "undo crossed the session boundary");
         FrameTaskQueue::WorkStatus threshold{true, false, 1499};
         Check(!threshold.Delayed(), "delay indicator threshold too early");
         threshold.elapsedMs = 1500;

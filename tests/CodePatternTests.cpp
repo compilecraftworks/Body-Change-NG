@@ -204,6 +204,7 @@ int main()
         "void RollbackSingleCatalogPreview(RE::Actor* actor, const", "void RollbackPendingSelections(RE::Actor* actor)\n");
     Require(singleRollback.contains("IsCurrent(g_uiSessionEpoch.load())") &&
         singleRollback.contains("FutanariSelectionMode::restore") &&
+        singleRollback.contains("skin_transaction::Mode::restore") &&
         singleRollback.contains("g_pendingSkin->originalId") &&
         singleRollback.contains("QueueCancelPreview()") &&
         !singleRollback.contains("SetManual") && !singleRollback.contains("SetDistributionItemSelected"));
@@ -410,7 +411,8 @@ int main()
         !searchCode.contains("MoveTo") && !searchCode.contains("QueueNiNodeUpdate"));
     Require(readFeatureSource("RaceMenuBodyMorph.cpp").contains(
         "if (!actor->Is3DLoaded()) return mode == ApplyMode::commit ?"));
-    Require(readFeatureSource("SkinApplication.cpp").contains("if (actor && !actor->Is3DLoaded()) return result;"));
+    Require(readFeatureSource("SkinApplication.cpp").contains(
+        "if (actor && !actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)) return result;"));
     Require(!actorCatalogSource.contains("IsCustomFollowerActor") &&
         !actorCatalogSource.contains("IsElderActor"));
     Require(!actorCatalogSource.contains("IsHostileToActor") &&
@@ -692,6 +694,11 @@ int main()
         "NativeSkinBackend.cpp", std::ios::binary);
     Require(nativeSkinFile.good());
     const std::string nativeSkinSource((std::istreambuf_iterator<char>(nativeSkinFile)), {});
+    Require(nativeSkinSource.contains("!actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)") &&
+        nativeSkinSource.contains("frame_tasks::Queue(restoring ? 0U : actorId") &&
+        nativeSkinSource.contains("restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply") &&
+        nativeSkinSource.contains("if (!frame_tasks::IsCurrent(epoch) || !frame_tasks::ValidLease(lease)) return;") &&
+        nativeSkinSource.contains("if (!RequestStillCurrent(baseId, generation, profile.id)) return;"));
     Require(nativeSkinSource.contains("SharedEmbeddedSkinBaseline(") &&
         nativeSkinSource.contains("NeedsEmbeddedSkinBaseline(") &&
         nativeSkinSource.contains("sourceAddon->IsValidRace(race)") &&

@@ -1043,11 +1043,10 @@ namespace
                 (instance.farSkinAttached || instance.base->farSkin == completed->farPointer)) {
                 recovered = instance.goodState && RestoreApplied(instance, *instance.goodState);
                 if (!recovered) {
-                    RestoreOwnedPointers(instance);
+                    recovered = RestoreOwnedPointers(instance);
                     instance.appliedProfileId.clear();
                     instance.appliedContentHash = 0;
-                    instance.appliedDefault = true;
-                    recovered = true;
+                    instance.appliedDefault = recovered;
                 }
             }
         }
@@ -1282,17 +1281,20 @@ namespace
         // face cleanup. Only the first body detachment refreshes shared 3D.
         const auto refreshBody = instance.skinAttached || instance.farSkinAttached;
         const auto completionGeneration = instance.generation;
-        RestoreOwnedPointers(instance);
-        instance.appliedProfileId.clear();
+        const auto bodyRestored = RestoreOwnedPointers(instance);
+        if (bodyRestored) instance.appliedProfileId.clear();
         instance.appliedContentHash = 0U;
-        instance.appliedDefault = true;
+        instance.appliedDefault = bodyRestored;
         instance.tracked = true;
-        const auto completed = CaptureApplied(instance);
+        // A partially restored body is not a last-known-good snapshot. Still
+        // attempt independent face cleanup, but never publish whole-skin success
+        // or roll back to an old custom skin on this body's failure.
+        const auto completed = bodyRestored ? CaptureApplied(instance) : nullptr;
         lock.unlock();
-        bcn::face_skin::Clear(actor.get(), [handle, baseId, completionGeneration, mode, completed, afterMutation](bool success) {
-            CompleteMutation(handle, baseId, completionGeneration, {}, mode, completed, afterMutation, success);
+        bcn::face_skin::Clear(actor.get(), [handle, baseId, completionGeneration, mode, completed, afterMutation, bodyRestored](bool success) {
+            CompleteMutation(handle, baseId, completionGeneration, {}, mode, completed, afterMutation, bodyRestored && success);
         }, refreshBody && static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode,
-            bcn::Settings::Get().RemovalMode());
+            bcn::Settings::Get().RemovalMode() || bcn::skin_transaction::RestoresPreview(mode));
         if (refreshBody) RefreshLoadedActors(actor.get(), afterMutation);
     }
 
@@ -1378,7 +1380,7 @@ namespace bcn::native_skin
         const auto baseId = base->GetFormID();
         // Accept validated commit intent without cloning/mutating shared
         // native forms. The UI persists it; actor attachment applies it later.
-        if (!actor->Is3DLoaded()) return mode == skin_transaction::Mode::commit ?
+        if (!actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)) return mode == skin_transaction::Mode::commit ?
             SkinApplyResult::queued : SkinApplyResult::actor3DUnavailable;
         const auto actorId = actor->GetFormID();
         std::uint64_t generation{};
@@ -1416,12 +1418,18 @@ namespace bcn::native_skin
 
         const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily);
         const auto handle = actor->GetHandle();
-        frame_tasks::Queue(actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily, mode,
+        const auto epoch = frame_tasks::Epoch();
+        const auto restoring = skin_transaction::RestoresPreview(mode);
+        // A detach cancels actor leases, but must not cancel an accepted undo.
+        // Session and per-base generations still reject old undo after a newer
+        // selection or load. No 3D is forced for an unloaded restoration.
+        const auto queued = frame_tasks::Queue(restoring ? 0U : actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily, mode, epoch,
                                       afterMutation = std::move(afterMutation)]() mutable {
             if (!RequestStillCurrent(baseId, generation, profile.id)) return;
             const auto lease = frame_tasks::CurrentLease();
-            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily, mode,
+            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily, mode, epoch,
                                      afterMutation = std::move(afterMutation)](const bool prepared) mutable {
+                if (!frame_tasks::IsCurrent(epoch) || !frame_tasks::ValidLease(lease)) return;
                 if (!prepared) {
                     SKSE::log::error("Body Change NG could not prepare every native TXST asset for '{}'",
                         profile.name);
@@ -1440,8 +1448,8 @@ namespace bcn::native_skin
                     async_work::FrameTaskQueue::InteractiveLease(lease))) {
                 continueApply(false);
             }
-        }, 1U, appearance::WorkChannel::skinApply);
-        return SkinApplyResult::queued;
+        }, 1U, restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply);
+        return queued ? SkinApplyResult::queued : SkinApplyResult::noTaskInterface;
     }
 
     SkinApplyResult QueueClear(RE::Actor* actor,
@@ -1487,13 +1495,14 @@ namespace bcn::native_skin
             generation = instance.generation;
         }
         const auto handle = actor->GetHandle();
-        frame_tasks::Queue(actorId,
+        const auto restoring = skin_transaction::RestoresPreview(mode);
+        const auto queued = frame_tasks::Queue(restoring ? 0U : actorId,
             [handle, baseId, generation, mode,
                 afterMutation = std::move(afterMutation)]() mutable {
                 ClearNow(handle, baseId, generation, std::move(afterMutation), mode);
             },
-            1U, appearance::WorkChannel::skinApply);
-        return SkinApplyResult::queued;
+            1U, restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply);
+        return queued ? SkinApplyResult::queued : SkinApplyResult::noTaskInterface;
     }
 
     std::optional<std::uint32_t> SourceBodyFamily(const RE::Actor* actor)

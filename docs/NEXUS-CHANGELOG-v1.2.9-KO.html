@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Body Change NG v1.2.9 변경 내역</title>
+<style>
+body{margin:0;background:#10151f;color:#e6edf5;font:16px/1.8 system-ui,sans-serif}
+main{max-width:1000px;margin:auto;padding:40px 24px}
+h1{color:#FFD600;line-height:1.3}h2{color:#19D8FF}hr{border:0;border-top:1px solid #46546b;margin:24px 0}
+li{margin:14px 0}a{color:#19D8FF}
+</style>
+</head>
+<body><main>
+<h1>Body Change NG v1.2.9</h1>
+<hr>
+<h2>미리보기 복원 수정</h2>
+<ul>
+<li>NPC 언로드 후 스킨 미리보기 취소 시 원래 스킨을 복원합니다. 액터를 강제로 로드하지 않으며, 새로운 미로드 선택의 지연 적용은 유지합니다.</li>
+<li>확정된 BCNG 액터 기록이 없어도 언로드된 오버레이 미리보기를 정리합니다. 배포 체크박스 누적 미리보기도 포함하며 새 선택과 확정 색상은 보존합니다.</li>
+<li>몸과 얼굴 정리가 모두 성공해야 기본 스킨 복원 완료로 기록합니다. 일부 실패 시 재시도 정보를 유지합니다.</li>
+</ul>
+<hr>
+<h2>수정 범위와 검사</h2>
+<p>기존 기능·저장 형식·의존성·SE/AE 지원 범위는 유지합니다. 새 영구 캐시나 상시 스캔은 추가하지 않았습니다.</p>
+<p>Release 빌드와 오프라인 회귀 실행 파일 32개 통과. 언로드/취소 10,000회 검사를 포함하며 새 인게임 테스트는 수행하지 않았습니다.</p>
+</main></body>
+</html>
