@@ -155,6 +155,9 @@ namespace bcn
                 const auto saved = ActorRegistry::Get().Snapshot(actor.get());
                 if (saved && saved->body.selection.manual && saved->body.selection.useDefault) {
                     racemenu::QueueClearBodyChangeMorphs(actor.get());
+                    // Default restoration clears the outfit key too. Re-evaluate
+                    // here, not inside the general clear used by reset/removal.
+                    OutfitRefit::Get().ProcessActor(actor.get());
                 } else if (racemenu::CurrentPresetId(actor.get())) {
                     racemenu::QueueReapplyCurrent(actor.get());
                 }

@@ -1406,7 +1406,9 @@ namespace bcn::overlay
         const auto queueOne = [](RE::Actor* target, const Area area) {
             if (!target || !PreviewFor(target->GetFormID(), area)) return;
             const auto handle = target->GetHandle();
-            [[maybe_unused]] const auto queued = frame_tasks::Queue(target->GetFormID(),
+            // Keep the area's FIFO/latest-choice semantics, but do not lose
+            // accepted undo when RaceMenu takes ownership of player geometry.
+            [[maybe_unused]] const auto queued = frame_tasks::QueueRestoration(target->GetFormID(),
                 [handle, area] {
                     const auto current = handle.get();
                     if (current) RestorePreviewNow(current.get(), area);
@@ -1455,17 +1457,39 @@ namespace bcn::overlay
                 [handle, area, items] {
                     const auto current = handle.get();
                     if (!current) return;
-                    for (const auto& item : items) {
-                        if (item.selectedId.empty() || item.texturePath.empty()) continue;
+                    const auto count = OverlayCount(InterfacesNow(), area);
+                    std::vector<OverlayItemState> reserved;
+                    reserved.reserve(items.size());
+                    const auto restore = [&](const OverlayItemState& item, const bool keepsSavedSlot) {
+                        if (item.selectedId.empty() || item.texturePath.empty()) return;
                         Entry entry{ .id = item.selectedId, .name = item.selectedId,
                             .texturePath = item.texturePath, .area = area };
                         ResolveInstalledEntryMetadata(entry);
                         if (!EntryMatchesActor(entry.layout, entry.sex,
-                                body_family::ResolveActor(current.get()), Female(current.get()))) continue;
-                        const std::optional<OverlayItemState> replacement{ item };
-                        [[maybe_unused]] const auto result = ApplyNow(current.get(), area,
-                            entry, ApplyMode::restore, nullptr, &replacement, true);
+                                body_family::ResolveActor(current.get()), Female(current.get()))) return;
+                        std::optional<OverlayItemState> replacement{ item };
+                        if (!keepsSavedSlot) replacement->ownedSlot = kNoOwnedSlot;
+                        std::uint8_t slot = kNoOwnedSlot;
+                        const auto result = ApplyNow(current.get(), area,
+                            entry, ApplyMode::restore, &slot, &replacement, true, {}, {}, reserved);
+                        if (result == ApplyResult::queued) {
+                            reserved.push_back({ item.selectedId, item.texturePath, slot, item.color });
+                        }
+                    };
+                    // Finalization writes on the next tick. Restore valid
+                    // saved slots first, then allocate unassigned/out-of-range
+                    // and duplicate slots without stealing a later saved node.
+                    // References remain local to this task's immutable items.
+                    std::vector<const OverlayItemState*> unassigned;
+                    unassigned.reserve(items.size());
+                    for (const auto& item : items) {
+                        const auto claimed = std::ranges::any_of(reserved, [&](const auto& accepted) {
+                            return accepted.ownedSlot == item.ownedSlot;
+                        });
+                        if (item.ownedSlot < count && !claimed) restore(item, true);
+                        else unassigned.push_back(&item);
                     }
+                    for (const auto* item : unassigned) restore(*item, false);
                 }, 1U, Channel(area));
         }
     }

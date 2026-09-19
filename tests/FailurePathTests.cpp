@@ -20,6 +20,7 @@
 #include <cstdint>
 #ifdef BCNG_OFFLINE_MEMORY_PROBE
 #include "OfflineAllocationMeter.h"
+#include "BodyChangeNG/FrameTaskQueue.h"
 #include <cstdio>
 #endif
 
@@ -490,6 +491,73 @@ namespace graph_probe {
     }
 }
 
+#ifdef BCNG_OFFLINE_MEMORY_PROBE
+namespace restoration_queue_probe {
+    void Run() {
+        bcn::async_work::FrameTaskQueue queue;
+        unsigned writes{};
+        for (unsigned cycle{}; cycle < 100; ++cycle) {
+            Check(queue.SubmitRestoration(80, [&] { ++writes; }), "restoration rejected");
+            queue.CancelActor(80); queue.Advance();
+            while (auto job = queue.Take()) job->run();
+        }
+        Check(writes == 100 && !queue.HasWork(), "restoration growth after detach");
+        auto payload = std::make_shared<unsigned>(0);
+        const std::weak_ptr<unsigned> weakPayload = payload;
+        queue.SubmitRestoration(14, [payload] { ++*payload; }); payload.reset();
+        const auto parked = allocation_meter::Read();
+        for (unsigned frame{}; frame < 10000; ++frame) {
+            queue.Advance(); Check(!queue.Take(true, 14) && queue.Pending() == 1, "parked undo escaped gate");
+        }
+        Check(allocation_meter::Read().allocations == parked.allocations, "parking allocated each frame");
+        Check(*weakPayload.lock() == 0, "parked undo ran");
+        queue.CancelActor(14);
+        auto job = queue.Take(true);
+        Check(job.has_value(), "undo lost on close");
+        auto lease = job->lease; job->run(); job.reset();
+        Check(weakPayload.expired(), "restoration capture leaked");
+        queue.Submit(0, 0, [&] { ++writes; }, 1, true, true, lease);
+        queue.Advance(); Check(!queue.Take(true, 14), "continuation escaped gate");
+        job = queue.Take(true); Check(job.has_value(), "continuation lost"); job->run(); job.reset();
+        queue.Reset(true);
+        Check(!queue.Submit(0, 0, [] {}, 1, true, true, lease) && !queue.HasWork(), "old session revived");
+    }
+}
+namespace channelled_restoration_probe {
+    void Run() {
+        bcn::async_work::FrameTaskQueue queue;
+        unsigned writes{};
+        for (unsigned cycle{}; cycle < 100; ++cycle) {
+            Check(queue.SubmitRestoration(80, [&] { ++writes; }, 1, 206), "channelled restoration rejected");
+            queue.CancelActor(80); queue.Advance();
+            while (auto job = queue.Take()) job->run();
+            queue.Advance(); queue.Advance();
+        }
+        Check(writes == 100 && !queue.HasWork(), "channelled restoration retained work");
+        auto payload = std::make_shared<unsigned>(0);
+        std::weak_ptr<unsigned> weakPayload = payload;
+        for (unsigned repeat{}; repeat < 100; ++repeat)
+            queue.SubmitRestoration(14, [payload] { ++*payload; }, 1, 206);
+        payload.reset();
+        const auto parked = allocation_meter::Read();
+        for (unsigned tick{}; tick < 10000; ++tick) {
+            queue.CancelActor(14); queue.Advance();
+            Check(!queue.Take(true, 14) && queue.Pending() == 1, "channelled undo escaped gate or grew");
+        }
+        Check(allocation_meter::Read().allocations == parked.allocations, "channelled parking allocated per tick");
+        auto job = queue.Take(true); Check(job.has_value(), "channelled undo did not resume");
+        auto lease = job->lease; job->run(); job.reset();
+        Check(weakPayload.expired(), "channelled capture leaked");
+        queue.Submit(0, 0, [&] { ++writes; }, 1, true, true, lease);
+        queue.CancelActor(14); queue.Advance();
+        Check(!queue.Take(true, 14), "deferred channelled write escaped gate");
+        job = queue.Take(true); Check(job.has_value(), "deferred channelled write lost");
+        job->run(); job.reset(); lease.reset(); queue.Advance(); queue.Advance();
+        Check(!queue.HasWork(), "channelled continuation retained busy state");
+    }
+}
+#endif
+
 int main() try {
 #ifdef BCNG_OFFLINE_MEMORY_PROBE
     // Positive control: prove the meter observes retained bytes before using
@@ -522,7 +590,9 @@ int main() try {
     const std::pair<const char*, void(*)()> probes[] = {
         {"face-callback", vm_probe::Run}, {"face-finish", finish_probe::Run},
         {"txst-construction", clone_probe::Run}, {"detach-retry", detach_probe::Run},
-        {"model-array", model_array_probe::Run}, {"body-far-construction", graph_probe::Run}
+        {"model-array", model_array_probe::Run}, {"body-far-construction", graph_probe::Run},
+        {"restoration-queue", restoration_queue_probe::Run},
+        {"channelled-restoration", channelled_restoration_probe::Run}
     };
     for (const auto& [name, run] : probes) {
         for (unsigned warm{}; warm < 3; ++warm) run();

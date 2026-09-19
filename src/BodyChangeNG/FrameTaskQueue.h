@@ -18,6 +18,10 @@ namespace bcn::async_work
         std::atomic_bool cancelled{};
         // A later direct selection may promote already-running prerequisites.
         std::atomic_bool interactive{};
+        // A detached undo survives CancelActor, but its continuations must
+        // retain both the RaceMenu gate and the session that accepted it.
+        std::uint32_t restorationActor{};
+        std::uint64_t restorationEpoch{};
     };
 
     // Engine-independent policy. The owner serializes access; callbacks run
@@ -50,7 +54,17 @@ namespace bcn::async_work
         bool Submit(std::uint32_t actor, std::uint32_t channel, Task run,
             std::uint32_t delay = 1, bool urgent = false, bool interactive = false, Lease continuation = {})
         {
-            if (!active_ || !run || (continuation && (actor != 0 || channel != 0))) return false;
+            return SubmitImpl(actor, channel, std::move(run), delay, urgent, interactive,
+                std::move(continuation), false);
+        }
+    private:
+        bool SubmitImpl(std::uint32_t actor, std::uint32_t channel, Task run,
+            std::uint32_t delay, bool urgent, bool interactive, Lease continuation, bool restoration)
+        {
+            const auto owningRestoration = restoration && continuation && actor && channel &&
+                continuation->restorationActor == actor;
+            if (!active_ || !run || (continuation && (actor != 0 || channel != 0) && !owningRestoration) ||
+                (continuation && continuation->restorationEpoch && continuation->restorationEpoch != epoch_)) return false;
             if (actor && interactive) {
                 if (const auto busy = busy_.find(actor); busy != busy_.end()) {
                     if (const auto lease = busy->second.lease.lock()) lease->interactive.store(true);
@@ -61,6 +75,10 @@ namespace bcn::async_work
                     auto job = std::move(*it);
                     jobs_.erase(it);
                     job.run = std::move(run);
+                    // A newer choice in this channel supersedes a parked undo,
+                    // just as it superseded the old actor-owned cancel job.
+                    if (job.lease) job.lease->cancelled.store(true);
+                    job.lease = std::move(continuation);
                     job.urgent |= urgent;
                     if (actor && interactive && !job.interactive) ++actorPending_.at(actor).interactive;
                     job.interactive |= interactive;
@@ -83,6 +101,20 @@ namespace bcn::async_work
             }
             return true;
         }
+    public:
+        bool SubmitRestoration(std::uint32_t actor, Task run, std::uint32_t delay = 1,
+            std::uint32_t channel = 0)
+        {
+            if (!active_ || !actor || !run) return false;
+            auto lease = std::make_shared<FrameLeaseState>();
+            lease->restorationActor = actor;
+            lease->restorationEpoch = epoch_;
+            lease->interactive.store(true);
+            // Channelled undo shares ordinary actor FIFO/coalescing and holds
+            // its busy lease through deferred writes. Unchannelled native-skin
+            // undo keeps its existing independent, per-base generation policy.
+            return SubmitImpl(channel ? actor : 0, channel, std::move(run), delay, true, true, std::move(lease), true);
+        }
         void Advance()
         {
             ++tick_;
@@ -100,7 +132,7 @@ namespace bcn::async_work
                 else ++it;
             }
         }
-        std::optional<Job> Take(bool reserveInput = false)
+        std::optional<Job> Take(bool reserveInput = false, std::uint32_t blockedRestorationActor = 0)
         {
             if (!active_) return {};
             // Continuations have actor/channel zero and carry their original
@@ -124,6 +156,10 @@ namespace bcn::async_work
             };
             ++scan_;
             for (auto it = jobs_.begin(); it != jobs_.end(); ++it) {
+                // Leave the same job in place, without copying captures,
+                // spinning callbacks or losing its age/order while editing.
+                if (blockedRestorationActor && it->lease &&
+                    it->lease->restorationActor == blockedRestorationActor) continue;
                 if (it->actor) {
                     auto& pending = actorPending_.at(it->actor);
                     if (pending.seen == scan_) continue;
@@ -145,7 +181,7 @@ namespace bcn::async_work
                 if (job.interactive) --pending.interactive;
                 job.interactive |= helpsInput;
                 if (--pending.count == 0) actorPending_.erase(job.actor);
-                job.lease = std::make_shared<FrameLeaseState>();
+                if (!job.lease) job.lease = std::make_shared<FrameLeaseState>();
                 job.lease->interactive.store(job.interactive);
                 busy_[job.actor] = {job.lease, 0, job.requestedAt, job.channel};
             }
@@ -165,10 +201,24 @@ namespace bcn::async_work
         }
         void CancelActor(std::uint32_t actor)
         {
-            std::erase_if(jobs_, [actor](const Job& job) { return job.actor == actor; });
-            actorPending_.erase(actor);
+            std::erase_if(jobs_, [actor](const Job& job) {
+                return job.actor == actor && (!job.lease || job.lease->restorationActor != actor);
+            });
+            // Retained undo is still actor-owned for serialization/status.
+            // Recount only this actor; never leave stale interactive counts.
+            if (const auto found = actorPending_.find(actor); found != actorPending_.end()) {
+                auto& pending = found->second;
+                pending.count = pending.interactive = 0;
+                for (const auto& job : jobs_) if (job.actor == actor) {
+                    if (pending.count++ == 0) pending.since = job.requestedAt;
+                    else pending.since = std::min(pending.since, job.requestedAt);
+                    if (job.interactive) ++pending.interactive;
+                }
+                if (!pending.count) actorPending_.erase(found);
+            }
             if (const auto found = busy_.find(actor); found != busy_.end()) {
-                if (const auto lease = found->second.lease.lock()) lease->cancelled.store(true);
+                if (const auto lease = found->second.lease.lock(); lease && lease->restorationActor != actor)
+                    lease->cancelled.store(true);
             }
             // Keep an already executing lease: cancellation is NOT completion.
         }

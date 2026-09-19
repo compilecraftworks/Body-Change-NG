@@ -12,6 +12,12 @@ namespace bcn::frame_tasks
         std::uint32_t delay = 1,
         appearance::WorkChannel channel = appearance::WorkChannel::none,
         bool urgent = false, bool interactive = false);
+    // Undo survives actor detach, waits out player RaceMenu editing, and is
+    // invalidated by session reset. Continue retains the same restoration gate.
+    // A channel additionally retains ordinary actor FIFO/latest-choice
+    // coalescing and serializes any deferred writes with the next selection.
+    bool QueueRestoration(std::uint32_t actor, std::function<void()> work, std::uint32_t delay = 1,
+        appearance::WorkChannel channel = appearance::WorkChannel::none);
     // Continuations retain the ORIGINAL actor lease and must not acquire it
     // again. Used only by already-dispatched asynchronous skin callbacks.
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay = 1);

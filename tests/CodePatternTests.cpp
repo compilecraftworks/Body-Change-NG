@@ -695,8 +695,8 @@ int main()
     Require(nativeSkinFile.good());
     const std::string nativeSkinSource((std::istreambuf_iterator<char>(nativeSkinFile)), {});
     Require(nativeSkinSource.contains("!actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)") &&
-        nativeSkinSource.contains("frame_tasks::Queue(restoring ? 0U : actorId") &&
-        nativeSkinSource.contains("restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply") &&
+        nativeSkinSource.contains("restoring ? frame_tasks::QueueRestoration(actorId, std::move(work))") &&
+        nativeSkinSource.contains("frame_tasks::Queue(actorId, std::move(work), 1U, appearance::WorkChannel::skinApply)") &&
         nativeSkinSource.contains("if (!frame_tasks::IsCurrent(epoch) || !frame_tasks::ValidLease(lease)) return;") &&
         nativeSkinSource.contains("if (!RequestStillCurrent(baseId, generation, profile.id)) return;"));
     Require(nativeSkinSource.contains("SharedEmbeddedSkinBaseline(") &&
@@ -768,7 +768,19 @@ int main()
         morphSource.contains("keys::ClearReplacedBody(*morph, resolved.get())") &&
         morphSource.contains("preset && preset->UsesBuildDefaults()") &&
         morphSource.contains("return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody") &&
-        morphSource.contains("return !hasAnyOwned && !hasOBody"));
+        morphSource.contains("return !hasBaseOrPreview && !hasOBody"));
+    const auto defaultVerificationBegin = morphSource.find("const auto hasBaseOrPreview =");
+    const auto defaultVerificationEnd = morphSource.find("return !hasBaseOrPreview", defaultVerificationBegin);
+    Require(defaultVerificationBegin != std::string::npos && defaultVerificationEnd != std::string::npos);
+    const auto defaultVerification = std::string_view(morphSource).substr(
+        defaultVerificationBegin, defaultVerificationEnd - defaultVerificationBegin);
+    Require(!defaultVerification.contains("kOutfitKey") && !defaultVerification.contains("kLegacyOutfitKey"));
+    const auto explicitClearBegin = morphSource.find("void QueueClearBodyChangeMorphs(");
+    const auto explicitClearEnd = morphSource.find("bool QueueClearAllBodyChangeMorphs(", explicitClearBegin);
+    Require(explicitClearBegin != std::string::npos && explicitClearEnd != std::string::npos);
+    const auto explicitClear = std::string_view(morphSource).substr(explicitClearBegin, explicitClearEnd - explicitClearBegin);
+    Require(explicitClear.contains("InvalidateOutfit(actor)") && explicitClear.contains("keys::ClearOwned") &&
+        explicitClear.contains("keys::ClearReplacedBody"));
     const auto savedVerifyBegin = morphSource.find("void QueueVerifySavedBody(");
     const auto savedVerifyEnd = morphSource.find("bool HasOutfitCorrection(", savedVerifyBegin);
     Require(savedVerifyBegin != std::string::npos && savedVerifyEnd != std::string::npos);

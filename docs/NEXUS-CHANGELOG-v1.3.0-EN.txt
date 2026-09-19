@@ -1,0 +1,10 @@
+Body Change NG v1.3.0
+
+- Restore multiple saved overlays into separate slots. Keep existing slots and colors, recover duplicate saved slots where space is available, and preserve other mods' occupied slots.
+- Keep valid breast/nipple outfit corrections when automatically checking a Default body. Reevaluate outfit correction after a real base-body recovery. Explicit reset and removal cleanup retain their existing behavior.
+- Wait until RaceMenu closes before restoring a cancelled player skin preview. Undo still survives NPC unload; newer selections and session changes still invalidate old work.
+- Keep body-preview cancellation and inactive-preview cleanup pending while RaceMenu edits the player, then restore after it closes. Preserve unload cleanup and newer active previews.
+- Prevent overlay-preview cancellation from being lost on RaceMenu entry. Keep per-area latest-choice coalescing and actor ordering, including deferred writes, so old undo cannot replace a newer preview, color edit, commit or reset.
+- Reevaluate outfit correction after restoring a player's saved Default body on load or after RaceMenu. Use the existing disabled/nude/SFS/named/procedural policies; explicit reset and mod-removal cleanup still do not reapply corrections.
+- Preserve existing features, distribution rules, save formats, dependencies and supported SE/AE versions. No new permanent cache or full-actor scan.
+- Release build, 34 offline regression executables and 19 audit-tool tests passed. The host-allocation probe found no retained growth, and waiting undo does not allocate again each frame. No new in-game tests were performed.

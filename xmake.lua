@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.2.9"
+local version = "1.3.0"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -265,6 +265,69 @@ target(probeName)
         extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "    [[nodiscard]] bool RequestStillCurrent(", "build_instance.inc")
     end)
 end
+
+target("BodyChangeNGAppearanceIntegrationTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/AppearanceIntegrationTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "appearance-integration")
+        target:add("includedirs", generated)
+        os.mkdir(generated)
+        local function extract(file, signature, output)
+            local source = io.readfile(file)
+            local start = assert(source:find(signature, 1, true))
+            local finish = assert(source:find("\n    }", start, true)) + #"\n    }" - 1
+            local destination = path.join(generated, output)
+            local content = source:sub(start, finish)
+            if not os.isfile(destination) or io.readfile(destination) ~= content then
+                io.writefile(destination, content)
+            end
+        end
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    [[nodiscard]] bcn::overlay::ApplyResult ApplyNow(", "overlay_apply.inc")
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void QueueReapplySaved(", "overlay_reapply.inc")
+        extract("src/BodyChangeNG/FrameTasks.cpp", "    void Pump(", "frame_pump.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    std::optional<bool> LiveBodyChangeStateMatches(", "body_live.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueVerifySavedBody(", "body_verify.inc")
+    end)
+
+target("BodyChangeNGAppearanceLifecycleTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/AppearanceLifecycleTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "appearance-lifecycle")
+        target:add("includedirs", generated)
+        os.mkdir(generated)
+        local function extract(file, signature, output)
+            local source = io.readfile(file)
+            local start = assert(source:find(signature, 1, true))
+            local closing = "\n" .. signature:match("^ *") .. "}"
+            local finish = assert(source:find(closing, start, true)) + #closing - 1
+            local destination = path.join(generated, output)
+            local content = source:sub(start, finish)
+            if not os.isfile(destination) or io.readfile(destination) ~= content then
+                io.writefile(destination, content)
+            end
+        end
+        extract("src/BodyChangeNG/FrameTasks.cpp", "    void Pump(", "frame_pump.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueActorTask(", "body_queue_actor.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void ClearPreviewNow(", "body_clear_preview.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueCancelPreview()", "body_cancel_preview.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueClearInactivePreview(", "body_clear_inactive.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueClearBodyChangeMorphs(", "body_clear_default.inc")
+        extract("src/BodyChangeNG/RaceMenuBodyMorph.cpp", "    void QueueReapplyCurrent(", "body_reapply.inc")
+        extract("src/BodyChangeNG/OutfitRefit.cpp", "    void OutfitRefit::ProcessActor(", "outfit_process.inc")
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void QueueCancelPreviews(", "overlay_cancel.inc")
+        extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void QueueReapplySaved(", "overlay_reapply.inc")
+        extract("src/BodyChangeNG/ActorEvents.cpp", "        void ReapplyPlayerSelectionsAfterRaceMenu(", "player_restore.inc")
+    end)
 
 target("BodyChangeNGPreviewRestoreTests")
     set_default(false)

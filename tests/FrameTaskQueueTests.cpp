@@ -257,20 +257,104 @@ int main()
         unsigned generation = 1, restored{};
         for (unsigned cycle = 1; cycle <= 10000; ++cycle) {
             generation = cycle;
-            queue.Submit(0, 0, [&, accepted = generation] { if (accepted == generation) ++restored; });
+            queue.SubmitRestoration(80, [&, accepted = generation] { if (accepted == generation) ++restored; });
             queue.CancelActor(80);
             queue.Advance();
             while (auto undo = queue.Take()) undo->run();
         }
         Check(restored == 10000 && !queue.HasWork(), "detach undo lost or retained completed work");
-        queue.Submit(0, 0, [&, accepted = generation] { if (accepted == generation) ++restored; });
+        queue.SubmitRestoration(80, [&, accepted = generation] { if (accepted == generation) ++restored; });
         ++generation; queue.Advance();
         while (auto undo = queue.Take()) undo->run();
         Check(restored == 10000, "old undo overwrote new selection");
         const auto undoEpoch = queue.Epoch();
-        queue.Submit(0, 0, [&] { ++restored; });
+        queue.SubmitRestoration(80, [&] { ++restored; });
         queue.Reset(true); queue.Advance();
         Check(queue.Epoch() != undoEpoch && !queue.Take() && !queue.HasWork(), "undo crossed the session boundary");
+        // Retain one captured undo through a long RaceMenu session. Do not
+        // reallocate/requeue it each frame, and do not block unrelated NPCs.
+        auto payload = std::make_shared<int>(0);
+        const std::weak_ptr<int> weakPayload = payload;
+        queue.SubmitRestoration(14, [payload] { ++*payload; }); payload.reset();
+        queue.SubmitRestoration(80, [&] { ++restored; });
+        queue.Advance();
+        job = queue.Take(true, 14);
+        Check(job && job->lease->restorationActor == 80, "player gate blocked an NPC undo");
+        job->run(); job.reset();
+        for (unsigned frame = 0; frame < 10000; ++frame) {
+            queue.Advance();
+            Check(!queue.Take(true, 14) && queue.Pending() == 1, "deferred undo duplicated or escaped its gate");
+        }
+        Check(!weakPayload.expired() && *weakPayload.lock() == 0, "deferred capture lost or prematurely invoked");
+        queue.CancelActor(14); job = queue.Take(true);
+        Check(job && job->lease->restorationActor == 14, "undo disappeared at RaceMenu actor cancellation");
+        auto restoreLease = job->lease;
+        job->run(); job.reset();
+        Check(weakPayload.expired(), "finished restoration retained its capture");
+        // A texture worker resumes later using the same gate, even if the
+        // menu reopened after the original dispatch.
+        queue.Submit(0, 0, [&] { ++restored; }, 1, true, true, restoreLease);
+        queue.Advance(); Check(!queue.Take(true, 14), "restoration continuation bypassed RaceMenu");
+        job = queue.Take(true); Check(job.has_value(), "restoration continuation never resumed");
+        job->run(); job.reset();
+        queue.Reset(true);
+        Check(!queue.Submit(0, 0, [] {}, 1, true, true, restoreLease), "late worker revived an undo from a prior session");
+        restoreLease.reset(); Check(!queue.HasWork(), "restoration retained queue work after reset");
+        queue.SubmitRestoration(14, [] {}); queue.Advance(); job = queue.Take();
+        auto cancelledRestore = job->lease; job.reset(); cancelledRestore->cancelled.store(true);
+        queue.Submit(0, 0, [] {}, 1, true, true, cancelledRestore); queue.Advance();
+        Check(!queue.Take(true, 14) && !queue.HasWork(), "cancelled restoration leaked behind the menu gate");
+        // Channelled undo must retain actor FIFO, latest-choice coalescing and
+        // busy ownership, without losing the RaceMenu/detach protection.
+        queue.Reset(true); job.reset(); restored = 0;
+        auto pendingCapture = std::make_shared<int>(1);
+        std::weak_ptr<int> pendingWeak = pendingCapture;
+        queue.Submit(14, 206, [pendingCapture] {}); pendingCapture.reset();
+        queue.SubmitRestoration(14, [&] { ++restored; }, 1, 206);
+        Check(pendingWeak.expired() && queue.Pending() == 1 && queue.HasActorChannelWork(14, 206),
+            "channelled undo did not replace pending preview/release capture");
+        queue.Submit(14, 207, [] {}); queue.CancelActor(14);
+        Check(queue.Pending() == 1 && queue.Status(14).queued && !queue.HasActorChannelWork(14, 207),
+            "detach lost undo or retained unrelated pending work/status");
+        queue.Advance(); Check(!queue.Take(true, 14), "channelled undo escaped RaceMenu gate");
+        job = queue.Take(true); Check(job && job->actor == 14 && job->channel == 206, "channelled undo lost actor ownership");
+        auto channelLease = job->lease;
+        Check(channelLease->restorationActor == 14 && channelLease->restorationEpoch == queue.Epoch(),
+            "taking channelled undo replaced its restoration lease");
+        job->run(); job.reset();
+        queue.CancelActor(14);
+        Check(FrameTaskQueue::ValidLease(channelLease) && queue.HasActorWork(14), "detach cancelled in-flight restoration");
+        Check(!queue.Submit(14, 206, [] {}, 1, true, true, channelLease), "continuation reacquired its own actor");
+        queue.Submit(0, 0, [&] { ++restored; }, 1, true, true, channelLease);
+        queue.Submit(14, 206, [&] { result = 123; }); queue.Advance();
+        Check(!queue.Take(true, 14), "new selection overlapped gated deferred restoration");
+        job = queue.Take(true); Check(job && !job->actor && job->lease == channelLease, "restoration continuation lost lease");
+        job->run(); job.reset();
+        Check(!queue.Take(true), "new selection overlapped active restoration lease");
+        channelLease.reset(); queue.Advance(); Check(!queue.Take(true), "undo skipped actor quiet boundary");
+        queue.Advance(); job = queue.Take(true); Check(job && job->actor == 14, "new choice failed after undo");
+        job->run(); job.reset(); queue.Advance(); queue.Advance();
+        Check(restored == 2 && result == 123 && !queue.HasWork(), "deferred undo/new choice left work or wrong result");
+        // Replacing a parked undo with a new ordinary selection must remove
+        // its restoration lease: ordinary selection remains cancellable.
+        auto replacedCapture = std::make_shared<int>(2);
+        std::weak_ptr<int> replacedWeak = replacedCapture;
+        queue.SubmitRestoration(14, [replacedCapture] {}, 1, 206); replacedCapture.reset();
+        queue.Submit(14, 206, [] {});
+        Check(replacedWeak.expired(), "replaced undo retained its capture");
+        queue.CancelActor(14);
+        Check(!queue.HasWork(), "new ordinary choice inherited old undo's cancellation immunity");
+        for (unsigned cycle{}; cycle < 10000; ++cycle) {
+            queue.SubmitRestoration(14, [&] { ++restored; }, 1, 206);
+            queue.CancelActor(14); queue.Advance();
+            while (auto undo = queue.Take()) undo->run();
+            queue.Advance(); queue.Advance();
+        }
+        Check(restored == 10002 && !queue.HasWork(), "channelled undo cycles leaked work or lost restores");
+        queue.SubmitRestoration(14, [] {}, 1, 206); queue.Advance(); job = queue.Take();
+        channelLease = job->lease; job.reset(); queue.Reset(true);
+        Check(!FrameTaskQueue::ValidLease(channelLease) &&
+            !queue.Submit(0, 0, [] {}, 1, true, true, channelLease), "session reset revived channelled undo");
         FrameTaskQueue::WorkStatus threshold{true, false, 1499};
         Check(!threshold.Delayed(), "delay indicator threshold too early");
         threshold.elapsedMs = 1500;

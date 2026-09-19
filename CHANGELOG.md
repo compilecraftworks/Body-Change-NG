@@ -2,6 +2,17 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.0
+
+- Reserve separate slots when restoring multiple saved overlays before their deferred node writes finish. Restore unique existing slots first, allocate unassigned/out-of-range or duplicate saved slots afterward, preserve colors, and leave other mods' occupied slots untouched.
+- Treat the Default body and its independent outfit correction as separate layers during automatic validation. Keep valid breast/nipple corrections; if the base really needs clearing, invalidate the old correction signature and reevaluate the outfit through the normal policy. Explicit reset and mod-removal cleanup still clear their owned layers.
+- Defer player skin-preview undo while RaceMenu is open instead of running it during editing or discarding it. Keep undo across actor unload, carry the same gate into texture-preparation continuations, and reject work from a previous session. Newer choices still invalidate older undo.
+- Keep body-preview cancellation and inactive-preview cleanup pending while RaceMenu edits the player, then restore after it closes. Preserve unload cleanup and newer active previews.
+- Prevent overlay-preview cancellation from being lost on RaceMenu entry. Keep per-area latest-choice coalescing and actor ordering, including deferred writes, so old undo cannot replace a newer preview, color edit, commit or reset.
+- Reevaluate outfit correction after restoring a player's saved Default body on load or after RaceMenu. Use the existing disabled/nude/SFS/named/procedural policies; explicit reset and mod-removal cleanup still do not reapply corrections.
+- Preserve distribution rules, co-save formats, supported SE/AE runtimes, RaceMenu interface contracts and pinned dependencies. No new permanent cache, engine-form destruction path or full-actor scan.
+- Verification: Release build, 34 regression executables and 19 audit-tool tests passed. Product-function regressions cover restoration boundaries, with 1,000,000 mixed queue operations and an AddressSanitizer run. The eight-group host-allocation probe covers 3,029,300 allocations with no retained growth, including channelled undo and 2,000,000 parked-queue iterations. These are offline checks, not a whole-game leak or rendering guarantee. See [verification](docs/RELEASE-VERIFICATION-v1.3.0-KO.md).
+
 ## 1.2.9
 
 - Restore an already-applied skin preview when its NPC unloads before cancellation. Distinguish undo from a new unloaded selection; restore owned native skin state without forcing 3D to load. Keep session and newer-selection guards, and recheck committed face state after detach.

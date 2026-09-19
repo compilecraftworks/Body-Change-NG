@@ -1423,7 +1423,7 @@ namespace bcn::native_skin
         // A detach cancels actor leases, but must not cancel an accepted undo.
         // Session and per-base generations still reject old undo after a newer
         // selection or load. No 3D is forced for an unloaded restoration.
-        const auto queued = frame_tasks::Queue(restoring ? 0U : actorId, [handle, profile = *profile, plan, baseId, generation, actorFamily, mode, epoch,
+        auto work = [handle, profile = *profile, plan, baseId, generation, actorFamily, mode, epoch,
                                       afterMutation = std::move(afterMutation)]() mutable {
             if (!RequestStillCurrent(baseId, generation, profile.id)) return;
             const auto lease = frame_tasks::CurrentLease();
@@ -1448,7 +1448,9 @@ namespace bcn::native_skin
                     async_work::FrameTaskQueue::InteractiveLease(lease))) {
                 continueApply(false);
             }
-        }, 1U, restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply);
+        };
+        const auto queued = restoring ? frame_tasks::QueueRestoration(actorId, std::move(work)) :
+            frame_tasks::Queue(actorId, std::move(work), 1U, appearance::WorkChannel::skinApply);
         return queued ? SkinApplyResult::queued : SkinApplyResult::noTaskInterface;
     }
 
@@ -1496,12 +1498,12 @@ namespace bcn::native_skin
         }
         const auto handle = actor->GetHandle();
         const auto restoring = skin_transaction::RestoresPreview(mode);
-        const auto queued = frame_tasks::Queue(restoring ? 0U : actorId,
-            [handle, baseId, generation, mode,
+        auto work = [handle, baseId, generation, mode,
                 afterMutation = std::move(afterMutation)]() mutable {
                 ClearNow(handle, baseId, generation, std::move(afterMutation), mode);
-            },
-            1U, restoring ? appearance::WorkChannel::none : appearance::WorkChannel::skinApply);
+            };
+        const auto queued = restoring ? frame_tasks::QueueRestoration(actorId, std::move(work)) :
+            frame_tasks::Queue(actorId, std::move(work), 1U, appearance::WorkChannel::skinApply);
         return queued ? SkinApplyResult::queued : SkinApplyResult::noTaskInterface;
     }
 

@@ -26,11 +26,15 @@ namespace
         // planning. An indivisible RaceMenu call cannot be preempted.
         unsigned actorJobs{};
         for (unsigned count{}; count < 64U && actorJobs < bcn::AutomaticActorBudget(performance); ++count) {
+            const auto* player = RE::PlayerCharacter::GetSingleton();
+            auto* ui = RE::UI::GetSingleton();
+            const auto editingPlayer = player && ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME) ?
+                player->GetFormID() : 0U;
             std::optional<bcn::async_work::FrameTaskQueue::Job> job;
             {
                 std::scoped_lock lock(g_lock);
                 if (epoch != g_queue.Epoch()) return;
-                job = g_queue.Take(count == 0);
+                job = g_queue.Take(count == 0, editingPlayer);
             }
             if (!job) break;
             // A UI/lifecycle cancellation can happen after Take releases the
@@ -39,11 +43,7 @@ namespace
             if (job->actor) ++actorJobs;
             // RaceMenu owns the player's rebuilding geometry. Its close
             // handler restores desired selections; never mutate it mid-edit.
-            if (const auto* player = RE::PlayerCharacter::GetSingleton();
-                player && job->actor == player->GetFormID()) {
-                auto* ui = RE::UI::GetSingleton();
-                if (ui && ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME)) continue;
-            }
+            if (editingPlayer && job->actor == editingPlayer) continue;
             auto previous = std::exchange(g_lease, job->lease);
             const auto previousPump = std::exchange(g_inPump, true);
             const auto previousUrgent = std::exchange(g_urgent, job->urgent);
@@ -80,6 +80,13 @@ namespace bcn::frame_tasks
         return g_queue.Submit(actor, rawChannel, std::move(work), delay,
             urgent || g_urgent || directInteraction,
             interactive || g_interactive || directInteraction);
+    }
+    bool QueueRestoration(std::uint32_t actor, std::function<void()> work, std::uint32_t delay,
+        const appearance::WorkChannel channel)
+    {
+        std::scoped_lock lock(g_lock);
+        return g_available && g_queue.SubmitRestoration(actor, std::move(work), delay,
+            appearance::ChannelValue(channel));
     }
     bool Continue(Lease lease, std::function<void()> work, std::uint32_t delay)
     {

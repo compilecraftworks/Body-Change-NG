@@ -1,4 +1,4 @@
-# Body Change NG — v1.2.9
+# Body Change NG — v1.3.0
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,24 +7,29 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.2.9
+## Current version — v1.3.0
 
-Version 1.2.9 fixes three restoration paths: skin-preview cancellation after NPC
-unload, detached overlay-preview cleanup without a committed actor record, and
-Default completion after a failed private-body restoration. Newer selections remain
-authoritative. Normal loaded application, unloaded selection intent, saved formats,
-and the existing mod-removal feature remain unchanged.
+Version 1.3.0 fixes cross-feature restoration issues: multiple saved overlays
+now reserve distinct slots before deferred writes, automatic Default-body checks
+preserve valid outfit corrections, and player skin/body/overlay preview undo waits
+until RaceMenu closes. Default-body player restoration also reevaluates clothing
+after load or RaceMenu. Unload-safe undo, newer-selection guards, explicit reset/removal behavior,
+distribution rules and saved formats are preserved.
 
 The audit includes existing body presets, skins, addons, tint, overlays, distribution,
 input, settings, persistence and SFS outfit correction—not only the changed paths.
-The Release build, 32 regression executables and 19 audit-tool tests passed.
-See the [verification and limits](docs/RELEASE-VERIFICATION-v1.2.9-KO.md).
+The Release build, 34 regression executables and 19 audit-tool tests passed.
+The added lifecycle tests include 1,000,000 mixed queue operations and an
+AddressSanitizer run across the extracted product functions.
+The offline allocation probe includes the new restoration queue and reports no
+retained allocation growth; parked undo does not allocate again on each frame.
+See the [verification and limits](docs/RELEASE-VERIFICATION-v1.3.0-KO.md).
 No new in-game testing was performed. Whole-game zero leaks and resolution of every
 reported TNG/SOS rendering issue are not claimed.
 
-- [English changelog](CHANGELOG.md#129) · [한국어 변경 내역](CHANGELOG-KO.md#129)
-- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.2.9-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.2.9-KO.html)
-- [English plain text](docs/NEXUS-CHANGELOG-v1.2.9-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.2.9-KO.txt)
+- [English changelog](CHANGELOG.md#130) · [한국어 변경 내역](CHANGELOG-KO.md#130)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.0-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.0-KO.html)
+- [English plain text](docs/NEXUS-CHANGELOG-v1.3.0-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.0-KO.txt)
 
 ### Preparing to uninstall
 
@@ -141,7 +146,7 @@ Explicit targets:
 No VR, LE, Epic 1.6.678, Store/Game Pass, or unlisted runtimes including 1.7.x.
 Do not assume the newest dependency download matches an older game.
 
-The current Release build and 31 automated test executables passed. This is not
+The current Release build and 34 automated test executables passed. This is not
 complete in-game/leak verification; see the verification report above.
 
 ## Installation
@@ -228,7 +233,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.2.9/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.3.0/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

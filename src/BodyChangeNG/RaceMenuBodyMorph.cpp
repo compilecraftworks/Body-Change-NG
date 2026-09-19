@@ -35,8 +35,13 @@ namespace
         const bcn::appearance::WorkChannel channel, std::function<void()> work)
     {
         const auto actor = handle.get();
-        if (actor) bcn::frame_tasks::Queue(actor->GetFormID(), std::move(work), 1,
-            channel, channel == bcn::appearance::WorkChannel::bodyPreview);
+        if (!actor) return;
+        if (channel == bcn::appearance::WorkChannel::bodyPreviewCleanup) {
+            bcn::frame_tasks::QueueRestoration(actor->GetFormID(), std::move(work), 1U, channel);
+        } else {
+            bcn::frame_tasks::Queue(actor->GetFormID(), std::move(work), 1U,
+                channel, channel == bcn::appearance::WorkChannel::bodyPreview);
+        }
     }
 
     [[nodiscard]] constexpr bcn::appearance::WorkChannel ChannelForApplyMode(
@@ -748,12 +753,13 @@ namespace bcn::racemenu
             const auto usesBuildDefaults = preset && preset->UsesBuildDefaults();
             return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody;
         }
-        const auto hasAnyOwned = hasCommitted ||
+        // A Default base body can legitimately wear an independent refit.
+        // Explicit Default/reset still clears every owned layer; automatic
+        // base verification must not mistake clothing for a changed preset.
+        const auto hasBaseOrPreview = hasCommitted ||
             bodyMorph->HasBodyMorphKey(reference, kPreviewKey) ||
-            bodyMorph->HasBodyMorphKey(reference, kOutfitKey) ||
-            bodyMorph->HasBodyMorphKey(reference, kLegacyPreviewKey) ||
-            bodyMorph->HasBodyMorphKey(reference, kLegacyOutfitKey);
-        return !hasAnyOwned && !hasOBody;
+            bodyMorph->HasBodyMorphKey(reference, kLegacyPreviewKey);
+        return !hasBaseOrPreview && !hasOBody;
     }
 
     void QueueVerifySavedBody(RE::Actor* actor)
@@ -774,6 +780,7 @@ namespace bcn::racemenu
             if (!ActorRegistry::Get().NeedsBodyApply(actor, selection.selectedId, selection.useDefault)) return;
             if (selection.useDefault) {
                 QueueClearBodyChangeMorphs(actor);
+                OutfitRefit::Get().ProcessActor(actor);
             } else if (QueueApply(actor, selection.selectedId, ApplyMode::commit, 0U,
                            UpdatePolicy::deferred) == ApplyResult::queued) {
                 // Restore the outfit layer through its normal policy after
@@ -951,11 +958,12 @@ namespace bcn::racemenu
         if (!actorHandle) return;
         if (const auto* tasks = SKSE::GetTaskInterface()) {
             const auto session = bcn::ActorRegistry::Get().SessionGeneration();
-            // Detach cancels actor-owned queues. Cleanup must survive that
-            // boundary, but never a session change or a new active preview.
-            bcn::frame_tasks::Queue(0, [actorHandle, session] {
-                if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(actorHandle);
-            });
+            // Survive detach while waiting out RaceMenu. Keep actor FIFO and
+            // the existing new-preview/session guards instead of anonymous undo.
+            QueueActorTask(actorHandle, bcn::appearance::WorkChannel::bodyPreviewCleanup,
+                [actorHandle, session] {
+                    if (bcn::ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(actorHandle);
+                });
         }
     }
 
@@ -964,7 +972,7 @@ namespace bcn::racemenu
         if (!actor || !IsReady()) return;
         const auto handle = actor->GetHandle();
         const auto session = ActorRegistry::Get().SessionGeneration();
-        frame_tasks::Queue(0, [handle, session] {
+        QueueActorTask(handle, appearance::WorkChannel::bodyPreviewCleanup, [handle, session] {
             if (ActorRegistry::Get().SessionGeneration() == session) ClearPreviewNow(handle);
         });
     }
@@ -1037,6 +1045,9 @@ namespace bcn::racemenu
         }
         const auto actorHandle = actor->GetHandle();
         if (const auto* tasks = SKSE::GetTaskInterface()) {
+            // This clear also removes the outfit key. A later equipment/SFS
+            // evaluation must not skip it because of an old success signature.
+            bcn::ActorRegistry::Get().InvalidateOutfit(actor);
             const auto session = bcn::ActorRegistry::Get().SessionGeneration();
             const auto previousActor = CancelPreviewTracking(actorHandle);
             if (previousActor && previousActor != actorHandle) {
