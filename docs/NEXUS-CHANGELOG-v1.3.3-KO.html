@@ -1,7 +1,11 @@
 <!doctype html>
 <html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Body Change NG v1.3.3 변경 내역</title>
-<style>body{margin:0;background:#10151f;color:#e6edf5;font:16px/1.8 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:40px 24px}h1{color:#FFD600;line-height:1.3}h2{color:#19D8FF}h3{color:#5CFFA3}hr{border:0;border-top:1px solid #46546b;margin:24px 0}li{margin:14px 0}strong{color:#FFD600}code{color:#5CFFA3;overflow-wrap:anywhere}</style>
+<style>
+:root{color-scheme:light dark;--bg:#f4f7fa;--line:#b7c8d5;--title:#895c00;--accent:#006779;--sub:#146a35}
+@media(prefers-color-scheme:dark){:root{--bg:#10151f;--line:#46546b;--title:#FFD600;--accent:#19D8FF;--sub:#5CFFA3}}
+body{margin:0;background:var(--bg);color:CanvasText;font:16px/1.8 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:40px 24px}h1{color:var(--title);line-height:1.3}h2{color:var(--accent)}h3{color:var(--sub)}hr{border:0;border-top:1px solid var(--line);margin:24px 0}li{margin:14px 0}strong{color:var(--title)}code{color:var(--sub);overflow-wrap:anywhere}
+</style>
 </head><body><main>
 <h1>Body Change NG v1.3.3</h1>
 <h3>게임 밖에서 준비하는 NPC 배포</h3><hr>
@@ -16,9 +20,10 @@
 <h2>업데이트와 저장</h2>
 <ul>
 <li>기본 템플릿의 <strong>활성 규칙은 0개</strong>입니다. 업데이트할 때 사용자가 만든 기존 규칙 파일을 보존하세요.</li>
-<li>주석 파일은 <strong>1.3.3 이상 DLL</strong>이 필요합니다. 인게임 규칙 저장 시 주석 없는 JSON으로 다시 쓰므로 편집용 원본은 따로 보관하세요. 다른 JSON 입력에 주석 기능을 추가한 것은 아닙니다.</li>
+<li><strong>1.3.3 DLL</strong>은 인게임 저장 시 실제 규칙을 <strong>맨 위</strong>에 쓰고, 기존 주석 가이드·비활성 예시·사용자 메모를 <strong>아래에 보존</strong>합니다. 반복 저장해도 예시가 활성화되거나 주석이 중복되지 않습니다. 다른 JSON 입력에 주석 기능을 추가한 것은 아닙니다.</li>
+<li>한글 소개글·체인지로그 HTML은 브라우저의 밝은/어두운 테마에 맞춰 본문 시스템 글자색과 제목·링크·코드·표의 대비를 조정합니다.</li>
 <li>기존 외형 기능, 배포 판정, 세이브 형식, 지원 게임·RaceMenu 인터페이스와 고정 의존성은 유지합니다. 게임 중 반복 검사나 영구 캐시를 새로 추가하지 않았습니다.</li>
 </ul><hr>
 <h2>검증</h2>
-<p>Release 빌드, 오프라인 회귀 실행 파일 35개, 규칙 작성 검사, 배포 저장 88개 조합과 조건 ID 대조를 통과했습니다. 새 인게임 테스트는 수행하지 않았습니다.</p>
+<p>Release 빌드, 오프라인 회귀 실행 파일 35개, 규칙 작성 검사, 배포 저장 88개 조합, 25회 반복 저장 동일성, 저장 실패 시 주석 보존과 조건 ID 대조를 통과했습니다. 새 인게임 테스트는 수행하지 않았습니다.</p>
 </main></body></html>

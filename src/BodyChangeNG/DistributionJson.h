@@ -1,6 +1,12 @@
 #pragma once
 
+#include <filesystem>
+#include <fstream>
 #include <istream>
+#include <iterator>
+#include <stdexcept>
+#include <string>
+#include <string_view>
 #include <nlohmann/json.hpp>
 
 namespace bcn::distribution_json
@@ -11,5 +17,56 @@ namespace bcn::distribution_json
     [[nodiscard]] inline nlohmann::json Parse(std::istream& stream)
     {
         return nlohmann::json::parse(stream, nullptr, true, true);
+    }
+
+    // Move comment tokens, not old JSON values, below the newly saved root.
+    // Quoted/escaped strings and whole block comments must be skipped so that
+    // paths, URLs and disabled example objects cannot become active rules.
+    // Canonical separators make repeated saves byte-stable (no growing footer).
+    [[nodiscard]] inline std::string Comments(std::string_view text)
+    {
+        std::string comments;
+        for (std::size_t position{}; position < text.size();) {
+            if (text[position] == '"') {
+                ++position;
+                while (position < text.size()) {
+                    const auto value = text[position++];
+                    if (value == '\\' && position < text.size()) ++position;
+                    else if (value == '"') break;
+                }
+                continue;
+            }
+            if (text[position] != '/' || position + 1 == text.size()) {
+                ++position;
+                continue;
+            }
+            const auto begin = position;
+            if (text[position + 1] == '/') {
+                const auto end = text.find_first_of("\r\n", position + 2);
+                position = end == std::string_view::npos ? text.size() : end;
+            } else if (text[position + 1] == '*') {
+                const auto end = text.find("*/", position + 2);
+                if (end == std::string_view::npos) {
+                    throw std::runtime_error("unfinished distribution comment; original file retained");
+                }
+                position = end + 2;
+            } else {
+                ++position;
+                continue;
+            }
+            comments.append(text.substr(begin, position - begin));
+            comments.push_back('\n');
+        }
+        return comments;
+    }
+
+    [[nodiscard]] inline std::string ReadComments(const std::filesystem::path& path)
+    {
+        if (!std::filesystem::exists(path)) return {};
+        std::ifstream stream(path, std::ios::binary);
+        if (!stream.is_open()) throw std::runtime_error("could not read distribution comments");
+        const std::string text((std::istreambuf_iterator<char>(stream)), {});
+        if (stream.bad()) throw std::runtime_error("distribution comment read failed");
+        return Comments(text);
     }
 }

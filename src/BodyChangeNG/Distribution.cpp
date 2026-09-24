@@ -699,6 +699,7 @@ namespace
         const std::vector<bcn::DistributionRule>& rules)
     {
         try {
+            const auto comments = bcn::distribution_json::ReadComments(path);
             std::filesystem::create_directories(path.parent_path());
             nlohmann::json serializedRules = nlohmann::json::array();
             for (const auto& rule : rules) {
@@ -733,6 +734,7 @@ namespace
             {
                 std::ofstream stream(temporary, std::ios::trunc | std::ios::binary);
                 stream << root.dump(2) << '\n';
+                if (!comments.empty()) stream << '\n' << comments;
                 stream.flush();
                 if (!stream.good()) throw std::runtime_error("write failed");
             }
@@ -740,9 +742,8 @@ namespace
             // has been flushed and parsed successfully.
             {
                 std::ifstream verification(temporary, std::ios::binary);
-                const auto parsed = nlohmann::json::parse(verification);
-                if (!parsed.is_object() || parsed.value("schemaVersion", 0) != kSchemaVersion ||
-                    !parsed.contains("rules") || !parsed["rules"].is_array()) {
+                const auto parsed = bcn::distribution_json::Parse(verification);
+                if (parsed != root) {
                     throw std::runtime_error("temporary distribution verification failed");
                 }
             }

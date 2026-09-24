@@ -26,6 +26,12 @@ namespace {
         std::ifstream file(path, std::ios::binary);
         return {(std::istreambuf_iterator<char>(file)), {}};
     }
+    void WriteText(const std::filesystem::path& path, std::string_view text) {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file << text;
+        file.flush();
+        Require(file.good(), "could not create annotated save fixture");
+    }
     struct Sandbox {
         std::filesystem::path root = std::filesystem::temp_directory_path() /
             ("BCNG-distribution-writer-" + std::to_string(GetCurrentProcessId()) + "-" +
@@ -51,10 +57,25 @@ int main() try {
         R"({"schemaVersion":7,"rules":[]}// end without newline)",
         "\xEF\xBB\xBF// UTF-8 BOM\r\n{\"schemaVersion\":7,\"rules\":[]}"}) {
         Require(parse(text) == plain, "comment/BOM parsing changed active data");
+        const auto comments = bcn::distribution_json::Comments(text);
+        const auto saved = plain.dump(2) + "\n\n" + comments;
+        Require(parse(saved) == plain && bcn::distribution_json::Comments(saved) == comments,
+            "moving comments activated data or duplicated the guide");
     }
     const auto strings = parse(R"({"value":"url://host/*literal*/","escaped":"quote\"//still text","preset":"file.xml\u001fName"})");
     Require(strings["value"] == "url://host/*literal*/" && strings["escaped"] == "quote\"//still text" &&
         strings["preset"] == std::string("file.xml") + '\x1F' + "Name", "string content damaged by comment handling");
+    Require(bcn::distribution_json::Comments(strings.dump()).empty(),
+        "comment markers inside strings became real comments");
+    const auto mixed = R"(/* header */ {"odd":"escaped\"//quoted","even":"slash\\", // inline
+        "rule":"not a /* comment */"} /* {"disabled":true,"text":"// untouched"} */ // final)";
+    const auto mixedComments = bcn::distribution_json::Comments(mixed);
+    Require(mixedComments == "/* header */\n// inline\n/* {\"disabled\":true,\"text\":\"// untouched\"} */\n// final\n",
+        "comment lexer mishandled escapes or disabled example text");
+    Require(parse(parse(mixed).dump() + '\n' + mixedComments) == parse(mixed),
+        "comment relocation changed escaped string values");
+    Require(bcn::distribution_json::Comments("// one\r// two\r\n/**//* three */") ==
+        "// one\n// two\n/**/\n/* three */\n", "CR/LF or adjacent comments were lost");
     for (const auto text : {
         R"({"schemaVersion":7,"rules":[],})", R"({"rules":[{},]})",
         R"({"rules":[]} /* unfinished)", R"({"rules":[]} // comment
@@ -89,13 +110,13 @@ int main() try {
                 value.at("presetIds").at(0).get<std::string>() ==
                     std::string("My Presets.xml") + '\x1F' + "Preset A",
                 "sample local ID or JSON preset separator is wrong");
-            auto activated = templateText;
-            activated.erase(end, std::string_view("END EXAMPLE */").size());
-            activated.erase(position, begin - position);
-            const auto activeRoot = parse(activated);
+            auto activated = starter;
+            activated["rules"].push_back(value);
+            const auto activeRoot = parse(activated.dump(2) + '\n' +
+                bcn::distribution_json::Comments(templateText));
             Require(activeRoot.size() == 2 && activeRoot.at("schemaVersion") == 7 &&
                 activeRoot.at("rules") == nlohmann::json::array({value}),
-                "quick-start marker removal did not activate exactly the first example");
+                "copying an example into top rules did not activate exactly that rule");
         }
         Require(!value.contains("enabled") || value.at("enabled") == true,
             "false cannot safely disable a sample rule");
@@ -223,12 +244,7 @@ int main() try {
     }
     const auto annotated = std::string("// hand-authored rules / 사용자 주석\n") +
         stored.dump(2) + "\n/* keep this on failed save */\n";
-    {
-        std::ofstream file(path, std::ios::binary | std::ios::trunc);
-        file << annotated;
-        file.flush();
-        Require(file.good(), "could not create annotated save fixture");
-    }
+    WriteText(path, annotated);
     Require(Read(path) == stored, "annotating saved rules changed their data");
     {
         // Deny replacement of the live file, simulating a sharing violation.
@@ -245,11 +261,45 @@ int main() try {
     Require(ReadText(path) == annotated, "staging failure changed the commented file");
     std::filesystem::remove(temporary);
     Require(WriteDistributionFile(path, rules) && Read(path) == stored,
-        "plain re-save of commented rules changed active data");
-    Require(ReadText(path) == stored.dump(2) + '\n',
-        "successful save should produce plain JSON without old comments");
+        "re-save of commented rules changed active data");
+    Require(ReadText(path) == stored.dump(2) + "\n\n" + bcn::distribution_json::Comments(annotated),
+        "successful save did not place active rules above preserved comments");
     Require(WriteDistributionFile(path, {}) && Read(path)["rules"].empty(), "retry after failure did not work");
+    Require(bcn::distribution_json::Comments(ReadText(path)) == bcn::distribution_json::Comments(annotated),
+        "deleting every active rule lost the comments");
+    WriteText(path, templateText);
+    const auto templateComments = bcn::distribution_json::Comments(templateText);
+    Require(!templateComments.empty() && templateText.starts_with("{"), "starter must place active JSON first");
+    Require(WriteDistributionFile(path, rules) && Read(path) == stored,
+        "first in-game save of the full guide changed active rules");
+    const auto fullSaved = ReadText(path);
+    Require(fullSaved == stored.dump(2) + "\n\n" + templateComments,
+        "full guide or disabled examples lost during save");
+    for (unsigned repeat{}; repeat < 25; ++repeat) {
+        Require(WriteDistributionFile(path, rules) && ReadText(path) == fullSaved,
+            "repeated save grew, reordered or damaged the guide");
+    }
+    WriteText(path, fullSaved + "// user-added note / 사용자 메모\n");
+    Require(WriteDistributionFile(path, rules) &&
+        ReadText(path) == fullSaved + "// user-added note / 사용자 메모\n",
+        "save failed to retain a newly edited note");
+    const auto unreadableOriginal = ReadText(path);
+    {
+        HeldFile held{CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr)};
+        Require(held.handle != INVALID_HANDLE_VALUE, "could not deny reading the source");
+        Require(!WriteDistributionFile(path, {}), "unreadable comments were silently discarded");
+    }
+    Require(ReadText(path) == unreadableOriginal && !std::filesystem::exists(temporary),
+        "source-read failure changed the original or created staging data");
+    const auto brokenComment = fullSaved + "/* incomplete user edit";
+    WriteText(path, brokenComment);
+    Require(!WriteDistributionFile(path, {}) && ReadText(path) == brokenComment &&
+        !std::filesystem::exists(temporary), "unfinished comment was lost or replaced");
+    WriteText(path, stored.dump(2));
+    Require(WriteDistributionFile(path, rules) && ReadText(path) == stored.dump(2) + '\n',
+        "plain file compatibility changed or a guide was unexpectedly injected");
     std::cout << "Distribution persistence passed: " << rules.size()
-        << " scope/sex/feature rows, stable IDs, RGBA, real atomic replacement/failure/retry (no engine load)\n";
+        << " scope/sex/feature rows, stable IDs, RGBA, preserved guide/examples, 25 stable re-saves, "
+           "atomic replacement/failure/retry (no engine load)\n";
     return 0;
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

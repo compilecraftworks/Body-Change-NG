@@ -26,8 +26,11 @@ BCNG 1.3.3부터 이 배포 파일에서 // 한 줄 주석과 /* ... */ 여러 �
 schema 7 파일도 계속 사용할 수 있습니다. settings.json 등 다른 JSON은
 이 변경의 대상이 아닙니다. 그 파일에는 주석을 넣지 마세요.
 실제 적용되는 것은 rules 배열뿐이며 기본 []는 자동 배포 없음입니다.
-인게임에서 규칙을 저장하면 주석은 없어집니다. 이 별도 안내와 원본
-템플릿을 보관하세요. 인게임 저장은 활성 rules를 정상 저장합니다.
+인게임에서 즉시 배포/다음 게임 배포로 저장하면 실제 규칙은 파일 맨 위에
+기록하고, 기존 주석 가이드·예시·사용자 메모는 그 아래에 보존합니다.
+주석 예시는 활성화되지 않습니다. 필드 옆 메모도 아래로 이동합니다.
+처음부터 주석이 없는 파일에 가이드를 자동 삽입하지는 않습니다.
+이미 삭제된 주석은 복구하지 못하므로 원본과 백업도 보관하세요.
 
 2. 가장 간단한 시작: 동료 A는 프리셋 A, 동료 B는 프리셋 B
 
@@ -61,9 +64,9 @@ schema 7 파일도 계속 사용할 수 있습니다. settings.json 등 다른 J
   ]
 }
 
-동봉 JSON 맨 위 rules 안의 첫 예제는 양쪽 표식 줄
-/* EXAMPLE: individual_body 와 END EXAMPLE */ 를 지우면 활성화됩니다.
-파일 아래쪽의 다른 예제는 { ... } 객체만 위 rules 배열 안으로 복사하세요.
+동봉 JSON은 맨 위의 rules 배열만 실제 적용 영역입니다.
+첫 예제를 포함해 아래 예제의 { ... } 객체만 위 rules 배열 안으로 복사하세요.
+/* EXAMPLE: ... 와 END EXAMPLE */ 표식 줄은 복사하지 않습니다.
 아래쪽에서 주석만 해제하면 JSON 뒤에 두 번째 객체가 생겨 오류가 납니다.
 예제 19개는 모든 대상 조건 0~10과 바디·스킨·후타·오버레이를 다룹니다.
 두 객체 사이는 쉼표로 구분하고 마지막 객체 뒤에는 쉼표를 넣지 않습니다.
@@ -328,8 +331,11 @@ distribution file. Do not give a commented file to a 1.3.2-or-older DLL.
 Existing plain schema-7 JSON remains supported. Other JSON files, including
 settings.json, have NOT gained comment support; keep those files comment-free.
 Only the rules array is active. The default [] applies nothing.
-In-game rule saving rewrites active rules and drops comments. Keep the original
-template and this separate guide.
+In-game Distribute now/next-game saves write active rules at the TOP, followed
+by existing guide comments, disabled examples and user notes. Inline notes also
+move below the root. Saving never activates commented examples or adds a guide
+to a file that has no comments. Already deleted comments cannot be recovered;
+keep the original template and a backup too.
 
 2. Quick start: one named preset for each follower
 
@@ -342,9 +348,9 @@ For race targeting with multiple candidates, see COMPLETE CONFIGURATION in
 the JSON: a complete file assigning female Nords one of two bodies and one of
 two skins independently. Replace its fictional asset IDs with installed ones.
 
-The first example is already inside rules. Delete its two marker lines,
-/* EXAMPLE: individual_body and END EXAMPLE */, to activate it.
-For examples BELOW the root object, copy only { ... } into rules ABOVE.
+Only the rules array at the TOP is active. For any example, including the first,
+copy only its { ... } object into rules ABOVE, without the surrounding
+/* EXAMPLE: ... and END EXAMPLE */ marker lines.
 Simply uncommenting a below-root example creates an invalid second root.
 Separate rule objects with commas; do not put a comma after the last one.
 Preserve existing active rules rather than overwriting the whole file.

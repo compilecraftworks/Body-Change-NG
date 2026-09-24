@@ -5,16 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Body Change NG v1.3.2 — 소개와 사용 안내</title>
 <style>
-:root{color-scheme:dark;--bg:#101419;--panel:#192129;--line:#33414f;--text:#e7edf3;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83}
-*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:var(--text);font:16px/1.85 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
+:root{color-scheme:light dark;--bg:#f4f7fa;--panel:#ffffff;--line:#b7c8d5;--muted:#526574;--accent:#006779;--sub:#146a35;--title:#895c00;--warn:#805900;--notice:#fff4db;--code-bg:#eaf0f4;--code-text:#16495d;--table-head:#e4edf3}
+@media(prefers-color-scheme:dark){:root{--bg:#101419;--panel:#192129;--line:#33414f;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83;--notice:#28261f;--code-bg:#10181f;--code-text:#cff0fa;--table-head:#141b22}}
+*{box-sizing:border-box}html{scroll-behavior:smooth;scroll-padding-top:24px}body{margin:0;background:var(--bg);color:CanvasText;font:16px/1.85 system-ui,-apple-system,"Segoe UI","Malgun Gothic",sans-serif}
 main{max-width:1040px;margin:32px auto;padding:44px;background:var(--panel);border:1px solid var(--line);border-radius:16px}
 h1,h2,h3{line-height:1.4;font-weight:800}h1{color:var(--title);font-size:2.7rem;margin:8px 0 18px}h1 small{font-size:1.2rem;color:var(--accent);white-space:nowrap}h2{margin-top:2.8em;padding-bottom:12px;border-bottom:1px solid var(--line);color:var(--accent);font-size:1.55rem}h3{color:var(--sub);margin-top:1.8em;font-size:1.15rem}
-a{color:var(--accent)}p{margin:.9em 0}li+li{margin-top:.45em}ul,ol{padding-left:1.5em}strong{color:#fff}
-.eyebrow{color:var(--accent);font-size:.8rem;letter-spacing:.14em}.lead{font-size:1.13rem;font-weight:650;color:var(--sub)}.notice{border-left:4px solid var(--warn);padding:14px 20px;background:#28261f;border-radius:0 6px 6px 0}.note{color:var(--muted)}
+a{color:var(--accent)}p{margin:.9em 0}li+li{margin-top:.45em}ul,ol{padding-left:1.5em}
+.eyebrow{color:var(--accent);font-size:.8rem;letter-spacing:.14em}.lead{font-size:1.13rem;font-weight:650;color:var(--sub)}.notice{border-left:4px solid var(--warn);padding:14px 20px;background:var(--notice);border-radius:0 6px 6px 0}.note{color:var(--muted)}
 nav{display:flex;flex-wrap:wrap;gap:8px 20px;padding:18px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line);margin:28px 0}nav a{text-decoration:none}
-code{font: .91em/1.65 Consolas,"Malgun Gothic",monospace;background:#10181f;color:#cff0fa;padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
-pre{background:#10181f;border:1px solid var(--line);padding:16px;border-radius:8px;overflow:auto;line-height:1.65}pre code{padding:0;background:none;white-space:pre-wrap;overflow-wrap:anywhere}
-.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);background:#141b22}
+code{font: .91em/1.65 Consolas,"Malgun Gothic",monospace;background:var(--code-bg);color:var(--code-text);padding:2px 5px;border-radius:4px;overflow-wrap:anywhere}
+pre{background:var(--code-bg);border:1px solid var(--line);padding:16px;border-radius:8px;overflow:auto;line-height:1.65}pre code{padding:0;background:none;white-space:pre-wrap;overflow-wrap:anywhere}
+.table-wrap{overflow:auto}table{border-collapse:collapse;width:100%;font-size:.95rem}th,td{padding:12px 14px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}th{color:var(--accent);background:var(--table-head)}
 footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:var(--muted);font-size:.9rem}
 @media(max-width:700px){main{margin:0;border:0;border-radius:0;padding:24px 18px}h1{font-size:2rem}body{font-size:15px}th,td{padding:9px}nav{gap:8px 14px}}
 @media print{:root{color-scheme:light}body,main{background:#fff;color:#222}main{border:0;margin:0;padding:0}strong,h1,h2,h3,code,th,td,a,.lead,.note,footer{color:#222}pre,code,.notice{background:#f3f3f3}pre{white-space:pre-wrap}pre code{white-space:pre-wrap}nav{display:none}h2,h3{break-after:avoid}}

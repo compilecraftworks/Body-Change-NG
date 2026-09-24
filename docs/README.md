@@ -8,8 +8,9 @@ The [commented JSON template](../package/SKSE/Plugins/BodyChangeNGdistribution.j
 contains bilingual field explanations and 19 inactive examples covering all 11
 target scopes and all distribution features. The [complete guide](../package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
 and optional read-only [ID helper](../package/Tools/BodyChangeNG-RuleId.ps1) explain
-editing outside the game. Comments require the v1.3.3+ DLL and are stripped by
-in-game rule saving; keep the template separately. Existing plain schema-7 files
+editing outside the game. Comments require the v1.3.3+ DLL. In-game rule saving
+writes active data first and preserves existing comments/examples below the root.
+Repeated saves do not duplicate the guide. Existing plain schema-7 files
 remain supported. Release archives are written to the repository's `release` root.
 See the [v1.3.3 authoring verification](DISTRIBUTION-AUTHORING-VERIFICATION-v1.3.3-KO.md)
 for build, regression, template and packaging-manifest checks and their limits.

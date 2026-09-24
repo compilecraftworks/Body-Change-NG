@@ -18,8 +18,9 @@ See the [offline authoring guide](package/SKSE/Plugins/BodyChangeNGdistribution-
 and optional read-only [preset/overlay ID helper](package/Tools/BodyChangeNG-RuleId.ps1).
 
 Commented files require the **v1.3.3+ DLL**; plain schema-7 JSON remains compatible.
-In-game rule saving rewrites the file without comments, so keep an editable
-template backup. Comment support does not extend to `settings.json` or ORefit
+In-game rule saving writes active rules at the top and preserves existing guide
+comments, examples and notes below them without activating or duplicating them.
+Keep a backup too. Comment support does not extend to `settings.json` or ORefit
 JSON. The starter has no active rules and does not distribute the fictional examples.
 Existing distribution behavior, supported runtimes and dependencies are unchanged.
 

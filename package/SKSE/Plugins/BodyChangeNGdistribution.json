@@ -1,3 +1,8 @@
+{
+  "schemaVersion": 7,
+  "rules": []
+}
+
 // Body Change NG 1.3.3 — NPC 자동 배포 규칙 / NPC distribution rules
 // 주석이 있는 이 파일은 BCNG 1.3.3 이상이 필요합니다. / Comments require BCNG 1.3.3+.
 // 기존 주석 없는 schema 7 파일도 계속 읽습니다. / Existing plain schema-7 JSON still works.
@@ -7,8 +12,9 @@
 //
 // 처음 쓰는 분 / START HERE
 // 1. 게임을 끄고 기존 파일을 백업합니다. / Close Skyrim and back up your existing file.
-// 2. 아래 첫 예제의 /* EXAMPLE: individual_body 줄과 END EXAMPLE */ 줄을 지우면 활성화됩니다.
-//    Delete those TWO marker lines around the first example to activate that rule.
+// 2. 아래 예제에서 { ... } 객체만 복사해 맨 위 "rules": []의 대괄호 안에 넣으세요.
+//    Copy only an example's { ... } object into the TOP "rules": [] array.
+//    아래 예제의 주석을 해제하지 마세요. / Do not uncomment the examples below.
 // 3. 가상 NPC/프리셋/스킨은 본인 값으로 바꾸세요. 기본 게임 조건 값은 아래 실값 목록을 참고하세요.
 //    Replace the fictional NPC/assets. Base-game condition IDs in REAL CONDITION VALUES are verified.
 // 4. 동료마다 { ... }를 하나씩 추가합니다. 객체 사이에는 쉼표, 마지막 뒤에는 쉼표 없음.
@@ -21,8 +27,10 @@
 // Default: ZERO active rules. Commented examples do nothing.
 // 여러 JSON은 자동 병합하지 않습니다. MO2 Overwrite의 덮어쓰기도 확인하세요.
 // JSON providers are not merged. Check MO2 Overwrite/output mods for a winning copy.
-// 인게임에서 규칙을 저장하면 주석은 제거됩니다. 이 편집용 원본을 따로 보관하세요.
-// In-game rule saving rewrites data without comments. Keep this template separately.
+// 인게임에서 즉시 배포/다음 게임 배포로 저장하면 실제 규칙은 맨 위, 기존 주석은 아래에 남습니다.
+// In-game Distribute now/next-game saves write active rules FIRST and retain existing comments BELOW.
+// 주석 예시는 계속 비활성 상태입니다. 파일 백업은 별도로 유지하세요.
+// Commented examples remain inactive. Still keep a separate backup of your file.
 // 주석은 이 배포 JSON에서만 지원합니다. settings.json에는 넣지 마세요.
 // Comment support is specific to this distribution file, not settings.json.
 // 편집기가 오류로 표시하면 JSON with Comments/JSONC 모드로 볼 수 있습니다. 파일명은 그대로 두세요.
@@ -30,9 +38,6 @@
 // 큰따옴표 사용, 마지막 쉼표 금지, /* */ 주석 중첩 금지. 숫자/true/false는 따옴표 없이.
 // Use double quotes, no trailing commas or nested block comments; numbers/true/false are unquoted.
 
-{
-  "schemaVersion": 7, // 형식 버전: 바꾸지 마세요. / Schema version: do not change.
-  "rules": [
 /* EXAMPLE: individual_body
     {
       "id": "follower-a-body", // 규칙마다 다른 이름 / Unique rule ID
@@ -44,8 +49,6 @@
       "presetIds": ["My Presets.xml\u001fPreset A"] // XML 경로 + 구분자 + Preset name
     }
 END EXAMPLE */
-  ]
-}
 
 // ==================== 무엇을 입력하나요? / REAL CONDITION VALUES ====================
 // '노드', '전사', '근접' 같은 번역/분류 이름을 임의로 입력하는 것이 아닙니다.

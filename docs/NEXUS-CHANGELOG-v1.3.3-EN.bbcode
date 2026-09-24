@@ -13,9 +13,10 @@
 [size=4][color=#19D8FF][b]Updating and saving[/b][/color][/size]
 [list]
 [*]The shipped template still has [b]zero active rules[/b]. Preserve your existing customized file when updating.
-[*]Commented files require the [b]v1.3.3+ DLL[/b]. In-game rule saving rewrites plain JSON and removes comments; keep a separate annotated copy. Other JSON inputs have not gained comment support.
+[*]The [b]v1.3.3 DLL[/b] now writes active rules [b]at the top[/b] and preserves existing guide comments, inactive examples and user notes [b]below them[/b]. Repeated saves do not duplicate or activate examples. Other JSON inputs have not gained comment support.
+[*]Korean description/changelog HTML follows browser light/dark preferences, with readable system body-text colors and contrasting headings, links, code and tables.
 [*]Existing appearance features, distribution matching, save formats, supported game/RaceMenu interfaces and pinned dependencies remain unchanged. No new gameplay polling or permanent cache.
 [/list]
 [hr]
 [size=4][color=#19D8FF][b]Verification[/b][/color][/size]
-Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases and condition-ID checks passed. No new in-game test was performed.
+Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases, 25 byte-stable re-saves, comment-preserving failure cases and condition-ID checks passed. No new in-game test was performed.

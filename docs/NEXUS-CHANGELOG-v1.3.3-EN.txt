@@ -5,6 +5,7 @@ Body Change NG v1.3.3
 - Included 39 verified base-game race, vampire-race, faction, keyword, class and combat-style IDs, plus instructions for finding mod-added records outside the game.
 - Added multi-candidate body, skin, futa-skin and overlay examples. Pools select compatible candidates independently; they are not simultaneous stacks or paired body/skin combinations.
 - Included an optional read-only PowerShell helper for BodySlide preset IDs and registered overlay IDs, with a separate English/Korean authoring guide. Valid rules can be prepared for a modpack without opening the in-game distribution window.
-- The starter still has zero active rules. Keep your existing custom rule file when updating. Commented files require the v1.3.3+ DLL. In-game rule saving removes comments; keep a separate annotated copy.
+- The starter still has zero active rules. Keep your existing custom rule file when updating. The v1.3.3 DLL now saves active rules at the top and preserves existing guide comments, inactive examples and user notes below them, without duplication on repeated saves.
+- Korean description/changelog HTML follows browser light/dark preferences, with system body-text colors and contrasting titles, links, code and tables.
 - Existing appearance features, distribution matching, save formats, supported game/RaceMenu interfaces and dependency pins are unchanged. No new gameplay polling or permanent cache was added.
-- Verification: Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases and condition-ID checks passed. No new in-game test was performed.
+- Verification: Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases, 25 byte-stable re-saves, comment-preserving failure cases and condition-ID checks passed. No new in-game test was performed.
