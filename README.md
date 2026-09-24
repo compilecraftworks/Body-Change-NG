@@ -1,4 +1,4 @@
-# Body Change NG — v1.3.1
+# Body Change NG — v1.3.2
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,30 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.1
+## Current version — v1.3.2
+
+Version 1.3.2 restores direct skin selection for standalone actors whose body
+family cannot be identified. Select the actor, open Body Skin, click to preview
+and double-click to apply. **NPC distribution rules are not required.** An
+unknown-family hint asks you to choose the correct Legacy/UBE skin for that actor;
+known incompatible layouts, sex and race restrictions remain enforced. Automatic
+distribution keeps its existing compatibility checks.
+
+NPC faces are resolved within the actual FaceGen subtree, allowing an unambiguous
+face whose exported mesh name differs from the HeadPart editor ID. Body-only skin
+packs no longer wait for a face target unless an earlier face change needs cleanup.
+Manual-choice restoration, hand/foot routing, existing cache maintenance and
+co-save formats are preserved. No new polling or dependencies are added.
+
+The Release build, 35 offline regression executables and 19 audit-tool tests passed.
+No new in-game testing was performed; the reporters' specific setups have not been
+reproduced. See the [verification and limits](docs/RELEASE-VERIFICATION-v1.3.2-KO.md).
+
+- [English changelog](CHANGELOG.md#132) · [한국어 변경 내역](CHANGELOG-KO.md#132)
+- [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.2-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.2-KO.html)
+- [English plain text](docs/NEXUS-CHANGELOG-v1.3.2-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.2-KO.txt)
+
+## Preserved v1.3.1 cache maintenance
 
 Version 1.3.1 adds optional **offline cache maintenance**. Close Skyrim, run
 `Tools\BodyChangeNGCache.exe` directly (not through MO2), and select MO2 Overwrite

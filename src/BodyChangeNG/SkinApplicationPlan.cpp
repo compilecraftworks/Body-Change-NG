@@ -73,7 +73,7 @@ namespace bcn::skin_plan
     {
         ApplicationPlan plan;
         plan.layout = profile.layout;
-        plan.runtimeUvLayout = ResolveRuntimeSkinUvLayout(profile.layout, actor.bodyFamily);
+        plan.runtimeUvLayout = ResolveSelectedSkinUvLayout(profile.layout, actor.bodyFamily, actor.selection);
         plan.body = profile.body;
         plan.hands = profile.hands;
         // Optional genital/anal atlases are assets, not classification

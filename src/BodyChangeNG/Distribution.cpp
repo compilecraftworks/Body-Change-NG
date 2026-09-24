@@ -1104,7 +1104,8 @@ namespace bcn
         } else if (manual && manual->hasSkin && !manual->skinId.empty() &&
             ActorRegistry::Get().NeedsSkinApply(actor, manual->skinId, false)) {
             queued = queueSkin(manual->skinId,
-                skin_application::QueueApply(actor, manual->skinId)) || queued;
+                skin_application::QueueApply(actor, manual->skinId, skin_transaction::Mode::commit,
+                    skin_transaction::Selection::direct)) || queued;
         } else if (automaticSkin && !automaticSkin->useDefault &&
             !automaticSkin->selectedId.empty() &&
             ActorRegistry::Get().NeedsSkinApply(actor, automaticSkin->selectedId, false)) {

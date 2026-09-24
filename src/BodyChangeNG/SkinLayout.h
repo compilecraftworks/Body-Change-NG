@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/SkinTransactionPolicy.h"
 
 #include <bit>
 #include <cstddef>
@@ -35,9 +36,9 @@ namespace bcn
         khajiit
     };
 
-    // Concrete runtime layout used only by material/geometry routing. It is
-    // derived from SkinLayout + the actor's BodyFamily and is never used to
-    // classify or identify a catalog entry.
+    // Runtime routing, never catalog identity. Exact families enable their
+    // auxiliary atlases; direct unclassified actors use ordinary Legacy roles
+    // or the explicitly selected UBE pack without inventing a BodySlide family.
     enum class SkinUvLayout : std::uint8_t
     {
         unknown,
@@ -49,7 +50,8 @@ namespace bcn
         himbo,
         sam,
         argonian,
-        khajiit
+        khajiit,
+        legacy // Direct choice: ordinary body/hands/feet only; no guessed auxiliary atlas.
     };
 
     enum class SkinCompatibilityStatus : std::uint8_t
@@ -145,7 +147,8 @@ namespace bcn
     [[nodiscard]] constexpr SkinCompatibility EvaluateSkinCompatibility(
         const SkinLayout profileLayout, const SkinSex profileSex,
         const SkinRace profileRace, const SkinSex actorSex,
-        const SkinRace actorRace, const body_family::Mask actorFamilies) noexcept
+        const SkinRace actorRace, const body_family::Mask actorFamilies,
+        const skin_transaction::Selection selection = skin_transaction::Selection::automatic) noexcept
     {
         if (profileSex != actorSex) {
             return { SkinCompatibilityStatus::incompatibleSex };
@@ -161,6 +164,11 @@ namespace bcn
                 SkinCompatibilityStatus::compatible :
                 SkinCompatibilityStatus::incompatibleLayout };
         }
+        if (actorFamilies == 0U && selection == skin_transaction::Selection::direct &&
+            (profileLayout == SkinLayout::legacy ||
+                (profileLayout == SkinLayout::ube && actorSex == SkinSex::female))) {
+            return { SkinCompatibilityStatus::compatible };
+        }
         if (std::popcount(actorFamilies) != 1) {
             return { SkinCompatibilityStatus::unknownActorLayout };
         }
@@ -168,6 +176,17 @@ namespace bcn
                 SkinUvLayout::unknown ?
             SkinCompatibilityStatus::compatible :
             SkinCompatibilityStatus::incompatibleLayout };
+    }
+
+    [[nodiscard]] constexpr SkinUvLayout ResolveSelectedSkinUvLayout(
+        const SkinLayout layout, const body_family::Mask actorFamilies,
+        const skin_transaction::Selection selection) noexcept
+    {
+        if (actorFamilies == 0U && selection == skin_transaction::Selection::direct) {
+            if (layout == SkinLayout::legacy) return SkinUvLayout::legacy;
+            if (layout == SkinLayout::ube) return SkinUvLayout::ube;
+        }
+        return ResolveRuntimeSkinUvLayout(layout, actorFamilies);
     }
 
     // Only a verified humanoid layout may inherit its body atlas for feet.

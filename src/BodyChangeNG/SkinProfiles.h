@@ -162,10 +162,11 @@ namespace bcn
 
     [[nodiscard]] constexpr SkinCompatibility SkinProfileCompatibility(
         const SkinProfile& profile, const SkinSex actorSex,
-        const SkinRace actorRace, const body_family::Mask actorFamilies) noexcept
+        const SkinRace actorRace, const body_family::Mask actorFamilies,
+        const skin_transaction::Selection selection = skin_transaction::Selection::automatic) noexcept
     {
         return EvaluateSkinCompatibility(profile.layout, profile.sex,
-            profile.race, actorSex, actorRace, actorFamilies);
+            profile.race, actorSex, actorRace, actorFamilies, selection);
     }
 
     [[nodiscard]] std::string SkinFamilyLabel(SkinLayout a_layout, SkinSex a_sex);

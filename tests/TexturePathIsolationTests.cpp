@@ -151,7 +151,13 @@ int main()
         std::cerr << "FAILED: actual face baseline / empty-load protection / read-only material access regressed\n";
         clean = false;
     }
-    if (faceAdapter.find("GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace)") == std::string::npos ||
+    if (faceNode.find("GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace)") == std::string::npos ||
+        faceNode.find("actor->GetFaceNodeSkinned()") == std::string::npos ||
+        faceNode.find("TraverseScenegraphGeometries(face,") == std::string::npos ||
+        faceNode.find("root->GetObjectByName(selectedGeometry->name) != selectedGeometry") == std::string::npos ||
+        faceAdapter.find("ResolveNodeName(actor.get())") == std::string::npos ||
+        faceAdapter.find("NeedsFaceTarget(it->second.paths,") == std::string::npos ||
+        faceAdapter.find("batch->noFaceWork = !NeedsFaceTarget(request.paths,") == std::string::npos ||
         faceAdapter.find("DispatchStaticCall(\"NiOverride\"") == std::string::npos ||
         facePolicy.find("kChannels{ 0, 1, 2, 3, 7 }") == std::string::npos ||
         faceAdapter.find("QueueNiNodeUpdate(") != std::string::npos ||

@@ -18,13 +18,20 @@ using FormID = std::uint32_t;
 struct TESNPC {
     void* skin{};
     void* farSkin{};
+    unsigned sex{};
+    unsigned GetSex() const { return sex; }
     FormID GetFormID() const { return 2; }
 };
+struct TESRace { FormID id{ 3 }; FormID GetFormID() const { return id; } };
 struct Actor {
     bool loaded = true;
     TESNPC base;
+    TESRace race;
     FormID GetFormID() const { return 1; }
     TESNPC* GetActorBase() { return &base; }
+    const TESNPC* GetActorBase() const { return &base; }
+    const TESRace* GetRace() const { return &race; }
+    void* GetSkin() const { return base.skin; }
     bool Is3DLoaded() const { return loaded; }
 };
 Actor instance;
@@ -161,6 +168,8 @@ struct BaseInstance {
     std::uint64_t generation = 7;
     std::string desiredProfileId;
     Graph skin, farSkin;
+    unsigned sourceFamily{}, sourceRace{ 3 }, sourceSex{};
+    void* originalSkin{};
     bool skinAttached = true, farSkinAttached = false;
     std::string appliedProfileId = "custom";
     std::uint64_t appliedContentHash = 99;
@@ -196,6 +205,7 @@ void Clear(RE::Actor*, std::function<void(bool)> callback, bool, skin_transactio
 }
 namespace native_test {
 #include "native_clear.inc"
+#include "native_sourcefamily.inc"
 void Reset() {
     g_instances.clear(); g_instances[2] = {};
     restores = refreshes = faces = 0;
@@ -203,6 +213,30 @@ void Reset() {
     bcn::ActorRegistry::Get().marked = bcn::ActorRegistry::Get().invalidated = 0;
 }
 void Run() {
+    {
+        Reset();
+        int original{}, clone{}, foreign{};
+        auto& actor = RE::instance;
+        auto& state = g_instances.at(2);
+        state.originalSkin = &original;
+        state.skin.armor = actor.base.skin = &clone;
+        const auto unknown = SourceBodyFamily(&actor);
+        Check(unknown && *unknown == 0U, "unknown source was lost after attaching private DDS paths");
+        state.sourceFamily = 2U;
+        Check(SourceBodyFamily(&actor) == 2U, "known source family changed");
+        state.sourceFamily = 0U;
+        actor.race.id = 4U;
+        Check(!SourceBodyFamily(&actor), "source reused after race change");
+        actor.race.id = 3U; actor.base.sex = 1U;
+        Check(!SourceBodyFamily(&actor), "source reused after sex change");
+        actor.base.sex = 0U; actor.base.skin = &foreign;
+        Check(!SourceBodyFamily(&actor), "source reused after foreign skin takeover");
+        state.skinAttached = false; state.appliedDefault = true; actor.base.skin = &original;
+        Check(SourceBodyFamily(&actor) == 0U, "default restoration changed source classification");
+        state.skin.armor = nullptr;
+        Check(!SourceBodyFamily(&actor), "unbuilt graph supplied source evidence");
+        actor.base.skin = nullptr;
+    }
     using bcn::skin_transaction::Mode;
     for (const auto bodyOK : {false, true}) for (const auto faceOK : {false, true}) {
         Reset(); restoreSucceeds = bodyOK; faceSucceeds = faceOK;
@@ -242,10 +276,13 @@ struct SkinProfiles {
 namespace bcn::skin_application { enum class ApplyResult { queued, noTaskInterface, unsupportedRuntime, actor3DUnavailable, missingProfile }; }
 namespace bcn::native_skin {
 unsigned calls{};
+skin_transaction::Selection lastSelection{ skin_transaction::Selection::automatic };
 skin_application::ApplyResult QueueClear(RE::Actor*, std::function<void(RE::Actor*)>, skin_transaction::Mode, bool = false) {
     ++calls; return skin_application::ApplyResult::queued;
 }
-skin_application::ApplyResult QueueApply(RE::Actor*, const std::string& id, std::function<void(RE::Actor*)>, skin_transaction::Mode) {
+skin_application::ApplyResult QueueApply(RE::Actor*, const std::string& id, std::function<void(RE::Actor*)>, skin_transaction::Mode,
+    skin_transaction::Selection selection) {
+    lastSelection = selection;
     return id == "missing" ? skin_application::ApplyResult::missingProfile : skin_application::ApplyResult::queued;
 }
 }
@@ -279,12 +316,14 @@ void TestRouting() {
     for (const auto mode : {Mode::commit, Mode::preview, Mode::restore}) QueueClear(&RE::instance, mode, false);
     Check(native_skin::calls == 5, "normal loaded selection was blocked");
     RE::instance.loaded = false; skin_session::tracked = 0;
-    QueueApply(&RE::instance, "original", Mode::commit);
-    QueueApply(&RE::instance, "original", Mode::preview);
+    QueueApply(&RE::instance, "original", Mode::commit, skin_transaction::Selection::direct);
+    Check(native_skin::lastSelection == skin_transaction::Selection::direct, "manual intent lost at native boundary");
+    QueueApply(&RE::instance, "original", Mode::preview, skin_transaction::Selection::direct);
     Check(skin_session::tracked == 0, "unloaded new choice changed the runtime skin tracking");
-    QueueApply(&RE::instance, "original", Mode::restore);
+    QueueApply(&RE::instance, "original", Mode::restore, skin_transaction::Selection::direct);
     Check(skin_session::tracked == 1 && skin_session::lastId == "original", "custom-skin undo left the preview tracked");
-    QueueApply(&RE::instance, "missing", Mode::restore);
+    QueueApply(&RE::instance, "missing", Mode::restore, skin_transaction::Selection::automatic);
+    Check(native_skin::lastSelection == skin_transaction::Selection::automatic, "automatic intent lost at native boundary");
     Check(native_skin::calls == 6 && skin_session::tracked == 2 && skin_session::lastId.empty(),
         "removed original pack failed to fall back to Default on cancellation");
     RE::instance.loaded = true;

@@ -398,6 +398,19 @@ int main()
         return std::string((std::istreambuf_iterator<char>(file)), {});
     };
     const auto distributionSource = readFeatureSource("Distribution.cpp");
+    const auto manualSkinStart = distributionSource.find("skin_application::QueueApply(actor, manual->skinId");
+    const auto automaticSkinStart = distributionSource.find("skin_application::QueueApply(actor, automaticSkin->selectedId)");
+    Require(manualSkinStart != std::string::npos && automaticSkinStart > manualSkinStart);
+    Require(std::string_view(distributionSource).substr(manualSkinStart,
+        automaticSkinStart - manualSkinStart).contains("skin_transaction::Selection::direct"));
+    Require(readFeatureSource("SkinProfiles.cpp").contains(
+        "SkinProfileCompatibility(*found, sex, actorRace, actorFamily).Compatible()"));
+    const auto directSkinStart = uiSource.find("void DrawSkinCatalog()");
+    const auto directSkinEnd = uiSource.find("void DrawOverlayCatalog()", directSkinStart);
+    Require(directSkinStart != std::string::npos && directSkinEnd != std::string::npos);
+    const auto directSkin = std::string_view(uiSource).substr(directSkinStart, directSkinEnd - directSkinStart);
+    Require(directSkin.contains("Selection::direct") && directSkin.contains("SaveManualSkinIfNeeded(actor, skin.id)") &&
+        directSkin.contains("No distribution rules needed.") && directSkin.contains("Mode::preview"));
     Require(distributionSource.contains("return IsCustomFollower(actor, actor ? actor->GetActorBase() : nullptr)"));
     const auto actorCatalogSource = readFeatureSource("ActorCatalog.cpp");
     const auto searchStart = actorCatalogSource.find("void SearchStep(");
@@ -694,6 +707,13 @@ int main()
         "NativeSkinBackend.cpp", std::ios::binary);
     Require(nativeSkinFile.good());
     const std::string nativeSkinSource((std::istreambuf_iterator<char>(nativeSkinFile)), {});
+    const auto sourceFamilyStart = nativeSkinSource.find("std::optional<std::uint32_t> SourceBodyFamily(");
+    const auto sourceFamilyEnd = nativeSkinSource.find("std::optional<std::string> CurrentProfileId(", sourceFamilyStart);
+    Require(sourceFamilyStart != std::string::npos && sourceFamilyEnd != std::string::npos);
+    const auto sourceFamily = std::string_view(nativeSkinSource).substr(sourceFamilyStart, sourceFamilyEnd - sourceFamilyStart);
+    Require(!sourceFamily.contains("!instance.sourceFamily") && sourceFamily.contains("!instance.skin.armor") &&
+        sourceFamily.contains("instance.sourceRace != race") && sourceFamily.contains("instance.sourceSex != base->GetSex()") &&
+        sourceFamily.contains("skin == instance.skin.armor"));
     Require(nativeSkinSource.contains("!actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)") &&
         nativeSkinSource.contains("restoring ? frame_tasks::QueueRestoration(actorId, std::move(work))") &&
         nativeSkinSource.contains("frame_tasks::Queue(actorId, std::move(work), 1U, appearance::WorkChannel::skinApply)") &&

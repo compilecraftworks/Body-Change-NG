@@ -36,7 +36,8 @@ namespace bcn::skin_application
     // a private clone of the current native TXST -> ARMA -> Skin Armor graph.
     // NIF paths, inventory, and equipment slots are never changed.
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_profileId,
-        skin_transaction::Mode mode = skin_transaction::Mode::commit);
+        skin_transaction::Mode mode = skin_transaction::Mode::commit,
+        skin_transaction::Selection selection = skin_transaction::Selection::automatic);
     // Detaches only Body Change NG's still-owned native clones. Another
     // provider's later native Skin Armor/TXST graph is never removed, so RSV
     // becomes visible again after a clear.

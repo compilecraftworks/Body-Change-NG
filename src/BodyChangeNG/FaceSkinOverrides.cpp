@@ -196,7 +196,7 @@ namespace
         bool hadBaseline{}, rollingBack{}, rollbackDone{}, rollbackFailed{};
         std::vector<Baseline> oldTargets;
         std::size_t oldTarget{}, channel{};
-        bool capturing{}, persistent{}, finished{}, cleaningOld{}, storedOnly{};
+        bool capturing{}, persistent{}, finished{}, cleaningOld{}, storedOnly{}, noFaceWork{};
 
         bool Current()
         {
@@ -604,13 +604,14 @@ namespace
                 return;
             }
             if (storedOnly) { Finish(true); return; }
+            if (noFaceWork) { Finish(true); return; }
             cleaningOld = false;
             mutated = 0;
             auto actor = request.handle.get();
             auto* base = actor ? actor->GetActorBase() : nullptr;
-            auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
-            if (!actor || !base || !head || head->formEditorID.empty() || !actor->Is3DLoaded()) { Finish(false); return; }
-            baseline = { .actor = actorId, .base = base->GetFormID(), .node = head->formEditorID.c_str(),
+            const auto node = ResolveNodeName(actor.get());
+            if (!actor || !base || node.empty()) { Finish(false); return; }
+            baseline = { .actor = actorId, .base = base->GetFormID(), .node = node,
                 .female = base->GetSex() == RE::SEX::kFemale };
             persistent = bcn::skin_transaction::PersistsFace(actor->IsPlayerRef(), request.mode);
             capturing = true;
@@ -672,15 +673,7 @@ namespace
         }
         bool ready = !needsFace;
         if (needsFace && !pending) {
-            auto* base = actor->GetActorBase();
-            auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
-            auto* root = actor->Get3D(false);
-            auto* object = head && root && !head->formEditorID.empty() ?
-                root->GetObjectByName(head->formEditorID) : nullptr;
-            auto* geometry = object ? object->AsGeometry() : nullptr;
-            auto* shader = geometry ? geometry->lightingShaderProp_cast() : nullptr;
-            ready = shader && shader->material &&
-                shader->material->GetType() == RE::BSShaderMaterial::Type::kLighting;
+            ready = !ResolveNodeName(actor).empty();
             // Missing current DDS is not a reason to reject its replacement.
             // The applied diffuse/normal GPU resources are verified by Batch.
         }
@@ -697,7 +690,8 @@ namespace
             if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket ||
                 !it->second.rebuild.inFlight || !it->second.nativeReturned) return;
             handle = it->second.handle;
-            needsFace = it->second.hasSelection;
+            needsFace = it->second.hasSelection && NeedsFaceTarget(it->second.paths,
+                std::ranges::any_of(g_baselines, [actorId](const auto& value) { return value.actor == actorId; }));
             expired = std::chrono::steady_clock::now() - it->second.rebuildStarted >= std::chrono::seconds(5);
         }
         const auto actor = handle.get();
@@ -761,10 +755,12 @@ namespace
                 if (!request.rebuild.CanApply(request.running, request.hasSelection, request.complete)) return;
                 auto actor = it->second.handle.get();
                 auto* base = actor ? actor->GetActorBase() : nullptr;
-                auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
                 if (!actor || !base) return;
                 batch->storedOnly = request.allowUnloadedRestore && !actor->Is3DLoaded();
-                if (!batch->storedOnly && (!actor->Is3DLoaded() || !head || head->formEditorID.empty())) return;
+                batch->noFaceWork = !NeedsFaceTarget(request.paths,
+                    std::ranges::any_of(g_baselines, [actorId](const auto& value) { return value.actor == actorId; }));
+                const auto node = batch->storedOnly || batch->noFaceWork ? std::string{} : ResolveNodeName(actor.get());
+                if (!batch->storedOnly && (!actor->Is3DLoaded() || (!batch->noFaceWork && node.empty()))) return;
                 it->second.running = true;
                 it->second.activeGeneration = it->second.generation;
                 batch->actorId = actorId;
@@ -773,7 +769,7 @@ namespace
                 batch->request = it->second;
                 for (const auto& value : g_baselines) {
                     if (value.actor == actorId && value.base == base->GetFormID() &&
-                        (batch->storedOnly || value.node != head->formEditorID.c_str() || value.female != (base->GetSex() == RE::SEX::kFemale))) {
+                        (batch->storedOnly || value.node != node || value.female != (base->GetSex() == RE::SEX::kFemale))) {
                         batch->oldTargets.push_back(value);
                     }
                 }
@@ -793,7 +789,7 @@ namespace
             }
             return;
         }
-        batch->nodeAccess = NodeAccess::Connect();
+        if (!batch->noFaceWork) batch->nodeAccess = NodeAccess::Connect();
         batch->BeginTarget();
     }
     void Submit(RE::Actor* actor, Paths paths, std::string profile, std::function<void(bool)> completion,

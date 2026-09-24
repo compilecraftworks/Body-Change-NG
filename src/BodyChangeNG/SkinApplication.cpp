@@ -375,12 +375,13 @@ namespace bcn::skin_application
         native_addon::Reset();
     }
 
-    ApplyResult QueueApply(RE::Actor* actor, std::string profileId, skin_transaction::Mode mode)
+    ApplyResult QueueApply(RE::Actor* actor, std::string profileId, skin_transaction::Mode mode,
+        skin_transaction::Selection selection)
     {
         const auto actorFormID = actor ? actor->GetFormID() : 0U;
         const auto profile = SkinProfiles::Get().Find(profileId);
         const auto result = native_skin::QueueApply(actor, profileId,
-            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode);
+            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); }, mode, selection);
         if (actor && !actor->Is3DLoaded() && !skin_transaction::RestoresPreview(mode)) return result;
         if (result == ApplyResult::queued && actor) {
             const auto generation = BeginSkinChange(actorFormID);

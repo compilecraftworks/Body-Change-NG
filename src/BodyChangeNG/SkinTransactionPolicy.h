@@ -3,6 +3,9 @@
 namespace bcn::skin_transaction
 {
     enum class Mode { commit, preview, restore };
+    // Direct choices may select a known pack layout when a standalone actor's
+    // BodySlide family is unknown. Automatic selection must never guess it.
+    enum class Selection { automatic, direct };
 
     [[nodiscard]] constexpr bool RecordsApplication(Mode mode) noexcept
     { return mode == Mode::commit || mode == Mode::restore; }

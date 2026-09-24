@@ -6,6 +6,8 @@
 namespace RE { class Actor; }
 namespace bcn::face_skin
 {
+    // Owned name only; no geometry/material is retained beyond this read.
+    [[nodiscard]] std::string ResolveNodeName(RE::Actor* actor);
     // Borrowed plugin interface, valid for a synchronous batch. No actor,
     // geometry, material, registry value or texture pointer is retained.
     class NodeAccess

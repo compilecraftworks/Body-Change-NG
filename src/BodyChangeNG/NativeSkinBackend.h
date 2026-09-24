@@ -24,7 +24,8 @@ namespace bcn::native_skin
     // must never issue a second 3D reset or repaint outfit-owned geometry.
     [[nodiscard]] SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
         std::function<void(RE::Actor*)> afterMutation = {},
-        skin_transaction::Mode mode = skin_transaction::Mode::commit);
+        skin_transaction::Mode mode = skin_transaction::Mode::commit,
+        skin_transaction::Selection selection = skin_transaction::Selection::automatic);
     [[nodiscard]] SkinApplyResult QueueClear(RE::Actor* actor,
         std::function<void(RE::Actor*)> afterMutation = {},
         skin_transaction::Mode mode = skin_transaction::Mode::commit,
@@ -32,7 +33,8 @@ namespace bcn::native_skin
     [[nodiscard]] std::optional<std::string> CurrentProfileId(const RE::Actor* actor);
     [[nodiscard]] bool HasTrackedSelection(const RE::Actor* actor);
     // A DDS replacement does not change the body's UV family. Only return
-    // the verified source family while this actor still uses our graph.
+    // the source classification (including unknown/zero) while this actor
+    // still uses our graph. Do not reclassify our private cached DDS paths.
     [[nodiscard]] std::optional<std::uint32_t> SourceBodyFamily(const RE::Actor* actor);
     [[nodiscard]] std::optional<bool> LiveStateMatches(
         const RE::Actor* actor, std::string_view profileId, bool expectDefault);

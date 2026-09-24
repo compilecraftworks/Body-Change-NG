@@ -293,6 +293,44 @@ int main()
     using bcn::appearance::WorkChannel;
     using bcn::body_family::Bit;
     using bcn::body_family::Family;
+    using bcn::skin_transaction::Selection;
+
+    // Standalone followers can have private NIF/DDS paths with no identifiable
+    // BodySlide family. A user's choice is not an automatic distribution guess.
+    for (const auto sex : { SkinSex::female, SkinSex::male }) {
+        if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::legacy, sex,
+                SkinRace::humanoid, sex, SkinRace::humanoid, 0U, Selection::direct).Compatible() &&
+                !bcn::EvaluateSkinCompatibility(SkinLayout::legacy, sex,
+                    SkinRace::humanoid, sex, SkinRace::humanoid, 0U).Compatible(),
+                "unclassified follower direct selection still requires a distribution rule")) return 1;
+    }
+    for (const auto layout : { SkinLayout::unknown, SkinLayout::legacy, SkinLayout::ube,
+             SkinLayout::argonian, SkinLayout::khajiit }) {
+        for (const auto sex : { SkinSex::female, SkinSex::male }) {
+            for (const auto race : { SkinRace::humanoid, SkinRace::argonian, SkinRace::khajiit }) {
+                for (unsigned family = 0U; family < 128U; ++family) {
+                    const auto strict = bcn::EvaluateSkinCompatibility(layout, sex, race, sex, race, family);
+                    const auto direct = bcn::EvaluateSkinCompatibility(layout, sex, race, sex, race, family,
+                        Selection::direct);
+                    if (!Require(family == 0U || strict.status == direct.status,
+                            "direct selection bypassed a known incompatible or conflicting family")) return 1;
+                    if (!Require(!bcn::EvaluateSkinCompatibility(layout, sex, race,
+                            sex == SkinSex::female ? SkinSex::male : SkinSex::female, race, family,
+                            Selection::direct).Compatible(), "direct selection bypassed sex filtering")) return 1;
+                    if (!Require(!bcn::EvaluateSkinCompatibility(layout, sex, race, sex,
+                            race == SkinRace::humanoid ? SkinRace::argonian : SkinRace::humanoid, family,
+                            Selection::direct).Compatible(), "direct selection bypassed race filtering")) return 1;
+                    if (direct.Compatible()) {
+                        if (!Require(bcn::ResolveSelectedSkinUvLayout(layout, family, Selection::direct) !=
+                                SkinUvLayout::unknown, "accepted direct choice has no runtime route")) return 1;
+                    }
+                }
+            }
+        }
+    }
+    if (!Require(!bcn::EvaluateSkinCompatibility(SkinLayout::unknown, SkinSex::female,
+            SkinRace::humanoid, SkinSex::female, SkinRace::humanoid, 0U, Selection::direct).Compatible(),
+            "an unclassified pack was accepted merely because the actor is unclassified")) return 1;
 
     if (!Require(bcn::EvaluateSkinCompatibility(SkinLayout::legacy, SkinSex::female,
             SkinRace::humanoid, SkinSex::female, SkinRace::humanoid,
@@ -589,6 +627,26 @@ int main()
             bcn::skin_plan::RoutesGenitalAnalAtlas(elderPlan, SkinUvLayout::cbbe) &&
             !bcn::skin_plan::RoutesGenitalAnalAtlas(elderPlan, SkinUvLayout::unp),
             "the equipment-independent plan lost a body, hand, foot, or face layer")) return 1;
+
+    const auto followerPlan = bcn::skin_plan::Build(cbbeProfile, { .selection = Selection::direct });
+    if (!Require(followerPlan.runtimeUvLayout == SkinUvLayout::legacy &&
+            followerPlan.body.size() == 2U && followerPlan.face.size() == 1U &&
+            followerPlan.hands.size() == 1U && followerPlan.hands.front().path == "base-hands.dds" &&
+            followerPlan.feet.size() == 2U && !followerPlan.broadSharedAtlas &&
+            !bcn::skin_plan::RoutesGenitalAnalAtlas(followerPlan, SkinUvLayout::cbbe) &&
+            !bcn::skin_plan::RoutesGenitalAnalAtlas(followerPlan, SkinUvLayout::unp),
+            "unclassified direct follower lost its limbs or guessed a genital/anal UV layout")) return 1;
+    for (const auto slotRole : { std::pair{ NativeSlot::body, NativeRole::body },
+             std::pair{ NativeSlot::hands, NativeRole::hands }, std::pair{ NativeSlot::feet, NativeRole::feet } }) {
+        if (!Require(bcn::native_skin::ResolveTextureRole(slotRole.first, "private/custom.dds",
+                    followerPlan.runtimeUvLayout) == slotRole.second &&
+                bcn::native_skin::NeedsEmbeddedSkinBaseline(slotRole.first, followerPlan.runtimeUvLayout, false, false),
+                "unclassified follower's native/NIF hand or foot route was lost")) return 1;
+    }
+    if (!Require(bcn::ResolveSelectedSkinUvLayout(SkinLayout::ube, 0U, Selection::direct) == SkinUvLayout::ube &&
+            bcn::ResolveSelectedSkinUvLayout(SkinLayout::ube, Bit(Family::cbbe), Selection::direct) == SkinUvLayout::unknown &&
+            bcn::ResolveSelectedSkinUvLayout(SkinLayout::legacy, 0U, Selection::automatic) == SkinUvLayout::unknown,
+            "explicit UBE choice or automatic-layout boundary regressed")) return 1;
 
     // Characterize female conditional-channel precedence independently of
     // installed assets: race -> vampire -> elder, preserving other channels.

@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.1"
+local version = "1.3.2"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -246,6 +246,16 @@ target("BodyChangeNGFaceSkinPolicyTests")
     set_encodings("utf-8")
     add_files("tests/FaceSkinPolicyTests.cpp")
     add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "face-node")
+        target:add("includedirs", generated)
+        local source = io.readfile("src/BodyChangeNG/FaceSkinNodeAccess.cpp")
+        local first = assert(source:find("    std::string ResolveNodeName(", 1, true))
+        local last = assert(source:find("    NodeAccess NodeAccess::Connect()", first, true))
+        local output = path.join(generated, "face_resolve_node.inc")
+        local content = source:sub(first, last - 1)
+        if not os.isfile(output) or io.readfile(output) ~= content then io.writefile(output, content) end
+    end)
 
 for _, probeName in ipairs({"BodyChangeNGFailurePathTests", "BodyChangeNGOfflineMemoryProbe"}) do
 target(probeName)
@@ -370,6 +380,7 @@ target("BodyChangeNGPreviewRestoreTests")
         extract("src/BodyChangeNG/RaceMenuOverlay.cpp", "    void ForgetActorState(", "    void ResetSessionState(", "overlay_forget.inc")
         extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void CompleteMutation(", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "native_complete.inc")
         extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void ClearNow(", "    [[nodiscard]] std::vector<bcn::runtime_assets::TexturePreparation> Preparations(", "native_clear.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    std::optional<std::uint32_t> SourceBodyFamily(", "    std::optional<std::string> CurrentProfileId(", "native_sourcefamily.inc")
         extract("src/BodyChangeNG/SkinApplication.cpp", "    ApplyResult QueueClear(", "    std::optional<std::string> CurrentProfileId(", "skin_clear.inc")
         extract("src/BodyChangeNG/SkinApplication.cpp", "    ApplyResult QueueApply(", "    ApplyResult QueueClear(", "skin_apply.inc")
     end)

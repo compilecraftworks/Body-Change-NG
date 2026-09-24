@@ -14,6 +14,7 @@ namespace bcn::skin_plan
         HumanoidSkinRace humanoidRace{ HumanoidSkinRace::generic };
         std::string_view faceDetailFilename;
         body_family::Mask bodyFamily{};
+        skin_transaction::Selection selection{ skin_transaction::Selection::automatic };
     };
 
     struct ApplicationPlan final

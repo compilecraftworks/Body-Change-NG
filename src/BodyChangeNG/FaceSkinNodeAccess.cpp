@@ -1,7 +1,11 @@
 #include "BodyChangeNG/FaceSkinNodeAccess.h"
 #include "BodyChangeNG/FaceSkinPolicy.h"
+#include "BodyChangeNG/FaceNodeSelection.h"
 #include "BodyChangeNG/RaceMenuOverrideABI.h"
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
+#include <RE/B/BSVisit.h>
+#include <RE/B/BSFaceGenNiNode.h>
+#include <RE/B/BSLightingShaderMaterialBase.h>
 #include <algorithm>
 
 namespace
@@ -11,9 +15,7 @@ namespace
     constexpr std::uint16_t textureKey = 9;
     bool Valid(RE::Actor* actor, const std::string& node, unsigned channel)
     {
-        auto* base = actor ? actor->GetActorBase() : nullptr;
-        const auto* head = base ? base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace) : nullptr;
-        return head && !node.empty() && head->formEditorID.c_str() == node &&
+        return !node.empty() && bcn::face_skin::ResolveNodeName(actor) == node &&
             std::ranges::find(bcn::face_skin::kChannels, channel) != bcn::face_skin::kChannels.end();
     }
     class StringValue final : public IOverrideInterfaceV2::SetVariant
@@ -39,6 +41,39 @@ namespace
 
 namespace bcn::face_skin
 {
+    std::string ResolveNodeName(RE::Actor* actor)
+    {
+        if (!actor || !actor->Is3DLoaded() ||
+            runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported) return {};
+        auto* face = actor->GetFaceNodeSkinned();
+        auto* root = actor->Get3D(false);
+        auto* base = actor->GetActorBase();
+        if (!face || !root || !base) return {};
+        const auto* head = base->GetCurrentHeadPartByType(RE::BGSHeadPart::HeadPartType::kFace);
+        const std::string_view preferred = head && !head->formEditorID.empty() ?
+            std::string_view{ head->formEditorID.c_str() } : std::string_view{};
+        NodeSelection selected;
+        RE::BSGeometry* selectedGeometry{};
+        RE::BSVisit::TraverseScenegraphGeometries(face, [&](RE::BSGeometry* geometry) {
+            if (!geometry || geometry->name.empty()) return RE::BSVisit::BSVisitControl::kContinue;
+            auto* shader = geometry->lightingShaderProp_cast();
+            auto* material = shader ? shader->material : nullptr;
+            if (!material || material->GetType() != RE::BSShaderMaterial::Type::kLighting)
+                return RE::BSVisit::BSVisitControl::kContinue;
+            const auto feature = material->GetFeature();
+            const auto previousRank = selected.rank;
+            selected.Consider(geometry->name.c_str(), feature == RE::BSShaderMaterial::Feature::kFaceGen,
+                feature == RE::BSShaderMaterial::Feature::kFaceGenRGBTint, preferred);
+            if (selected.rank > previousRank) selectedGeometry = geometry;
+            return RE::BSVisit::BSVisitControl::kContinue;
+        });
+        // One root lookup after the small face-subtree scan, not one lookup
+        // per head/hair shape. NiOverride must resolve the SAME geometry.
+        if (selected.Result().empty() || !selectedGeometry ||
+            root->GetObjectByName(selectedGeometry->name) != selectedGeometry) return {};
+        return std::string{ selected.Result() };
+    }
+
     NodeAccess NodeAccess::Connect()
     {
         NodeAccess result;

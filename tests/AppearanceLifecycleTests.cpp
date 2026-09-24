@@ -3,6 +3,7 @@
 #include "BodyChangeNG/ActorState.h"
 #include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/FrameTaskQueue.h"
+#include "BodyChangeNG/SkinTransactionPolicy.h"
 #include <iostream>
 #include <mutex>
 #include <span>
@@ -119,7 +120,7 @@ void Request(RE::Actor*) {}
 namespace skin_application {
 int QueueClear(RE::Actor*) { return 0; }
 std::optional<std::string> CurrentProfileId(RE::Actor*) { return {}; }
-int QueueApply(RE::Actor*, const std::string&) { return 0; }
+int QueueApply(RE::Actor*, const std::string&, skin_transaction::Mode, skin_transaction::Selection) { return 0; }
 void InvalidateFutanariDetection(unsigned) {}
 void QueueReapplyCurrentFutanari(RE::Actor*) {}
 }

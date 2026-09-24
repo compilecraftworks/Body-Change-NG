@@ -1,0 +1,20 @@
+[center][size=6][color=#FFD600][b]Body Change NG v1.3.2[/b][/color][/size][/center]
+[hr]
+[size=4][color=#19D8FF][b]Direct NPC and follower skin selection[/b][/color][/size]
+[list]
+[*]Restored direct skin selection for standalone actors whose body family cannot be identified. Select the actor, [b]click to preview and double-click to apply[/b]. NPC distribution rules are not required.
+[*]An unknown-family hint asks you to choose the actor's correct Legacy/UBE pack. Known incompatible layouts, sex/race restrictions and automatic distribution compatibility checks remain enforced.
+[*]Saved manual choices, preview cancellation and player RaceMenu restoration retain direct-selection intent. BCNG's cached DDS names no longer replace an unknown source classification with a guessed family.
+[/list]
+[hr]
+[size=4][color=#19D8FF][b]NPC face and body-only skin handling[/b][/color][/size]
+[list]
+[*]Find NPC faces inside the live FaceGen subtree when the exported mesh name differs from the HeadPart editor ID. Prefer exact names; accept only an unambiguous skin-material fallback and reject names resolving outside the face.
+[*]Body-only packs no longer require a face target unless an earlier face change needs restoration. Body, hands and feet keep their separate routes. Unknown families do not guess CBBE/UNP auxiliary genital/anal atlases.
+[/list]
+[hr]
+[size=4][color=#19D8FF][b]Preserved behavior and verification[/b][/color][/size]
+[list]
+[*]No new polling, dependencies, cache format or co-save schema. Existing offline cache maintenance and restoration behavior are retained.
+[*]Release build, 35 offline regression executables and 19 audit-tool tests passed. No new in-game tests were performed; resolution in the reporters' specific setups is not yet confirmed.
+[/list]

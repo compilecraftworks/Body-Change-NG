@@ -16,6 +16,13 @@ namespace bcn::face_skin
     inline constexpr std::array<std::uint8_t, 5> kChannels{ 0, 1, 2, 3, 7 };
     using Paths = std::array<std::string, kChannels.size()>;
 
+    [[nodiscard]] inline bool NeedsFaceTarget(const Paths& paths, bool hasBaseline) noexcept
+    {
+        if (hasBaseline) return true; // Removing a previous face still needs cleanup.
+        for (const auto& path : paths) if (!path.empty()) return true;
+        return false;
+    }
+
     // NiOverride loads the supplied resource directly; it is not the native
     // BGSTextureSet loader which adds Data/Textures itself.
     [[nodiscard]] inline std::optional<std::string> CacheOverridePath(std::string_view cached)

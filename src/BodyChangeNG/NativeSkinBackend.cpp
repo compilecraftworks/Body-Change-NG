@@ -723,7 +723,8 @@ namespace
 
     [[nodiscard]] bcn::skin_plan::ApplicationPlan BuildPlan(
         const bcn::SkinProfile& profile, RE::TESNPC* base,
-        const std::string_view faceDetailBaseline, const bcn::body_family::Mask actorFamily)
+        const std::string_view faceDetailBaseline, const bcn::body_family::Mask actorFamily,
+        const bcn::skin_transaction::Selection selection)
     {
         const auto* race = base ? base->GetRace() : nullptr;
         const auto* editorID = race ? race->GetFormEditorID() : nullptr;
@@ -733,7 +734,8 @@ namespace
             .humanoidRace = bcn::HumanoidSkinRaceFromEditorID(
                 editorID ? std::string_view{ editorID } : std::string_view{}),
             .faceDetailFilename = faceDetailBaseline,
-            .bodyFamily = actorFamily
+            .bodyFamily = actorFamily,
+            .selection = selection
         });
     }
 
@@ -1345,7 +1347,8 @@ namespace
 namespace bcn::native_skin
 {
     SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
-        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode)
+        std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode,
+        skin_transaction::Selection selection)
     {
         body_family::SetSkinFamilyResolver(&SourceBodyFamily);
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
@@ -1365,7 +1368,7 @@ namespace bcn::native_skin
         const auto actorFamily = body_family::ResolveActor(actor);
         const auto compatibility = SkinProfileCompatibility(*profile,
             female ? SkinSex::female : SkinSex::male, ResolveActorSkinRace(actor),
-            actorFamily);
+            actorFamily, selection);
         if (!compatibility.Compatible()) {
             if (compatibility.status == SkinCompatibilityStatus::unknownProfileLayout) {
                 return SkinApplyResult::ambiguousProfileLayout;
@@ -1416,7 +1419,7 @@ namespace bcn::native_skin
             faceDetailBaseline = currentDetail;
         }
 
-        const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily);
+        const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily, selection);
         const auto handle = actor->GetHandle();
         const auto epoch = frame_tasks::Epoch();
         const auto restoring = skin_transaction::RestoresPreview(mode);
@@ -1516,7 +1519,9 @@ namespace bcn::native_skin
         if (found == g_instances.end()) return std::nullopt;
         const auto& instance = found->second;
         const auto race = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
-        if (!instance.sourceFamily || instance.sourceRace != race ||
+        // Unknown is also source evidence. Our private DDS names must not turn
+        // a direct choice into a guessed family and hide the other packs.
+        if (!instance.skin.armor || instance.sourceRace != race ||
             instance.sourceSex != base->GetSex()) return std::nullopt;
         const auto* skin = actor->GetSkin();
         if ((instance.skinAttached && skin == instance.skin.armor) ||

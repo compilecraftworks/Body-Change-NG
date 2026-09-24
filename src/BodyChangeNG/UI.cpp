@@ -1639,7 +1639,7 @@ namespace
                 const auto result = g_pendingSkin->originalId.empty() ?
                     bcn::skin_application::QueueClear(actor, bcn::skin_transaction::Mode::restore) :
                     bcn::skin_application::QueueApply(actor, g_pendingSkin->originalId,
-                        bcn::skin_transaction::Mode::restore);
+                        bcn::skin_transaction::Mode::restore, bcn::skin_transaction::Selection::direct);
                 if (result != bcn::skin_application::ApplyResult::queued) {
                     bcn::ui::Notify(SkinApplyResultMessage(result));
                 }
@@ -1957,9 +1957,8 @@ namespace
         const auto skinSnapshot = bcn::SkinProfiles::Get().SharedSnapshot();
         const auto& skins = *skinSnapshot;
         const auto settings = bcn::Settings::Get().Snapshot();
-        // Skin UV compatibility must use the same live evidence as the
-        // executor. Distribution defaults are suitable for morph filtering,
-        // but must never make an unknown actor look safe for a DDS write.
+        // Direct selection and automatic candidates deliberately use different
+        // policies. Never invent a family from the distribution defaults.
         const auto actorFamily = bcn::body_family::ResolveActor(actor);
         const auto actorSex = female ? bcn::SkinSex::female : bcn::SkinSex::male;
         const auto backendCurrentSkin = bcn::skin_application::CurrentProfileId(actor);
@@ -1975,7 +1974,8 @@ namespace
                 if (!bcn::SkinProfileCompatibility(skin, actorSex, bcn::SkinRace::humanoid,
                         DistributionCatalogFamily(settings)).Compatible()) continue;
             } else if (!bcn::SkinProfileCompatibility(
-                           skin, actorSex, actorRace, actorFamily).Compatible()) {
+                           skin, actorSex, actorRace, actorFamily,
+                           bcn::skin_transaction::Selection::direct).Compatible()) {
                 continue;
             }
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
@@ -2000,6 +2000,16 @@ namespace
                     "从 BodySkin\\<皮肤包>\\textures\\~ 读取身体皮肤。（双击应用）"));
         if (catalogRevision != g_distributionCatalogRevision ||
             distributionSelecting != IsDistributionSelectionFor(DistributionPool::skin)) return;
+        if (!distributionSelecting) {
+            bcn::ui_text::FittedDisabledLine(Text(
+                "선택 액터 직접 변경: 클릭 미리보기 · 더블클릭 적용 (NPC 배포 규칙 불필요)",
+                "Selected actor: click to preview, double-click to apply. No distribution rules needed.",
+                "直接修改所选角色：单击预览，双击应用。无需 NPC 分配规则。"));
+            if (actorFamily == 0U) bcn::ui_text::FittedDisabledLine(Text(
+                "바디 계열 미확인: 성별·종족으로 표시합니다. 액터에 맞는 일반/UBE 스킨을 선택하세요.",
+                "Body family unknown: showing matching sex/race. Choose the actor's correct Legacy/UBE skin.",
+                "体型系列未知：按性别与种族显示。请选择适合该角色的普通/UBE 皮肤。"));
+        }
         const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedSkinId.empty()) {
@@ -2017,7 +2027,7 @@ namespace
             }
             const auto& skin = *visibleSkins[row - (hasDefaultRow ? 1U : 0U)];
             const auto result = bcn::skin_application::QueueApply(actor, skin.id,
-                bcn::skin_transaction::Mode::preview);
+                bcn::skin_transaction::Mode::preview, bcn::skin_transaction::Selection::direct);
             if (result == bcn::skin_application::ApplyResult::queued) {
                 RememberPending(g_pendingSkin, actor, skin.id, false, confirmedSkinId);
             } else {
@@ -2037,7 +2047,8 @@ namespace
                 return;
             }
             const auto& skin = *visibleSkins[row - (hasDefaultRow ? 1U : 0U)];
-            const auto result = bcn::skin_application::QueueApply(actor, skin.id);
+            const auto result = bcn::skin_application::QueueApply(actor, skin.id,
+                bcn::skin_transaction::Mode::commit, bcn::skin_transaction::Selection::direct);
             if (result == bcn::skin_application::ApplyResult::queued) {
                 SaveManualSkinIfNeeded(actor, skin.id);
                 g_pendingSkin.reset();
@@ -2083,7 +2094,8 @@ namespace
             }
             const auto hasMatchingSkin = std::ranges::any_of(skins, [actorSex, actorFamily, actorRace](const auto& skin) {
                 return bcn::SkinProfileCompatibility(
-                    skin, actorSex, actorRace, actorFamily).Compatible();
+                    skin, actorSex, actorRace, actorFamily,
+                    bcn::skin_transaction::Selection::direct).Compatible();
             });
             if (!hasMatchingSkin) {
                 ImGui::TextUnformatted(Text(

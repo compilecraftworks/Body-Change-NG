@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Body Change NG v1.3.2 변경 내역</title>
+<style>body{margin:0;background:#10151f;color:#e6edf5;font:16px/1.8 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:40px 24px}h1{color:#FFD600;line-height:1.3}h2{color:#19D8FF}hr{border:0;border-top:1px solid #46546b;margin:24px 0}li{margin:14px 0}strong{color:#FFD600}</style>
+</head><body><main>
+<h1>Body Change NG v1.3.2</h1><hr>
+<h2>NPC·팔로워 스킨 직접 선택</h2>
+<ul>
+<li>바디 계열을 판별하지 못한 독립형 팔로워도 스킨을 직접 선택할 수 있도록 수정했습니다. 액터를 선택하고 <strong>한 번 클릭으로 미리보기, 더블클릭으로 적용</strong>하세요. NPC 배포 규칙은 필요하지 않습니다.</li>
+<li>계열 미확인 안내를 추가했습니다. 액터에 맞는 일반/UBE 팩을 선택하세요. 확인된 계열 간 비호환, 성별·종족 제한과 자동 배포의 호환성 검사는 유지합니다.</li>
+<li>저장된 수동 선택 재적용, 미리보기 취소, 플레이어 RaceMenu 복원에서도 직접 선택 의도를 보존합니다. BCNG 캐시 DDS 이름 때문에 원래의 계열 미확인 상태가 추측된 계열로 바뀌지 않도록 했습니다.</li>
+</ul><hr>
+<h2>NPC 얼굴·몸 전용 스킨 처리</h2>
+<ul>
+<li>내보낸 NPC 얼굴 메시 이름이 HeadPart 식별 이름과 달라도 실제 FaceGen 영역에서 찾습니다. 정확한 이름을 우선하며, 명확히 하나인 피부 재질 대상만 대안으로 사용하고 얼굴 밖의 동명 객체는 거부합니다.</li>
+<li>복원할 이전 얼굴 상태가 없는 몸 전용 팩은 얼굴 대상을 요구하지 않습니다. 몸·손·발 경로를 분리 유지하며, 계열 미확인 상태에서 CBBE/UNP 성기·항문 보조 아틀라스를 추측하여 적용하지 않습니다.</li>
+</ul><hr>
+<h2>유지 사항과 검증</h2>
+<ul>
+<li>새 폴링·의존성·캐시 형식·세이브 스키마 변경은 없습니다. 기존 오프라인 캐시 정리와 복원 동작을 유지합니다.</li>
+<li>Release 빌드, 오프라인 회귀 실행 파일 35개, 보조 검사 19개 통과. 새 인게임 테스트는 수행하지 않았으며 제보자의 특정 환경에서 해결됐는지는 아직 확인되지 않았습니다.</li>
+</ul></main></body></html>

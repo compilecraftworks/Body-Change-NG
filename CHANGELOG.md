@@ -2,6 +2,14 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.2
+
+- Restore direct skin selection for standalone actors whose BodySlide family cannot be identified. Show sex/race-compatible packs and an unknown-family hint; clicking previews and double-clicking applies without distribution rules. Keep known incompatible layouts blocked.
+- Keep automatic NPC distribution's existing compatibility checks. Preserve direct-choice intent for saved manual assignments, preview rollback, and player RaceMenu restoration. Ordinary body/hand/foot/face routing is retained without guessing CBBE/UNP auxiliary genital/anal atlases.
+- Preserve an unknown source classification while BCNG's private skin graph is active, so cached DDS names cannot reclassify the actor after the first choice. No new polling, cache format, co-save schema, or dependency changes.
+- Resolve NPC face targets inside the live FaceGen subtree instead of requiring the geometry name to match the HeadPart editor ID. Prefer the exact name, accept only an unambiguous skin-material fallback, and reject collisions with objects outside the face. Body-only packs no longer require a face target when there is no previous face state to restore.
+- Verification: Release build, 35 offline regression executables and 19 audit-tool tests passed. No new in-game testing was performed; resolution in the reporters' specific setups is not yet confirmed. See [verification](docs/RELEASE-VERIFICATION-v1.3.2-KO.md).
+
 ## 1.3.1
 
 - Add an optional offline cache-maintenance utility. Scan MO2 Overwrite without changing files, then explicitly compact byte-identical DDS copies with matching timestamps into hard links. Keep every DDS resource path, including paths used by older saves and v1.2.7 caches.

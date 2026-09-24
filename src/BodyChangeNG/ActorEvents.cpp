@@ -164,7 +164,8 @@ namespace bcn
                 if (saved && saved->skin.selection.manual && saved->skin.selection.useDefault) {
                     [[maybe_unused]] const auto skinResult = skin_application::QueueClear(actor.get());
                 } else if (const auto skin = skin_application::CurrentProfileId(actor.get())) {
-                    [[maybe_unused]] const auto skinResult = skin_application::QueueApply(actor.get(), *skin);
+                    [[maybe_unused]] const auto skinResult = skin_application::QueueApply(actor.get(), *skin,
+                        skin_transaction::Mode::commit, skin_transaction::Selection::direct);
                 }
                 skin_application::InvalidateFutanariDetection(actor->GetFormID());
                 skin_application::QueueReapplyCurrentFutanari(actor.get());

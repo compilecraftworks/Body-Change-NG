@@ -1,5 +1,7 @@
 #include "BodyChangeNG/FaceSkinPolicy.h"
 #include "BodyChangeNG/FaceSkinSerialization.h"
+#include "BodyChangeNG/FaceNodeSelection.h"
+#include "FaceNodeProbe.h"
 #include <algorithm>
 #include <cstring>
 #include <iostream>
@@ -46,6 +48,37 @@ namespace
 int main()
 try {
     using namespace bcn::face_skin;
+    TestProductFaceResolver();
+    {
+        NodeSelection npc;
+        npc.Consider("FollowerHead", true, false, "FemaleHeadNord");
+        npc.Consider("Eyes", true, false, "FemaleHeadNord");
+        npc.Consider("Mouth", true, false, "FemaleHeadNord");
+        Check(npc.Result() == "FollowerHead", "NPC FaceGen name mismatch hides a valid head");
+        npc.Consider("AnotherHead", true, false, "FemaleHeadNord");
+        Check(npc.Result().empty(), "multiple fallback faces must not be guessed");
+        npc.Consider("FemaleHeadNord", true, false, "FemaleHeadNord");
+        Check(npc.Result() == "FemaleHeadNord", "exact HeadPart name lost precedence");
+        npc.Consider("FemaleHeadNord", true, false, "FemaleHeadNord");
+        Check(npc.Result().empty(), "duplicate exact heads must not be guessed");
+        NodeSelection rgb;
+        for (const auto name : { "3BA", "Body", "Hands", "Feet", "Hair", "EyeBrow", "Teeth", "Tongue" })
+            rgb.Consider(name, false, true, "MissingHead");
+        Check(rgb.Result().empty(), "non-head RGB skin geometry was accepted");
+        rgb.Consider("CustomFace", false, true, "MissingHead");
+        Check(rgb.Result() == "CustomFace", "explicit RGB face name lost fallback");
+        NodeSelection invalid;
+        invalid.Consider("FemaleHeadNord", false, false, "FemaleHeadNord");
+        invalid.Consider("", true, false, "");
+        Check(invalid.Result().empty(), "missing name/material became a face target");
+        Paths bodyOnly{};
+        Check(!NeedsFaceTarget(bodyOnly, false) && NeedsFaceTarget(bodyOnly, true),
+            "body-only selection requires a face or skipped previous-face cleanup");
+        for (std::size_t channel{}; channel < bodyOnly.size(); ++channel) {
+            Paths partial{}; partial[channel] = "face.dds";
+            Check(NeedsFaceTarget(partial, false), "partial face was treated as body-only");
+        }
+    }
     const std::string desired = "textures/BodyChangeNG/Cache/skin-face/A/head.dds";
     const std::string visible = "BODYCHANGENG\\Cache\\skin-face\\a\\head.dds";
     Check(CanKeepVisibleTexture(desired, visible, visible, true, false, ""),

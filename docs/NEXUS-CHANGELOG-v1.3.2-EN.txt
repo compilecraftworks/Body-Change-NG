@@ -1,0 +1,9 @@
+Body Change NG v1.3.2
+
+- Restored direct skin selection for standalone actors whose body family cannot be identified. Select the actor, click a skin to preview, and double-click to apply. NPC distribution rules are not required.
+- Added an unknown-family hint. Choose the correct Legacy/UBE pack for the actor. Known incompatible layouts, sex/race restrictions and automatic distribution compatibility checks remain enforced.
+- Preserved manual selection intent across saved-choice reapplication, preview cancellation and player RaceMenu restoration. Unknown source classification remains stable while BCNG's private skin is active.
+- Improved NPC face targeting when the exported face mesh name differs from the HeadPart editor ID. Search only the live FaceGen subtree, prefer exact matches, and reject ambiguous targets or names resolving outside the face.
+- Body-only skin packs no longer require a face target when there is no previous face state to restore. Body/hand/foot routing remains separate; unknown families do not guess CBBE/UNP auxiliary genital/anal atlases.
+- No new polling, dependencies, cache format or co-save schema. Existing offline cache maintenance and restoration behavior are retained.
+- Verification: Release build, 35 offline regression executables and 19 audit-tool tests passed. No new in-game tests were performed; resolution in the reporters' specific setups is not yet confirmed.
