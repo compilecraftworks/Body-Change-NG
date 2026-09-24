@@ -84,6 +84,8 @@ try {
         'LICENSE',
         'SKSE/Plugins/BodyChangeNG.dll',
         'SKSE/Plugins/BodyChangeNGdistribution.json',
+        'SKSE/Plugins/BodyChangeNGdistribution-README.txt',
+        'Tools/BodyChangeNG-RuleId.ps1',
         'Tools/BodyChangeNGCache.exe',
         'Tools/BodyChangeNGCache-README.txt',
         'THIRD_PARTY_NOTICES.md'
@@ -92,7 +94,7 @@ try {
         [IO.Path]::GetRelativePath($binary, $_.FullName).Replace('\', '/')
     })
     if (Compare-Object ($expectedBinaryFiles | Sort-Object) ($actualBinaryFiles | Sort-Object)) {
-        throw 'MO2 archive must contain only runtime files, the cache utility/guide, asset-folder guidance, and two license documents.'
+        throw 'MO2 archive must contain only runtime files, cache/rule-authoring tools and guides, asset-folder guidance, and two license documents.'
     }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
     if ($starter.schemaVersion -ne 7 -or $starter.rules.Count -ne 0) {

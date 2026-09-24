@@ -1,4 +1,5 @@
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionJson.h"
 #include "BodyChangeNG/DistributionOverlayColors.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
 
@@ -812,7 +813,7 @@ namespace bcn
                 return false;
             }
             std::ifstream stream(sourcePath.path);
-            const auto root = nlohmann::json::parse(stream);
+            const auto root = distribution_json::Parse(stream);
             const auto schemaVersion = root.value("schemaVersion", 0);
             if ((schemaVersion < 3 || schemaVersion > kSchemaVersion) ||
                 !root.contains("rules") || !root["rules"].is_array()) {

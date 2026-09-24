@@ -1,18 +1,36 @@
 # Release documentation
 
-Current version: **Body Change NG v1.3.2**. See the [English changelog](../CHANGELOG.md#132), [한국어 변경 내역](../CHANGELOG-KO.md#132), [current usage / removal preparation](../README.md), [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt), and [verification](RELEASE-VERIFICATION-v1.3.2-KO.md). Earlier version files remain historical records.
+Current version: **Body Change NG v1.3.3**. See the [English changelog](../CHANGELOG.md#133), [한국어 변경 내역](../CHANGELOG-KO.md#133), [current usage / removal preparation](../README.md), and [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt). Earlier version files remain historical records.
 
-## Current v1.3.2 release documents
+## v1.3.3 offline distribution authoring
+
+The [commented JSON template](../package/SKSE/Plugins/BodyChangeNGdistribution.json)
+contains bilingual field explanations and 19 inactive examples covering all 11
+target scopes and all distribution features. The [complete guide](../package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
+and optional read-only [ID helper](../package/Tools/BodyChangeNG-RuleId.ps1) explain
+editing outside the game. Comments require the v1.3.3+ DLL and are stripped by
+in-game rule saving; keep the template separately. Existing plain schema-7 files
+remain supported. Release archives are written to the repository's `release` root.
+See the [v1.3.3 authoring verification](DISTRIBUTION-AUTHORING-VERIFICATION-v1.3.3-KO.md)
+for build, regression, template and packaging-manifest checks and their limits.
+
+- Changelog: [English BBCode](NEXUS-CHANGELOG-v1.3.3-EN.bbcode) · [한국어 HTML](NEXUS-CHANGELOG-v1.3.3-KO.html).
+- Plain text: [English](NEXUS-CHANGELOG-v1.3.3-EN.txt) · [한국어](NEXUS-CHANGELOG-v1.3.3-KO.txt).
+
+## v1.3.2 baseline release documents
 
 | Purpose | English | 한국어 |
 | --- | --- | --- |
+| Full description and usage | [Nexus BBCode](NEXUS-DESCRIPTION-v1.3.2-EN.bbcode) · [Markdown](NEXUS-DESCRIPTION-v1.3.2.md) | [Standalone HTML](NEXUS-DESCRIPTION-v1.3.2-KO.html) |
 | Formatted changelog | [Nexus BBCode](NEXUS-CHANGELOG-v1.3.2-EN.bbcode) | [Standalone HTML](NEXUS-CHANGELOG-v1.3.2-KO.html) |
 | Nexus changelog field | [Plain text](NEXUS-CHANGELOG-v1.3.2-EN.txt) | [일반 텍스트](NEXUS-CHANGELOG-v1.3.2-KO.txt) |
 
-The detailed v1.2.4 descriptions below remain the base installation guides; the
-current README and changelogs document later behavior and removal preparation.
+The v1.3.2 descriptions consolidate the recent updates into the installation and
+usage guide: direct NPC skin selection, unknown-family handling, name/RefID search,
+unloaded-actor choices, restoration, removal preparation, and offline cache maintenance.
+The full asset paths and whole-folder copy examples remain intact.
 
-## Base usage documents — v1.2.4
+## Historical usage documents — v1.2.4
 
 | Purpose | English | 한국어 |
 | --- | --- | --- |

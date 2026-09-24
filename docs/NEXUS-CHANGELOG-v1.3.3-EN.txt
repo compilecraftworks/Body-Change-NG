@@ -1,0 +1,10 @@
+Body Change NG v1.3.3
+
+- Added // and /* ... */ comment support to Data\SKSE\Plugins\BodyChangeNGdistribution.json. Existing plain schema-7 rule files still work.
+- Added a bilingual, commented template explaining all 19 fields and 11 target scopes, with 19 inactive rule examples and a complete female-Nord body-and-skin configuration.
+- Included 39 verified base-game race, vampire-race, faction, keyword, class and combat-style IDs, plus instructions for finding mod-added records outside the game.
+- Added multi-candidate body, skin, futa-skin and overlay examples. Pools select compatible candidates independently; they are not simultaneous stacks or paired body/skin combinations.
+- Included an optional read-only PowerShell helper for BodySlide preset IDs and registered overlay IDs, with a separate English/Korean authoring guide. Valid rules can be prepared for a modpack without opening the in-game distribution window.
+- The starter still has zero active rules. Keep your existing custom rule file when updating. Commented files require the v1.3.3+ DLL. In-game rule saving removes comments; keep a separate annotated copy.
+- Existing appearance features, distribution matching, save formats, supported game/RaceMenu interfaces and dependency pins are unchanged. No new gameplay polling or permanent cache was added.
+- Verification: Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases and condition-ID checks passed. No new in-game test was performed.

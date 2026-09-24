@@ -497,9 +497,11 @@ int main()
     Require(packagedRulesFile.good());
     const std::string packagedRules((std::istreambuf_iterator<char>(packagedRulesFile)), {});
     Require(packagedRules.contains("\"schemaVersion\": 7") &&
-        packagedRules.contains("\"rules\": []") &&
+        packagedRules.contains("\"rules\": [") &&
+        packagedRules.contains("/* EXAMPLE: individual_body") &&
         !packagedRules.contains("Excluded") &&
         !packagedRules.contains("excluded"));
+    Require(readFeatureSource("Distribution.cpp").contains("distribution_json::Parse(stream)"));
     std::ifstream packageScriptFile(std::filesystem::path("scripts") /
         "Package-Release.ps1", std::ios::binary);
     Require(packageScriptFile.good());

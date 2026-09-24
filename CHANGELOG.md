@@ -2,6 +2,14 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.3
+
+- Accept `//` line comments and `/* ... */` block comments in `BodyChangeNGdistribution.json`. Existing plain schema-7 files remain supported. Other JSON inputs, rule matching, supported game/RaceMenu interfaces and dependency pins are unchanged.
+- Replace the empty starter with a bilingual, commented authoring template: all 19 fields, 11 target scopes and 19 inactive examples for body presets, skins, futa skins and overlay colors. Include 39 verified base-game condition IDs, custom-record lookup steps and multi-candidate examples. Explain plugin/local BaseIDs, preset identifiers, priority, compatibility, installation and sharing between game instances. The shipped template still has zero active rules.
+- Include an optional read-only PowerShell helper for preset IDs and registered overlay IDs. It does not modify assets, configuration or saves. Add a separate English/Korean authoring guide.
+- Commented files require the v1.3.3+ DLL. In-game rule saving continues to write plain JSON and removes comments; keep the annotated template separately. No automatic rule migration or new gameplay polling is added.
+- Verification: Release DLL build, all 35 offline regression executables and offline authoring tests passed. Checks include the production parser, all template fields/scopes, inactive/activated examples, comment-like strings, malformed JSON, preset IDs, overlay hashes and the 88-case distribution writer matrix. Failed writes preserve the annotated file byte-for-byte; successful writes preserve active data while removing comments. No in-game testing was performed for this change.
+
 ## 1.3.2
 
 - Restore direct skin selection for standalone actors whose BodySlide family cannot be identified. Show sex/race-compatible packs and an unknown-family hint; clicking previews and double-clicking applies without distribution rules. Keep known incompatible layouts blocked.

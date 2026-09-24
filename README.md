@@ -1,4 +1,4 @@
-# Body Change NG — v1.3.2
+# Body Change NG — v1.3.3
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,12 +7,32 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.2
+## Current version — v1.3.3
+
+Distribution rules can now contain `//` and `/* ... */` comments. The
+[commented JSON template](package/SKSE/Plugins/BodyChangeNGdistribution.json)
+explains every field and target scope in English/Korean, with 19 inactive
+examples for body presets, skins, futa skins and overlays. Start with the
+individual-follower example near the top; no in-game rule creation is required.
+See the [offline authoring guide](package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
+and optional read-only [preset/overlay ID helper](package/Tools/BodyChangeNG-RuleId.ps1).
+
+Commented files require the **v1.3.3+ DLL**; plain schema-7 JSON remains compatible.
+In-game rule saving rewrites the file without comments, so keep an editable
+template backup. Comment support does not extend to `settings.json` or ORefit
+JSON. The starter has no active rules and does not distribute the fictional examples.
+Existing distribution behavior, supported runtimes and dependencies are unchanged.
+
+- [English changelog](CHANGELOG.md#133) · [한국어 변경 내역](CHANGELOG-KO.md#133)
+- [v1.3.3 Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.3-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.3-KO.html)
+- [v1.3.3 English text](docs/NEXUS-CHANGELOG-v1.3.3-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.3-KO.txt)
+
+## Preserved v1.3.2 skin selection
 
 Version 1.3.2 restores direct skin selection for standalone actors whose body
 family cannot be identified. Select the actor, open Body Skin, click to preview
 and double-click to apply. **NPC distribution rules are not required.** An
-unknown-family hint asks you to choose the correct Legacy/UBE skin for that actor;
+unknown-family hint asks you to choose the correct 3BA/UBE skin for that actor;
 known incompatible layouts, sex and race restrictions remain enforced. Automatic
 distribution keeps its existing compatibility checks.
 
@@ -27,6 +47,7 @@ No new in-game testing was performed; the reporters' specific setups have not be
 reproduced. See the [verification and limits](docs/RELEASE-VERIFICATION-v1.3.2-KO.md).
 
 - [English changelog](CHANGELOG.md#132) · [한국어 변경 내역](CHANGELOG-KO.md#132)
+- [Full v1.3.2 English Nexus description](docs/NEXUS-DESCRIPTION-v1.3.2-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.3.2-KO.html) · [English Markdown](docs/NEXUS-DESCRIPTION-v1.3.2.md)
 - [English Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.2-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.2-KO.html)
 - [English plain text](docs/NEXUS-CHANGELOG-v1.3.2-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.2-KO.txt)
 

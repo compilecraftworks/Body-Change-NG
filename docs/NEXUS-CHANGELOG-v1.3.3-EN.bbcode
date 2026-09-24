@@ -1,0 +1,21 @@
+[center][size=6][color=#FFD600][b]Body Change NG v1.3.3[/b][/color][/size]
+[size=4][color=#5CFFA3][b]Prepare NPC distribution outside the game[/b][/color][/size][/center]
+[hr]
+[size=4][color=#19D8FF][b]Commented rules and practical examples[/b][/color][/size]
+[list]
+[*]Added [b]// and /* ... */ comments[/b] to Data\SKSE\Plugins\BodyChangeNGdistribution.json. Existing plain schema-7 files remain supported.
+[*]The bilingual template explains all [b]19 fields and 11 target scopes[/b], with 19 inactive examples and a complete female-Nord body-and-skin configuration.
+[*]Includes 39 verified base-game condition IDs and steps for looking up custom races, factions, keywords, classes and combat styles without starting Skyrim.
+[*]Shows how to supply multiple body, skin, futa-skin and overlay candidates. Each feature selects independently; pools are not simultaneous stacks or paired body/skin sets.
+[*]An optional read-only PowerShell helper prints preset and registered overlay IDs. An English/Korean guide explains modpack authoring, installation, stable plugin/local IDs and rule priority.
+[/list]
+[hr]
+[size=4][color=#19D8FF][b]Updating and saving[/b][/color][/size]
+[list]
+[*]The shipped template still has [b]zero active rules[/b]. Preserve your existing customized file when updating.
+[*]Commented files require the [b]v1.3.3+ DLL[/b]. In-game rule saving rewrites plain JSON and removes comments; keep a separate annotated copy. Other JSON inputs have not gained comment support.
+[*]Existing appearance features, distribution matching, save formats, supported game/RaceMenu interfaces and pinned dependencies remain unchanged. No new gameplay polling or permanent cache.
+[/list]
+[hr]
+[size=4][color=#19D8FF][b]Verification[/b][/color][/size]
+Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases and condition-ID checks passed. No new in-game test was performed.
