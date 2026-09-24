@@ -86,6 +86,30 @@ target("BodyChangeNGDistributionTargetReadTests")
     add_includedirs("src")
     add_files("tests/DistributionTargetReadTests.cpp")
 
+target("BodyChangeNGDistributionAuthoringTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_packages("nlohmann_json")
+    add_includedirs("src")
+    add_files("tests/DistributionAuthoringTests.cpp")
+    on_load(function (target)
+        local source = io.readfile("src/BodyChangeNG/DistributionAuthoringRuntime.cpp")
+        local functions = {}
+        for _, signature in ipairs({"    bool ResolveNamedTarget(", "    std::vector<DistributionRule> ReadableRules("}) do
+            local first = assert(source:find(signature, 1, true))
+            local last = assert(source:find("\n    }", first, true)) + #"\n    }" - 1
+            table.insert(functions, source:sub(first, last))
+        end
+        local generated = path.join(target:autogendir(), "distribution-authoring")
+        os.mkdir(generated)
+        local file = path.join(generated, "DistributionAuthoringRuntime.inl")
+        local content = table.concat(functions, "\n\n") .. "\n"
+        if not os.isfile(file) or io.readfile(file) ~= content then io.writefile(file, content) end
+        target:add("includedirs", generated)
+    end)
+
 target("BodyChangeNGDistributionPersistenceTests")
     set_default(false)
     set_kind("binary")

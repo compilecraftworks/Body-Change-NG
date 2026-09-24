@@ -19,8 +19,12 @@ def main():
     audit = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(audit)
     template = (repo / "package/SKSE/Plugins/BodyChangeNGdistribution.json").read_text(encoding="utf-8-sig")
-    rows = re.findall(r"^// \[(RACE|FACT|KYWD|CLAS|CSTY)\] [^\r\n|]+ \| ([A-Za-z0-9_]+) \| ([0-9]+)\r?$", template, re.M)
-    expected = {(kind, editor): int(local) for kind, editor, local in rows}
+    runtime = (repo / "src/BodyChangeNG/DistributionAuthoringRuntime.cpp").read_text(encoding="utf-8-sig")
+    kinds = dict(raceEditorID="RACE", factionEditorID="FACT", keyword="KYWD", npcClass="CLAS", combatStyle="CSTY")
+    rows = re.findall(r'\{DistributionScope::(\w+),(\d+),"(\w+)"\}', runtime)
+    expected = {(kinds[kind], editor): int(local) for kind, local, editor in rows}
+    if any(editor not in template for _, _, editor in rows):
+        raise ValueError("A built-in name is missing from the editable guide")
     if len(expected) != 39 or len(rows) != len(expected):
         raise ValueError("Expected 39 distinct documented condition records")
     if {kind for kind, _ in expected} != {"RACE", "FACT", "KYWD", "CLAS", "CSTY"}:

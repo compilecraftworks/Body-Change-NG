@@ -348,6 +348,24 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (optional ORefit input)
 - **Actor selections:** confirmed manual and automatic results are stored with the save through SKSE serialization. Keep the matching .skse co-save beside its .ess save; copying settings.json alone does not copy an actor's selections.
 - **Tint saves:** the confirmed pack, per-layer color/opacity, restored layers, and captured original DDS/color are stored in that save's co-save. Original tints are not borrowed from another character's shared settings.
 
+
+### Name-based rules outside the game
+
+The updated schema-8 DLL accepts BodySlide/BCNG preset names, skin/futa pack names
+and registered overlay names. Targets include `NordRace`, `BanditFaction` and
+game-provided unique names across all eleven existing scopes. The annotated
+JSON and `BodyChangeNGdistribution-README.txt` contain 19 examples, 39 copyable
+vanilla targets, multiple candidates, colors and ambiguity guidance.
+No numeric-ID helper is required for ordinary editing.
+
+Duplicate names can use file/plugin/type/texture qualifiers. Some custom forms
+expose no unique runtime name/EditorID; those need the documented plugin plus
+local hexadecimal formId. Existing actor compatibility restrictions remain.
+Schemas 3–7 are backed up before migration; unresolved names/old IDs are retained.
+Use the matching DLL, not only a new schema-8 JSON with an older DLL.
+In-game saves preserve comments below the active rules. This is BCNG's format,
+not an importer for OBody distribution JSON.
+
 MO2 may place generated files in Overwrite or a configured output mod. Check the winning virtual Data path rather than assuming every generated file is physically inside the BCNG mod.
 
 **Mod Settings** includes the opening hotkey, UI language (English/Korean/Simplified Chinese), text/UI scale, character placement, optional game pause, morph preservation, NPC body types, and performance mode. Defaults are **character on the left**, **game pause off**, **performance mode off**, and **Preserve other mods' morphs on**. Existing saved preferences are kept. Performance mode changes automatic-work spacing, not the intended selection.
@@ -447,7 +465,7 @@ The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Document
 - Exit Skyrim and back up your saves with matching SKSE co-saves, settings, customized distribution JSON, and asset packs before replacing the plugin.
 - If you previously activated removal mode but are continuing with BCNG, use Resume BCNG in Mod Settings. Updating the DLL alone does not clear that saved setting.
 - Keep your existing BodySkin and Futanari packs. Move old standalone tint packs into **Data\BodySkin\Your Pack\Textures\actors\character\character assets\tintmasks\**, retaining their original inner texture tree. Do not leave them only under the obsolete TintMask root.
-- Do not overwrite your customized rule file with the empty installer starter. The schema-7 migration removes legacy exclusion entries and retains eligible positive distribution rules. Review the resulting conditions before explicitly saving or distributing.
+- Do not overwrite your customized rule file with the empty installer starter. The updated schema-8 DLL backs up schemas 3–7 before converting to named references. Existing legacy exclusion cleanup remains; unresolved old asset IDs are preserved.
 - **Changed confirmation behavior:** closing the picker now cancels an unconfirmed preview. Closing the NPC rule popup now cancels unsaved rule edits instead of auto-saving a next-launch draft.
 - Do not rely on a renamed/deleted pack retaining its previous selection ID. Keep pack names/paths stable when possible. Downgrading a save written by v1.3.2 is not guaranteed.
 

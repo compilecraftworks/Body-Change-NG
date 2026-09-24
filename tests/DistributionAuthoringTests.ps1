@@ -52,11 +52,11 @@ try {
     MustFail { & $helper -OverlayArea body -OverlayTexture '   ' } 'Empty overlay texture accepted.'
     $template = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $repo 'package\SKSE\Plugins\BodyChangeNGdistribution.json')
     $starter = $template | ConvertFrom-Json
-    Require ($starter.rules.Count -eq 0 -and $starter.schemaVersion -eq 7) 'Starter contains active example rules.'
+    Require ($starter.rules.Count -eq 0 -and $starter.schemaVersion -eq 8) 'Starter contains active example rules.'
     $exampleMatch = [regex]::Match($template, '(?ms)^/\* EXAMPLE: individual_body\r?\n(.*?)^END EXAMPLE \*/')
     Require $exampleMatch.Success 'First commented example missing.'
     $example = $exampleMatch.Groups[1].Value | ConvertFrom-Json
-    Require ($example.presetIds[0] -ceq ('My Presets.xml' + [char]31 + 'Preset A')) 'JSON example separator mismatch.'
+    Require ($example.presets[0] -ceq 'Preset A') 'JSON example must use the displayed preset name.'
     Write-Output 'Distribution authoring passed: preset IDs/entities/refit filtering, read-only behavior, path boundaries, DTD/malformed XML rejection, overlay hash/normalization/area, inert JSON examples.'
 } finally {
     $resolved = (Resolve-Path -LiteralPath $stage).Path

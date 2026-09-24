@@ -1,777 +1,512 @@
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "rules": []
 }
 
-// Body Change NG 1.3.3 — NPC 자동 배포 규칙 / NPC distribution rules
-// 주석이 있는 이 파일은 BCNG 1.3.3 이상이 필요합니다. / Comments require BCNG 1.3.3+.
-// 기존 주석 없는 schema 7 파일도 계속 읽습니다. / Existing plain schema-7 JSON still works.
+// BODY CHANGE NG — 이름으로 쓰는 NPC 배포 / Human-readable NPC distribution
+// ============================================================================
+// [KO] 먼저 읽기
+// 이 형식을 지원하는 새 BCNG DLL과 함께 사용하세요. schema 7까지만 지원하는
+// 이전 DLL에 이 파일만 넣는 것은 안 됩니다. 배포본의 rules는 비어 있습니다.
+// 아래 예시는 전부 주석이므로 실행되지 않습니다. 쓸 예시의 { ... }만 복사해
+// 맨 위 rules: [ ] 안에 넣고 실제 설치한 프리셋/팩 이름으로 바꾸세요.
+// 여러 규칙은 }, { 사이에 쉼표를 넣습니다. 마지막 항목 뒤에는 쉼표를 넣지 마세요.
+// 게임 종료 → 백업 → UTF-8로 편집 → 다음 게임 실행 순서입니다.
+// 인게임에서 명시적으로 저장하면 활성 rules가 맨 위에 기록되고, 주석은 아래에
+// 보존됩니다. 주석 예시를 고치는 것만으로는 활성 규칙이 바뀌지 않습니다.
+// MO2에서는 Data\SKSE\Plugins\BodyChangeNGdistribution.json의 최종 승자 파일을
+// 편집하세요. Overwrite나 다른 모드가 덮고 있다면 그 파일을 편집해야 합니다.
+// 여러 모드가 제공한 JSON을 합치지는 않습니다. 새 게임/다른 세이브도 이 규칙을
+// 읽습니다. 액터에게 직접 확정한 선택은 세이브별이며 자동 배포보다 우선합니다.
 //
-// 설치 경로 / Install: Data\SKSE\Plugins\BodyChangeNGdistribution.json
-// MO2 모드 안 / Inside an MO2 mod: SKSE\Plugins\BodyChangeNGdistribution.json
+// [EN] Start here
+// Use the updated BCNG DLL that supports schema 8; this is not a JSON-only update
+// for an older schema-7 DLL. The shipped rules array is empty.
+// All examples below are inactive comments. Copy only the desired { ... } into
+// the top rules array, and replace sample names with names of installed assets.
+// Separate rules with commas; no trailing comma after the last item.
+// Close Skyrim, back up, edit as UTF-8, then launch again.
+// In-game explicit saves write active rules at the top and preserve comments
+// below. Editing a commented example alone does not enable it.
+// Edit the winning Data\SKSE\Plugins\BodyChangeNGdistribution.json in MO2;
+// it may be in Overwrite. Multiple provider files are not merged.
+// Rules are shared across saves/new games. Manual actor selections are saved
+// separately in the co-save and take priority over automatic distribution.
 //
-// 처음 쓰는 분 / START HERE
-// 1. 게임을 끄고 기존 파일을 백업합니다. / Close Skyrim and back up your existing file.
-// 2. 아래 예제에서 { ... } 객체만 복사해 맨 위 "rules": []의 대괄호 안에 넣으세요.
-//    Copy only an example's { ... } object into the TOP "rules": [] array.
-//    아래 예제의 주석을 해제하지 마세요. / Do not uncomment the examples below.
-// 3. 가상 NPC/프리셋/스킨은 본인 값으로 바꾸세요. 기본 게임 조건 값은 아래 실값 목록을 참고하세요.
-//    Replace the fictional NPC/assets. Base-game condition IDs in REAL CONDITION VALUES are verified.
-// 4. 동료마다 { ... }를 하나씩 추가합니다. 객체 사이에는 쉼표, 마지막 뒤에는 쉼표 없음.
-//    Add one object per follower, separated by commas, with no trailing comma.
-// 5. UTF-8 저장 후 게임을 완전히 재실행하면 NPC가 로드될 때 자동 적용합니다.
-//    Save as UTF-8, fully restart Skyrim; rules apply when eligible NPC 3D loads.
-//    인게임 배포 버튼은 필요 없습니다. / No in-game Distribute click is needed.
+// [KO] 가장 쉬운 방식: 프리셋은 BodySlide/BCNG에 보이는 이름 그대로,
+// 스킨/후타는 BCNG 목록의 팩 이름, 오버레이는 등록된 목록 이름을 따옴표에 쓰세요.
+// 숫자 변환이나 별도 PowerShell 도구는 필요 없습니다. 이름의 공백·대소문자를
+// 그대로 유지하세요. JSON에서 경로의 \는 \\로 쓰거나 /로 바꾸세요.
+// [EN] Use the BodySlide/BCNG preset name, BCNG skin/futa pack name, or registered
+// overlay list name. No numeric conversion or PowerShell helper is needed.
+// Preserve asset-name spelling, spaces and case. Escape path backslashes as \\
+// or use forward slashes.
 //
-// 기본은 활성 규칙 0개입니다. 주석 속 예제는 실행되지 않습니다.
-// Default: ZERO active rules. Commented examples do nothing.
-// 여러 JSON은 자동 병합하지 않습니다. MO2 Overwrite의 덮어쓰기도 확인하세요.
-// JSON providers are not merged. Check MO2 Overwrite/output mods for a winning copy.
-// 인게임에서 즉시 배포/다음 게임 배포로 저장하면 실제 규칙은 맨 위, 기존 주석은 아래에 남습니다.
-// In-game Distribute now/next-game saves write active rules FIRST and retain existing comments BELOW.
-// 주석 예시는 계속 비활성 상태입니다. 파일 백업은 별도로 유지하세요.
-// Commented examples remain inactive. Still keep a separate backup of your file.
-// 주석은 이 배포 JSON에서만 지원합니다. settings.json에는 넣지 마세요.
-// Comment support is specific to this distribution file, not settings.json.
-// 편집기가 오류로 표시하면 JSON with Comments/JSONC 모드로 볼 수 있습니다. 파일명은 그대로 두세요.
-// If the editor flags comments, select JSON with Comments/JSONC mode; keep this filename.
-// 큰따옴표 사용, 마지막 쉼표 금지, /* */ 주석 중첩 금지. 숫자/true/false는 따옴표 없이.
-// Use double quotes, no trailing commas or nested block comments; numbers/true/false are unquoted.
+// FIELDS / 모든 필드
+// id
+// [KO] 고유한 규칙 식별 문자열. 선택사항이나 일정한 id 유지를 권장합니다.
+// [EN] Optional unique rule identifier; keep it stable after deployment.
+// name
+// [KO] 사람용 규칙 제목. 매칭 조건이 아닙니다. 생략 가능.
+// [EN] Optional human-readable rule title, not a matching condition.
+// nameKey
+// [KO] UI 자동 제목용 번역 키. 직접 작성 시 생략하세요.
+// [EN] UI-generated localization key; omit when writing by hand.
+// enabled
+// [KO] 생략/true는 켜기, false는 그 규칙만 끄기. schema 8부터 지원.
+// [EN] Omitted/true enables the rule; false disables it (schema 8 onward).
+// sex
+// [KO] 필수: "female" 여성 / "male" 남성. 양쪽은 규칙 두 개로 만드세요.
+// [EN] Required: "female" or "male". Use two rules for both sexes.
+// scope
+// [KO] 필수: 아래 11종 중 하나. 숫자를 쓰지 않습니다.
+// [EN] Required: one of the eleven names below, not an integer.
+// target
+// [KO] 범위에 맞는 대상 이름. all/customFollowers/elders에는 넣지 않습니다.
+// [EN] Target name for the chosen scope; omit for all/customFollowers/elders.
+// presets
+// [KO] 바디 프리셋 후보. ["Preset A","Preset B"]. XML 파일명이 아니라 Preset
+// name 속성, 즉 BodySlide 프리셋 드롭다운/BCNG 목록 이름입니다.
+// [EN] Body candidates, e.g. ["Preset A","Preset B"]. Use XML Preset name,
+// as shown in BodySlide/BCNG, not the XML filename.
+// skins
+// [KO] 바디스킨 팩 후보. ["My Skin Pack A","My Skin Pack B"].
+// [EN] Body skin pack candidates, e.g. ["My Skin Pack A","My Skin Pack B"].
+// futaSkins
+// [KO] 후타스킨 팩 후보. 등록된 여성 후타 NPC의 애드온과 맞는 팩만 적용합니다.
+// 이 규칙 자체가 NPC를 후타로 등록하거나 애드온을 바꾸지는 않습니다.
+// [EN] Futa skin pack candidates. Only compatible registered female futa NPCs
+// qualify. A rule does not register futa status or replace an addon.
+// overlays
+// [KO] face 얼굴 / body 몸 / hands 손 / feet 발의 후보 이름.
+// 각 부위마다 하나를 선택합니다. 목록 전체를 누적 적용하는 뜻이 아닙니다.
+// color는 "#RRGGBBAA", 마지막 AA는 불투명도 00~FF. 6자리 "#RRGGBB"는 불투명.
+// 생략은 "#FFFFFFFF". 예: "#FF000080"은 반투명 빨강.
+// [EN] Candidates by face/body/hands/feet. One candidate is selected per area,
+// not the entire pool. color is "#RRGGBBAA"; AA is opacity 00..FF.
+// "#RRGGBB" is opaque; omitted color is "#FFFFFFFF". "#FF000080" = half-red.
+// excludeCustomFollowers
+// excludeElders
+// [KO] all 범위에서만 적용. 생략/true = 커스텀 동료/노인 제외, false = 허용.
+// 다른 범위에는 숨은 제외 조건으로 적용되지 않습니다.
+// [EN] Apply only to scope all. Omitted/true excludes custom followers/elders;
+// false allows them. These are not hidden filters on other scopes.
+//
+// SCOPES / 조건 11종 (각 규칙은 성별 + 범위 한 가지)
+// all             전체 NPC / all NPCs; no target
+// npc             특정 NPC Base / one ActorBase; EditorID or unique name
+// name            이름 / display name; all NPC bases sharing this name
+// faction         소속 팩션 / faction; e.g. "BanditFaction"
+// plugin          처음 정의한 ESP/ESM/ESL / defining plugin; "MyFollowers.esp"
+// race            종족 / race; e.g. "NordRace"
+// customFollowers 커스텀 동료 판정 / BCNG custom-follower detection; no target
+// elders          노인 판정 / BCNG elder detection; no target
+// keyword         NPC 키워드 / NPC keyword; e.g. "ActorTypeNPC"
+// class           클래스 / class; e.g. "CombatWarrior1H"
+// combatStyle     전투스타일 / combat style; e.g. "csHumanMeleeLvl1"
+//
+// [KO] target은 EditorID를 우선 찾고, 없으면 게임이 제공하는 표시 이름을 찾습니다.
+// "name" 조건은 화면 이름 자체를 비교합니다. 번역이 바뀌면 표시 이름도 바뀔 수
+// 있습니다. plugin은 리텍 패치가 아니라 해당 NPC를 최초 정의한 파일명입니다.
+// npc는 RefID가 아니라 Base 조건입니다. 같은 Base로 생성된 NPC들에 해당합니다.
+// 종족+팩션을 동시에 AND로 묶는 새 문법은 없습니다. 지원되는 위 범위만 쓰세요.
+// [EN] Form targets prefer EditorID, then a unique game-provided display name.
+// Scope name compares the displayed NPC name (translation-dependent).
+// Scope plugin means the original defining plugin, not the last replacer patch.
+// Scope npc targets an ActorBase, not one placed RefID. No arbitrary AND/OR
+// language is introduced; each rule uses one of the scopes above.
+//
+// COPYABLE VANILLA TARGETS / 아래 영문을 그대로 target에 복사
+// Race / 종족:
+// ArgonianRace (아르고니안), BretonRace (브레튼), DarkElfRace (다크엘프)
+// HighElfRace (하이엘프), ImperialRace (임페리얼), KhajiitRace (카짓)
+// NordRace (노드), OrcRace (오크), RedguardRace (레드가드), WoodElfRace (우드엘프)
+// Vampire races / 흡혈귀 종족은 별개:
+// ArgonianRaceVampire, BretonRaceVampire, DarkElfRaceVampire, HighElfRaceVampire
+// ImperialRaceVampire, KhajiitRaceVampire, NordRaceVampire, OrcRaceVampire
+// RedguardRaceVampire, WoodElfRaceVampire
+// Faction / 팩션:
+// BanditFaction (산적), PotentialFollowerFaction (잠재 동료),
+// CurrentFollowerFaction (현재 동료; 게임 진행 중 소속에 따라 판단)
+// Keyword / 키워드:
+// ActorTypeNPC (NPC), ActorTypeUndead (언데드), Vampire (흡혈귀)
+// Class / 클래스:
+// CombatWarrior1H (한손 전사), CombatWarrior2H (양손 전사),
+// CombatMageDestruction (파괴 마법사), EncClassBanditMelee (근접 산적),
+// EncClassBanditMissile (원거리 산적), EncClassBanditWizard (마법 산적),
+// Citizen (시민)
+// Combat style / 전투스타일:
+// csHumanMeleeLvl1, csHumanMeleeLvl2 (근접), csHumanMagic (마법),
+// csHumanMissile (원거리), csHumanTankLvl1 (방어), csHumanBerserkerLvl1 (광전사)
+// 위 이름은 실제 바닐라 레코드 기준입니다. 이름만 보고 모든 모드 NPC의 분류를
+// 추측하지 마세요. 모드가 종족/팩션/클래스 등을 바꾸면 실제 변경된 값을 따릅니다.
+// These are actual vanilla records, not guesses about every modded NPC.
+// Mod overrides can change an NPC's race/faction/class/style.
+//
+// [KO] 커스텀 조건 이름은 어디서 얻나?
+// 모드 작성자가 알려 준 EditorID나 게임/BCNG 조건 목록의 이름을 쓰세요.
+// 같은 이름이면 {"name":"MyFollowerFaction","plugin":"MyFollowers.esp"}.
+// 모든 레코드가 실행 중 이름/EditorID를 제공하는 것은 아닙니다. 이름이 없거나
+// 여전히 중복이면 아래 npc_base 예시처럼 plugin + 로컬 16진 formId를 사용합니다.
+// label은 설명일 뿐 매칭 대체값이 아닙니다. RefID/전체 로드순서 ID는 쓰지 마세요.
+// 이 고급 표기에서는 기존 파일의 숫자를 그대로 유지해도 됩니다.
+// [EN] For custom records, use the author's EditorID or the game's/BCNG condition
+// list name. Qualify duplicate names with {"name":"...","plugin":"MyMod.esp"}.
+// Not every record exposes a runtime name/EditorID. If missing or still ambiguous,
+// use plugin + hexadecimal local formId, as in npc_base. label is only a note,
+// not a fallback identity. Do not use a placed RefID/full load-order-dependent ID.
+//
+// [KO] 동명 프리셋/팩
+// 이름 후보 중 현재 NPC와 호환되는 항목이 정확히 하나일 때만 적용합니다.
+// 여전히 여러 개면 임의 선택하지 않습니다. 프리셋은 file로 XML 상대 경로,
+// 후타는 type("ERF"/"TRX"/"UBE-TRX"), 오버레이는 texture로 등록 경로를 지정하세요.
+// 인게임에서 저장한 file/type/texture는 정확한 선택을 유지하기 위한 구분입니다.
+// 없는 이름도 저장에서 지우지 않습니다. 이름/설치/호환 조건을 고쳐야 적용됩니다.
+// [EN] A name must have exactly one compatible match. Remaining duplicates are
+// not chosen arbitrarily. Qualify presets with file (XML path relative to
+// SliderPresets), futa with type ("ERF"/"TRX"/"UBE-TRX"), overlays with texture
+// (registered path). In-game saves may include file/type/texture to preserve an
+// exact selection. Unresolved names are retained, not silently discarded.
+//
+// PATHS / 설치 경로 (Data 기준)
+// Data\CalienteTools\BodySlide\SliderPresets\<XML file>.xml
+// Data\BodySkin\<Skin pack>\textures\...
+// Data\Futanari\<Futa pack>\textures\...
+// 오버레이는 설치된 모드의 RaceMenu/SlaveTats 등록을 읽습니다. 임의 DDS의 파일명만
+// 쓰면 자동 등록되는 것이 아닙니다. 틴트마스크는 플레이어 전용이며 배포 규칙이 없습니다.
+// Overlays must already be registered by installed mods. An arbitrary DDS path
+// is not a new overlay registration. Player Tint Masks have no NPC-rule channel.
+//
+// BEHAVIOR / 적용 방식
+// [KO] 각 기능·오버레이 부위별로 위쪽의 일치하고 호환되는 규칙을 우선합니다.
+// 후보 하나면 고정, 여러 개면 NPC별 안정적인 랜덤 선택입니다. 스킨 여러 개와
+// 프리셋 여러 개를 같은 순서로 적어도 1:1 세트가 되지는 않습니다.
+// 한 규칙에 여러 기능을 적어도 되지만 저장 시 기능별 규칙으로 분리될 수 있습니다.
+// 분리 후 최대 256개 규칙. 일반 자동 배포의 성별/바디타입/비UBE 제한은 그대로입니다.
+// UBE를 이름으로 적었다고 자동 배포 제한을 우회하지 않습니다. 직접 선택은 별개.
+// 규칙을 삭제/끄는 것만으로 이미 저장된 액터 선택을 모두 초기화하지는 않습니다.
+// [EN] Earlier matching compatible rules take priority per feature/overlay area.
+// One candidate = fixed choice; several = stable per-NPC random pool. Body and
+// skin arrays are independent, not paired sets. Mixed-feature rules may split
+// into feature-specific rows on save (maximum 256 after splitting).
+// Existing automatic sex/body-family/non-UBE restrictions remain; naming a UBE
+// asset does not bypass them. Manual selection is separate. Deleting/disabling
+// rules does not reset all previously saved actor choices.
+//
+// MIGRATION / 이전 설정
+// [KO] schema 3~7을 계속 읽습니다. 정상 변환 전에 원본을 같은 경로 옆
+// .schemaN.bak(이미 있으면 .schemaN.1.bak 등)에 백업하고 schema 8로 저장합니다.
+// 변환 실패/백업 실패 시 원본을 덮어쓰지 않습니다. 해석 못한 옛 항목 ID는
+// {"id":"원래 ID"}로 유지하며, 이름이 확인된 항목만 이름으로 바꿉니다.
+// 규칙 순서·후보·색상을 유지합니다. 옛 제외 규칙 제거 등 기존 마이그레이션은
+// 그대로입니다. 옛 enabled는 당시 무시됐으므로 동작 유지상 true로 옮깁니다.
+// 기존 주석도 보존하므로 옛 설명은 이 schema 8 안내를 기준으로 읽으세요.
+// 다른 스키마의 OBody 배포 JSON을 읽는 기능은 아닙니다.
+// 문법/알 수 없는 필드 오류는 BodyChangeNG.log의 rules[번호]를 확인하세요.
+// [EN] Schemas 3..7 remain readable. Before rewriting as schema 8, BCNG copies
+// the source to .schemaN.bak beside it (.schemaN.1.bak, etc. if already present).
+// Failed conversion/backup does not overwrite the source. Unknown old asset
+// IDs remain {"id":"original ID"}; only known entries become named references.
+// Rule order, candidates and colors are retained; previous legacy exclusion
+// migrations still apply. Old enabled flags were ignored, so they migrate as
+// true to preserve behavior. Old comments remain; follow this schema-8 guide.
+// This is not an importer for OBody's distribution schema. For invalid syntax
+// or unknown fields, check the rules[index] error in BodyChangeNG.log.
+//
+// EXAMPLES / 주석 예시 — 필요한 { ... }만 맨 위 rules 배열에 복사
 
 /* EXAMPLE: individual_body
-    {
-      "id": "follower-a-body", // 규칙마다 다른 이름 / Unique rule ID
-      "name": "Follower A body", // 설명용 이름 / Display label only
-      "female": true, // 여성 true, 남성 false / Female true, male false
-      "scope": 1, // 특정 NPC 원본 / Specific NPC base
-      "npcPlugin": "My Followers.esp", // NPC 최초 정의 플러그인 / Originating plugin
-      "npcLocalFormID": 4660, // 로컬 BaseID 0x1234의 10진수 / Local BaseID 0x1234 as decimal
-      "presetIds": ["My Presets.xml\u001fPreset A"] // XML 경로 + 구분자 + Preset name
-    }
-END EXAMPLE */
-
-// ==================== 무엇을 입력하나요? / REAL CONDITION VALUES ====================
-// '노드', '전사', '근접' 같은 번역/분류 이름을 임의로 입력하는 것이 아닙니다.
-// Do not invent translated names such as 'Nord', 'Warrior' or 'Melee' as lookup values.
-// 아래 기본 게임 항목은 targetPlugin을 "Skyrim.esm"으로 하고 마지막 숫자를 targetLocalFormID에 복사하세요.
-// For the base-game entries below, use targetPlugin "Skyrim.esm" and copy the LAST number.
-// EditorID는 어떤 레코드인지 알아보는 식별 이름입니다. 한글/영문 표시명과는 다릅니다.
-// EditorID identifies the record; it differs from the translated display name.
-// 예: 노드 여성에게만 배포하려면 기존 규칙의 female/대상 필드를 다음과 같이 씁니다.
-// Example: keep your rule ID and candidate array; use these target fields for female Nords:
-//   "female": true,
-//   "scope": 5,
-//   "targetPlugin": "Skyrim.esm",
-//   "targetLocalFormID": 79686
-// 위 네 줄만으로 완성 규칙이 되지는 않습니다. 아래 race_body 예제가 완전한 객체입니다.
-// Those four lines are a target fragment, not a complete rule; see race_body for the full object.
-//
-// 형식: [레코드 종류] 읽기 쉬운 설명 | EditorID | JSON에 쓸 10진수
-// Format: [record type] readable label | EditorID | decimal number for JSON
-// [RACE]는 scope 5. 일반 종족 10개 / RACE: scope 5, the ten ordinary races.
-// [RACE] 아르고니안 / Argonian | ArgonianRace | 79680
-// [RACE] 브레튼 / Breton | BretonRace | 79681
-// [RACE] 다크 엘프 / Dark Elf | DarkElfRace | 79682
-// [RACE] 하이 엘프 / High Elf | HighElfRace | 79683
-// [RACE] 임페리얼 / Imperial | ImperialRace | 79684
-// [RACE] 카짓 / Khajiit | KhajiitRace | 79685
-// [RACE] 노드 / Nord | NordRace | 79686
-// [RACE] 오크 / Orc | OrcRace | 79687
-// [RACE] 레드가드 / Redguard | RedguardRace | 79688
-// [RACE] 우드 엘프 / Wood Elf | WoodElfRace | 79689
-// 뱀파이어는 별도 종족입니다. 일반 노드 규칙 하나가 노드 뱀파이어까지 포함하지 않습니다.
-// Vampire races are separate records; NordRace alone does not include NordRaceVampire.
-// 둘 다 원하면 같은 후보의 규칙 두 개를 작성하세요. 종족에 여러 ID를 배열로 넣지 마세요.
-// To include both, use two rules with the same pool, not an array of target IDs.
-// [RACE] 아르고니안 뱀파이어 / Argonian vampire | ArgonianRaceVampire | 559162
-// [RACE] 브레튼 뱀파이어 / Breton vampire | BretonRaceVampire | 559164
-// [RACE] 다크 엘프 뱀파이어 / Dark Elf vampire | DarkElfRaceVampire | 559165
-// [RACE] 하이 엘프 뱀파이어 / High Elf vampire | HighElfRaceVampire | 559168
-// [RACE] 임페리얼 뱀파이어 / Imperial vampire | ImperialRaceVampire | 559172
-// [RACE] 카짓 뱀파이어 / Khajiit vampire | KhajiitRaceVampire | 559173
-// [RACE] 노드 뱀파이어 / Nord vampire | NordRaceVampire | 558996
-// [RACE] 오크 뱀파이어 / Orc vampire | OrcRaceVampire | 688825
-// [RACE] 레드가드 뱀파이어 / Redguard vampire | RedguardRaceVampire | 559174
-// [RACE] 우드 엘프 뱀파이어 / Wood Elf vampire | WoodElfRaceVampire | 559236
-//
-// [FACT]는 scope 3. NPC 원본의 소속 팩션 판정 / FACT: scope 3, NPC-base faction membership.
-// [FACT] 산적 팩션 / Bandit faction | BanditFaction | 113856
-// [FACT] 잠재 동료 팩션 / Potential follower faction | PotentialFollowerFaction | 378957
-// [FACT] 현재 동료 팩션 / Current follower faction | CurrentFollowerFaction | 378958
-// '현재 동료'도 이름만 보고 고르지 마세요. 이 조건은 NPC 원본 팩션을 읽습니다.
-// Even CurrentFollowerFaction tests the base record, not every runtime follower change.
-//
-// [KYWD]는 scope 8. 장비가 아니라 NPC 원본의 키워드 / KYWD: scope 8, NPC-base keywords.
-// [KYWD] NPC 유형 / NPC actor type | ActorTypeNPC | 79764
-// [KYWD] 언데드 유형 / Undead actor type | ActorTypeUndead | 79766
-// [KYWD] 뱀파이어 키워드 / Vampire keyword | Vampire | 688827
-//
-// [CLAS]는 scope 9. 들고 있는 무기가 아니라 NPC에 지정된 클래스 / CLAS: assigned class, scope 9.
-// [CLAS] 한손 전사 클래스 / One-handed warrior class | CombatWarrior1H | 78198
-// [CLAS] 양손 전사 클래스 / Two-handed warrior class | CombatWarrior2H | 118293
-// [CLAS] 파괴 마법사 클래스 / Destruction mage class | CombatMageDestruction | 124880
-// [CLAS] 근접 산적 클래스 / Melee bandit class | EncClassBanditMelee | 118295
-// [CLAS] 원거리 산적 클래스 / Ranged bandit class | EncClassBanditMissile | 89063
-// [CLAS] 마법 산적 클래스 / Mage bandit class | EncClassBanditWizard | 236848
-// [CLAS] 시민 클래스 / Citizen class | Citizen | 78443
-//
-// [CSTY]는 scope 10. 아래는 전투스타일 예시 일부입니다. 전체 스타일 목록이 아닙니다.
-// CSTY: scope 10. Representative combat-style records, NOT a complete list.
-// [CSTY] 인간 근접 기본 / Human melee level 1 | csHumanMeleeLvl1 | 245275
-// [CSTY] 인간 근접 변형 / Human melee level 2 | csHumanMeleeLvl2 | 428104
-// [CSTY] 인간 마법 / Human magic | csHumanMagic | 245276
-// [CSTY] 인간 원거리 / Human ranged | csHumanMissile | 245277
-// [CSTY] 인간 방어형 / Human tank level 1 | csHumanTankLvl1 | 249690
-// [CSTY] 인간 광전사형 / Human berserker level 1 | csHumanBerserkerLvl1 | 250568
-// 전투스타일은 '검을 든 NPC 모두' 같은 자동 분류가 아닙니다. 지정된 CSTY가 정확히 같아야 합니다.
-// A combat-style rule matches the assigned CSTY, not everyone currently holding a sword.
-// 위 식별자는 Skyrim.esm에서 확인했습니다. 모드가 NPC의 종족/클래스/스타일을 교체하면 대상도 달라집니다.
-// These IDs were checked in Skyrim.esm. NPC record overrides can change which condition matches.
-// 종족이 매칭돼도 해당 바디/스킨 후보의 호환 제한은 그대로입니다. 특히 수인/UBE 스킨 자동 배포 주의.
-// A matching race does not bypass body/skin compatibility, including beast/UBE automatic-skin restrictions.
-//
-// 내 모드의 값 찾기 — 게임을 켤 필요 없습니다 / FIND CUSTOM VALUES WITHOUT STARTING SKYRIM
-// 1. xEdit(SSEEdit)에서 실제 사용할 플러그인과 마스터를 엽니다. MO2라면 MO2를 통해 실행합니다.
-//    Open your installed plugins/masters in xEdit (SSEEdit); launch through MO2 if you use MO2.
-// 2. 특정 NPC가 어느 종족/팩션/클래스/스타일인지 모르면 NPC_ 레코드를 찾고 최종 덮어쓰기 열을 봅니다.
-//    Find that NPC_ record and its winning override to see the actual race/factions/class/combat style.
-//    NPC의 종족(Race), 팩션(Factions), 키워드(Keywords), 클래스(Class), 전투스타일(Combat Style) 참조를 확인합니다.
-//    Inspect those references. Do not guess from the follower's name, outfit, weapon or mod title.
-// 3. 참조된 조건 레코드를 찾아 원본 플러그인과 FormID를 확인합니다.
-//    Follow/find the referenced condition record; note its originating plugin and FormID.
-//    RACE=종족, FACT=팩션, KYWD=키워드, CLAS=클래스, CSTY=전투스타일. NPC_의 ID와 혼동하지 마세요.
-//    Use RACE/FACT/KYWD/CLAS/CSTY as appropriate, NOT the NPC_ ID for these conditions.
-// 4. 다음 NPC / FormID 안내대로 로드 순서를 제외하고 10진수로 바꿉니다.
-//    Remove load-order bits and convert to decimal using the NPC / FormID instructions below.
-//    targetPlugin과 targetLocalFormID에 넣습니다. 표시 이름이나 설명을 넣는 필드가 아닙니다.
-//    Copy into targetPlugin and targetLocalFormID; these fields do not accept the display label.
-// 5. 특정 NPC 한 명이면 scope 1의 npcPlugin/npcLocalFormID를 사용합니다.
-//    For just one NPC, use scope 1 with npcPlugin/npcLocalFormID instead.
-//    이름 조건(scope 2)은 target에 NPC 원본 이름 전체. 플러그인 조건(scope 4)은 확장자 포함 파일명.
-//    Name scope 2 takes the exact NPC base name; plugin scope 4 takes the original filename with extension.
-//    scope 0/6/7에는 대상 이름/ID를 넣지 않습니다. 전체/커스텀 팔로워/노인 판정입니다.
-//    Scopes 0/6/7 need no target name/ID: all/custom followers/elders.
-// 없는 커스텀 종족의 값을 이 안내에서 미리 알 수는 없습니다. 제작자별 ID이므로 실제 설치 파일에서 찾으세요.
-// Custom record IDs vary by author; use the actual installed plugin, not an invented universal name.
-// xEdit에서는 확인만 하고 수정 저장하지 않아도 됩니다. 배포 JSON만 편집하세요.
-// Read-only inspection is sufficient: do not save changes to the plugin; edit only distribution JSON.
-//
-// ==================== NPC / FormID ====================
-// RefID가 아닌 NPC_ 원본 BaseID를 사용합니다. / Use the NPC_ BASE ID, not actor RefID.
-// NPC 레코드 편집기(예: xEdit)에서 최초 정의 플러그인과 ID를 확인하세요.
-// Find the originating NPC record/plugin in a record editor such as xEdit.
-// 리텍 ESP가 외형만 덮어썼으면 원본 플러그인을 씁니다. Skyrim.esm 원본이면 Skyrim.esm.
-// A replacer's override is not the originating plugin. A Skyrim.esm NPC still uses Skyrim.esm.
-// 일반 ESP/ESM: 전체 ID의 하위 6자리. ESL 플래그: 하위 3자리(.esp도 라이트일 수 있음).
-// Ordinary ESP/ESM: low 6 hex digits. Light/ESL-flagged: low 3 (a .esp can also be light).
-//   05123456 -> 0x123456 -> 1193046
-//   FE012ABC -> 0xABC    -> 2748
-// 계산기 프로그래머 모드 HEX→DEC로 변환. JSON에는 따옴표 없는 10진 정수만 씁니다.
-// Convert HEX to DEC in Calculator Programmer mode. Write an unquoted decimal integer.
-// 원본 플러그인+로컬 ID가 같으면 ESP 로드 순서가 달라도 됩니다.
-// Plugin + local ID still resolves when load order changes.
-// 레코드를 압축/리넘버링하면 다시 맞추세요. 같은 BaseID의 개체는 모두 매칭됩니다.
-// Compaction/renumbering needs updated IDs. All references sharing a base can match.
-
-// ==================== BodySlide preset ID ====================
-// 전체 경로 / Full example:
-// Data\CalienteTools\BodySlide\SliderPresets\My Pack\My Presets.xml
-// XML에서 <Preset name="Preset A" set="...">의 name을 읽습니다.
-// Read the name attribute of <Preset name="Preset A" set="..."> in that XML.
-// ID = SliderPresets 기준 상대경로 + \u001f + Preset name
-// ID = path relative to SliderPresets + \u001f + Preset name
-//   "My Pack/My Presets.xml\u001fPreset A"
-// 실제 예제의 구분자를 그대로 복사하세요. \\u001f로 두 번 이스케이프하지 마세요.
-// Copy the example separator as-is; do not double-escape it as \\u001f.
-// 상대 경로는 / 사용. 대소문자/공백 일치. XML &amp;는 ID에서 &로 해석합니다.
-// Use / in relative paths and exact case/spaces. XML &amp; decodes to & in the ID.
-// XML 파일명과 프리셋 이름은 다릅니다. XML 하나에 여러 Preset이 있을 수 있습니다.
-// Filename and preset name differ; one XML can contain several presets.
-// -Refit 이름은 별도 의상 보정용. 바디·의상은 Zeroed Sliders + Build Morphs로 준비하세요.
-// Names ending in -Refit are separate correction presets. Build matching body/outfit morphs.
-// 선택 도구 / Optional read-only helper: Data\Tools\BodyChangeNG-RuleId.ps1
-// PowerShell에서 실제 경로로 실행 / Run in PowerShell with your physical paths:
-// & "D:\My MO2\mods\Body Change NG\Tools\BodyChangeNG-RuleId.ps1" -PresetXml "D:\My MO2\mods\My Presets\CalienteTools\BodySlide\SliderPresets\My Presets.xml"
-// 출력 id를 복사하세요. 도구는 필수가 아니고 파일을 수정하지 않습니다.
-// Copy the output id. The helper is optional and changes no files.
-
-// ==================== 모든 필드 / ALL FIELDS ====================
-// id
-//   규칙마다 고유한 문자열. 예: follower-a-body. 같은 ID를 중복하지 말고 obody-import-로 시작하지 마세요.
-//   Unique rule string, e.g. follower-a-body. No duplicates or obody-import- prefix.
-// name
-//   목록에 표시할 설명. NPC나 프리셋을 찾는 검색어가 아닙니다.
-//   Human-readable label; not an NPC/preset lookup key.
-// nameKey
-//   직접 작성할 때 생략하거나 빈 문자열. 내부 번역용입니다.
-//   Omit or leave empty when hand-authoring; reserved for localization.
-// enabled
-//   현재 버전은 불러올 때 true로 정규화합니다. false로 끄지 마세요. rules에서 빼서 별도 파일에 보관하거나 객체 전체를 주석 처리하세요.
-//   Current normalization forces true. false does NOT disable a rule. Remove it to a separate file or comment out the whole object.
-// female
-//   true=여성, false=남성. 두 성별은 각각 규칙을 만드세요.
-//   true=female; false=male. Make separate rules for each sex.
-// scope
-//   대상 종류 정수 0~10. 아래 SCOPE 안내 참고. 한 규칙에 하나만 지정합니다.
-//   Target-kind integer 0..10; see SCOPE below. One scope per rule.
-// npcPlugin
-//   scope 1: NPC 원본 레코드가 처음 정의된 플러그인. 리텍 덮어쓰기 플러그인이 아닙니다.
-//   Scope 1: plugin that originally defines the NPC base, not a later appearance override.
-// npcLocalFormID
-//   scope 1: 로드 순서를 뺀 NPC BaseID를 10진 정수로. RefID나 0x 문자열 금지. 0x1234는 4660.
-//   Scope 1: load-order-independent NPC base ID as a decimal integer, not RefID or a 0x string. 0x1234 = 4660.
-// targetPlugin
-//   scope 3/5/8/9/10: 대상 팩션/종족/키워드/클래스/전투스타일의 원본 플러그인.
-//   Scopes 3/5/8/9/10: originating plugin of the target faction/race/keyword/class/combat-style form.
-// targetLocalFormID
-//   scope 3/5/8/9/10: 그 대상의 로컬 FormID를 10진 정수로.
-//   Scopes 3/5/8/9/10: that target form's local ID as a decimal integer.
-// target
-//   scope 2는 NPC 원본 이름 완전 일치, 4는 원본 플러그인 파일명. 3/5/8/9/10에서는 정확한 EditorID를 구형 대체 식별자로 사용 가능. 표시 이름과 EditorID는 다릅니다.
-//   Scope 2: exact NPC base name; 4: originating plugin filename. In 3/5/8/9/10, exact EditorID is a legacy fallback, not the display name.
-// bodyFamily
-//   현재는 사용하지 않는 옛 필드. 생략하세요. 성별 배포 바디 타입은 settings.json에서 정합니다.
-//   Obsolete and cleared. Omit it; per-sex distribution body types come from settings.json.
-// presetIds
-//   바디프리셋 ID 문자열 배열. XML 상대경로 + \u001f + XML의 Preset name. 하나면 고정, 여러 개면 호환 후보 중 하나.
-//   Body-preset ID array: XML relative path + \u001f + XML Preset name. One fixes the assignment; multiple form a compatible random pool.
-// skinProfileIds
-//   바디스킨 ID 문자열 배열. 예: auto:My Skin Pack:female. 남성은 :male. 스킨폴더 이름과 대소문자까지 맞춰야 합니다.
-//   Body-skin ID array, e.g. auto:My Skin Pack:female; use :male for male packs. Match folder spelling/case.
-// futanariSkinIds
-//   후타스킨 ID 배열. futanari:My Futa Pack:cbbe-trx 또는 :erf. 등록된 여성 후타 NPC만. UBE TRX 자동 배포는 지원하지 않습니다.
-//   Futa-skin ID array: futanari:My Futa Pack:cbbe-trx or :erf. Registered female futa NPCs only; no UBE TRX auto distribution.
-// overlayIds
-//   배열 4개: 얼굴, 몸, 손, 발 순서. 각 배열은 그 부위 후보 ID. 부위마다 하나를 선택합니다. 모든 체크 후보를 누적 배포하지 않습니다.
-//   Four arrays in face/body/hands/feet order. Each is an area pool; automatic distribution picks one per area, not every candidate.
-// overlayColors
-//   객체 4개: 얼굴, 몸, 손, 발. 키는 동일 부위 후보 ID, 값은 AARRGGBB의 10진 정수. 생략 시 흰색 불투명 4294967295.
-//   Four objects in face/body/hands/feet order. Keys are exact candidate IDs; values are decimal AARRGGBB. Omitted = opaque white 4294967295.
-// includeCustomFollowers
-//   scope 0에서만 적용. false=커스텀 팔로워 제외(기본), true=포함. 특정 NPC/이름 규칙에는 영향 없음.
-//   Scope 0 only: false skips custom followers (default), true includes them. Does not veto individual/name rules.
-// includeElderNPCs
-//   scope 0에서만 적용. false=노인 제외(기본), true=포함. 특정 NPC/이름 규칙에는 영향 없음.
-//   Scope 0 only: false skips elders (default), true includes them. Does not veto individual/name rules.
-
-// ==================== 대상 종류 / SCOPE ====================
-// 0: 전체 NPC. includeCustomFollowers/includeElderNPCs 적용.
-//    All NPCs; the two include flags apply.
-// 1: 특정 NPC 원본. npcPlugin + npcLocalFormID.
-//    NPC base: npcPlugin + npcLocalFormID.
-// 2: NPC 원본 이름. target에 완전 일치 이름; 부분 검색 아님.
-//    Exact NPC base name in target; not substring search.
-// 3: 팩션 소속. targetPlugin + targetLocalFormID.
-//    Faction membership: targetPlugin + targetLocalFormID.
-// 4: NPC 원본을 정의한 플러그인. target. 리텍 플러그인의 덮어쓰기를 검색하지 않음.
-//    NPC originating plugin filename in target; not all NPCs overridden by a replacer.
-// 5: 종족. targetPlugin + targetLocalFormID.
-//    Race: targetPlugin + targetLocalFormID.
-// 6: 커스텀 팔로워 판정 대상. 구형 파일 호환용 지원 범위.
-//    Custom-follower classification; legacy supported scope.
-// 7: 노인 판정 대상. 구형 파일 호환용 지원 범위.
-//    Elder classification; legacy supported scope.
-// 8: NPC 원본 키워드. targetPlugin + targetLocalFormID.
-//    NPC base keyword: targetPlugin + targetLocalFormID.
-// 9: NPC 클래스. targetPlugin + targetLocalFormID.
-//    NPC class: targetPlugin + targetLocalFormID.
-// 10: NPC 전투스타일. targetPlugin + targetLocalFormID. 구형 호환 범위.
-//    NPC combat style: targetPlugin + targetLocalFormID; legacy scope.
-//
-// 한 규칙은 성별 + scope 하나 + 호환 조건입니다. 여러 scope의 AND/중첩 문법은 없습니다.
-// One rule means sex + ONE scope + compatibility. No multi-scope AND/nested conditions.
-// EditorID와 화면 표시 이름은 다릅니다. 조건 폼도 최초 플러그인+로컬 ID를 권장합니다.
-// EditorIDs are not display names. Prefer originating plugin + local ID for condition forms.
-// 커스텀 팔로워 판정은 공식 본편/DLC 외 플러그인 출신이며 플레이어 팀원 또는 팔로워 팩션 소속인 경우입니다.
-// Custom follower means a non-base-game/DLC origin plus player-teammate or follower-faction status.
-// 노인은 종족 EditorID의 elder 또는 음성 EditorID의 old/elder로 판정합니다. 외모를 읽는 기능은 아닙니다.
-// Elder classification uses elder in race EditorID or old/elder in voice EditorID, not visual appearance.
-
-// ==================== 작동과 우선순위 / BEHAVIOR ====================
-// 위에서 아래로 기능별 첫 호환 규칙 적용. 특정 NPC 규칙을 전체 NPC 규칙보다 위에 두세요.
-// First compatible rule wins per feature. Put individual NPC rules before all-NPC fallbacks.
-// 바디·스킨·후타·오버레이를 별도 객체로 권장. 섞으면 분리되며 분리 후 최대 256개.
-// Prefer one feature per rule. Mixed rules split internally; maximum 256 after splitting.
-// 후보 하나면 고정, 여럿이면 호환 후보 중 하나. 기존 자동 후보가 유효하면 유지될 수 있음.
-// One candidate fixes the assignment; multiple choose one and may retain a valid previous choice.
-// 플레이어는 배포 대상 아님. 근처 목록의 거리/32명 제한은 규칙 배포에 적용하지 않음.
-// Not for the player. Nearby dropdown distance/32-NPC limits do not limit rules.
-// 세이브에서 수동 확정/기본값 지정한 해당 기능은 자동 배포보다 우선합니다.
-// Manual or explicit Default choices in a save take priority for that feature.
-// 다른 인스턴스도 같은 NPC 원본/로컬 ID, XML 경로/name, 에셋 ID가 있으면 사용 가능.
-// Transfer requires the same NPC/plugin/local IDs, XML paths/names and asset IDs, not load order.
-// 복수 후보의 선택 결과까지 다른 구성에서 똑같다는 뜻은 아닙니다. 반드시 같은 프리셋이면 후보를 하나만 넣으세요.
-// Multi-candidate results may differ between setups; use ONE candidate for a fixed preset.
-// 규칙 삭제는 이미 저장된 외형 원복이 아닙니다. 이전 자동 배정이 남을 수 있습니다.
-// Removing a rule does not undo appearance already stored in a save.
-// enabled:false는 현재 로드 시 true가 됩니다. 끄려면 규칙을 별도 파일로 빼거나 객체 전체를 /* ... */로 감싸세요.
-// enabled:false is normalized to true. Remove the rule to a separate file or wrap its object in /* ... */.
-// 주석 처리/삭제 후에도 남은 객체 사이에만 쉼표가 있어야 합니다. 마지막 객체 뒤 쉼표는 지우세요.
-// After removal/commenting, keep commas only BETWEEN remaining objects, never after the last one.
-// 후보가 모두 빈 규칙은 제거됩니다. target 최대 512바이트, 후보 ID 최대 1024바이트.
-// Empty rules are dropped. target max 512 bytes; candidate ID max 1024 bytes.
-// 바디스킨은 같은 NPC 원본을 공유하는 개체끼리 공유될 수 있습니다.
-// Native body skin can be shared by references of the same NPC base.
-
-// ==================== 배포 바디 타입 / BODY SETTINGS ====================
-// 별도 파일 / Separate file: Data\SKSE\Plugins\BodyChangeNG\settings.json
-// femaleNpcBodyType: 0=CBBE 3BA (default), 1=BHUNP/UNP, 2=UBE, 3=Vanilla
-// maleNpcBodyType:   0=HIMBO (default), 1=SAM, 2=Vanilla
-// 기본 3BA/HIMBO면 새 파일 불필요. BHUNP/SAM이고 설정 파일이 없을 때의 최소 내용:
-// Defaults need no new settings file. Minimal BHUNP/SAM settings if no file exists:
-// {"femaleNpcBodyType":1,"maleNpcBodyType":1}
-// 기존 설정은 필요한 값만 바꾸세요. 이 설정 객체를 배포 rules에 넣지 마세요.
-// Preserve other settings. Do NOT put that settings object in distribution rules.
-// 성별당 배포 타입 하나. 규칙의 bodyFamily는 옛 필드라 사용하지 않습니다.
-// One distribution body type per sex. Per-rule bodyFamily is obsolete.
-// 현재 자동 후보는 UBE 프리셋/스킨/후타/오버레이를 지원하지 않습니다.
-// Current automatic candidate pools do not support UBE presets/skins/futa/overlays.
-// UBE 설정 항목이 있어도 자동 UBE 배포가 켜지는 것은 아닙니다.
-// The UBE enum does not enable UBE automatic distribution.
-// Vanilla는 자동 바디프리셋 제거 정책. removalMode=true는 배포/보정을 중단합니다.
-// Vanilla selects automatic body-preset removal. removalMode=true suspends distribution.
-
-// ==================== 스킨/후타/오버레이 / ASSET IDS ====================
-// 아래는 가상 폴더입니다. 팩이 실제로 설치·인식되어 있어야 합니다.
-// These are fictitious folders. Assets must actually be installed/discovered.
-// Data\BodySkin\My Skin Pack\Textures\actors\character\female\femalehead.dds
-// -> auto:My Skin Pack:female (남성/male: auto:My Skin Pack:male)
-// 자동 스킨은 지원 일반 인간형. UBE/아르고니안/카짓 스킨 풀은 지원하지 않습니다.
-// Automatic skin pools use supported conventional humanoid skins, not UBE/Argonian/Khajiit.
-// Data\Futanari\My Futa Pack\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
-// -> futanari:My Futa Pack:cbbe-trx
-// Data\Futanari\My Futa Pack\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong.dds
-// -> futanari:My Futa Pack:erf
-// 후타는 등록된 여성 SOS/TNG 애드온이 필요. 규칙 자체는 후타 등록을 하지 않습니다.
-// Futa rules require a matching registered female SOS/TNG addon; rules do not register it.
-// overlayIds와 overlayColors는 얼굴/몸/손/발 순서의 배열 4개입니다.
-// overlayIds/overlayColors contain four arrays/objects in face/body/hands/feet order.
-// 부위당 후보 하나만 자동 적용. 틴트마스크 NPC 배포는 없습니다.
-// One overlay candidate per area, not the whole stack. No NPC tint-mask distribution.
-// 실제 등록 texture 문자열과 부위로 ID 계산 / Optional offline ID calculation:
-// & "D:\My MO2\mods\Body Change NG\Tools\BodyChangeNG-RuleId.ps1" -OverlayArea body -OverlayTexture "Actors\Character\Overlays\My Paint.dds"
-// 부위/Textures 접두사 차이는 ID가 달라집니다. ID 계산이 설치/등록을 대신하지 않습니다.
-// Area or Textures-prefix differences change the ID; calculation does not register/install it.
-// 색상 AARRGGBB 10진수 / Decimal AARRGGBB:
-// 4294967295 = 0xFFFFFFFF (흰색 불투명 / opaque white; omitted color default)
-// 2164195328 = 0x80FF0000 (빨강 약 50% / roughly half-opaque red)
-// 외부 슬롯은 보존합니다. 성별/레이아웃/슬롯 부족이면 표시되지 않을 수 있습니다.
-// Foreign slots are preserved. Sex/layout/slot availability still restrict application.
-
-// ==================== 후보 여러 개 넣기 / MULTIPLE CANDIDATES ====================
-// 아래 객체도 위 rules 배열 안으로 복사해서 사용합니다. 여기서 주석만 해제하지 마세요.
-// Copy these objects into rules ABOVE; do not merely uncomment them below the root.
-// 같은 NPC에게 바디 3개를 동시에 적용하지 않습니다. 후보 목록에서 호환되는 1개를 선택합니다.
-// Multiple body/skin/futa IDs are a pool: select ONE compatible entry, not all at once.
-// 여러 NPC가 같은 후보를 받을 수도 있습니다. 후보 순서대로 한 명씩 배분하는 기능은 아닙니다.
-// Several NPCs can receive the same entry; this is not a one-per-NPC round-robin assignment.
-// 고정 배포는 후보 1개만, 여러 후보 배포는 큰따옴표 문자열을 쉼표로 연결하세요.
-// For a fixed result keep one ID; for a pool, separate quoted IDs with commas.
-// 기존 선택이 유효하면 유지될 수 있습니다. 재실행할 때마다 무조건 다시 뽑는 기능은 아닙니다.
-// A valid saved choice may be retained; restarting does not guarantee a new draw.
-// 바디/스킨/후타는 서로 별개 후보입니다. A 체형이면 A 스킨이라는 짝짓기는 지원하지 않습니다.
-// Body/skin/futa pools are independent; there is no preset-A-to-skin-A pairing syntax.
-//
-// 바디프리셋 예: XML 하나의 여러 Preset name, 다른 XML, 하위 폴더를 함께 넣을 수 있습니다.
-// Body presets: multiple names in one XML, another XML, or a subfolder can share a pool.
-// 아래의 XML/Preset A/B/C는 실제 설치 값으로 바꾸세요. 이름만이나 XML 경로만 넣으면 안 됩니다.
-// Replace the fictional XML/Preset names; neither a bare preset name nor a file path alone is an ID.
-/* EXAMPLE: individual_body_pool
 {
-  "id": "follower-a-body-pool",
-  "name": "Follower A - choose one body",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A", // 같은 XML의 프리셋 A / Preset A in the same XML
-    "My Presets.xml\u001fPreset B", // 같은 XML의 프리셋 B / Preset B in the same XML
-    "My Pack/Other Presets.xml\u001fPreset C" // 다른 XML/하위 폴더 / Different XML/subfolder
-  ]
-}
-END EXAMPLE */
-
-// 바디스킨 예: 아래 두 설치 폴더가 각각 인식되는 스킨팩이면 후보 ID도 두 개입니다.
-// Body skins: these two discovered pack folders produce two separate candidate IDs.
-//   Data\BodySkin\My Skin A\Textures\actors\character\female\femalebody_1.dds
-//   Data\BodySkin\My Skin B\Textures\actors\character\female\femalebody_1.dds
-// 위는 설치 경로입니다. JSON ID에는 Textures 경로나 DDS 파일명을 넣지 않습니다.
-// These are installed file paths; do not put the Textures path or DDS filename into an ID.
-// auto: 뒤에는 BodySkin 바로 아래의 팩 폴더명. 여성 :female, 남성 :male.
-// After auto: use the pack folder directly inside BodySkin; :female for women, :male for men.
-// 남성 규칙이면 female:false와 남성용 스킨 ID(:male)를 함께 바꿉니다.
-// For a male rule, change both female to false and IDs to compatible :male packs.
-/* EXAMPLE: individual_skin_pool
-{
-  "id": "follower-a-skin-pool",
-  "name": "Follower A - choose one skin",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "skinProfileIds": [
-    "auto:My Skin A:female",
-    "auto:My Skin B:female"
-  ]
-}
-END EXAMPLE */
-
-// 후타스킨 예: TRX A/B 중 하나. ERF NPC라면 이 TRX 후보는 자동으로 ERF로 바뀌지 않습니다.
-// Futa skins: choose one TRX A/B pack; TRX candidates do not turn into ERF for an ERF NPC.
-//   Data\Futanari\My Futa A\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
-//   Data\Futanari\My Futa B\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
-// ERF/TRX 대상이 섞이면 인식되는 ERF 후보도 추가할 수 있습니다. 실제 애드온 유형에 맞는 후보만 선택합니다.
-// For a mixed ERF/TRX population, add discovered ERF IDs too; only the registered type is eligible.
-// 후타스킨 후보 여러 개는 크기나 애드온 자체를 랜덤 변경하는 뜻이 아닙니다.
-// A futa-skin pool changes textures, not addon type or size.
-/* EXAMPLE: individual_futa_pool
-{
-  "id": "follower-a-futa-pool",
-  "name": "Follower A - choose one compatible futa skin",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "futanariSkinIds": [
-    "futanari:My Futa A:cbbe-trx",
-    "futanari:My Futa B:cbbe-trx",
-    "futanari:My ERF Pack:erf"
-  ]
-}
-END EXAMPLE */
-
-// 이 예제들의 대상도 종족/팩션 등으로 바꿀 수 있습니다. 예: scope 5 + NordRace의 실제 값.
-// These pools also work with race/faction/etc. targets; replace the target fields accordingly.
-// 같은 기능·같은 대상의 고정 규칙과 후보 규칙을 함께 넣으면 위 규칙이 먼저 적용됩니다.
-// Do not leave an earlier fixed rule for the same target/feature unless you want it to take priority.
-// 바디와 스킨을 모두 주려면 바디 규칙 1개 + 스킨 규칙 1개. 둘의 후보는 각각 따로 선택합니다.
-// To assign body AND skin, add one body rule and one skin rule; selection is independent.
-//
-// ==================== 다른 예제 / OTHER EXAMPLES ====================
-// 아래에서 필요한 { ... }만 위 rules의 대괄호 안으로 복사하세요.
-// Copy only the needed { ... } object into the rules brackets ABOVE.
-// 여기에서 주석만 해제하면 JSON 뒤에 두 번째 객체가 생겨 오류가 납니다.
-// Do NOT merely uncomment a below-root example: a second root object is invalid.
-// My로 시작하는 NPC/프리셋/스킨 값은 가상입니다. Skyrim.esm 조건 예제의 ID는 실제 값입니다.
-// My... NPC/asset names are fictional; the Skyrim.esm condition IDs below are real.
-
-// 동료 B에게 다른 프리셋: 고유 id·로컬 BaseID·프리셋을 바꿉니다.
-// Follower B: change the unique rule id, local NPC BaseID and preset.
-/* EXAMPLE: second_follower_body
-{
-  "id": "follower-b-body",
-  "name": "follower-b-body",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4661,
-  "presetIds": [
-    "My Presets.xml\u001fPreset B"
-  ]
-}
-END EXAMPLE */
-
-// 이름으로 지정: target을 NPC 원본 이름 전체로 바꿉니다. 동명이인 주의.
-// Exact name: replace target with the full NPC base name; beware duplicate names.
-/* EXAMPLE: name_body
-{
-  "id": "exact-name-body",
-  "name": "exact-name-body",
-  "female": true,
-  "scope": 2,
+  "id": "follower-a-body",
+  "name": "Follower A 체형 / body",
+  "sex": "female",
+  "scope": "name",
   "target": "Follower A",
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// 전체 여성 랜덤 후보: 개별 NPC 규칙보다 아래에 두세요. 팔로워·노인은 기본 제외.
-// All female NPC pool: place below individual rules; skips custom followers and elders by default.
-/* EXAMPLE: all_female_pool
+/* EXAMPLE: npc_base
 {
-  "id": "all-female-body",
-  "name": "all-female-body",
-  "female": true,
-  "scope": 0,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A",
-    "My Presets.xml\u001fPreset B"
-  ],
-  "includeCustomFollowers": false,
-  "includeElderNPCs": false
-}
-END EXAMPLE */
-
-// 남성 NPC: female=false와 남성 호환 프리셋을 함께 사용합니다.
-// Male NPC: female=false plus a male-compatible preset.
-/* EXAMPLE: male_body
-{
-  "id": "follower-male-body",
-  "name": "follower-male-body",
-  "female": false,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "presetIds": [
-    "Male Presets.xml\u001fMale Preset"
+  "id": "specific-npc",
+  "sex": "female",
+  "scope": "npc",
+  "target": {
+    "plugin": "MyFollowers.esp",
+    "formId": "0x1234",
+    "label": "Follower A"
+  },
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// 플러그인이 처음 추가한 NPC 전체: target은 원본 플러그인 파일명입니다.
-// All NPCs originally defined by a plugin: target is its filename.
-/* EXAMPLE: plugin_body
+/* EXAMPLE: all_female_body
 {
-  "id": "origin-plugin-body",
-  "name": "origin-plugin-body",
-  "female": true,
-  "scope": 4,
-  "target": "My Followers.esp",
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "id": "female-bodies",
+  "sex": "female",
+  "scope": "all",
+  "excludeCustomFollowers": true,
+  "excludeElders": true,
+  "presets": [
+    "Preset A",
+    "Preset B"
   ]
 }
 END EXAMPLE */
 
-// 팩션: targetPlugin/targetLocalFormID는 NPC가 아닌 팩션 레코드입니다.
-// Faction: targetPlugin/targetLocalFormID identify the faction, not the NPC.
+/* EXAMPLE: all_male_body
+{
+  "id": "male-bodies",
+  "sex": "male",
+  "scope": "all",
+  "presets": [
+    "Male Preset A",
+    "Male Preset B"
+  ]
+}
+END EXAMPLE */
+
 /* EXAMPLE: faction_body
 {
   "id": "faction-body",
-  "name": "faction-body",
-  "female": true,
-  "scope": 3,
-  "targetPlugin": "Skyrim.esm", // 산적 팩션 / BanditFaction
-  "targetLocalFormID": 113856,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "sex": "female",
+  "scope": "faction",
+  "target": "BanditFaction",
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// 종족: targetPlugin/targetLocalFormID를 종족 레코드로 바꾸세요.
-// Race: use the originating plugin and local race record ID.
 /* EXAMPLE: race_body
 {
   "id": "race-body",
-  "name": "race-body",
-  "female": true,
-  "scope": 5,
-  "targetPlugin": "Skyrim.esm", // 노드 / NordRace
-  "targetLocalFormID": 79686,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "sex": "female",
+  "scope": "race",
+  "target": "NordRace",
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// NPC 원본 키워드: 장비의 키워드가 아니라 NPC_의 키워드입니다.
-// NPC base keyword: this is an NPC_ keyword, not an equipped-item keyword.
 /* EXAMPLE: keyword_body
 {
   "id": "keyword-body",
-  "name": "keyword-body",
-  "female": true,
-  "scope": 8,
-  "targetPlugin": "Skyrim.esm", // NPC 유형 / ActorTypeNPC
-  "targetLocalFormID": 79764,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "sex": "female",
+  "scope": "keyword",
+  "target": "ActorTypeNPC",
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// 클래스: targetPlugin/targetLocalFormID는 NPC 클래스 레코드입니다.
-// Class: identify the NPC class record with originating plugin/local ID.
 /* EXAMPLE: class_body
 {
   "id": "class-body",
-  "name": "class-body",
-  "female": true,
-  "scope": 9,
-  "targetPlugin": "Skyrim.esm", // 한손 전사 클래스 / CombatWarrior1H
-  "targetLocalFormID": 78198,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "sex": "female",
+  "scope": "class",
+  "target": "CombatWarrior1H",
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// 한 NPC에게 스킨: 같은 NPC 바디 규칙과 별도 객체로 추가할 수 있습니다.
-// NPC skin: add separately alongside a body rule targeting the same NPC.
-/* EXAMPLE: individual_skin
-{
-  "id": "follower-a-skin",
-  "name": "follower-a-skin",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "skinProfileIds": [
-    "auto:My Skin Pack:female"
-  ]
-}
-END EXAMPLE */
-
-// 후타스킨: 실제 등록된 ERF/TRX 유형에 맞는 후보만 선택됩니다. 한 개면 고정.
-// Futa skin: only candidates matching the registered ERF/TRX type are eligible; use one for fixed assignment.
-/* EXAMPLE: individual_futa
-{
-  "id": "follower-a-futa",
-  "name": "follower-a-futa",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "futanariSkinIds": [
-    "futanari:My Futa Pack:cbbe-trx",
-    "futanari:My Futa Pack:erf"
-  ]
-}
-END EXAMPLE */
-
-// 몸 오버레이: 자리표시자를 실제 ID로 바꾸세요. overlayColors의 키도 같은 ID로 바꿉니다.
-// Body overlay: replace the placeholder with an actual ID, including its key in overlayColors.
-// 몸 후보 2개 중 1개를 적용합니다. 다른 부위 후보는 얼굴/몸/손/발 중 해당 배열에 넣으세요.
-// Apply ONE of two body candidates. Put other-area IDs in the matching face/body/hands/feet array.
-// 아래 두 ID는 자리표시자입니다. 실제 등록된 각 DDS 경로로 ID 도구를 실행해 얻은 값으로 교체하세요.
-// Both IDs are placeholders: replace them with IDs calculated from each registered texture path.
-/* EXAMPLE: individual_overlay
-{
-  "id": "follower-a-overlay",
-  "name": "follower-a-overlay",
-  "female": true,
-  "scope": 1,
-  "npcPlugin": "My Followers.esp",
-  "npcLocalFormID": 4660,
-  "overlayIds": [
-    [],
-    [
-      "REPLACE_WITH_GENERATED_BODY_OVERLAY_ID",
-      "REPLACE_WITH_SECOND_BODY_OVERLAY_ID"
-    ],
-    [],
-    []
-  ],
-  "overlayColors": [
-    {},
-    {
-      "REPLACE_WITH_GENERATED_BODY_OVERLAY_ID": 2164195328,
-      "REPLACE_WITH_SECOND_BODY_OVERLAY_ID": 4294967295
-    },
-    {},
-    {}
-  ]
-}
-END EXAMPLE */
-
-// 커스텀 팔로워 분류 전체: 정확히 한 동료만 지정하려면 scope 1을 사용하세요.
-// Custom-follower classification: use scope 1 if you intend only one particular follower.
-/* EXAMPLE: custom_followers_body
-{
-  "id": "custom_followers_body",
-  "name": "custom_followers_body",
-  "female": true,
-  "scope": 6,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
-  ]
-}
-END EXAMPLE */
-
-// 노인 분류 전체: 성별과 호환 후보는 계속 검사합니다.
-// Elder classification: sex and compatible candidates still apply.
-/* EXAMPLE: elder_body
-{
-  "id": "elder_body",
-  "name": "elder_body",
-  "female": true,
-  "scope": 7,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
-  ]
-}
-END EXAMPLE */
-
-// 전투스타일: 해당 Combat Style 레코드의 원본 플러그인과 로컬 ID입니다.
-// Combat style: use that Combat Style record's originating plugin and local ID.
 /* EXAMPLE: combat_style_body
 {
   "id": "combat_style_body",
-  "name": "combat_style_body",
-  "female": true,
-  "scope": 10,
-  "targetPlugin": "Skyrim.esm", // 인간 근접 기본 / csHumanMeleeLvl1
-  "targetLocalFormID": 245275,
-  "presetIds": [
-    "My Presets.xml\u001fPreset A"
+  "sex": "female",
+  "scope": "combatStyle",
+  "target": "csHumanMeleeLvl1",
+  "presets": [
+    "Preset A"
   ]
 }
 END EXAMPLE */
 
-// ==================== 통째로 시작하기 / COMPLETE CONFIGURATION ====================
-// 목표: 노드 여성에게 바디 후보 2개 중 하나 + 스킨 후보 2개 중 하나를 자동 배포.
-// Goal: female Nords receive ONE of two body presets AND ONE of two skin packs.
-// 두 기능은 따로 선택합니다. Preset A와 Skin A가 항상 짝이 되는 설정은 아닙니다.
-// Selections are independent; Preset A is NOT automatically paired with Skin A.
-// 같은 종족의 커스텀 팔로워도 대상이며, 노드 뱀파이어는 별도 종족이므로 포함하지 않습니다.
-// This also matches custom followers of that race, but not the separate Nord vampire race.
-// 아래 파일명·프리셋 이름·스킨 폴더명은 실제 설치된 호환 후보로 바꾸세요.
-// Replace the fictional XML/preset/skin-folder names with installed compatible candidates.
-//
-// 처음부터 작성한다면 아래 { "schemaVersion"... } 전체를 새 편집본으로 복사하세요.
-// For a fresh configuration, copy the whole { "schemaVersion"... } object to a separate draft.
-// 이 안내 파일 아래에서 주석만 풀지 마세요. JSON 루트 객체가 두 개가 되면 읽을 수 없습니다.
-// Do NOT just uncomment this here: two root objects in one file are invalid.
-// 기존 rules가 있다면 백업 후 내부 규칙 두 개만 기존 rules 안에 추가하세요. 사이 쉼표도 필요합니다.
-// If you already have rules, back up and insert only the TWO inner rule objects into rules, with commas.
-// 이 예제는 설정 방법 설명일 뿐 기본 활성 규칙은 여전히 0개입니다.
-// This is only a commented example; the shipped active rule count remains zero.
+/* EXAMPLE: plugin_body
+{
+  "id": "plugin-bodies",
+  "sex": "female",
+  "scope": "plugin",
+  "target": "MyFollowers.esp",
+  "presets": [
+    "Preset A"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: custom_followers
+{
+  "id": "custom-followers",
+  "sex": "female",
+  "scope": "customFollowers",
+  "presets": [
+    "Preset A"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: elders
+{
+  "id": "elder-skins",
+  "sex": "female",
+  "scope": "elders",
+  "skins": [
+    "My Elder Skin Pack"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: multiple_presets
+{
+  "id": "follower-a-body-pool",
+  "sex": "female",
+  "scope": "name",
+  "target": "Follower A",
+  "presets": [
+    "Preset A",
+    "Preset B",
+    "Preset C"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: multiple_skins
+{
+  "id": "follower-a-skin-pool",
+  "sex": "female",
+  "scope": "name",
+  "target": "Follower A",
+  "skins": [
+    "My Skin Pack A",
+    "My Skin Pack B"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: multiple_futa_skins
+{
+  "id": "follower-a-futa-pool",
+  "sex": "female",
+  "scope": "name",
+  "target": "Follower A",
+  "futaSkins": [
+    "My Futa Pack A",
+    "My Futa Pack B",
+    {
+      "name": "My Futa Pack C",
+      "type": "ERF"
+    }
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: colored_overlays
+{
+  "id": "follower-a-overlay",
+  "sex": "female",
+  "scope": "name",
+  "target": "Follower A",
+  "overlays": {
+    "face": [
+      "Face Paint A"
+    ],
+    "body": [
+      {
+        "name": "Body Paint A",
+        "color": "#FF000080"
+      },
+      {
+        "name": "Body Paint B",
+        "color": "#FFFFFFFF"
+      }
+    ],
+    "hands": [
+      "Hand Paint A"
+    ],
+    "feet": [
+      {
+        "name": "Foot Paint A",
+        "color": "#3366CCFF"
+      }
+    ]
+  }
+}
+END EXAMPLE */
+
+/* EXAMPLE: duplicate_preset_name
+{
+  "id": "qualified-preset",
+  "sex": "female",
+  "scope": "name",
+  "target": "Follower A",
+  "presets": [
+    {
+      "name": "Preset A",
+      "file": "Folder/My Presets.xml"
+    }
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: disabled_rule
+{
+  "id": "paused-example",
+  "enabled": false,
+  "sex": "female",
+  "scope": "all",
+  "presets": [
+    "Preset A"
+  ]
+}
+END EXAMPLE */
+
+/* EXAMPLE: qualified_target
+{
+  "id": "qualified-faction",
+  "sex": "female",
+  "scope": "faction",
+  "target": {
+    "name": "MyFollowerFaction",
+    "plugin": "MyFollowers.esp"
+  },
+  "presets": [
+    "Preset A"
+  ]
+}
+END EXAMPLE */
+
 /* COMPLETE CONFIG: nord_body_and_skin_pools
 {
-  "schemaVersion": 7,
+  "schemaVersion": 8,
   "rules": [
     {
-      "id": "nord-female-body-pool",
-      "name": "Nord female - body pool",
-      "female": true,
-      "scope": 5,
-      "targetPlugin": "Skyrim.esm",
-      "targetLocalFormID": 79686,
-      "presetIds": [
-        "My Presets.xml\u001fPreset A",
-        "My Presets.xml\u001fPreset B"
+      "id": "nord-body",
+      "sex": "female",
+      "scope": "race",
+      "target": "NordRace",
+      "presets": [
+        "Preset A",
+        "Preset B"
       ]
     },
     {
-      "id": "nord-female-skin-pool",
-      "name": "Nord female - skin pool",
-      "female": true,
-      "scope": 5,
-      "targetPlugin": "Skyrim.esm",
-      "targetLocalFormID": 79686,
-      "skinProfileIds": [
-        "auto:My Skin A:female",
-        "auto:My Skin B:female"
+      "id": "nord-skin",
+      "sex": "female",
+      "scope": "race",
+      "target": "NordRace",
+      "skins": [
+        "My Skin Pack A",
+        "My Skin Pack B"
       ]
     }
   ]
 }
 END CONFIG */
-//
-// ==================== 문제 해결 / TROUBLESHOOTING ====================
-// rules 안에 활성 객체가 있는지, 예제가 여전히 주석인지 먼저 확인하세요.
-// Check that an active object is inside rules, not still commented out.
-// 원본 플러그인/로컬 ID, XML 상대경로/name, \u001f, 성별/배포 바디 타입을 확인하세요.
-// Check origin plugin/local ID, XML path/name, \u001f, sex and distribution body type.
-// 상위 규칙, 기존 세이브 수동 선택, removalMode, MO2 승리 파일도 확인하세요.
-// Check higher rules, manual save choices, removalMode and MO2's winning file.
-// 큰따옴표/10진 정수/true·false/배열 타입을 지키고 끝 쉼표를 쓰지 마세요.
-// Use double quotes, decimal numbers, boolean true/false and correct array types; no trailing commas.
-// 문자열 안의 //는 그대로입니다. 블록 주석을 중첩하거나 닫는 기호를 빠뜨리지 마세요.
-// // inside a string remains text. Do not nest block comments or leave them unfinished.
-// 일부 타입 오류는 파일 전체 로드를 실패시킵니다. 대상 1명부터 백업 세이브로 확인하세요.
-// A wrong type can fail the whole file. Test one NPC first using a backup save.
-// 로그 / Common log: Documents\My Games\Skyrim Special Edition\SKSE\BodyChangeNG.log

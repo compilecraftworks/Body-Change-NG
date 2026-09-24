@@ -1,5 +1,6 @@
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/DistributionJson.h"
+#include "BodyChangeNG/DistributionAuthoringRuntime.h"
 #include "BodyChangeNG/DistributionOverlayColors.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
 
@@ -34,7 +35,7 @@
 
 namespace
 {
-    constexpr auto kSchemaVersion = 7;
+    constexpr auto kSchemaVersion = 8;
 
     [[nodiscard]] constexpr std::string_view BodyApplyResultLabel(
         const bcn::racemenu::ApplyResult result) noexcept
@@ -183,6 +184,8 @@ namespace
         rule.npcBaseFormID = base->GetFormID();
         rule.npcPlugin = std::string{ file->GetFilename() };
         rule.npcLocalFormID = LocalFormID(base, file);
+        rule.target.clear(); // A UI choice replaces a previously named JSON target.
+        rule.targetLabel.clear();
         return rule.npcLocalFormID != 0U;
     }
 
@@ -196,6 +199,8 @@ namespace
         rule.targetFormID = form->GetFormID();
         rule.targetPlugin = std::string{ file->GetFilename() };
         rule.targetLocalFormID = localFormID;
+        rule.target.clear();
+        rule.targetLabel.clear();
         if (const auto* editorID = form->GetFormEditorID(); editorID && editorID[0] != '\0') {
             rule.target = editorID;
         }
@@ -205,6 +210,8 @@ namespace
     [[nodiscard]] bool ResolveStableNPCIdentity(bcn::DistributionRule& rule)
     {
         if (rule.scope != bcn::DistributionScope::npcBaseForm) return true;
+        if (bcn::distribution_authoring::NamedTarget(rule.target))
+            return bcn::distribution_authoring::ResolveNamedTarget(rule);
         if (rule.npcPlugin.empty() || rule.npcLocalFormID == 0U) {
             rule.npcBaseFormID = 0U;
             return false;
@@ -218,6 +225,8 @@ namespace
     [[nodiscard]] bool ResolveStableTargetIdentity(bcn::DistributionRule& rule)
     {
         if (!IsStableTargetFormScope(rule.scope)) return true;
+        if (bcn::distribution_authoring::NamedTarget(rule.target))
+            return bcn::distribution_authoring::ResolveNamedTarget(rule);
         auto* data = RE::TESDataHandler::GetSingleton();
         RE::TESForm* form{};
         if (data && !rule.targetPlugin.empty() && rule.targetLocalFormID != 0U) {
@@ -251,7 +260,7 @@ namespace
         case bcn::DistributionScope::npcBaseForm:
             return base->GetFormID() == rule.npcBaseFormID;
         case bcn::DistributionScope::npcName:
-            return EqualIgnoreCase(base->GetName(), rule.target);
+            return !rule.target.empty() && EqualIgnoreCase(base->GetName(), rule.target);
         case bcn::DistributionScope::factionEditorID: {
             auto* form = RE::TESForm::LookupByID(rule.targetFormID);
             auto* faction = form && form->GetFormType() == RE::FormType::Faction ?
@@ -355,7 +364,7 @@ namespace
         return pool[index];
     }
 
-    [[nodiscard]] std::vector<std::string> CompatibleSkinPool(
+    [[nodiscard]] std::vector<std::string> CompatibleSkinPoolIds(
         const std::vector<std::string>& pool, RE::Actor* actor,
         const bcn::body_family::Mask distributionFamily)
     {
@@ -379,7 +388,7 @@ namespace
             bcn::ResolveActorSkinRace(actor));
     }
 
-    [[nodiscard]] std::vector<std::string> CompatibleOverlayPool(
+    [[nodiscard]] std::vector<std::string> CompatibleOverlayPoolIds(
         const std::vector<std::string>& pool, RE::Actor* actor,
         const bcn::overlay::Area area)
     {
@@ -401,7 +410,7 @@ namespace
         return result;
     }
 
-    [[nodiscard]] std::vector<std::string> CompatibleFutanariPool(
+    [[nodiscard]] std::vector<std::string> CompatibleFutanariPoolIds(
         const std::vector<std::string>& pool, const bcn::FutanariSkinType type)
     {
         std::vector<std::string> result;
@@ -411,6 +420,32 @@ namespace
             if (profile && profile->type == type) result.push_back(id);
         }
         return result;
+    }
+
+    [[nodiscard]] std::vector<std::string> CompatibleSkinPool(
+        const std::vector<std::string>& pool, RE::Actor* actor, const bcn::body_family::Mask family)
+    {
+        using namespace bcn::distribution_authoring;
+        return ResolvePool(pool, *Catalog(Kind::skin), [&](const auto& ids) {
+            return CompatibleSkinPoolIds(ids, actor, family);
+        }).ids;
+    }
+
+    [[nodiscard]] bcn::distribution_authoring::ResolvedPool CompatibleOverlayPool(
+        const std::vector<std::string>& pool, RE::Actor* actor, const bcn::overlay::Area area)
+    {
+        using namespace bcn::distribution_authoring;
+        return ResolvePool(pool, *Catalog(static_cast<Kind>(static_cast<unsigned>(Kind::face) + bcn::overlay::Index(area))),
+            [&](const auto& ids) { return CompatibleOverlayPoolIds(ids, actor, area); });
+    }
+
+    [[nodiscard]] std::vector<std::string> CompatibleFutanariPool(
+        const std::vector<std::string>& pool, const bcn::FutanariSkinType type)
+    {
+        using namespace bcn::distribution_authoring;
+        return ResolvePool(pool, *Catalog(Kind::futa), [&](const auto& ids) {
+            return CompatibleFutanariPoolIds(ids, type);
+        }).ids;
     }
 
     [[nodiscard]] const bcn::DistributionRule* ChooseFutanariRule(
@@ -436,7 +471,7 @@ namespace
         return nullptr;
     }
 
-    [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
+    [[nodiscard]] std::vector<std::string> CompatiblePresetPoolIds(
         const std::vector<std::string>& pool, RE::Actor* actor,
         const bcn::body_family::Mask distributionFamily)
     {
@@ -455,6 +490,15 @@ namespace
         }
         return bcn::PresetCatalog::Get().CompatibleIds(
             legacyPool, actorMale, distributionFamily);
+    }
+
+    [[nodiscard]] std::vector<std::string> CompatiblePresetPool(
+        const std::vector<std::string>& pool, RE::Actor* actor, const bcn::body_family::Mask family)
+    {
+        using namespace bcn::distribution_authoring;
+        return ResolvePool(pool, *Catalog(Kind::preset), [&](const auto& ids) {
+            return CompatiblePresetPoolIds(ids, actor, family);
+        }).ids;
     }
 
     [[nodiscard]] RuleSelection ChooseRuleSelection(const std::vector<bcn::DistributionRule>& rules,
@@ -520,11 +564,12 @@ namespace
                     !previousArea.items.empty() ?
                     std::string_view{ previousArea.items.front().selectedId } :
                     std::string_view{};
-                result.overlayIds[index] = ChooseFromPool(rule, compatible, actor,
+                result.overlayIds[index] = ChooseFromPool(rule, compatible.ids, actor,
                     std::string{ "overlay-" } + std::string{ bcn::overlay::StableName(area) },
                     previousId, OverlayFeature(area));
                 if (result.overlayIds[index]) {
-                    result.overlayColors[index] = bcn::DistributionOverlayColor(rule, area, *result.overlayIds[index]);
+                    result.overlayColors[index] = bcn::DistributionOverlayColor(rule, area,
+                        compatible.references.at(*result.overlayIds[index]));
                     rememberRule(rule);
                     break;
                 }
@@ -614,8 +659,8 @@ namespace
         std::unordered_set<std::string> known;
         for (std::size_t index{}; index < rules.size(); ++index) {
             auto& rule = rules[index];
-            // Every persisted row is a positive, opt-in distribution rule.
-            rule.enabled = true;
+            // Schema-8 disabled rows remain editable but never match. The
+            // legacy decoder retains the old always-enabled normalization.
             if (rule.id.empty() || !known.insert(rule.id).second) {
                 std::size_t suffix = index;
                 do {
@@ -657,13 +702,13 @@ namespace
                 rule.targetPlugin.clear();
                 rule.targetLocalFormID = 0U;
             }
-            if (rule.target.size() > 512U) rule.target.clear();
+            if (rule.target.size() > (bcn::distribution_authoring::NamedTarget(rule.target) ? 4096U : 512U)) rule.target.clear();
             rule.bodyFamily.clear();
-            std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
-            std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
-            std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+            std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
+            std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
+            std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
             for (auto& pool : rule.overlayIds) {
-                std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 4096U; });
             }
             bcn::PruneDistributionOverlayColors(rule);
         }
@@ -675,7 +720,7 @@ namespace
         std::vector<std::string> output;
         if (!value.is_array()) return output;
         for (const auto& entry : value) {
-            if (entry.is_string() && entry.get_ref<const std::string&>().size() <= 1024U) {
+            if (entry.is_string() && entry.get_ref<const std::string&>().size() <= 4096U) {
                 output.push_back(entry.get<std::string>());
             }
         }
@@ -696,39 +741,13 @@ namespace
     }
 
     [[nodiscard]] bool WriteDistributionFile(const std::filesystem::path& path,
-        const std::vector<bcn::DistributionRule>& rules)
+        const std::vector<bcn::DistributionRule>& rules, const std::filesystem::path& commentSource = {})
     {
         try {
-            const auto comments = bcn::distribution_json::ReadComments(path);
+            const auto comments = bcn::distribution_json::ReadComments(commentSource.empty() ? path : commentSource);
             std::filesystem::create_directories(path.parent_path());
-            nlohmann::json serializedRules = nlohmann::json::array();
-            for (const auto& rule : rules) {
-                serializedRules.push_back({
-                    { "id", rule.id },
-                    { "name", rule.name },
-                    { "nameKey", rule.nameKey },
-                    { "enabled", rule.enabled },
-                    { "female", rule.female },
-                    { "scope", static_cast<std::uint8_t>(rule.scope) },
-                    { "npcPlugin", rule.npcPlugin },
-                    { "npcLocalFormID", rule.npcLocalFormID },
-                    { "targetPlugin", rule.targetPlugin },
-                    { "targetLocalFormID", rule.targetLocalFormID },
-                    { "target", rule.target },
-                    { "bodyFamily", rule.bodyFamily },
-                    { "presetIds", rule.presetIds },
-                    { "skinProfileIds", rule.skinProfileIds },
-                    { "futanariSkinIds", rule.futanariSkinIds },
-                    { "overlayIds", rule.overlayIds },
-                    { "overlayColors", rule.overlayColors },
-                    { "includeCustomFollowers", rule.includeCustomFollowers },
-                    { "includeElderNPCs", rule.includeElderNPCs }
-                });
-            }
-            const nlohmann::json root{
-                { "schemaVersion", kSchemaVersion },
-                { "rules", std::move(serializedRules) }
-            };
+            const auto root = bcn::distribution_authoring::Encode(rules);
+            (void)bcn::distribution_authoring::Decode(root); // Reject a non-round-trippable save before staging.
             auto temporary = path;
             temporary += ".new";
             {
@@ -808,13 +827,14 @@ namespace bcn
         std::vector<DistributionRule> loaded;
         try {
             if (!std::filesystem::exists(sourcePath.path)) {
+                distribution_authoring::RefreshTargets(false);
                 std::scoped_lock lock(lock_);
                 rules_ = DefaultDistributionRules();
                 evaluationRules_.reset();
                 return false;
             }
             std::ifstream stream(sourcePath.path);
-            const auto root = distribution_json::Parse(stream);
+            const auto root = distribution_authoring::Decode(distribution_json::Parse(stream));
             const auto schemaVersion = root.value("schemaVersion", 0);
             if ((schemaVersion < 3 || schemaVersion > kSchemaVersion) ||
                 !root.contains("rules") || !root["rules"].is_array()) {
@@ -864,6 +884,7 @@ namespace bcn
                     .targetPlugin = source.value("targetPlugin", std::string{}),
                     .targetLocalFormID = source.value("targetLocalFormID", 0U),
                     .target = source.value("target", std::string{}),
+                    .targetLabel = source.value("targetLabel", std::string{}),
                     .bodyFamily = source.value("bodyFamily", std::string{}),
                     .presetIds = source.value("presetIds", std::vector<std::string>{}),
                     .skinProfileIds = source.value("skinProfileIds", std::vector<std::string>{}),
@@ -877,20 +898,24 @@ namespace bcn
                 };
                 if (rule.id.empty()) rule.id = GenerateRuleId(loaded.size());
                 if (!IsValidScope(rule.scope)) continue;
-                if (rule.target.size() > 512U) rule.target.clear();
+                if (rule.target.size() > (distribution_authoring::NamedTarget(rule.target) ? 4096U : 512U)) rule.target.clear();
                 // Legacy exclusion-only rows were discarded above. Positive
                 // pools survive migration without retaining exclusion state.
-                std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
-                std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
-                std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                std::erase_if(rule.presetIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
+                std::erase_if(rule.skinProfileIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
+                std::erase_if(rule.futanariSkinIds, [](const auto& id) { return id.empty() || id.size() > 4096U; });
                 for (auto& pool : rule.overlayIds) {
-                    std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 1024U; });
+                    std::erase_if(pool, [](const auto& id) { return id.empty() || id.size() > 4096U; });
                 }
                 loaded.push_back(std::move(rule));
             }
+            distribution_authoring::RefreshTargets(std::ranges::any_of(loaded, [](const auto& rule) {
+                return rule.scope == DistributionScope::npcBaseForm;
+            }));
             loaded = NormalizeRules(std::move(loaded));
-            if (sourcePath.legacy) {
-                if (WriteDistributionFile(path, loaded)) {
+            if (sourcePath.legacy || schemaVersion < kSchemaVersion) {
+                if (distribution_json::BackupForMigration(sourcePath.path, schemaVersion) &&
+                    WriteDistributionFile(path, distribution_authoring::ReadableRules(loaded), sourcePath.path)) {
                     SKSE::log::info("Body Change NG migrated legacy distribution rules from {} to {}",
                         bcn::path_text::Utf8(sourcePath.path), bcn::path_text::Utf8(path));
                 } else {
@@ -917,7 +942,7 @@ namespace bcn
     bool Distribution::SaveRulesForNextGame(std::vector<DistributionRule> rules) const
     {
         rules = NormalizeRules(std::move(rules));
-        if (!WriteDistributionFile(Path(), rules)) return false;
+        if (!WriteDistributionFile(Path(), distribution_authoring::ReadableRules(rules))) return false;
         std::scoped_lock lock(lock_);
         savedRules_ = std::move(rules);
         return true;

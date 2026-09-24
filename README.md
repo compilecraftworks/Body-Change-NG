@@ -9,20 +9,27 @@ No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not
 
 ## Current version — v1.3.3
 
-Distribution rules can now contain `//` and `/* ... */` comments. The
-[commented JSON template](package/SKSE/Plugins/BodyChangeNGdistribution.json)
-explains every field and target scope in English/Korean, with 19 inactive
-examples for body presets, skins, futa skins and overlays. Start with the
-individual-follower example near the top; no in-game rule creation is required.
-See the [offline authoring guide](package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
-and optional read-only [preset/overlay ID helper](package/Tools/BodyChangeNG-RuleId.ps1).
+Distribution schema 8 uses readable names: BodySlide/BCNG preset names,
+skin/futa pack names, registered overlay names and named targets such as
+`NordRace` / `BanditFaction`. All eleven existing target scopes are supported.
+Use the [annotated JSON](package/SKSE/Plugins/BodyChangeNGdistribution.json)
+and [English/Korean guide](package/SKSE/Plugins/BodyChangeNGdistribution-README.txt):
+19 inactive examples cover all features, multiple candidates, overlay colors,
+duplicate names and 39 copyable vanilla condition names. Ordinary name editing
+does not need an ID helper or an in-game rule-creation session.
 
-Commented files require the **v1.3.3+ DLL**; plain schema-7 JSON remains compatible.
-In-game rule saving writes active rules at the top and preserves existing guide
-comments, examples and notes below them without activating or duplicating them.
-Keep a backup too. Comment support does not extend to `settings.json` or ORefit
-JSON. The starter has no active rules and does not distribute the fictional examples.
-Existing distribution behavior, supported runtimes and dependencies are unchanged.
+**Use the updated schema-8 DLL, not only a new JSON with an older schema-7 DLL.**
+Schemas 3–7 migrate with a byte-exact, non-overwriting backup beside the source.
+Unresolved old IDs and new names are retained. A name must resolve to one
+compatible item; qualifiers disambiguate duplicates. Some custom records expose
+no unique runtime name/EditorID and need the documented plugin/local-ID fallback.
+Existing automatic-distribution compatibility limits still apply.
+
+`//` and `/* ... */` comments are supported. In-game explicit saves put active
+rules first and preserve comments/examples below without enabling or duplicating
+them. Other JSON inputs remain unchanged. The shipped rules array is empty;
+preserve your customized winning MO2 file. No new per-frame polling or co-save
+format change was introduced.
 
 - [English changelog](CHANGELOG.md#133) · [한국어 변경 내역](CHANGELOG-KO.md#133)
 - [v1.3.3 Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.3-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.3-KO.html)

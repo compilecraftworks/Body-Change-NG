@@ -5,15 +5,16 @@ Current version: **Body Change NG v1.3.3**. See the [English changelog](../CHANG
 ## v1.3.3 offline distribution authoring
 
 The [commented JSON template](../package/SKSE/Plugins/BodyChangeNGdistribution.json)
-contains bilingual field explanations and 19 inactive examples covering all 11
-target scopes and all distribution features. The [complete guide](../package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
-and optional read-only [ID helper](../package/Tools/BodyChangeNG-RuleId.ps1) explain
-editing outside the game. Comments require the v1.3.3+ DLL. In-game rule saving
-writes active data first and preserves existing comments/examples below the root.
-Repeated saves do not duplicate the guide. Existing plain schema-7 files
-remain supported. Release archives are written to the repository's `release` root.
-See the [v1.3.3 authoring verification](DISTRIBUTION-AUTHORING-VERIFICATION-v1.3.3-KO.md)
-for build, regression, template and packaging-manifest checks and their limits.
+uses schema 8: readable preset/skin/futa/overlay names and eleven named target scopes.
+The [complete bilingual guide](../package/SKSE/Plugins/BodyChangeNGdistribution-README.txt)
+has 19 inactive examples, 39 vanilla condition names, duplicate-name qualifiers,
+colors and migration instructions. No ID tool is required for ordinary editing.
+Some records expose no unique runtime name; plugin/local-ID fallback is documented.
+
+The matching updated DLL is required; replacing only JSON in an older schema-7
+installation is insufficient. Schema 3–7 files migrate after a byte-exact backup.
+In-game explicit saves keep active data above the preserved guide.
+See [verification](DISTRIBUTION-AUTHORING-VERIFICATION-v1.3.3-KO.md).
 
 - Changelog: [English BBCode](NEXUS-CHANGELOG-v1.3.3-EN.bbcode) · [한국어 HTML](NEXUS-CHANGELOG-v1.3.3-KO.html).
 - Plain text: [English](NEXUS-CHANGELOG-v1.3.3-EN.txt) · [한국어](NEXUS-CHANGELOG-v1.3.3-KO.txt).

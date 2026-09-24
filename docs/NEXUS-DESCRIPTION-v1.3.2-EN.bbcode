@@ -305,6 +305,37 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (optional ORefit input)[/
 [*][b]Actor selections:[/b] confirmed manual and automatic results are stored with the save through SKSE serialization. Keep the matching .skse co-save beside its .ess save; copying settings.json alone does not copy an actor's selections.
 [*][b]Tint saves:[/b] the confirmed pack, per-layer color/opacity, restored layers, and captured original DDS/color are stored in that save's co-save. Original tints are not borrowed from another character's shared settings.
 [/list]
+
+[size=3][color=#5CFFA3][b]Prepare rules by name, without opening the game[/b][/color][/size]
+The updated schema-8 DLL accepts the preset names shown in BodySlide/BCNG, skin/futa pack names and registered overlay names. Use readable targets such as [b]NordRace[/b] or [b]BanditFaction[/b]; no numeric-ID tool is needed for ordinary editing. All eleven target scopes have commented examples in the shipped JSON and its bilingual BodyChangeNGdistribution-README.txt guide.
+[code]{
+  "schemaVersion": 8,
+  "rules": [
+    {
+      "id": "nord-body",
+      "sex": "female",
+      "scope": "race",
+      "target": "NordRace",
+      "presets": [
+        "Preset A",
+        "Preset B"
+      ]
+    },
+    {
+      "id": "follower-skin",
+      "sex": "female",
+      "scope": "name",
+      "target": "Follower A",
+      "skins": [
+        "My Skin Pack"
+      ]
+    }
+  ]
+}[/code]
+Replace sample asset/NPC names with your installed names. Multiple candidates form independent pools, not paired sets. Overlay areas are face/body/hands/feet; each candidate may carry a color such as #FF000080. Player Tint Masks have no NPC distribution rules. Existing automatic-distribution compatibility restrictions still apply.
+Names must resolve unambiguously. For duplicate presets add file, for duplicate form targets add plugin, and for overlays add the exact registered texture path. Some custom records expose no name/EditorID; only those need the advanced plugin + local hexadecimal formId notation. The guide explains both. Unresolved names are retained, not silently redirected to a different asset.
+[b]Use the matching updated DLL, not just the new JSON with an older schema-7 DLL.[/b] Existing rules are backed up before migration. In-game explicit saves keep active rules at the top and preserve guide comments below. Close Skyrim before external edits, preserve your custom winning MO2 file, and launch again to load it. This is BCNG's format, not an importer for OBody distribution JSON.
+
 MO2 may place generated files in Overwrite or a configured output mod. Check the winning virtual Data path rather than assuming every generated file is physically inside the BCNG mod.
 
 [b]Mod Settings[/b] includes the opening hotkey, UI language (English/Korean/Simplified Chinese), text/UI scale, character placement, optional game pause, morph preservation, NPC body types, and performance mode. Defaults are [b]character on the left[/b], [b]game pause off[/b], [b]performance mode off[/b], and [b]Preserve other mods' morphs on[/b]. Existing saved preferences are kept. Performance mode changes automatic-work spacing, not the intended selection.
@@ -402,7 +433,7 @@ The log is [b]BodyChangeNG.log[/b] in SKSE's log directory, commonly under Docum
 [*]Exit Skyrim and back up your saves with matching SKSE co-saves, settings, customized distribution JSON, and asset packs before replacing the plugin.
 [*]If you previously activated removal mode but are continuing with BCNG, use Resume BCNG in Mod Settings. Updating the DLL alone does not clear that saved setting.
 [*]Keep your existing BodySkin and Futanari packs. Move old standalone tint packs into [b]Data\BodySkin\Your Pack\Textures\actors\character\character assets\tintmasks\[/b], retaining their original inner texture tree. Do not leave them only under the obsolete TintMask root.
-[*]Do not overwrite your customized rule file with the empty installer starter. The schema-7 migration removes legacy exclusion entries and retains eligible positive distribution rules. Review the resulting conditions before explicitly saving or distributing.
+[*]Do not overwrite your customized rule file with the empty installer starter. The updated DLL reads schema 3–7 and backs up the original as .schemaN.bak before migrating to human-readable schema 8. Existing legacy exclusion cleanup remains. Keep referenced plugins and asset packs installed; unresolved old asset IDs remain stored.
 [*][b]Changed confirmation behavior:[/b] closing the picker now cancels an unconfirmed preview. Closing the NPC rule popup now cancels unsaved rule edits instead of auto-saving a next-launch draft.
 [*]Do not rely on a renamed/deleted pack retaining its previous selection ID. Keep pack names/paths stable when possible. Downgrading a save written by v1.3.2 is not guaranteed.
 [/list]

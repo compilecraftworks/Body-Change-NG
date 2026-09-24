@@ -496,7 +496,7 @@ int main()
         "Plugins" / "BodyChangeNGdistribution.json", std::ios::binary);
     Require(packagedRulesFile.good());
     const std::string packagedRules((std::istreambuf_iterator<char>(packagedRulesFile)), {});
-    Require(packagedRules.contains("\"schemaVersion\": 7") &&
+    Require(packagedRules.contains("\"schemaVersion\": 8") &&
         packagedRules.contains("\"rules\": [") &&
         packagedRules.contains("/* EXAMPLE: individual_body") &&
         !packagedRules.contains("Excluded") &&
@@ -506,7 +506,7 @@ int main()
         "Package-Release.ps1", std::ios::binary);
     Require(packageScriptFile.good());
     const std::string packageScript((std::istreambuf_iterator<char>(packageScriptFile)), {});
-    Require(packageScript.contains("schemaVersion -ne 7") &&
+    Require(packageScript.contains("schemaVersion -ne 8") &&
         packageScript.contains("rules.Count -ne 0") &&
         !packageScript.contains("default-exclude-") &&
         !packageScript.contains("TintMask/README.txt"));

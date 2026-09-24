@@ -1,11 +1,12 @@
 Body Change NG v1.3.3
 
-- Added // and /* ... */ comment support to Data\SKSE\Plugins\BodyChangeNGdistribution.json. Existing plain schema-7 rule files still work.
-- Added a bilingual, commented template explaining all 19 fields and 11 target scopes, with 19 inactive rule examples and a complete female-Nord body-and-skin configuration.
-- Included 39 verified base-game race, vampire-race, faction, keyword, class and combat-style IDs, plus instructions for finding mod-added records outside the game.
-- Added multi-candidate body, skin, futa-skin and overlay examples. Pools select compatible candidates independently; they are not simultaneous stacks or paired body/skin combinations.
-- Included an optional read-only PowerShell helper for BodySlide preset IDs and registered overlay IDs, with a separate English/Korean authoring guide. Valid rules can be prepared for a modpack without opening the in-game distribution window.
-- The starter still has zero active rules. Keep your existing custom rule file when updating. The v1.3.3 DLL now saves active rules at the top and preserves existing guide comments, inactive examples and user notes below them, without duplication on repeated saves.
-- Korean description/changelog HTML follows browser light/dark preferences, with system body-text colors and contrasting titles, links, code and tables.
-- Existing appearance features, distribution matching, save formats, supported game/RaceMenu interfaces and dependency pins are unchanged. No new gameplay polling or permanent cache was added.
-- Verification: Release build, 35 offline regression executables, rule-authoring tests, 88 distribution persistence cases, 25 byte-stable re-saves, comment-preserving failure cases and condition-ID checks passed. No new in-game test was performed.
+- Added human-readable schema 8 for NPC rules: use BodySlide/BCNG preset names, skin and futa pack names, and registered overlay names instead of internal IDs.
+- All eleven target scopes are supported using readable scope names. Races, factions, keywords, classes and combat styles accept EditorIDs or unique game-provided names, with plugin qualifiers and a local hexadecimal-ID fallback for records that expose no unique name.
+- Overlay candidates support #RRGGBB / #RRGGBBAA colors. Multiple candidates remain independent per feature and overlay area. Existing actor-compatibility and automatic-distribution restrictions are retained.
+- Added a bilingual annotated template with 19 inactive examples, 39 copyable vanilla target names, a complete configuration, duplicate-name guidance and a separate authoring guide. A numeric-ID helper is no longer required for ordinary name-based editing.
+- Existing schema 3–7 files migrate with an exact, non-overwriting .schemaN.bak backup. Known entries become named references; unresolved old IDs and unresolved new names remain stored. Rule order, candidate colors and existing legacy migrations are preserved.
+- Schema-8 enabled:false disables an individual rule. The old ignored enabled flag retains its previous behavior during migration. Ambiguous names are not resolved arbitrarily, and invalid fields/scopes are rejected rather than becoming broad conditions.
+- The starter has zero active rules. In-game explicit saves write active rules at the top and retain comments/examples below without accumulating duplicates. Preserve your custom file when updating; schema 8 requires the updated DLL, not just a replacement JSON.
+- Asset name indexes are rebuilt when catalogs change, and actor compatibility is checked once per candidate pool. No new per-frame polling, engine hook, supported-runtime change or co-save format change.
+- Korean description/changelog HTML retains browser-adaptive light/dark colors.
+- Verification: Release build and 36 offline regression executables passed, including production name-conversion functions, schema 3–7 migration, 88 persistence cases, 65,536 color round-trips and comment-preserving repeated saves. Vanilla targets were checked against two Skyrim.esm files. No in-game test was performed.

@@ -1,5 +1,6 @@
 #include "BodyChangeNG/DistributionOverlayColors.h"
 #include "BodyChangeNG/DistributionJson.h"
+#include "BodyChangeNG/DistributionAuthoring.h"
 #include <Windows.h>
 #include <fstream>
 #include <iostream>
@@ -85,7 +86,7 @@ int main() try {
         Require(failed, "malformed JSON became accepted");
     }
     const auto starter = Read("package/SKSE/Plugins/BodyChangeNGdistribution.json");
-    Require(starter.at("schemaVersion") == 7 && starter.at("rules").is_array() &&
+    Require(starter.at("schemaVersion") == 8 && starter.at("rules").is_array() &&
         starter.at("rules").empty() && starter.size() == 2,
         "commented starter must contain only schema and empty active rules");
     std::ifstream templateFile("package/SKSE/Plugins/BodyChangeNGdistribution.json", std::ios::binary);
@@ -100,29 +101,26 @@ int main() try {
         const auto end = templateText.find("END EXAMPLE */", begin);
         Require(begin != std::string::npos && end != std::string::npos, "unfinished example block");
         const auto value = parse(std::string_view(templateText).substr(begin, end - begin));
-        Require(value.at("id").is_string() && value.at("female").is_boolean() &&
-            value.at("scope").is_number_unsigned(), "sample rule field types are wrong");
-        const auto scope = value.at("scope").get<unsigned>();
+        const auto decoded = bcn::distribution_authoring::DecodeRule(value, 8);
+        Require(value.at("id").is_string() && value.at("sex").is_string() &&
+            value.at("scope").is_string(), "sample rule field types are wrong");
+        const auto scope = decoded.at("scope").get<unsigned>();
         Require(scope < scopes.size(), "sample scope out of range");
         scopes[scope] = true;
         if (exampleCount == 0) {
-            Require(value.at("npcLocalFormID") == 0x1234 &&
-                value.at("presetIds").at(0).get<std::string>() ==
-                    std::string("My Presets.xml") + '\x1F' + "Preset A",
-                "sample local ID or JSON preset separator is wrong");
+            Require(value.at("target") == "Follower A" && value.at("presets").at(0) == "Preset A",
+                "sample display names are wrong");
             auto activated = starter;
             activated["rules"].push_back(value);
             const auto activeRoot = parse(activated.dump(2) + '\n' +
                 bcn::distribution_json::Comments(templateText));
-            Require(activeRoot.size() == 2 && activeRoot.at("schemaVersion") == 7 &&
-                activeRoot.at("rules") == nlohmann::json::array({value}),
-                "copying an example into top rules did not activate exactly that rule");
+            Require(activeRoot.at("rules") == nlohmann::json::array({value}),
+                "copying an example did not activate exactly one rule");
+            (void)bcn::distribution_authoring::Decode(activeRoot);
         }
-        Require(!value.contains("enabled") || value.at("enabled") == true,
-            "false cannot safely disable a sample rule");
-        if (value.contains("overlayIds")) {
-            const auto pools = value.at("overlayIds").get<std::array<std::vector<std::string>, 4>>();
-            const auto colors = bcn::ReadDistributionOverlayColors(value.at("overlayColors"), pools);
+        if (decoded.contains("overlayIds")) {
+            const auto pools = decoded.at("overlayIds").get<std::array<std::vector<std::string>, 4>>();
+            const auto colors = bcn::ReadDistributionOverlayColors(decoded.at("overlayColors"), pools);
             Require(colors[1].at(pools[1][0]) == 0x80FF0000U, "sample overlay alpha/color is wrong");
         }
         examples.push_back(value);
@@ -138,22 +136,21 @@ int main() try {
         Require(found != examples.end(), "required example is missing");
         return *found;
     };
-    for (const auto& [id, scope, local] : std::array{
-        std::tuple{"faction-body", 3, 113856}, std::tuple{"race-body", 5, 79686},
-        std::tuple{"keyword-body", 8, 79764}, std::tuple{"class-body", 9, 78198},
-        std::tuple{"combat_style_body", 10, 245275}}) {
+    for (const auto& [id, scope, target] : std::array{
+        std::tuple{"faction-body", "faction", "BanditFaction"}, std::tuple{"race-body", "race", "NordRace"},
+        std::tuple{"keyword-body", "keyword", "ActorTypeNPC"}, std::tuple{"class-body", "class", "CombatWarrior1H"},
+        std::tuple{"combat_style_body", "combatStyle", "csHumanMeleeLvl1"}}) {
         const auto& row = findExample(id);
-        Require(row.at("scope") == scope && row.at("targetPlugin") == "Skyrim.esm" &&
-            row.at("targetLocalFormID") == local, "real target example mapping is wrong");
+        Require(row.at("scope") == scope && row.at("target") == target, "named target example is wrong");
     }
-    Require(findExample("follower-a-body-pool").at("presetIds").size() == 3 &&
-        findExample("follower-a-skin-pool").at("skinProfileIds").size() == 2 &&
-        findExample("follower-a-futa-pool").at("futanariSkinIds").size() == 3,
+    Require(findExample("follower-a-body-pool").at("presets").size() == 3 &&
+        findExample("follower-a-skin-pool").at("skins").size() == 2 &&
+        findExample("follower-a-futa-pool").at("futaSkins").size() == 3,
         "multiple-candidate examples must keep all candidates");
-    const auto& overlayExample = findExample("follower-a-overlay");
-    Require(overlayExample.at("overlayIds").at(1).size() == 2 &&
-        overlayExample.at("overlayColors").at(1).at("REPLACE_WITH_SECOND_BODY_OVERLAY_ID") == 0xFFFFFFFFU,
-        "multiple overlay candidates or independent colors were lost");
+    const auto& overlayExample = findExample("follower-a-overlay").at("overlays");
+    Require(overlayExample.at("body").size() == 2 &&
+        overlayExample.at("body").at(1).at("color") == "#FFFFFFFF",
+        "overlay candidates/colors lost");
     auto combined = starter;
     combined["rules"] = examples;
     Require(parse(combined.dump(2)) == combined, "combined example rules did not round-trip");
@@ -163,20 +160,19 @@ int main() try {
     const auto configEnd = templateText.find("END CONFIG */", configBegin);
     Require(configEnd != std::string::npos, "complete configuration example is unfinished");
     const auto complete = parse(std::string_view(templateText).substr(configBegin, configEnd - configBegin));
-    Require(complete.at("schemaVersion") == 7 && complete.at("rules").size() == 2,
+    Require(complete.at("schemaVersion") == 8 && complete.at("rules").size() == 2,
         "complete configuration must contain two independent rules");
     for (const auto& row : complete.at("rules")) {
-        Require(row.at("female") == true && row.at("scope") == 5 &&
-            row.at("targetPlugin") == "Skyrim.esm" && row.at("targetLocalFormID") == 79686,
+        Require(row.at("sex") == "female" && row.at("scope") == "race" && row.at("target") == "NordRace",
             "complete configuration must target female Nords");
     }
-    Require(complete.at("rules").at(0).at("presetIds").size() == 2 &&
-        complete.at("rules").at(1).at("skinProfileIds").size() == 2,
+    Require(complete.at("rules").at(0).at("presets").size() == 2 &&
+        complete.at("rules").at(1).at("skins").size() == 2,
         "complete body/skin pools are incomplete");
     Sandbox sandbox;
     const auto path = sandbox.root / "Data/SKSE/Plugins/BodyChangeNGdistribution.json";
     Require(WriteDistributionFile(path, {}), "empty rules did not save");
-    Require(Read(path)["schemaVersion"] == 7 && Read(path)["rules"].empty(), "empty rule set changed");
+    Require(Read(path)["schemaVersion"] == 8 && Read(path)["rules"].empty(), "empty rule set changed");
     Require(Read(path).size() == 2, "writer unexpectedly changed the schema");
     std::vector<bcn::DistributionRule> rules;
     for (unsigned scope{}; scope <= static_cast<unsigned>(bcn::DistributionScope::combatStyle); ++scope) {
@@ -208,40 +204,57 @@ int main() try {
     Require(WriteDistributionFile(path, rules), "rule matrix write failed");
     const auto stored = Read(path);
     Require(stored["rules"].size() == rules.size(), "lost a rule");
-    const auto& fields = stored.at("rules").at(0);
-    Require(fields.size() == 19, "update field documentation when persisted schema changes");
-    for (const auto& [key, value] : fields.items()) {
+    const auto decodedStored = bcn::distribution_authoring::Decode(stored);
+    for (const auto& row : stored.at("rules")) for (const auto& [key, value] : row.items()) {
         (void)value;
         Require(templateText.contains("// " + key + "\n") ||
-            templateText.contains("// " + key + "\r\n"), "persisted field lacks a template explanation");
+            templateText.contains("// " + key + "\r\n"), "persisted field lacks documentation");
     }
     std::vector<std::string> exampleIds;
     for (const auto& example : examples) {
         const auto id = example.at("id").get<std::string>();
         Require(!id.starts_with("obody-import-") &&
-            std::ranges::find(exampleIds, id) == exampleIds.end(), "reserved or duplicated example ID");
+            std::ranges::find(exampleIds, id) == exampleIds.end(), "reserved/duplicated example ID");
         exampleIds.push_back(id);
-        for (const auto& [key, value] : example.items()) {
-            Require(fields.contains(key) && fields.at(key).type() == value.type(),
-                "example has an unknown field or a wrong field type");
-        }
     }
     for (std::size_t i{}; i < rules.size(); ++i) {
-        const auto& source = rules[i]; const auto& value = stored["rules"][i];
+        const auto& source = rules[i]; const auto& value = decodedStored["rules"][i];
         Require(value["id"] == source.id && value["name"] == source.name &&
             value["nameKey"] == source.nameKey && value["enabled"] == source.enabled &&
             value["female"] == source.female && value["scope"] == static_cast<unsigned>(source.scope) &&
             value["includeCustomFollowers"] == source.includeCustomFollowers &&
             value["includeElderNPCs"] == source.includeElderNPCs, "rule flags or identity changed");
-        Require(value["npcPlugin"] == source.npcPlugin && value["npcLocalFormID"] == source.npcLocalFormID &&
-            value["targetPlugin"] == source.targetPlugin && value["targetLocalFormID"] == source.targetLocalFormID &&
-            value["target"] == source.target && !value.contains("npcBaseFormID") && !value.contains("targetFormID"),
-            "stable plugin/local IDs replaced with load-order-dependent IDs");
-        Require(value["presetIds"] == source.presetIds && value["skinProfileIds"] == source.skinProfileIds &&
-            value["futanariSkinIds"] == source.futanariSkinIds && value["overlayIds"] == source.overlayIds &&
-            bcn::ReadDistributionOverlayColors(value["overlayColors"], source.overlayIds) == source.overlayColors,
+        const auto scope = static_cast<unsigned>(source.scope);
+        if (scope == 1) Require(value["npcPlugin"] == source.npcPlugin &&
+            value["npcLocalFormID"] == source.npcLocalFormID, "NPC stable ID changed");
+        else if (scope == 2 || scope == 4) Require(value["target"] == source.target, "name/plugin changed");
+        else if (scope != 0 && scope != 6 && scope != 7) Require(value["targetPlugin"] == source.targetPlugin &&
+            value["targetLocalFormID"] == source.targetLocalFormID, "form stable ID changed");
+        Require(!value.contains("npcBaseFormID") && !value.contains("targetFormID"),
+            "runtime IDs written to disk");
+        const auto emptyPool = std::vector<std::string>{};
+        const auto pools = value.value("overlayIds", decltype(bcn::DistributionRule::overlayIds){});
+        Require(value.value("presetIds", emptyPool) == source.presetIds &&
+            value.value("skinProfileIds", emptyPool) == source.skinProfileIds &&
+            value.value("futanariSkinIds", emptyPool) == source.futanariSkinIds && pools == source.overlayIds &&
+            bcn::ReadDistributionOverlayColors(value.value("overlayColors", nlohmann::json::array()), pools) == source.overlayColors,
             "feature pools or per-candidate RGBA lost");
     }
+    WriteText(path, "// original schema-seven guide\n{\"schemaVersion\":7,\"rules\":[]}\n");
+    const auto original = ReadText(path);
+    Require(bcn::distribution_json::BackupForMigration(path, 7), "migration backup failed");
+    Require(ReadText(path.string() + ".schema7.bak") == original, "backup was not byte-exact");
+    WriteText(path, original + "// second version\n");
+    {
+        HeldFile held{CreateFileW(path.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr)};
+        Require(held.handle != INVALID_HANDLE_VALUE, "could not lock migration source");
+        Require(!bcn::distribution_json::BackupForMigration(path, 7), "unreadable migration source was backed up");
+    }
+    Require(bcn::distribution_json::BackupForMigration(path, 7), "numbered backup failed");
+    Require(ReadText(path.string() + ".schema7.bak") == original &&
+        ReadText(path.string() + ".schema7.1.bak") == original + "// second version\n",
+        "backup overwrote an older original");
+    Require(WriteDistributionFile(path, rules) && Read(path) == stored, "migration save failed");
     const auto annotated = std::string("// hand-authored rules / 사용자 주석\n") +
         stored.dump(2) + "\n/* keep this on failed save */\n";
     WriteText(path, annotated);

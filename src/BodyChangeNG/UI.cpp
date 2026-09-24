@@ -15,6 +15,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionAuthoring.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
 #include "BodyChangeNG/InputSink.h"
 #include "BodyChangeNG/MenuCharacterPresentation.h"
@@ -1325,13 +1326,13 @@ namespace
                     option.localFormID == rule.targetLocalFormID;
             }
             return !rule.target.empty() && !option.editorID.empty() &&
-                Lower(option.editorID) == Lower(rule.target);
+                Lower(option.editorID) == Lower(bcn::distribution_authoring::TargetLabel(rule.target));
         });
         const auto savedValue = selected == options.end() &&
             (!rule.target.empty() || !rule.targetPlugin.empty());
         std::string savedLabel;
         if (savedValue) {
-            savedLabel = !rule.target.empty() ? rule.target :
+            savedLabel = !rule.target.empty() ? bcn::distribution_authoring::TargetLabel(rule.target) :
                 std::format("{}:{:06X}", rule.targetPlugin, rule.targetLocalFormID);
             savedLabel += Text(" (저장값)", " (saved value)", "（保存值）");
         }
@@ -3287,6 +3288,7 @@ namespace
                 ImGui::SetNextItemWidth(-1.0F);
                 if (DistributionScopeCombo(rule.scope)) {
                     rule.target.clear();
+                    rule.targetLabel.clear();
                     rule.npcBaseFormID = 0U;
                     rule.npcPlugin.clear();
                     rule.npcLocalFormID = 0U;
@@ -3320,6 +3322,8 @@ namespace
                             !bcn::SetDistributionRuleNPC(rule, form)) {
                             rule.npcPlugin.clear();
                             rule.npcLocalFormID = 0U;
+                            rule.target.clear();
+                            rule.targetLabel.clear();
                         }
                     }
                 } else if (rule.scope == bcn::DistributionScope::npcName) {

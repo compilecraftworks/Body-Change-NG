@@ -97,8 +97,8 @@ try {
         throw 'MO2 archive must contain only runtime files, cache/rule-authoring tools and guides, asset-folder guidance, and two license documents.'
     }
     $starter = Get-Content -Raw -LiteralPath (Join-Path $binary 'SKSE\Plugins\BodyChangeNGdistribution.json') | ConvertFrom-Json
-    if ($starter.schemaVersion -ne 7 -or $starter.rules.Count -ne 0) {
-        throw 'NPC distribution must ship as an empty schema-7 opt-in rule set.'
+    if ($starter.schemaVersion -ne 8 -or $starter.rules.Count -ne 0) {
+        throw 'NPC distribution must ship as an empty schema-8 opt-in rule set.'
     }
 
     $projectZip = Join-Path $stage 'project.zip'

@@ -4,12 +4,17 @@ All notable public changes to Body Change NG are documented here.
 
 ## 1.3.3
 
-- Accept `//` line comments and `/* ... */` block comments in `BodyChangeNGdistribution.json`. Existing plain schema-7 files remain supported. Other JSON inputs, rule matching, supported game/RaceMenu interfaces and dependency pins are unchanged.
-- Replace the empty starter with a bilingual, commented authoring template: all 19 fields, 11 target scopes and 19 inactive examples for body presets, skins, futa skins and overlay colors. Include 39 verified base-game condition IDs, custom-record lookup steps and multi-candidate examples. Explain plugin/local BaseIDs, preset identifiers, priority, compatibility, installation and sharing between game instances. The shipped template still has zero active rules.
-- Include an optional read-only PowerShell helper for preset IDs and registered overlay IDs. It does not modify assets, configuration or saves. Add a separate English/Korean authoring guide.
-- Commented files require the v1.3.3+ DLL. In-game rule saving writes active data at the top and preserves existing guide comments, disabled examples and user notes below it. Repeated saves do not duplicate or activate examples. Plain files remain supported without automatic guide insertion. No new gameplay polling is added.
-- Korean description/changelog HTML now follows browser light/dark preferences, using system body-text colors and contrasting titles, links, code and table colors rather than fixed white text.
-- Verification: Release DLL build, all 35 offline regression executables and offline authoring tests passed. Checks include the production parser, all template fields/scopes, inactive/activated examples, comment-like strings, malformed JSON, preset IDs, overlay hashes and the 88-case distribution writer matrix. Failed reads/writes preserve the original file; successful writes retain comments with active data first, including 25 byte-stable repeated saves. No in-game testing was performed for this change.
+- Added human-readable schema 8 for NPC rules: use BodySlide/BCNG preset names, skin and futa pack names, and registered overlay names instead of internal IDs.
+- All eleven target scopes are supported using readable scope names. Races, factions, keywords, classes and combat styles accept EditorIDs or unique game-provided names, with plugin qualifiers and a local hexadecimal-ID fallback for records that expose no unique name.
+- Overlay candidates support #RRGGBB / #RRGGBBAA colors. Multiple candidates remain independent per feature and overlay area. Existing actor-compatibility and automatic-distribution restrictions are retained.
+- Added a bilingual annotated template with 19 inactive examples, 39 copyable vanilla target names, a complete configuration, duplicate-name guidance and a separate authoring guide. A numeric-ID helper is no longer required for ordinary name-based editing.
+- Existing schema 3–7 files migrate with an exact, non-overwriting .schemaN.bak backup. Known entries become named references; unresolved old IDs and unresolved new names remain stored. Rule order, candidate colors and existing legacy migrations are preserved.
+- Schema-8 enabled:false disables an individual rule. The old ignored enabled flag retains its previous behavior during migration. Ambiguous names are not resolved arbitrarily, and invalid fields/scopes are rejected rather than becoming broad conditions.
+- The starter has zero active rules. In-game explicit saves write active rules at the top and retain comments/examples below without accumulating duplicates. Preserve your custom file when updating; schema 8 requires the updated DLL, not just a replacement JSON.
+- Asset name indexes are rebuilt when catalogs change, and actor compatibility is checked once per candidate pool. No new per-frame polling, engine hook, supported-runtime change or co-save format change.
+- Korean description/changelog HTML retains browser-adaptive light/dark colors.
+
+- Verification: Release build and 36 offline regression executables passed, including production name-conversion functions, schema 3–7 migration, 88 persistence cases, 65,536 color round-trips and comment-preserving repeated saves. Vanilla targets were checked against two Skyrim.esm files. No in-game test was performed.
 
 ## 1.3.2
 

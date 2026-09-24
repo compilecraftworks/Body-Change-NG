@@ -109,6 +109,7 @@ namespace bcn
         // on scope. For form-backed scopes this remains a display/legacy
         // EditorID fallback while the stable fields above are authoritative.
         std::string target;
+        std::string targetLabel; // Human annotation only; never used to resolve an identity.
         // Legacy schema field. Since 1.1.2 the editor and runtime both use the
         // female/male NPC body type selected in Mod Settings, so normalization
         // clears this obsolete per-rule filter while retaining JSON compatibility.

@@ -69,4 +69,17 @@ namespace bcn::distribution_json
         if (stream.bad()) throw std::runtime_error("distribution comment read failed");
         return Comments(text);
     }
+
+    [[nodiscard]] inline bool BackupForMigration(const std::filesystem::path& source, int schema)
+    {
+        // Preserve the exact input first. Never overwrite an earlier backup.
+        for (unsigned attempt{}; attempt < 100U; ++attempt) {
+            auto backup = source;
+            backup += ".schema" + std::to_string(schema) + (attempt ? "." + std::to_string(attempt) : "") + ".bak";
+            std::error_code error;
+            if (std::filesystem::copy_file(source, backup, std::filesystem::copy_options::none, error)) return true;
+            if (error != std::errc::file_exists) return false;
+        }
+        return false;
+    }
 }
