@@ -4,7 +4,6 @@
 #include "BodyChangeNG/CatalogRoots.h"
 #include "BodyChangeNG/PathText.h"
 #include "BodyChangeNG/SliderName.h"
-#include "BodyChangeNG/UbeMorphPolicy.h"
 
 #include <pugixml.hpp>
 
@@ -46,9 +45,8 @@ namespace
     {
         constexpr std::array names{ "Breasts"sv, "BreastsSmall"sv, "NippleDistance"sv, "NippleSize"sv,
             "ButtCrack"sv, "Butt"sv, "ButtSmall"sv, "Legs"sv, "Arms"sv, "ShoulderWidth"sv };
-        return std::ranges::any_of(names, [name](const auto candidate) {
-            return bcn::slider_name::Equal{}(candidate, name);
-        });
+        // The upstream reverse-slider list uses exact authored names.
+        return std::ranges::contains(names, name);
     }
 
     void AddSlider(bcn::BodyPreset& preset, const std::string_view name, const float value, const bool large)
@@ -63,8 +61,10 @@ namespace
             else preset.sliders.back().lowWeight = value;
             return;
         }
-        if (large) found->highWeight = value;
-        else found->lowWeight = value;
+        // OBody's AddSliderToSet keeps the first non-zero value for each
+        // endpoint; a later zero or duplicate must not overwrite it.
+        auto& endpoint = large ? found->highWeight : found->lowWeight;
+        if (endpoint == 0.0F && value != 0.0F) endpoint = value;
     }
 
     [[nodiscard]] std::optional<bcn::BodyPreset> ParsePreset(const pugi::xml_node& node, const std::string& source)
@@ -96,16 +96,16 @@ namespace
             .male = classification.families != 0U ? classification.male :
                 (IsMaleSet(bodySet) || IsMaleSet(name) || IsMaleSet(source))
         };
-        const auto isUbe = classification.families == bcn::body_family::Bit(bcn::body_family::Family::ube);
-        const auto invertUnp = !isUbe && IsUnpSet(bodySet);
-        for (const auto slider : node.children("SetSlider")) {
+        const auto invertUnp = IsUnpSet(bodySet);
+        for (const auto slider : node) {
+            if (!bcn::slider_name::Equal{}(slider.name(), "SetSlider")) continue;
             const auto sliderName = std::string_view(slider.attribute("name").as_string());
-            const auto large = std::string_view(slider.attribute("size").as_string()) == "big";
+            const auto large = bcn::slider_name::Equal{}(slider.attribute("size").as_string(), "big");
             auto value = slider.attribute("value").as_float() / 100.0F;
             if (invertUnp && IsDefaultUnpSlider(sliderName)) value = 1.0F - value;
-            // Normal UBE presets are absolute BodySlide targets over a built
-            // Zeroed baseline. Named -Refit files remain additive corrections.
-            if (isUbe && !isRefit) value = bcn::ube_morph::AuthoredDelta(sliderName, value, large);
+            // Match OBody NG's XML scale for CBBE/3BA and UBE alike. Missing
+            // endpoints stay zero; never subtract OSP defaults or clamp the
+            // authored range. UNP's known reverse sliders remain separate.
             AddSlider(preset, sliderName, value, large);
         }
         return preset;

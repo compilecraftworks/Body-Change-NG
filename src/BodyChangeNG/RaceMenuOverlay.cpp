@@ -689,7 +689,7 @@ namespace
         const auto previous = replacementSource ? *replacementSource :
             std::optional<bcn::OverlayItemState>{};
         if (!force && previous && (!requestedColor || *requestedColor == previous->color) &&
-            previous->selectedId == entry.id &&
+            bcn::asset_identity::Equal{}(previous->selectedId, entry.id) &&
             previous->ownedSlot < count) {
             const auto existingNode = NodeName(interfaces, area, previous->ownedSlot);
             if (existingNode && NodeMatchesPath(interfaces, actor, female,
@@ -825,7 +825,7 @@ namespace
             if (current != committed.end()) {
                 // Undo a borrowed color using the CURRENT committed value;
                 // never erase a paint promoted from preview to committed.
-                if (current->texturePath == item.texturePath)
+                if (bcn::asset_identity::Equal{}(current->texturePath, item.texturePath))
                     static_cast<void>(ColorOwnedNode(InterfacesNow(), actor, area, *current, current->color));
                 return;
             }
@@ -902,7 +902,7 @@ namespace
                 std::span<const bcn::OverlayItemState> reserved) -> std::optional<bcn::OverlayItemState> {
                 auto source = retained ? std::optional{ *retained } :
                     bcn::ActorRegistry::Get().SelectedOverlay(actor, area, wanted.selectedId);
-                if (source && source->texturePath == wanted.texturePath) {
+                if (source && bcn::asset_identity::Equal{}(source->texturePath, wanted.texturePath)) {
                     const auto node = NodeName(interfaces, area, source->ownedSlot);
                     if (node && NodeOwnedBySelection(interfaces, actor, Female(actor), *node, wanted.texturePath) &&
                         LiveNodeMatches(actor, *node, wanted.texturePath) &&
@@ -1040,9 +1040,9 @@ namespace bcn::overlay
         if (!actor || area == Area::count) return ApplyResult::invalidActor;
         if (!IsReady()) return ApplyResult::unavailable;
         if (!actor->Is3DLoaded()) return ApplyResult::actor3DUnavailable;
-        std::ranges::sort(checked, {}, &PreviewChoice::entryId);
+        std::ranges::sort(checked, bcn::asset_identity::Less{}, &PreviewChoice::entryId);
         checked.erase(std::unique(checked.begin(), checked.end(), [](const auto& a, const auto& b) {
-            return a.entryId == b.entryId;
+            return bcn::asset_identity::Equal{}(a.entryId, b.entryId);
         }), checked.end());
         std::vector<OverlayItemState> desired;
         const auto family = body_family::ResolveActor(actor);
@@ -1123,9 +1123,9 @@ namespace bcn::overlay
                 auto preview = PreviewFor(actorFormID, area);
                 if (mode == ApplyMode::manualCommit && preview &&
                     !preview->liveDefault && preview->live &&
-                    preview->live->selectedId == entry.id &&
+                    bcn::asset_identity::Equal{}(preview->live->selectedId, entry.id) &&
                     (!color || *color == preview->live->color) &&
-                    preview->live->texturePath == entry.texturePath &&
+                    bcn::asset_identity::Equal{}(preview->live->texturePath, entry.texturePath) &&
                     preview->live->ownedSlot != kNoOwnedSlot) {
                     const auto interfaces = InterfacesNow();
                     const auto node = NodeName(interfaces, area, preview->live->ownedSlot);
@@ -1230,7 +1230,7 @@ namespace bcn::overlay
                 auto preview = PreviewFor(current->GetFormID(), area);
                 if (preview && preview->batchMode) return;
                 const auto coloringPreview = preview && preview->live &&
-                    preview->live->selectedId == entryId;
+                    bcn::asset_identity::Equal{}(preview->live->selectedId, entryId);
                 auto previous = coloringPreview ? preview->live :
                     ActorRegistry::Get().SelectedOverlay(current.get(), area, entryId);
                 if (!previous || previous->texturePath.empty()) return;
@@ -1359,7 +1359,7 @@ namespace bcn::overlay
                     if (preview->liveDefault) {
                         ErasePreview(current->GetFormID(), area);
                         for (const auto& original : preview->original) {
-                            if (original.selectedId == entryId) continue;
+                            if (bcn::asset_identity::Equal{}(original.selectedId, entryId)) continue;
                             const Entry restore{ .id = original.selectedId, .name = original.selectedId,
                                 .texturePath = original.texturePath, .area = area };
                             const std::optional<OverlayItemState> replacement{ original };

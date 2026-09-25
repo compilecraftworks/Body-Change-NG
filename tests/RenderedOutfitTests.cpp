@@ -1,5 +1,6 @@
 #include "BodyChangeNG/RenderedOutfit.h"
 #include "BodyChangeNG/AppearanceWork.h"
+#include "BodyChangeNG/BodyMorphPolicies.h"
 #include <algorithm>
 #include <functional>
 #include <iostream>
@@ -195,6 +196,31 @@ int main()
     const abi::Item actual{100U, 100U, 4U, 4U, abi::Actual, 0U};
     const abi::Item registered{200U, 200U, 4U, 4U, abi::Registered, 0U};
     const abi::Item ring{300U, 300U, 1U << 6, 1U << 6, abi::Actual, 0U};
+    // Both body families must use the same final-visible outfit exclusions.
+    // Even a named mapping on an excluded item cannot bypass the common gate.
+    using bcn::body_morph_policy::FemaleFamily;
+    for (const auto family : {FemaleFamily::cbbe3ba, FemaleFamily::bhunpUnp, FemaleFamily::ube}) {
+        for (const bool nipples : {false, true}) {
+            for (const auto& item : {actual, registered}) {
+                const auto armor = *resolve(item);
+                for (unsigned kind{}; kind < 4U; ++kind) {
+                    Rules excluded;
+                    if (kind == 0U) excluded.blacklistedOutfitNames.emplace(armor.name);
+                    if (kind == 1U) excluded.blacklistedPlugins.emplace(armor.plugin);
+                    if (kind == 2U) excluded.blacklistedFormIDs.emplace(armor.formID);
+                    const auto result = ro::EvaluateVisible(std::span{&item, 1}, excluded, mappings, resolve);
+                    unsigned writes{};
+                    if (bcn::outfit_refit_evaluation::ShouldApply(result.eligible, result.forced)) {
+                        bcn::body_morph_policy::GenerateOutfitMorphs(family, .5F, nipples,
+                            [](const char*) { return .4F; }, [&](const char*, float) { ++writes; });
+                    }
+                    const unsigned expected = kind != 3U ? 0U : family == FemaleFamily::ube ?
+                        8U + (nipples ? 6U : 0U) : 15U + (nipples ? 8U : 0U);
+                    Check(writes == expected, "SFS exclusion differs between UBE and 3BA/BHUNP");
+                }
+            }
+        }
+    }
     rules.forcedFormIDs.insert(100U);
     rules.blacklistedPlugins.insert("Display.esp");
     auto decision = ro::EvaluateVisible(std::span{&registered, 1}, rules, mappings, resolve);

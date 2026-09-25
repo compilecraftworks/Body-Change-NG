@@ -271,9 +271,8 @@ namespace bcn
         if (actorFamily == 0U) actorFamily = currentBodyFamily;
         if (female && !body_morph_policy::SupportsOutfitCorrection(
                 body_morph_policy::ResolveFemaleFamily(actorFamily, currentBodyFamily))) {
-            // CBBE/3BA and BHUNP/UNP each use an explicitly supported slider
-            // dialect. UBE (and an ambiguous family) must not receive either
-            // a guessed procedural layer or an imported/named refit layer.
+            // An ambiguous family must not receive either a guessed
+            // procedural layer or an imported/named refit layer.
             // Clear a layer written by an earlier BCNG build once, then cache
             // the no-op signature so ordinary equip events stay inexpensive.
             const auto signature = StableStateSignature("outfit", "unsupported-female-family", true,
@@ -282,7 +281,9 @@ namespace bcn
         }
         auto found = PresetCatalog::Get().FindRefit(candidates, !female, actorFamily);
         if (!found) {
-            const auto signature = StableStateSignature("outfit", "procedural|" + currentBodyId, false,
+            // Invalidate the former BCNG-specific recipe once, including
+            // actors wearing correction over a Default base body.
+            const auto signature = StableStateSignature("outfit", "procedural-v4|" + currentBodyId, false,
                 settings.outfitNippleCorrection ? 1U : 0U);
             return { Action::procedural, signature };
         }

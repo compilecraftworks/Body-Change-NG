@@ -1,4 +1,4 @@
-Body Change NG v1.2.2 — Futanari 설치 안내
+Body Change NG v1.3.4 — Futanari 설치 안내
 
 [한국어]
 설치된 후타스킨 모드 폴더를 통째로 이 Futanari 폴더 안에 복사하세요.

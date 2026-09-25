@@ -1,8 +1,8 @@
 # BODY CHANGE NG
 
-**v1.3.2: Direct NPC skin selection, improved custom-face targeting, remote actor search, removal preparation, and safe cache maintenance.**
+**v1.3.4: Unified preset calculations, UBE/Necoco outfit correction, case-insensitive skin paths, restored overlay slots, and clearer NPC distribution.**
 
-### v1.3.2 · Your character. Your choices.
+### v1.3.4 · Your character. Your choices.
 
 Body presets • Skins • Tint masks • Optional futanari skins • Overlays
 Native in-game interface • Player and NPC editing • Opt-in NPC distribution
@@ -135,7 +135,7 @@ Clothed breast/nipple correction is a separate layer. The built-in correction us
 
 Choose a texture pack independently of the body preset. **Select the actor → Body Skins → single-click to preview → double-click to apply.** You do not need to create NPC rules or select Default between every pair of custom packs. If distribution checkboxes are showing, press **Cancel distribution** to return to ordinary direct editing.
 
-**Custom followers and unidentified body families:** v1.3.2 permits direct skin selection when the actor's BodySlide family cannot be identified. The list shows sex/race-compatible packs with an unknown-family hint; choose the correct 3BA/UBE layout yourself. A known incompatible layout is still blocked. This manual allowance does not loosen automatic distribution or make incompatible UVs work.
+**Custom followers and unidentified body families:** BCNG permits direct skin selection when the actor's BodySlide family cannot be identified. The list shows sex/race-compatible packs with an unknown-family hint; choose the correct 3BA/UBE layout yourself. A known incompatible layout is still blocked. This manual allowance does not loosen automatic distribution or make incompatible UVs work.
 
 NPC face matching uses the actual loaded FaceGen subtree, including an unambiguous skin-material target whose mesh name differs from its HeadPart name. Body-only packs do not require a face target unless an earlier face change still needs restoration. Missing or ambiguous face geometry is not replaced by a guessed target.
 
@@ -183,6 +183,8 @@ One scrolling catalog contains four expandable sections. Open an arrow to see in
 
 Saved manual overlay stacks restore their individual entries and colors into separate available slots while respecting other mods' occupied slots.
 
+Released SlaveTats / SlaveTats NG slots are reusable when only the recognized blank texture remains. Registered texture, tint or alpha overrides—including invisible tattoos—still reserve their slots. BCNG does not increase RaceMenu's configured capacity or erase another mod's active tattoos.
+
 Slot capacity is read from RaceMenu and depends on your configuration. An invisible or transparent foreign overlay can still reserve a slot. BCNG does not automatically clear it to make room.
 
 ---
@@ -193,9 +195,10 @@ Available in **Body Presets, Body Skins, Futanari Skin, and Overlays**. Not avai
 
 1. For ordinary NPC body/skin pools, set the female and male **NPC distribution body type** in Mod Settings.
 1. Open the relevant tab and press **NPC distribution** at the right of the Refresh row. The buttons become **Female · Male · Distribute · Cancel distribution**, starting with Female. Female/Male selects the nearest locally loaded NPC of that sex for preview, or the player if none is available. Catalogs and new rules follow the selected distribution sex regardless of the player's sex; body-preset/skin candidates also follow the configured NPC distribution body type. Changing sex clears previous checkmarks and previews. Futanari Skin is female-only: it selects the nearest SOS/TNG-registered female futanari NPC, falling back to the player if none is available. Incompatible candidates can be checked without being previewed on the current actor. Automatic preview targeting in NPC-distribution checkbox mode skips custom followers and elder NPCs, including futanari targets. Manual actor selection and actual distribution rules are unchanged.
+1. In distribution mode, the actor dropdown and Refresh actors button are replaced by the title "Distribute selected items to world NPCs within a chosen scope". The current actor is only the preview target, not the distribution scope. The title stays while the conditions popup is open; leaving distribution mode restores the actor controls.
 1. Check the entries to use. **Select all** and **Clear selection** operate on the visible eligible list. Default/reset rows are not asset candidates.
 1. Press **Distribute** to open the conditions popup. This button alone does not save or distribute. The selected IDs stay attached to this editing session; adding another rule uses that selection.
-1. Choose sex and target: all NPCs, name, NPC base FormID, race, faction, class, keyword, or plugin, as available for the category. For **All NPCs**, **Exclude custom followers** and **Exclude elder NPCs** are checked by default.
+1. Choose sex and target: all NPCs, name, NPC base FormID, race, faction, class, keyword, combat style, custom followers, elders, or plugin. For **All NPCs**, **Exclude custom followers** and **Exclude elder NPCs** are checked by default.
 1. Use **+ Add rule**, **Delete rule**, **Up**, and **Down** above the condition list to manage priority.
 1. Choose **Distribute to loaded NPCs now** to save, activate, and process loaded NPCs, or **Distribute next game launch** to save without changing this session's active rules.
 
@@ -203,7 +206,7 @@ Available in **Body Presets, Body Skins, Futanari Skin, and Overlays**. Not avai
 
 Rules are evaluated in order independently for each feature, and independently for each overlay area. A single compatible candidate gives a fixed assignment; several candidates form a stable per-NPC random pool. **Automatic overlay distribution picks one candidate per configured area; it does not apply every checked overlay at once.** Manual overlay editing supports the multi-overlay stack.
 
-Automatic pools use conventional/non-UBE candidates and the appropriate sex. Futanari rules require registered female futanari NPCs and match the addon type. Manual confirmed choices, including Default choices, take priority over automatic distribution. NPCs sharing an ActorBase also share its native body-skin assignment; BCNG does not create a separate ActorBase for every spawned reference.
+Automatic body-preset pools follow the configured NPC body type, including UBE. Candidates must also match the receiving NPC's known body family and sex; this does not convert a 3BA NPC into UBE or add simultaneous per-family settings. Body-skin, futanari-skin and overlay automatic pools retain their existing conventional/non-UBE restrictions. Futanari rules require registered female futanari NPCs and match the addon type. Manual confirmed choices, including Default choices, take priority over automatic distribution. NPCs sharing an ActorBase also share its native body-skin assignment; BCNG does not create a separate ActorBase for every spawned reference.
 
 The two All NPCs exclusion checkboxes are target filters, not separate blacklist rules. They do not silently exclude a specifically named or individually targeted NPC. The nearby actor dropdown's radius and 32-NPC limit do not limit rule matching; eligible actors can receive saved rules when they load.
 
@@ -214,6 +217,8 @@ In body-preset, body-skin, and futanari-skin distribution lists, clicking a chec
 ## FILE PATHS — KEEP THE ORIGINAL TEXTURE TREE
 
 **All paths below start at the game's Data folder.** In MO2, omit the initial Data\ inside the mod directory. Replace the example pack names with your own. The examples show complete paths; entries ending in a backslash identify a directory.
+
+Skin, futanari-skin, overlay and tint asset IDs, recognized DDS filenames/extensions and texture paths ignore ASCII letter case. Both slash styles identify the same texture path. Existing saved spelling is kept, so a capitalization-only difference does not lose favorites, preview colors or restoration state. This does not make different UV layouts compatible or turn an unregistered DDS into a RaceMenu overlay.
 
 **The normal method: copy the whole installed skin-mod folder into BodySkin.** You do not need to extract individual DDS files or rebuild the inner folders.
 
@@ -452,24 +457,25 @@ These mods overlap with BCNG's appearance control. Choose one controller for the
 - **Other body controllers:** avoid having two systems continuously assign the same actor's morphs or texture channels.
 - **F7 does nothing:** verify the active DLL, exact game/SKSE/RaceMenu combination, and SKSE logs. Do not install a 1.7.x dependency merely because it is labelled latest.
 - **A preset appears but does not change the body/outfit, or its shape differs from the XML:** rebuild both the character body and the outfits with the matching Zeroed Sliders preset and Build Morphs checked. Verify the winning mesh/TRI output and matching preset slider names; a different baked-in base shape remains underneath BCNG's morphs.
+- **UBE preset looks flat or Zeroed:** Actor weight matters even when naked. A preset that defines only big values can be zeroed at weight 0 because its omitted small values are zero. Compare at the preset author's intended weight; BCNG does not force weight 100 or invent the missing endpoint. UBE sliders are applied by their XML names and require matching morphs in the winning body/outfit TRI files.
 - **A skin or tint pack is missing:** check the selected actor's sex/layout, the top-level pack folder, resolved Textures tree, and recognized DDS names. Remove accidental Data\Data or Textures\Textures nesting from the installation layout.
 - **Purple face or wrong texture:** check the selected pack, missing/corrupt DDS files, winning mod-manager paths, and conflicting face overrides. Include the selection sequence and versions in a report; a screenshot alone cannot establish the cause.
 - **Overlay unavailable or color has little effect:** check the area's RaceMenu enable/count settings, foreign reserved slots, and the texture itself. A colored texture will not necessarily tint like a grayscale mask.
 - **Futanari tab missing / Not eligible:** distinguish supported female-addon installation from the actor's SOS/TNG registration. Neither an ordinary male addon nor a texture-only pack satisfies both conditions.
 
-The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.2 passed its Release build, 35 offline regression executables and 19 audit-tool tests. This is not confirmation that every reported rendering issue is resolved in every setup.
+The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.4 passed its Release build and 38 offline regression executables. The user also reported the latest build working in a TOFU in-game test; this does not verify every supported runtime or mod setup.
 
 ---
 
 ## UPDATING FROM EARLIER VERSIONS
 
-- A new game or save cleaning is not required for v1.3.2. Existing co-save formats are retained. Keep settings, customized rules, asset packs, favorites, and the runtime texture cache. Do not run removal preparation merely to update BCNG.
+- A new game or save cleaning is not required for v1.3.4. Existing co-save formats are retained. Keep settings, customized rules, asset packs, favorites, and the runtime texture cache. Do not run removal preparation merely to update BCNG.
 - Exit Skyrim and back up your saves with matching SKSE co-saves, settings, customized distribution JSON, and asset packs before replacing the plugin.
 - If you previously activated removal mode but are continuing with BCNG, use Resume BCNG in Mod Settings. Updating the DLL alone does not clear that saved setting.
 - Keep your existing BodySkin and Futanari packs. Move old standalone tint packs into **Data\BodySkin\Your Pack\Textures\actors\character\character assets\tintmasks\**, retaining their original inner texture tree. Do not leave them only under the obsolete TintMask root.
 - Do not overwrite your customized rule file with the empty installer starter. The updated schema-8 DLL backs up schemas 3–7 before converting to named references. Existing legacy exclusion cleanup remains; unresolved old asset IDs are preserved.
 - **Changed confirmation behavior:** closing the picker now cancels an unconfirmed preview. Closing the NPC rule popup now cancels unsaved rule edits instead of auto-saving a next-launch draft.
-- Do not rely on a renamed/deleted pack retaining its previous selection ID. Keep pack names/paths stable when possible. Downgrading a save written by v1.3.2 is not guaranteed.
+- Do not rely on a renamed/deleted pack retaining its previous selection ID. Keep pack names/paths stable when possible. Downgrading a save written by v1.3.4 is not guaranteed.
 
 ---
 

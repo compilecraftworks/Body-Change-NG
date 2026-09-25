@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include "BodyChangeNG/SkinGeometryRouting.h"
 #include "BodyChangeNG/SkinLayout.h"
 
@@ -161,7 +163,8 @@ namespace bcn::native_skin
         const auto& first = targets.front();
         if (!IsOrdinarySkinRole(first.role) || first.paths[0].empty()) return std::nullopt;
         for (const auto& target : targets) {
-            if (target.role != first.role || target.paths != first.paths ||
+            if (target.role != first.role ||
+                !std::ranges::equal(target.paths, first.paths, asset_identity::Equal{}) ||
                 target.modelSpaceNormals != first.modelSpaceNormals ||
                 target.provider != first.provider) return std::nullopt;
         }

@@ -510,6 +510,17 @@ target("BodyChangeNGOutfitRefitRulesTests")
     add_files("tests/OutfitRefitRulesTests.cpp")
     add_includedirs("src")
 
+target("BodyChangeNGOBodyNumericTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_files("tests/OBodyNumericTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp",
+        "src/BodyChangeNG/CatalogRoots.cpp", "src/BodyChangeNG/BodyFamilyRules.cpp",
+        "third_party/pugixml/src/pugixml.cpp")
+    add_includedirs("third_party/pugixml/src")
+
 target("BodyChangeNGBodyMorphKeyTests")
     set_default(false)
     set_kind("binary")

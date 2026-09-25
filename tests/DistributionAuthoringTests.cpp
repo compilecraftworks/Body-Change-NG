@@ -130,6 +130,25 @@ int main() try {
     unsigned compatibilityCalls{};
     (void)ResolvePool({"one","two",Asset("Preset A")},assets,[&](const auto& values) { ++compatibilityCalls; return values; });
     Require(compatibilityCalls == 1, "actor compatibility rescanned once per reference");
+    Require(assets.Candidates(Asset("preset a")).empty(),
+        "texture identity policy changed BodySlide name resolution");
+    AssetIndex textureAssets;
+    textureAssets.Assign({{"BodySkin/Pack", "My Skin", "Pack/Textures", "Female:UBE", {}},
+        {"Overlay/One", "Paint", {}, {}, "Actors/Character/Paint.DdS"}}, true);
+    Require(textureAssets.Candidates("bodyskin\\pack") == std::vector<std::string>{"BodySkin/Pack"},
+        "case-only legacy skin ID did not resolve to its catalog spelling");
+    const auto caseSkin = Asset(Json{{"name", "my SKIN"}, {"file", "pack\\textures"}, {"type", "female:ube"}});
+    Require(ResolvePool({caseSkin}, textureAssets, all).ids == std::vector<std::string>{"BodySkin/Pack"},
+        "case-insensitive skin qualifiers did not reach the distribution pool");
+    Require(textureAssets.Candidates(Asset(Json{{"name", "pAINT"}, {"texture", "actors\\character\\paint.dds"}})) ==
+            std::vector<std::string>{"Overlay/One"}, "case-insensitive overlay texture qualifier failed");
+    Require(textureAssets.Candidates(Asset(Json{{"name", "Paint"}, {"texture", "Other/Paint.dds"}})).empty(),
+        "case-insensitive overlay lookup accepted a different resource namespace");
+    Require(textureAssets.Candidates(textureAssets.Describe("BODYSKIN/PACK")) ==
+            std::vector<std::string>{"BodySkin/Pack"}, "case-only saved skin ID failed named migration");
+    textureAssets.Assign({{"one", "Skin", "A", {}, {}}, {"two", "SKIN", "B", {}, {}}}, true);
+    Require(ResolvePool({Asset("skin")}, textureAssets, all).ids.empty(),
+        "case-insensitive ambiguous pack name was resolved arbitrarily");
     for (auto id : {"one","two","three","four","missing"}) {
         const auto reference = assets.Describe(id);
         Require(assets.Candidates(reference) == std::vector<std::string>{id}, "exact ID migration chose a different entry");

@@ -221,7 +221,7 @@ namespace
         if (!form || index >= binding.formSlots.size() ||
             !bcn::native_skin::WriteFormTexturePath(*form, binding.formSlots[index], path.c_str())) return false;
         const auto actual = TexturePath(form, index);
-        if (actual == path) return true;
+        if (bcn::asset_identity::Equal{}(actual, path)) return true;
         SKSE::log::error("BCNG TXST readback mismatch form={:08X} index={} expected='{}' actual='{}'",
             form->GetFormID(), index, path, actual);
         return false;
@@ -558,7 +558,7 @@ namespace
                     const auto& left = copy.alternateTextures[i];
                     const auto& right = original.alternateTextures[i];
                     if (left.textureSet != right.textureSet || left.index3D != right.index3D ||
-                        left.name3D != right.name3D) return false;
+                        !bcn::asset_identity::NameEqual{}(left.name3D, right.name3D)) return false;
                 }
                 return true;
             };
@@ -1034,7 +1034,7 @@ namespace
             const auto found = g_instances.find(baseId);
             if (found == g_instances.end()) return;
             auto& instance = found->second;
-            current = instance.generation == generation && instance.desiredProfileId == id;
+            current = instance.generation == generation && bcn::asset_identity::Equal{}(instance.desiredProfileId, id);
             if (success) {
                 // Active face batches drain in order, including a batch that a
                 // newer click superseded. Remember its matching body snapshot.
@@ -1100,7 +1100,7 @@ namespace
         std::scoped_lock lock(g_lock);
         const auto found = g_instances.find(baseId);
         return found != g_instances.end() && found->second.generation == generation &&
-            found->second.desiredProfileId == desired;
+            bcn::asset_identity::Equal{}(found->second.desiredProfileId, desired);
     }
 
     [[nodiscard]] bool NativeLayersAvailable(
@@ -1122,7 +1122,7 @@ namespace
         std::unique_lock lock(g_lock);
         auto found = g_instances.find(baseId);
         if (found == g_instances.end() || found->second.generation != generation ||
-            found->second.desiredProfileId != profile.id) return;
+            !bcn::asset_identity::Equal{}(found->second.desiredProfileId, profile.id)) return;
         if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         auto& instance = found->second;
         const auto graphAction = bcn::native_skin::ResolveGraphAction(
@@ -1176,7 +1176,7 @@ namespace
             instance = std::move(*built);
         }
 
-        if (instance.appliedProfileId == profile.id &&
+        if (bcn::asset_identity::Equal{}(instance.appliedProfileId, profile.id) &&
             instance.appliedContentHash == profile.contentHash && OwnsCurrentPointers(instance)) {
             const auto action = bcn::face_skin::ResolveReapply(
                 bcn::face_skin::Matches(actor.get(), profile.id, mode),
@@ -1404,7 +1404,7 @@ namespace bcn::native_skin
                 sharedAction == bcn::native_skin::SharedBaseAction::transferOwner) {
                 instance.ownerActor = actorId;
             }
-            if (instance.desiredProfileId != profile->id || instance.desiredMode != mode ||
+            if (!bcn::asset_identity::Equal{}(instance.desiredProfileId, profile->id) || instance.desiredMode != mode ||
                 instance.desiredContentHash != profile->contentHash || instance.generation == 0U) {
                 instance.desiredProfileId = profile->id;
                 instance.desiredMode = mode;
@@ -1561,7 +1561,7 @@ namespace bcn::native_skin
             return instance.appliedDefault && instance.appliedProfileId.empty() &&
                 bcn::face_skin::Matches(actor, {});
         }
-        return instance.appliedProfileId == profileId &&
+        return bcn::asset_identity::Equal{}(instance.appliedProfileId, profileId) &&
             instance.appliedContentHash == SkinProfiles::Get().ContentHash(profileId) &&
             OwnsCurrentPointers(instance) && bcn::face_skin::Matches(actor, profileId);
     }
@@ -1574,7 +1574,7 @@ namespace bcn::native_skin
             for (const auto* graph : { &instance.skin, &instance.farSkin }) {
                 for (const auto& binding : graph->textures) {
                     for (std::size_t index{}; index < binding.originalPaths.size(); ++index) {
-                        if (TexturePath(binding.textureSet, index) != binding.originalPaths[index]) return false;
+                        if (!bcn::asset_identity::Equal{}(TexturePath(binding.textureSet, index), binding.originalPaths[index])) return false;
                     }
                 }
             }

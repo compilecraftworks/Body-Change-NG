@@ -15,7 +15,12 @@ namespace bcn
         for (std::size_t area{}; area < result.size() && area < source.size(); ++area) {
             if (!source[area].is_object()) continue;
             for (const auto& id : ids[area]) {
-                const auto value = source[area].find(id);
+                auto value = source[area].find(id);
+                if (value == source[area].end()) {
+                    for (auto candidate = source[area].begin(); candidate != source[area].end(); ++candidate) {
+                        if (asset_identity::Equal{}(candidate.key(), id)) { value = candidate; break; }
+                    }
+                }
                 if (value == source[area].end() || !value->is_number_integer()) continue;
                 if (value->is_number_unsigned()) {
                     const auto color = value->get<std::uint64_t>();

@@ -224,6 +224,13 @@ int main(const int argc, char** argv)
             bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::face, "new") == 0xFFFFFFFFU,
             "batch color selection, rule serialization, or NPC color lookup lost per-entry RGBA")) return 1;
 
+    auto mixedColorIds = coloredRule.overlayIds;
+    mixedColorIds[0][0] = "a";
+    const auto mixedColors = bcn::ReadDistributionOverlayColors(batchJson, mixedColorIds);
+    if (!Require(mixedColors[0].at("A") == 0x80123456U &&
+            bcn::DistributionOverlayColor(coloredRule, bcn::overlay::Area::face, "a") == 0x80123456U,
+            "case-only saved overlay IDs lost distribution colors")) return 1;
+
     coloredRule.overlayIds[0] = { "A", "B", "zero", "negative", "overflow", "float", "text" };
     coloredRule.overlayIds[1] = { "A" };
     coloredRule.overlayColors[0] = { { "A", 0x80123456U }, { "B", 0xFFFFFFFFU }, { "zero", 0U } };
@@ -1577,6 +1584,23 @@ int main(const int argc, char** argv)
         } else if (!Require(profile.raceFace[static_cast<std::size_t>(bcn::HumanoidSkinRace::nord)].empty(),
                 "male race normal leaked into female profile")) return 1;
     }
+    // Arbitrary case, not just all-lower/all-upper DDS extensions; preserve
+    // author spelling while accepting all four asset families.
+    const auto caseRoot = sandbox / "CaseVariants";
+    const auto mixedSkinRoot = caseRoot / "BoDySkIn";
+    Touch(mixedSkinRoot / "Pack" / "TeXtUrEs/AcToRs/ChArAcTeR/FeMaLe/FeMaLeBoDy_1.DdS");
+    Touch(mixedSkinRoot / "UbePack" / "TeXtUrEs/!uBe/BoDy/FeMaLeBoDy_1_D.DdS");
+    Touch(mixedSkinRoot / "Pack" / "TeXtUrEs/AcToRs/ChArAcTeR/Character Assets/TiNtMaSkS/FeMaLeHeAd_LiPs.DdS");
+    const auto mixedFutaRoot = caseRoot / "FuTaNaRi";
+    Touch(mixedFutaRoot / "Pack" / "TeXtUrEs/ErF_fUtAnArI/FaIrSkInCbBe/FuTaNaRi_ScHlOnG.DdS");
+    const auto mixedSkins = bcn::SkinProfiles::ScanDirectory(mixedSkinRoot);
+    const auto mixedFuta = bcn::FutanariSkinProfiles::ScanDirectory(mixedFutaRoot);
+    const auto mixedTints = bcn::player_tint::Catalog::ScanDirectory(mixedSkinRoot);
+    if (!Require(mixedSkins.size() == 2U && mixedFuta.size() == 1U && mixedTints.size() == 1U &&
+            mixedSkins.front().body.size() == 1U && mixedFuta.front().layers.size() == 1U &&
+            mixedTints.front().path.ends_with("FeMaLeHeAd_LiPs.DdS"),
+            "mixed-case body/UBE/futanari/tint catalog discovery failed or rewrote spelling")) return 1;
+
     // Publish new immutable catalogs while readers still own the previous one.
     const auto snapshotRoot = sandbox / "SnapshotAudit";
     std::filesystem::create_directories(snapshotRoot);
@@ -1595,6 +1619,12 @@ int main(const int argc, char** argv)
     auto skinView = skinsCatalog.SharedSnapshot();
     auto futaView = futaCatalog.SharedSnapshot();
     auto tintView = tintCatalog.SharedSnapshot();
+    if (!Require(skinsCatalog.Find(Lower(skinView->front().id)).has_value() &&
+            skinsCatalog.ContentHash(Lower(skinView->front().id)) == skinView->front().contentHash &&
+            futaCatalog.Find(Lower(futaView->front().id)).has_value() &&
+            futaCatalog.ContentHash(Lower(futaView->front().id)) == futaView->front().contentHash &&
+            tintCatalog.Find(Lower(tintView->front().id)).has_value(),
+            "saved skin/futanari/tint ID casing no longer resolves the current catalog")) return 1;
     if (!Require(skinView->size() == 1U && skinView->front().textureCount == 2U &&
             futaView->size() == 1U && tintView->size() == 1U &&
             skinView == skinsCatalog.SharedSnapshot() && futaView == futaCatalog.SharedSnapshot() &&

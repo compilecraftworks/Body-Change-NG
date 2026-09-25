@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Body Change NG v1.3.2 — 소개와 사용 안내</title>
+<title>Body Change NG v1.3.4 — 소개와 사용 안내</title>
 <style>
 :root{color-scheme:light dark;--bg:#f4f7fa;--panel:#ffffff;--line:#b7c8d5;--muted:#526574;--accent:#006779;--sub:#146a35;--title:#895c00;--warn:#805900;--notice:#fff4db;--code-bg:#eaf0f4;--code-text:#16495d;--table-head:#e4edf3}
 @media(prefers-color-scheme:dark){:root{--bg:#101419;--panel:#192129;--line:#33414f;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83;--notice:#28261f;--code-bg:#10181f;--code-text:#cff0fa;--table-head:#141b22}}
@@ -25,8 +25,8 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <main>
 <header>
 <div class="eyebrow">SKYRIM SE / AE · IN-GAME APPEARANCE CONTROL</div>
-<h1>Body Change NG <small>v1.3.2</small></h1>
-<p class="note">1.3.2 기준: NPC 스킨 직접 선택·커스텀 얼굴 적용 개선, 원거리 액터 검색, 모드 삭제 준비, 안전한 캐시 정리까지 반영했습니다.</p>
+<h1>Body Change NG <small>v1.3.4</small></h1>
+<p class="note">1.3.4 기준: 프리셋 수치 처리, UBE/Necoco 의상 보정, 스킨 경로 대소문자 처리, 오버레이 빈 슬롯 복원과 NPC 배포 개선까지 반영했습니다.</p>
 <p class="lead">바디프리셋부터 스킨·틴트마스크·후타스킨·오버레이까지.<br>게임 안에서 미리 보고, 원하는 항목만 확정하고, 직접 고른 후보로 NPC에게 배포하세요.</p>
 <p>Body Change NG(BCNG)는 플레이어와 NPC의 외형을 한 창에서 관리하는 SKSE 플러그인입니다. 체형과 스킨을 독립적으로 선택하므로 조합마다 별도의 바디 메시 세트를 준비할 필요가 없습니다.</p>
 <p class="notice"><strong>NPC 한 명의 스킨을 바꾸는 데 배포 규칙은 필요하지 않습니다.</strong> 상단 액터 목록에서 NPC를 고른 뒤 바디스킨 탭에서 한 번 클릭해 미리 보고, 더블클릭으로 적용하세요. NPC 배포는 고른 후보들을 조건에 따라 배정하는 별도의 선택 기능입니다.</p>
@@ -127,7 +127,7 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 
 <h3>바디스킨</h3>
 <p>바디프리셋과 별개로 스킨팩을 선택합니다. <strong>액터 선택 → 바디스킨 → 한 번 클릭 미리보기 → 더블클릭 적용</strong> 순서이며, 배포 규칙을 만들거나 매번 기본 스킨을 거쳐 다른 팩으로 바꿀 필요가 없습니다. 배포 체크박스가 보인다면 <strong>배포 취소</strong>로 일반 직접 선택 목록에 돌아오세요.</p>
-<p class="notice"><strong>커스텀 팔로워·바디 계열 미확인 액터:</strong> v1.3.2는 BodySlide 계열을 식별하지 못한 액터도 직접 스킨을 선택할 수 있게 합니다. 성별·종족에 맞는 팩과 계열 미확인 안내를 표시하므로, 실제 바디에 맞는 3BA/UBE 스킨을 직접 선택하세요. 이미 확인된 비호환 레이아웃은 계속 차단합니다. 이 수동 선택 허용이 자동 배포의 호환 조건을 완화하거나 UV를 변환하는 것은 아닙니다.</p>
+<p class="notice"><strong>커스텀 팔로워·바디 계열 미확인 액터:</strong> BCNG는 BodySlide 계열을 식별하지 못한 액터도 직접 스킨을 선택할 수 있게 합니다. 성별·종족에 맞는 팩과 계열 미확인 안내를 표시하므로, 실제 바디에 맞는 3BA/UBE 스킨을 직접 선택하세요. 이미 확인된 비호환 레이아웃은 계속 차단합니다. 이 수동 선택 허용이 자동 배포의 호환 조건을 완화하거나 UV를 변환하는 것은 아닙니다.</p>
 <p>NPC 얼굴은 실제 로드된 FaceGen 하위에서 찾으며, 메시 이름이 HeadPart 이름과 달라도 피부 재질 대상이 명확하면 사용할 수 있습니다. 몸 전용 팩은 이전 얼굴 변경을 복원해야 하는 경우가 아니라면 얼굴 대상을 요구하지 않습니다. 얼굴 메시가 없거나 대상이 여러 개라 불명확한 경우에는 임의로 추측해 적용하지 않습니다.</p>
 <ul>
 <li><strong>몸·손·발:</strong> 원본과 분리한 네이티브 Skin Armor/ARMA/TXST 경로를 사용합니다. <strong>얼굴:</strong> 별도의 NiOverride 피부 텍스처 채널을 사용합니다. 문신 오버레이를 덧붙이거나 HeadPart/NIF를 교체하는 방식이 아닙니다.</li>
@@ -168,6 +168,7 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <li>별표로 즐겨찾기를 지정할 수 있습니다. 긴 두 번째 줄 경로는 말줄임으로 표시됩니다.</li>
 </ul>
 <p>저장된 수동 복수 오버레이는 항목·색상을 각각 별도의 사용 가능한 슬롯으로 복원하며 다른 모드의 점유 슬롯을 보존합니다.</p>
+<p>SlaveTats / SlaveTats NG가 해제한 슬롯에 인식 가능한 빈 텍스처만 남았다면 다시 사용할 수 있습니다. 텍스처·색상·투명도 등록이 남은 슬롯은 투명 문신이라도 보호합니다. BCNG가 RaceMenu의 설정 용량을 늘리거나 다른 모드의 활성 문신을 지우지는 않습니다.</p>
 <p>최대 슬롯 수는 RaceMenu 설정을 따릅니다. 보이지 않거나 완전히 투명한 외부 오버레이도 슬롯을 예약할 수 있으며, BCNG가 공간 확보를 위해 임의로 지우지 않습니다.</p>
 </section>
 
@@ -177,15 +178,16 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <ol>
 <li>일반 NPC 바디·스킨 배포에는 모드 설정에서 여성·남성의 <strong>NPC 배포 바디 타입</strong>을 먼저 맞춥니다.</li>
 <li>원하는 탭에서 새로고침 행 오른쪽의 <strong>NPC 배포</strong>를 누릅니다. 오른쪽 버튼은 <strong>여성 · 남성 · 배포 하기 · 배포 취소</strong>로 바뀌며, 여성으로 시작합니다. 여성/남성 버튼은 가까이 로드된 해당 성별 NPC를 미리보기 액터로 선택하고, 없으면 플레이어를 선택합니다. 목록과 새 규칙의 성별은 플레이어 성별과 무관하게 버튼 선택을 따르며, 바디프리셋·바디스킨 후보에는 설정한 NPC 배포 바디 타입도 반영합니다. 성별을 바꾸면 이전 체크와 미리보기를 정리합니다. 후타스킨은 여성 전용이며 가까운 SOS/TNG 등록 여성 후타 NPC가 없으면 플레이어를 선택합니다. 현재 액터와 호환되지 않는 항목은 체크할 수 있지만 미리보기하지 않습니다. NPC 배포 체크박스 모드의 자동 미리보기 액터 선택에서는 후타를 포함해 커스텀 팔로워·노인 NPC를 제외합니다. 일반 액터 직접 선택과 실제 배포 규칙은 바꾸지 않습니다.</li>
+<li>배포 모드에서는 액터 드롭다운·액터 새로고침 대신 <strong>선택된 항목을 범위 지정하여 월드 NPC에게 배포</strong> 타이틀이 표시됩니다. 현재 액터는 미리보기 대상일 뿐 배포 범위가 아닙니다. 조건 팝업에서도 타이틀을 유지하고 배포 모드를 끝내면 액터 선택 UI가 돌아옵니다.</li>
 <li>사용할 항목을 체크합니다. <strong>전체 선택·선택 해제</strong>는 현재 보이는 적합한 목록에 작동합니다. 기본값/초기화 행은 에셋 후보에 포함되지 않습니다.</li>
 <li><strong>배포 하기</strong>로 조건 팝업을 엽니다. 이 버튼만으로 저장·배포하지는 않습니다. 선택한 항목들은 편집 세션에 유지되며, 규칙 추가 시에도 사용됩니다.</li>
-<li>성별과 대상을 정합니다. 일반 규칙은 전체 NPC, 이름, NPC Base FormID, 종족, 팩션, 클래스, 키워드, 플러그인 등의 대상을 제공합니다. <strong>전체 NPC</strong>에서는 <strong>커스텀 팔로워 제외·노인 NPC 제외가 기본 체크</strong>되어 있습니다.</li>
+<li>성별과 대상을 정합니다. 대상은 전체 NPC, 이름, NPC Base FormID, 종족, 팩션, 클래스, 키워드, 전투스타일, 커스텀 팔로워, 노인, 플러그인 중에서 정합니다. <strong>전체 NPC</strong>에서는 <strong>커스텀 팔로워 제외·노인 NPC 제외가 기본 체크</strong>되어 있습니다.</li>
 <li>지정한 조건 목록 위의 <strong>+ 규칙 추가·규칙 삭제·위로·아래로</strong>로 규칙과 우선순위를 관리합니다.</li>
 <li><strong>로드된 NPC 즉시 배포</strong>는 저장 후 현재 규칙을 활성화하고 로드된 NPC를 처리합니다. <strong>다음 게임 실행 시 배포</strong>는 파일만 저장하고 현재 세션의 활성 규칙을 바꾸지 않습니다.</li>
 </ol>
 <aside class="notice">조건을 저장하려면 <strong>로드된 NPC 즉시 배포</strong> 또는 <strong>다음 게임 실행 시 배포</strong>를 누르세요.</aside>
 <p>규칙은 위에서 아래로, 기능별로 독립 평가합니다. 오버레이는 부위마다 독립 평가합니다. 적합한 후보가 하나면 고정 배정, 여러 개면 NPC별로 안정적으로 유지되는 랜덤 후보 풀이 됩니다. <strong>자동 오버레이 배포는 설정한 부위당 후보 하나를 선택</strong>하며, 체크한 모든 문양을 한 번에 쌓는 방식은 아닙니다. 복수 스택은 수동 오버레이 편집에서 지원합니다.</p>
-<p>자동 배포 후보는 일반(non-UBE) 계열과 해당 성별을 사용합니다. 후타스킨은 등록된 여성 후타 NPC와 애드온 유형을 확인합니다. 기본값 선택을 포함한 <strong>수동 확정 값이 자동 배포보다 우선</strong>합니다. 같은 ActorBase를 공유하는 NPC들은 네이티브 몸 스킨 배정도 공유하며, BCNG가 스폰된 레퍼런스마다 ActorBase를 새로 만들지는 않습니다.</p>
+<p>자동 바디프리셋 후보는 설정한 NPC 바디 타입을 따르며 UBE도 포함합니다. 받는 NPC의 확인된 실제 계열·성별에도 맞아야 하며, 3BA NPC의 몸을 UBE로 바꾸거나 계열별 동시 배포 설정을 추가하는 기능은 아닙니다. 바디스킨·후타스킨·오버레이 자동 배포는 기존의 일반(non-UBE) 계열 제한을 유지합니다. 후타스킨은 등록된 여성 후타 NPC와 애드온 유형을 확인합니다. 기본값 선택을 포함한 <strong>수동 확정 값이 자동 배포보다 우선</strong>합니다. 같은 ActorBase를 공유하는 NPC들은 네이티브 몸 스킨 배정도 공유하며, BCNG가 스폰된 레퍼런스마다 ActorBase를 새로 만들지는 않습니다.</p>
 <p>전체 NPC의 두 제외 체크박스는 대상 필터이며, 별도의 블랙리스트 규칙이 아닙니다. 이름이나 개별 NPC로 지정한 대상까지 숨은 조건으로 제외하지 않습니다. 근처 액터 목록의 거리·32명 제한은 규칙 배포 범위에 적용되지 않으며, 조건에 맞는 액터가 로드될 때 저장 규칙을 적용할 수 있습니다.</p>
 <p>바디프리셋·바디스킨·후타스킨 배포 목록에서는 체크박스나 행을 클릭하거나 키보드·게임패드로 이동하면 선택 액터에서 마지막 호환 항목을 미리보기합니다. 이 세 종류는 각각 한 항목씩 미리보기하며 체크 상태는 배포 후보로 따로 유지됩니다. 호환되지 않는 항목도 배포 후보로 체크할 수 있지만 현재 액터에 미리보기하지 않습니다. 배포 취소·선택 해제·조건 팝업 진입·액터/탭 변경·창 닫기 시 확정 외형으로 돌아옵니다. 일반 후타스킨 목록은 액터에 등록된 ERF/TRX/UBE TRX 유형만 표시하며, 배포 후보에는 일반 ERF와 TRX를 함께 넣어 각 NPC의 등록 애드온에 맞춰 배포할 수 있습니다.</p>
 </section>
@@ -195,6 +197,7 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <aside class="notice">아래 경로는 모두 <strong>게임 Data 기준</strong>입니다. MO2 모드 폴더 안에서는 맨 앞의 <code>Data\</code>를 빼세요. 예시 팩 이름은 원하는 이름으로 바꿀 수 있습니다. 경로는 축약 없이 적었습니다. 끝이 역슬래시인 항목은 해당 디렉터리 자체를 가리킵니다.</aside>
 <h3>보통은 설치된 스킨 모드 폴더를 통째로 넣으면 됩니다</h3>
 <p><strong>스킨 모드 폴더 전체를 <code>BodySkin</code> 안에 복사하세요.</strong> DDS를 하나씩 골라 옮기거나 하위 폴더를 새로 구성할 필요가 없습니다.</p>
+<p>스킨·후타스킨·오버레이·틴트의 에셋 ID와 인식되는 DDS 파일명·확장자·경로는 영문 대소문자를 구분하지 않습니다. 경로의 두 슬래시 표기도 같은 파일로 취급합니다. 기존 저장 표기는 유지하므로 대소문자 차이만으로 즐겨찾기·색상 초안·복원 상태를 잃지 않습니다. 비호환 UV를 변환하거나 미등록 DDS를 오버레이로 등록하는 기능은 아닙니다.</p>
 <p>예를 들어 MO2에 설치된 <strong>My Skin Pack</strong> 폴더를 <strong>Body Change NG의 BodySkin 안</strong>에 통째로 복사합니다. 기존 <code>Textures</code>와 내용물은 그대로 둡니다.</p>
 <pre><code>복사 전 — MO2 설치 폴더 기준
 mods\My Skin Pack\Textures\actors\character\female\femalehead.dds
@@ -380,31 +383,32 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (선택적 ORefit 입력)
 <li><strong>프리셋은 보이지만 몸·의상이 안 바뀌거나 XML과 체형이 다름:</strong> 캐릭터 바디와 의상을 모두 바디 계열에 맞는 Zeroed Sliders 프리셋으로, Build Morphs를 체크해 다시 빌드하세요. 게임이 실제 사용하는 최종 메시·TRI와 프리셋 슬라이더의 일치도 확인하세요. 다른 체형으로 빌드된 메시를 사용하면 그 체형 위에 BCNG 모프가 더해집니다.</li>
 <li><strong>스킨·틴트팩이 안 보임:</strong> 액터 성별·레이아웃, 최상위 팩 폴더, 설치 결과의 Textures 구조, DDS 인식 이름을 확인하세요. <code>Data\Data</code>나 <code>Textures\Textures</code> 중복 경로를 피하세요.</li>
 <li><strong>보라색 얼굴·잘못된 텍스처:</strong> 선택 팩, 누락·손상 DDS, 모드 매니저의 승리 경로, 다른 얼굴 오버라이드를 확인하세요. 보고 시 선택 순서와 버전도 알려주세요. 스크린샷 하나만으로 원인을 확정할 수는 없습니다.</li>
+<li><strong>UBE 프리셋이 납작하거나 제로슬라이더로 보임:</strong> 맨몸이어도 액터 체중이 계산에 반영됩니다. big 값만 있는 프리셋은 small 생략값이 0이므로 체중 0에서 제로 형태가 될 수 있습니다. 제작자가 의도한 체중과 비교하세요. BCNG가 체중을 100으로 강제하거나 생략 끝점을 채우지는 않습니다. UBE 슬라이더도 XML 이름으로 적용하므로 실제 사용 중인 몸·의상 TRI에 대응 모프가 있어야 합니다.</li>
 <li><strong>오버레이 적용 불가·색 변화가 약함:</strong> RaceMenu 부위별 활성화/개수 설정, 외부 예약 슬롯과 텍스처 자체를 확인하세요. 유색 DDS는 회색조 마스크와 동일하게 착색되지 않을 수 있습니다.</li>
 <li><strong>후타탭 없음·대상이 아님:</strong> 지원 여성 애드온 설치 여부와 액터의 SOS/TNG 등록 여부를 구분하세요. 남성 애드온이나 텍스처 팩만으로 두 조건을 충족하지 않습니다.</li>
 </ul>
 <p>진단 로그는 SKSE 로그 폴더의 <code>BodyChangeNG.log</code>이며, 보통 <code>Documents\My Games\Skyrim Special Edition\SKSE</code> 아래에 있습니다. 게임 배포판·환경에 따라 위치가 다를 수 있습니다. 보고할 때 게임·SKSE·RaceMenu 버전, 바디·애드온 종류, 팩 경로, 재현 순서와 로그를 함께 제공하세요.</p>
-<p class="note">v1.3.2는 Release 빌드, 오프라인 회귀 실행 파일 35개와 감사 도구 테스트 19개를 통과했습니다. 모든 제보 환경의 렌더링 문제가 해결되었다는 인게임 확인을 의미하지는 않습니다.</p>
+<p class="note">v1.3.4는 Release 빌드와 오프라인 회귀 실행 파일 38개를 통과했습니다. 사용자가 두부팩에서 최신 빌드의 인게임 정상 동작도 확인했습니다. 모든 지원 런타임·모드 환경의 검증을 뜻하지는 않습니다.</p>
 </section>
 
 <section id="upgrade">
 <h2>8. 이전 버전에서 업데이트할 때</h2>
-<p>v1.3.2 적용을 위해 새 게임이나 세이브 정리는 필요하지 않습니다. 기존 코세이브 형식을 유지합니다. 설정·사용자 규칙·에셋 팩·즐겨찾기와 런타임 텍스처 캐시를 보존하세요. 단순 업데이트를 위해 모드 삭제 준비를 실행하지 마세요.</p>
+<p>v1.3.4 적용을 위해 새 게임이나 세이브 정리는 필요하지 않습니다. 기존 코세이브 형식을 유지합니다. 설정·사용자 규칙·에셋 팩·즐겨찾기와 런타임 텍스처 캐시를 보존하세요. 단순 업데이트를 위해 모드 삭제 준비를 실행하지 마세요.</p>
 <ol>
 <li>Skyrim을 종료하고 세이브·동일 이름의 SKSE 코세이브, 설정, 사용자 배포 JSON, 에셋 팩을 백업한 뒤 플러그인을 교체합니다.</li>
 <li>삭제 준비 모드를 켰다가 계속 사용하기로 했다면 모드 설정의 <strong>BCNG 다시 사용</strong>으로 해제하세요. DLL 교체만으로 저장된 삭제 준비 설정이 해제되지는 않습니다.</li>
 <li>기존 BodySkin·Futanari 팩은 유지합니다. 옛 별도 틴트팩은 <code>Data\BodySkin\팩 이름\Textures\actors\character\character assets\tintmasks\</code> 구조로 옮기되 원래 텍스처 하위 구조를 보존합니다. 옛 TintMask 루트에만 두지 마세요.</li>
 <li>사용자 규칙 JSON을 빈 시작 파일로 덮어쓰지 마세요. 새 DLL은 schema 3~7을 읽고 원본 .schemaN.bak 백업을 남긴 뒤 이름 기반 schema 8로 변환합니다. 기존 옛 제외 규칙 정리는 유지하며 미확인 옛 에셋 ID도 보존합니다. 참조하는 플러그인·팩도 설치되어 있어야 합니다.</li>
 <li><strong>확정 동작 변경:</strong> 목록을 미리보기만 한 채 닫으면 취소됩니다. NPC 조건 팝업도 닫는 것만으로 다음 실행용 초안을 자동 저장하지 않습니다.</li>
-<li>가능하면 기존 팩 이름과 경로를 유지하세요. 이름 변경·삭제 이후에도 예전 선택 ID가 유지된다고 가정하지 마세요. v1.3.2에서 저장한 세이브의 다운그레이드 호환은 보장하지 않습니다.</li>
+<li>가능하면 기존 팩 이름과 경로를 유지하세요. 이름 변경·삭제 이후에도 예전 선택 ID가 유지된다고 가정하지 마세요. v1.3.4에서 저장한 세이브의 다운그레이드 호환은 보장하지 않습니다.</li>
 </ol>
-<p><a href="NEXUS-CHANGELOG-v1.3.2-KO.html">v1.3.2 한국어 변경 내역</a></p>
+<p><a href="NEXUS-CHANGELOG-v1.3.4-KO.html">v1.3.4 한국어 변경 내역</a></p>
 </section>
 
 <footer>
 <p><strong>크레딧</strong> — SKSE 팀, expired6978/RaceMenu, CommonLibSSE-NG 기여자, Dear ImGui, pugixml, 사용자가 설치하는 바디·스킨·애드온·오버레이 제작자 여러분께 감사드립니다.</p>
 <p><a href="https://github.com/compilecraftworks/Body-Change-NG">Body Change NG 소스 저장소</a> · GPL-3.0. LICENSE와 THIRD_PARTY_NOTICES.md를 확인하세요. 외부 에셋은 각 제작자의 라이선스를 따르며 BCNG에 포함하지 않습니다.</p>
-<p>v1.3.2 사용 안내 · 2026-09-24 정리. 과거 개발 중간 기록보다 이 문서의 사용법을 우선합니다.</p>
+<p>v1.3.4 사용 안내 · 2026-09-25 정리. 과거 개발 중간 기록보다 이 문서의 사용법을 우선합니다.</p>
 </footer>
 </main>
 </body>

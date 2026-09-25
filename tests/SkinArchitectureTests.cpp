@@ -16,8 +16,21 @@
 #include <cctype>
 #include <iostream>
 #include <span>
+#include <map>
 
 namespace NativeSlot = bcn::native_skin::slot_mask;
+
+// Engine BSFixedString keeps the spelling already in its case-insensitive
+// pool. std::string-only mocks cannot catch a rejected successful write.
+struct InternedTextureName {
+    static inline std::map<std::string, std::string, bcn::asset_identity::Less> pool;
+    const std::string* value{};
+    InternedTextureName& operator=(const char* input) {
+        value = &pool.try_emplace(input, input).first->second;
+        return *this;
+    }
+    const char* c_str() const { return value ? value->c_str() : ""; }
+};
 
 namespace
 {
@@ -67,6 +80,7 @@ int main()
                 NearestDistributionActor(femalePlayer, true, 0x14U, live) == 3U,
                 "player sex must not affect distribution target selection")) return 1;
     }
+
     constexpr auto playerTabs = bcn::ui_catalog::ResolveAvailableTabs(true, true);
     for (const bool female : { false, true }) {
         struct Candidate {
@@ -168,6 +182,35 @@ int main()
         // A shader-level setter must not be assumed to write form components.
         void SetTexturePath(std::size_t, const char*) {}
     };
+    {
+        struct InternedTexture { InternedTextureName textureName; };
+        struct InternedForm {
+            std::array<InternedTexture, 8> textures;
+            std::array<ResourceID, 8> textureFileIDs;
+        } form;
+        InternedTextureName seed;
+        seed = "!ube\\body\\femalebody_1_sk.dds";
+        seed = "BCNG_SLOT_PROBE_2.DDS";
+        const auto slots = bcn::native_skin::DiscoverFormTextureSlots(form,
+            [&](std::size_t index) { return std::string(form.textures[index].textureName.c_str()); });
+        if (!Require(slots.has_value(), "interned probe casing rejected valid native slots")) return 1;
+        const std::string requested = "!UBE\\Body\\femalebody_1_sk.dds";
+        if (!Require(bcn::native_skin::WriteFormTexturePath(form, (*slots)[2], requested.c_str()) &&
+                std::string(form.textures[(*slots)[2]].textureName.c_str()) != requested &&
+                bcn::asset_identity::Equal{}(form.textures[(*slots)[2]].textureName.c_str(), requested) &&
+                form.textureFileIDs[(*slots)[2]].identity == requested,
+                "native body/futanari texture write rejected a case-equivalent interned path")) return 1;
+        if (!Require(!bcn::asset_identity::Equal{}(requested, "!UBE\\Other\\femalebody_1_sk.dds") &&
+                !bcn::asset_identity::Equal{}(requested, "Textures\\!UBE\\Body\\femalebody_1_sk.dds") &&
+                !bcn::native_skin::WriteFormTexturePath(form, 8U, requested.c_str()) &&
+                !bcn::native_skin::WriteFormTexturePath(form, 2U, nullptr) &&
+                bcn::native_skin::WriteFormTexturePath(form, 2U, ""),
+                "case-insensitive comparison weakened path isolation, bounds or optional clears")) return 1;
+        if (!Require(bcn::native_skin::PathsFromCache("TEXTURES/bodychangeng/CACHE/Skin/x.DDS").has_value() &&
+                !bcn::native_skin::PathsFromCache("TEXTURES/bodychangeng/CACHE/../x.DDS") &&
+                !bcn::native_skin::PathsFromCache("TEXTURES/foreign/CACHE/Skin/x.DDS"),
+                "cache namespace casing failed or accepted foreign/traversal paths")) return 1;
+    }
     TextureForm originalTextures;
     for (std::size_t index{}; index < 8U; ++index) {
         const auto path = "original-" + std::to_string(index) + ".dds";

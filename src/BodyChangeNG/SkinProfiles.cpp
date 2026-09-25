@@ -68,20 +68,20 @@ namespace
         if (path.empty() || path.size() > kMaxPathLength) return false;
         std::ranges::replace(path, '/', '\\');
         if (path.find("..") != std::string::npos || path.find(':') != std::string::npos || path.starts_with("\\")) return false;
-        if (!path.ends_with(".dds") && !path.ends_with(".DDS")) return false;
+        if (!bcn::asset_identity::EndsWith(path, ".dds")) return false;
 
         // `Textures\\...` is deliberately profile-relative. It lets a skin pack
         // retain its original texture tree under BodySkin/<skin>/Textures.
-        if (path.starts_with("Textures\\")) {
+        if (bcn::asset_identity::StartsWith(path, "Textures\\")) {
             const auto relative = RelativeWithin(profileDirectory, dataRoot);
             if (!relative) return false;
             path = bcn::path_text::GenericUtf8(*relative) + "\\" + path;
             std::ranges::replace(path, '/', '\\');
         }
 
-        return path.starts_with("BodySkin\\") || path.starts_with("bodyskin\\") ||
-            path.starts_with("Futanari\\") || path.starts_with("futanari\\") ||
-            path.starts_with("textures\\") || path.starts_with("Textures\\");
+        return bcn::asset_identity::StartsWith(path, "BodySkin\\") ||
+            bcn::asset_identity::StartsWith(path, "Futanari\\") ||
+            bcn::asset_identity::StartsWith(path, "Textures\\");
     }
 
     [[nodiscard]] std::string LowerAscii(std::string value)
@@ -337,7 +337,7 @@ namespace
             const auto duplicate = onePerChannel ?
                 std::ranges::find(destination, layer.shaderTextureIndex,
                     &bcn::SkinTextureLayer::shaderTextureIndex) != destination.end() :
-                std::ranges::find(destination, layer.path,
+                bcn::asset_identity::Find(destination, layer.path,
                     &bcn::SkinTextureLayer::path) != destination.end();
             if (!duplicate) destination.push_back(layer);
         }
@@ -870,7 +870,7 @@ namespace bcn
                     if (IsConditionalHumanoidDirectory(setDirectory)) continue;
                     for (const auto sex : { SkinSex::female, SkinSex::male }) {
                         for (const auto& profile : AutoProfiles(dataRoot, root, skinDirectory, skinDirectory, setDirectory, sex)) {
-                            const auto existing = std::ranges::find(packProfiles, profile.id, &SkinProfile::id);
+                            const auto existing = bcn::asset_identity::Find(packProfiles, profile.id, &SkinProfile::id);
                             if (existing == packProfiles.end()) packProfiles.push_back(profile);
                             else MergeAutoProfile(*existing, profile);
                         }
@@ -887,7 +887,7 @@ namespace bcn
                             "Body Change NG kept skin profile '{}' as diagnostic-only: its non-Legacy layout is ambiguous",
                             profile.name);
                     }
-                    if (std::ranges::find(loaded, profile.id, &SkinProfile::id) == loaded.end()) {
+                    if (bcn::asset_identity::Find(loaded, profile.id, &SkinProfile::id) == loaded.end()) {
                         loaded.push_back(std::move(profile));
                     } else {
                         SKSE::log::warn("Body Change NG ignored duplicate skin profile id '{}'", profile.id);
@@ -932,14 +932,14 @@ namespace bcn
         std::vector<SkinProfile> loaded;
         for (const auto& scanRoot : catalog_roots::Discover(root)) {
             for (auto& profile : ScanDirectory(scanRoot)) {
-                if (const auto found = std::ranges::find(loaded, profile.id, &SkinProfile::id);
+                if (const auto found = bcn::asset_identity::Find(loaded, profile.id, &SkinProfile::id);
                     found != loaded.end()) *found = std::move(profile);
                 else loaded.push_back(std::move(profile));
             }
         }
         std::ranges::sort(loaded, {}, &SkinProfile::name);
         for (auto& skin : loaded) {
-            std::unordered_set<std::string_view> paths;
+            bcn::asset_identity::Set<std::string_view> paths;
             const auto collect = [&](const auto& layers) {
                 for (const auto& layer : layers) paths.insert(layer.path);
             };
@@ -951,7 +951,7 @@ namespace bcn
             skin.textureCount = paths.size();
         }
         auto published = std::make_shared<const std::vector<SkinProfile>>(std::move(loaded));
-        std::unordered_map<std::string, std::uint64_t> hashes;
+        bcn::asset_identity::Map<std::uint64_t> hashes;
         for (const auto& profile : *published) hashes[profile.id] = profile.contentHash;
         const auto count = published->size();
         {
@@ -1012,7 +1012,7 @@ namespace bcn
     std::optional<SkinProfile> SkinProfiles::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(*profiles_, id, &SkinProfile::id);
+        const auto found = bcn::asset_identity::Find(*profiles_, id, &SkinProfile::id);
         return found != profiles_->end() ? std::optional<SkinProfile>{ *found } : std::nullopt;
     }
 
@@ -1024,7 +1024,7 @@ namespace bcn
         std::vector<std::string> compatible;
         compatible.reserve(ids.size());
         for (const auto& id : ids) {
-            const auto found = std::ranges::find(*profiles_, id, &SkinProfile::id);
+            const auto found = bcn::asset_identity::Find(*profiles_, id, &SkinProfile::id);
             if (found != profiles_->end() &&
                 SkinProfileCompatibility(*found, sex, actorRace, actorFamily).Compatible()) {
                 compatible.push_back(id);
@@ -1123,7 +1123,7 @@ namespace bcn
         std::vector<FutanariSkinProfile> loaded;
         for (const auto& scanRoot : catalog_roots::Discover(root)) {
             for (auto& profile : ScanDirectory(scanRoot)) {
-                if (const auto found = std::ranges::find(loaded, profile.id,
+                if (const auto found = bcn::asset_identity::Find(loaded, profile.id,
                         &FutanariSkinProfile::id); found != loaded.end()) {
                     *found = std::move(profile);
                 } else {
@@ -1136,7 +1136,7 @@ namespace bcn
             return static_cast<unsigned>(left.type) < static_cast<unsigned>(right.type);
         });
         auto published = std::make_shared<const std::vector<FutanariSkinProfile>>(std::move(loaded));
-        std::unordered_map<std::string, std::uint64_t> hashes;
+        bcn::asset_identity::Map<std::uint64_t> hashes;
         for (const auto& profile : *published) hashes[profile.id] = profile.contentHash;
         const auto count = published->size();
         {
@@ -1162,7 +1162,7 @@ namespace bcn
     std::optional<FutanariSkinProfile> FutanariSkinProfiles::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(*profiles_, id, &FutanariSkinProfile::id);
+        const auto found = bcn::asset_identity::Find(*profiles_, id, &FutanariSkinProfile::id);
         return found == profiles_->end() ? std::nullopt : std::optional<FutanariSkinProfile>{ *found };
     }
 

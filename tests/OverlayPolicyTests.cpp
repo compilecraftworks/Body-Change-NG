@@ -45,6 +45,12 @@ int main()
         drafts.Set(0x14U, 0U, "paint-B", 0x4000FF00U);
         drafts.Set(0x14U, 1U, "paint-A", 0x200000FFU);
         drafts.Set(0x15U, 0U, "paint-A", 0xFFFFFFFFU);
+        Check(drafts.Find(0x14U, 0U, "PAINT-a") == 0x80FF0000U &&
+                drafts.Find(0x15U, 0U, "PAINT-a") == 0xFFFFFFFFU,
+            "case-only tint/overlay draft lookup lost color or crossed actor identity");
+        drafts.Set(0x14U, 0U, "PAINT-a", 0x80FF0000U);
+        Check(drafts.Entries(0x14U).size() == 3U,
+            "case-only tint/overlay draft edit accumulated a duplicate entry");
         Check(drafts.Find(0x14U, 0U, "paint-A") == 0x80FF0000U &&
                 drafts.Find(0x14U, 0U, "paint-B") == 0x4000FF00U &&
                 drafts.Find(0x14U, 1U, "paint-A") == 0x200000FFU &&
@@ -136,6 +142,10 @@ int main()
             "Default preview discarded the committed restoration snapshot");
         std::vector<bcn::OverlayItemState> committedPaints{ saved };
         PreviewState borrowedPreview{ .original = committedPaints, .live = saved };
+        borrowedPreview.live->selectedId = "OLD";
+        borrowedPreview.live->texturePath = "OLD.DDS";
+        Check(borrowedPreview.BorrowedSelection(committedPaints),
+            "case-only overlay preview lost its borrowed committed slot");
         for (std::uint32_t color{}; color < 10000U; ++color) {
             borrowedPreview.live->color = color;
             const auto* restoreColor = borrowedPreview.BorrowedSelection(committedPaints);

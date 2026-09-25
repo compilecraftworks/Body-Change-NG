@@ -4,13 +4,31 @@ All notable public changes to Body Change NG are documented here.
 
 ## 1.3.4
 
-- In every NPC-distribution tab, replace the actor dropdown and Refresh actors button with the one-line title "Distribute selected items to world NPCs within a chosen scope". Provide Korean, English and Chinese text fitted to the available width. Keep Outfit/randomization and Mod settings available. Retain the title while the conditions popup is open and restore actor controls on leaving distribution mode.
-- Restore UBE body presets, including UBE Zeroed presets, in the configured distribution candidate list and the actual rule-selection pool. The ordinary list remains actor-filtered; distribution candidates follow the configured family, with actor compatibility still controlling previews.
-- Filter automatic preset candidates against both the configured family and the actual NPC's known family before recording a selection. Preserve the existing unknown-family fallback and sex checks. Read catalog metadata without copying each candidate's slider vector. This does not convert NPC bodies or add independent simultaneous per-family distribution settings; skin/futanari distribution restrictions are unchanged.
-- Recognize the exact SlaveTats blank texture left on an overlay node after its registered overrides have been removed. Released Face/Body/Hands/Feet slots can be reused and counted correctly instead of appearing as exhausted capacity (for example, 0/0).
-- Keep every registered texture, tint and alpha reservation protected, including invisible tattoos. Check both loaded camera views and do not treat arbitrary files named blank.dds as free slots. No other mod's tattoo records are erased.
-- Preserve existing ownership matching, cumulative checkbox previews, color editing, deferred application and save restoration. No new cache, polling loop, dependency, runtime layout, RaceMenu interface or serialization changes.
-- Verification: Release build and 37 offline regression executables passed, including the actual UI/preset-pool functions, 1,000 repeated list-mode cycles and fitted header text at multiple sizes/scales. A 1,200,000-call allocation probe retained zero blocks/bytes in the changed overlay-slot predicate. This is not an in-game or whole-engine leak guarantee. See [verification](docs/RELEASE-VERIFICATION-v1.3.4-KO.md).
+### Body presets and outfit correction
+
+- Align base preset values with OBody NG 4.4.3: interpolate small/big XML endpoints by actor weight, divide by 100, use zero for omitted endpoints, preserve negative/over-100 values, and retain the original UNP reverse-slider and first-nonzero duplicate rules. Remove the extra UBE build-default subtraction and weight clamp.
+- Align CBBE 3BA/BHUNP correction and supported NPC anatomy-randomization calculations with the original recipes. Preserve the other-morph option, existing actor eligibility, NPC-only randomization, SFS integration and cancellable previews.
+- Add a separate additive UBE/Necoco outfit recipe derived from Fit to Thicc v1 Nude → Pushup: eight breast offsets, plus six nipple/UV offsets when nipple correction is enabled. Interpolate the offsets by actor weight without subtracting BCNG or RaceMenu morphs. The reference NipplesShowUp default affects this fixed recipe only, not normal preset XML parsing.
+- Keep global outfit/nipple switches editable with a UBE player. Turning nipple correction off removes only its offsets; turning outfit correction off or undressing removes the outfit layer. Each actor uses its own body-family recipe.
+- Apply ORefit name/plugin/FormID exclusions to both breast and nipple correction for all supported families. Keep explicit force-refit precedence and compatible named-refit priority. With SFS, evaluate the final visible outfit; otherwise use actual equipment. Existing stored body selections and correction layers reconcile once through the existing work queue.
+
+### Skins, overlays and tint masks
+
+- Match skin/futanari/overlay/tint asset IDs, DDS paths and extensions without ASCII case sensitivity; accept either path separator. Keep existing stored spelling and save formats. Favorites, preview colors and restoration now use the same identity rules.
+- Fix valid skin texture writes being rejected when Skyrim reuses an interned filename with different capitalization. Avoid repeated skin rebuilding caused only by ID casing. Keep texture ownership, slot reservations and path-safety checks.
+- Recognize the exact blank DDS left by SlaveTats / SlaveTats NG after an overlay slot is released, restoring usable Face/Body/Hands/Feet capacity instead of incorrectly showing 0/0. Protect all registered texture/tint/alpha overrides, including invisible tattoos, in both camera views. Unrelated blank textures and other mods' tattoo records remain untouched.
+
+### NPC distribution
+
+- In every supported tab, replace the actor dropdown and Refresh actors controls with "Distribute selected items to world NPCs within a chosen scope" during distribution selection and condition editing. Korean, English and Chinese titles fit on one line; ordinary actor controls return after leaving distribution mode.
+- Restore UBE presets, including UBE Zeroed, in the configured distribution list and actual rule-selection pool. Ordinary lists follow the selected actor; distribution candidates follow settings, while previews remain actor-compatible.
+- Before recording an automatic preset choice, check the configured family and the receiving NPC's known family without copying all candidate sliders. Preserve sex checks, unknown-family handling, cumulative overlay previews and colors. This does not convert NPC bodies or expand existing skin/futanari distribution restrictions.
+
+### Updating and verification
+
+- Preserve customized BodyChangeNGdistribution.json, settings, packs and texture cache. The rule schema remains 8, with no active rules in the starter. No new runtime hook, polling loop, persistent cache, dependency, RaceMenu ABI or co-save-format change is introduced.
+- Release build and all 38 offline regression executables passed. Coverage includes reference morph calculations, distribution candidates, 1,000 list-mode cycles, 36 header layouts and mixed-case texture/identity paths. The earlier 1,200,000-call overlay predicate allocation check retained zero blocks/bytes.
+- The user reported the latest build working in a TOFU in-game test. This is not verification of every supported runtime/setup or a whole-engine leak guarantee. The mouse/input implementation was left unchanged.
 
 ## 1.3.3
 

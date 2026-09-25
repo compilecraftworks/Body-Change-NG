@@ -186,7 +186,7 @@ int main()
         futaSelection.contains("ImGui::InvisibleButton(\"item\", ImVec2((std::max)(0.0F, width - favoriteWidth), height))") &&
         futaSelection.contains("if (FavoriteButton(favorites.contains(id), height)) ToggleFutanariFavorite(id);") &&
         futaSelection.contains("currentID.empty(), false)") &&
-        futaSelection.contains("profile->id == currentID, true)") &&
+        futaSelection.contains("bcn::asset_identity::Equal{}(profile->id, currentID), true)") &&
         futaSelection.find("const auto clicked = ImGui::IsItemClicked();") <
             futaSelection.find("FavoriteButton(favorites.contains(id), height)"));
     const auto futaFavorite = uiSection("void ToggleFutanariFavorite(", "void ToggleTintFavorite(");
@@ -781,7 +781,7 @@ int main()
     Require(morphFile.good());
     const std::string morphSource((std::istreambuf_iterator<char>(morphFile)), {});
     const auto cleanupStart = morphSource.find("void ClearPreviewNow(");
-    const auto cleanupEnd = morphSource.find("std::uint64_t StableRandomSeed(", cleanupStart);
+    const auto cleanupEnd = morphSource.find("bool IsNippleRefitSlider(", cleanupStart);
     Require(cleanupStart != std::string::npos && cleanupEnd != std::string::npos);
     const auto cleanup = std::string_view(morphSource).substr(cleanupStart, cleanupEnd - cleanupStart);
     Require(cleanup.contains("keys::ClearPreview(*bodyMorph, actor.get())") &&
@@ -799,6 +799,33 @@ int main()
     Require(morphSource.contains("keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs)") &&
         morphSource.contains("bodyMorph->GetMorph(actor.get(), name, kCommittedKey)") &&
         morphSource.contains("PreviewPresetCorrection(desired, replaced[name]) : desired"));
+    Require(!morphSource.contains("raceMenuLegacy") && !morphSource.contains("RSMLegacy"));
+    std::ifstream outfitFile(std::filesystem::path("src") / "BodyChangeNG" / "OutfitRefit.cpp", std::ios::binary);
+    Require(outfitFile.good());
+    const std::string outfitSource((std::istreambuf_iterator<char>(outfitFile)), {});
+    const auto outfitGate = outfitSource.find("if (!outfit_refit_evaluation::ShouldApply(");
+    const auto familyGate = outfitSource.find("if (female && !body_morph_policy::SupportsOutfitCorrection(");
+    const auto refitLookup = outfitSource.find("auto found = PresetCatalog::Get().FindRefit(");
+    Require(outfitGate != std::string::npos && familyGate != std::string::npos &&
+        refitLookup != std::string::npos && outfitGate < familyGate && familyGate < refitLookup &&
+        outfitSource.substr(outfitGate, familyGate - outfitGate).contains("return { Action::clear, signature }") &&
+        outfitSource.contains("procedural-v4|") &&
+        outfitSource.contains("rendered_outfit::EvaluateVisible(") &&
+        outfitSource.contains("!IsBlacklisted(worn[index], rules)"));
+    Require(!morphSource.contains("StableRandomSeed(") && !morphSource.contains("StableRange(") &&
+        morphSource.contains("body_morph_policy::GenerateNippleMorphs(") &&
+        morphSource.contains("body_morph_policy::GenerateGenitalMorphs(") &&
+        !morphSource.contains("std::clamp(actorBase") && !morphSource.contains("std::clamp(base"));
+    Require(!uiSource.contains("normalizedNpcCorrection") &&
+        !uiSource.contains("settings.orefitEnabled = true") &&
+        !uiSource.contains("settings.orefitNippleMorphing = true"));
+    // Values, including zero, go to SetMorph; no BCNG range/epsilon filter.
+    const auto morphWriteBegin = morphSource.find("for (const auto& [name, desired] : desiredMorphs)");
+    const auto morphWriteEnd = morphSource.find("// UI requests", morphWriteBegin);
+    Require(morphWriteBegin != std::string::npos && morphWriteEnd != std::string::npos);
+    const auto morphWrite = std::string_view(morphSource).substr(morphWriteBegin, morphWriteEnd - morphWriteBegin);
+    Require(morphWrite.contains("bodyMorph->SetMorph(actor.get(), name.c_str(), key, value)") &&
+        !morphWrite.contains("if (") && !morphWrite.contains("clamp("));
     Require(morphSource.contains("OutfitRefit::Get().Evaluate(actor.get(), &preset)") &&
         morphSource.contains("PreviewBaseCollector collector(settings.preserveOtherMorphs, replaceOutfit)") &&
         morphSource.contains("previewOutfit.insert_or_assign") &&

@@ -9,6 +9,17 @@ No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not
 
 ## Current version — v1.3.4
 
+Preset values now follow the reference XML/weight calculations, including missing
+endpoints, negative/over-100 values and UNP reverse sliders. UBE/Necoco outfit
+correction uses separate additive Nude-to-Pushup breast and optional nipple/UV
+offsets; CBBE 3BA/BHUNP keep their reference correction recipes. SFS visible-outfit
+rules and ORefit exclusions apply to the appropriate body-family recipe.
+
+Skin, futanari, overlay and tint paths/identities are case-insensitive. Fix false
+texture-write failures caused by interned filename casing without changing
+ownership checks or save formats. Existing previews, favorites and colors remain
+consistent across capitalization differences. Mouse/input code is unchanged.
+
 NPC distribution mode now replaces the actor dropdown/refresh controls with
 world-NPC scope guidance in every supported tab. UBE body-preset candidates
 are restored in both the selection list and automatic rule evaluation. The
@@ -23,6 +34,7 @@ Keep actual tattoos, transparent reserved paints, both camera views and other
 mods' similarly named textures protected. No blanket overlay reset, polling,
 persistent cache or RaceMenu ABI changes are introduced.
 
+- [Full v1.3.4 English Nexus description](docs/NEXUS-DESCRIPTION-v1.3.4-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.3.4-KO.html) · [English Markdown](docs/NEXUS-DESCRIPTION-v1.3.4.md)
 - [English changelog](CHANGELOG.md#134) · [한국어 변경 내역](CHANGELOG-KO.md#134)
 - [v1.3.4 Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.4-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.4-KO.html)
 - [v1.3.4 English text](docs/NEXUS-CHANGELOG-v1.3.4-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.4-KO.txt)

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include "BodyChangeNG/OverlayTypes.h"
 
 #include <algorithm>
@@ -129,7 +131,7 @@ namespace bcn
         std::array<std::vector<std::string>, overlay::Index(overlay::Area::count)> overlayIds;
         // Optional schema-7 extension, keyed by the exact candidate ID in its area.
         // Absent values retain legacy opaque white; alpha is the high byte (AARRGGBB).
-        std::array<std::map<std::string, std::uint32_t, std::less<>>,
+        std::array<std::map<std::string, std::uint32_t, asset_identity::Less>,
             overlay::Index(overlay::Area::count)> overlayColors;
         // Positive all-NPC rules may narrow their target set without creating
         // a separate blacklist/exclusion rule.
@@ -163,7 +165,7 @@ namespace bcn
         for (const auto area : overlay::kAreas) {
             const auto index = overlay::Index(area);
             std::erase_if(rule.overlayColors[index], [&](const auto& item) {
-                return std::ranges::find(rule.overlayIds[index], item.first) == rule.overlayIds[index].end();
+                return asset_identity::Find(rule.overlayIds[index], item.first) == rule.overlayIds[index].end();
             });
         }
     }

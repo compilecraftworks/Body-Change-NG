@@ -1,4 +1,5 @@
 #include "BodyChangeNG/FaceSkinOverrides.h"
+#include "BodyChangeNG/AssetIdentity.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -114,7 +115,7 @@ namespace
 
     bool SameTarget(const Baseline& a, const Baseline& b)
     {
-        return a.actor == b.actor && a.base == b.base && a.node == b.node && a.female == b.female;
+        return a.actor == b.actor && a.base == b.base && bcn::asset_identity::NameEqual{}(a.node, b.node) && a.female == b.female;
     }
     bool Store(const Baseline& value)
     {
@@ -769,7 +770,7 @@ namespace
                 batch->request = it->second;
                 for (const auto& value : g_baselines) {
                     if (value.actor == actorId && value.base == base->GetFormID() &&
-                        (batch->storedOnly || value.node != node || value.female != (base->GetSex() == RE::SEX::kFemale))) {
+                        (batch->storedOnly || !bcn::asset_identity::NameEqual{}(value.node, node) || value.female != (base->GetSex() == RE::SEX::kFemale))) {
                         batch->oldTargets.push_back(value);
                     }
                 }
@@ -936,7 +937,7 @@ namespace bcn::face_skin
         if (!actor) return false;
         std::scoped_lock lock(g_mutex);
         const auto it = g_requests.find(actor->GetFormID());
-        return it != g_requests.end() && it->second.complete && it->second.profile == profileId && it->second.mode == mode;
+        return it != g_requests.end() && it->second.complete && bcn::asset_identity::Equal{}(it->second.profile, profileId) && it->second.mode == mode;
     }
     bool Pending(const RE::Actor* actor, std::string_view profileId, skin_transaction::Mode mode)
     {
@@ -946,7 +947,7 @@ namespace bcn::face_skin
         // Includes a newer request waiting behind its cancelled batch. Do not
         // keep replacing that pending generation on every reconciliation pass.
         return it != g_requests.end() && (it->second.running || it->second.rebuild.Blocked()) &&
-            !it->second.complete && it->second.profile == profileId && it->second.mode == mode;
+            !it->second.complete && bcn::asset_identity::Equal{}(it->second.profile, profileId) && it->second.mode == mode;
     }
     std::vector<Baseline> SnapshotBaselines()
     {

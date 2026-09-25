@@ -1,5 +1,6 @@
 #include "BodyChangeNG/OutfitRefitEvaluation.h"
 #include "BodyChangeNG/OutfitRefitRules.h"
+#include "BodyChangeNG/BodyMorphPolicies.h"
 
 #include <fstream>
 #include <iostream>
@@ -94,6 +95,29 @@ int main(const int argc, char** argv)
             "a blacklisted outfit remained eligible for correction") ||
         !Require(ShouldApply(false, true) && ShouldApply(true, false) && !ShouldApply(false, false),
             "torso/force-refit precedence diverged from OBody NG")) return 1;
+
+    // Imported Master List exclusions gate the entire outfit layer before
+    // any body-family recipe, with or without the nipple option enabled.
+    using bcn::body_morph_policy::FemaleFamily;
+    for (const auto family : {FemaleFamily::cbbe3ba, FemaleFamily::bhunpUnp, FemaleFamily::ube}) {
+        for (const bool nipples : {false, true}) {
+            for (const ArmorIdentity armor : {
+                    ArmorIdentity{"Open Dress", "Allowed.esp", 1U},
+                    ArmorIdentity{"Allowed Outfit", "Excluded.esp", 2U},
+                    ArmorIdentity{"Allowed Outfit", "Allowed.esp", 0x1234U},
+                    ArmorIdentity{"Allowed Outfit", "Allowed.esp", 3U}}) {
+                const auto decision = Evaluate(armor, resolved);
+                std::size_t writes{};
+                if (ShouldApply(decision.eligible, decision.forced)) {
+                    bcn::body_morph_policy::GenerateOutfitMorphs(family, .5F, nipples,
+                        [](const char*) { return .4F; }, [&](const char*, float) { ++writes; });
+                }
+                const auto expected = armor.formID != 3U ? 0U : family == FemaleFamily::ube ?
+                    8U + (nipples ? 6U : 0U) : 15U + (nipples ? 8U : 0U);
+                if (!Require(writes == expected, "Master List exclusion leaked into a family-specific correction")) return 1;
+            }
+        }
+    }
 
     ImportedRules invalid;
     invalid.forcedOutfitNames.insert("stale");

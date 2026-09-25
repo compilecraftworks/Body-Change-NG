@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include "BodyChangeNG/OverlayTypes.h"
 
 #include <algorithm>
@@ -103,12 +105,12 @@ namespace bcn
         } else if (mode == overlay::ApplyMode::manualCommit) {
             area.manual = true;
             area.useDefault = false;
-            const auto found = std::ranges::find(area.items, item.selectedId,
+            const auto found = bcn::asset_identity::Find(area.items, item.selectedId,
                 &OverlayItemState::selectedId);
             if (found == area.items.end()) area.items.push_back(std::move(item));
             else *found = std::move(item);
         } else if (!area.useDefault) {
-            const auto found = std::ranges::find(area.items, item.selectedId,
+            const auto found = bcn::asset_identity::Find(area.items, item.selectedId,
                 &OverlayItemState::selectedId);
             if (found != area.items.end()) *found = std::move(item);
         }
@@ -191,7 +193,7 @@ namespace bcn
         const std::optional<std::string>& selectedId)
     {
         if (selection.manual || !selectedId || selectedId->empty()) return false;
-        if (!selection.useDefault && selection.selectedSkinId == *selectedId) return false;
+        if (!selection.useDefault && bcn::asset_identity::Equal{}(selection.selectedSkinId, *selectedId)) return false;
         selection.selectedSkinId = *selectedId;
         selection.useDefault = false;
         return true;
@@ -232,13 +234,16 @@ namespace bcn
 
     [[nodiscard]] inline std::uint64_t StableStateSignature(const std::string_view channel,
         const std::string_view value, const bool useDefault, const std::uint32_t optionBits = 0U,
-        const std::uint64_t contentHash = 0U) noexcept
+        const std::uint64_t contentHash = 0U, const bool foldAssetIdentity = false) noexcept
     {
         std::uint64_t hash = 1469598103934665603ULL;
         const auto append = [&hash](const std::uint8_t byte) { hash = (hash ^ byte) * 1099511628211ULL; };
         for (const auto character : channel) append(static_cast<std::uint8_t>(character));
         append(0xFFU);
-        for (const auto character : value) append(static_cast<std::uint8_t>(character));
+        for (const auto character : value) {
+            const auto byte = static_cast<std::uint8_t>(character);
+            append(foldAssetIdentity ? asset_identity::Fold(byte) : byte);
+        }
         append(useDefault ? 1U : 0U);
         for (std::uint32_t shift{}; shift < 32U; shift += 8U) {
             append(static_cast<std::uint8_t>(optionBits >> shift));

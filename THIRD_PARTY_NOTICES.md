@@ -8,6 +8,34 @@ The MO2 installation ZIP contains only two license-related files: `LICENSE`
 and this consolidated notice. Separate copies of the same terms are not
 included. Original dependency licenses remain in the source archive.
 
+## OBody NG 4.4.3 numeric policies and test references
+
+https://github.com/Aietos/OBody-NG/tree/4.4.3
+
+GPL-3.0; Aietos, Sairion350 and contributors. See `LICENSE` for the GPLv3 text.
+The preset endpoint rules, procedural refit and anatomy randomization recipes
+are adapted from `src/PresetManager/PresetManager.cpp`, `src/Body/Body.cpp` and
+`include/STL.h`. Unmodified function bodies in `tests/reference` are retained
+as independent numeric regression references. Actor eligibility, morph-key
+ownership, preview transactions, SFS integration and persistence are BCNG code.
+No third-party OBody DLL or UBE patch DLL is included in BCNG.
+
+## Fit to Thicc v1 numerical reference
+
+https://www.nexusmods.com/skyrimspecialedition/mods/118826
+
+Preset author: TheGreatPablooka. The UBE outfit recipe uses the numerical
+differences between this preset's Nude and Pushup variants: eight breast and
+six nipple/UV offsets. No original preset XML, mesh, texture or third-party
+DLL is redistributed. Reference hashes, endpoint comparisons and the UBE
+project-default exception are recorded in
+`docs/MORPH-PARITY-AUDIT-2026-09-25-KO.md`.
+
+The separately analyzed UBE/Necoco Nipple ORefit Patch 1.1.1 by emberchain
+(https://www.nexusmods.com/skyrimspecialedition/mods/192536; GPL-3.0 per its
+description) is retained only as historical analysis in that audit. Its
+27-morph cancellation policy has been removed from the implementation.
+
 ## CommonLibSSE-NG 6.7.1
 
 https://github.com/alandtse/CommonLibSSE-NG

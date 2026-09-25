@@ -111,7 +111,7 @@ namespace bcn::distribution_authoring
             overlayRevisions[area] = revision;
         }
         auto replacement = std::make_shared<AssetIndex>();
-        replacement->Assign(std::move(entries));
+        replacement->Assign(std::move(entries), kind != Kind::preset);
         indexes[index] = replacement;
         return replacement;
     }

@@ -1,4 +1,5 @@
 #include "BodyChangeNG/PlayerTint.h"
+#include "BodyChangeNG/AssetIdentity.h"
 #include "BodyChangeNG/AppearancePreviewState.h"
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/CatalogRoots.h"
@@ -326,7 +327,7 @@ namespace
         }
         for (const auto& asset : assets) {
             const auto draft = std::ranges::find_if(drafts, [&](const auto& value) {
-                return value.layer == asset.layer && value.assetID == asset.id;
+                return value.layer == asset.layer && bcn::asset_identity::Equal{}(value.assetID, asset.id);
             });
             const auto backup = draft != drafts.end() && draft->restored ?
                 std::ranges::find(backups, static_cast<std::uint8_t>(asset.layer), &bcn::player_tint::OriginalBackup::type) :
@@ -443,7 +444,7 @@ namespace
         const bcn::player_tint::Asset* best{};
         auto bestScore = -1;
         for (const auto& asset : catalog) {
-            if (asset.pack != pack || asset.layer != layer ||
+            if (!bcn::asset_identity::Equal{}(asset.pack, pack) || asset.layer != layer ||
                 !bcn::player_tint::TintAssetMatchesActor(asset.sex,
                     asset.bodyFamilies, playerFamily, playerFemale)) continue;
             const auto filename = Lower(Filename(asset.path));
@@ -556,7 +557,7 @@ namespace bcn::player_tint
         std::vector<Asset> loaded;
         for (const auto& root : bcn::catalog_roots::Discover(RootPath())) {
             for (auto& asset : ScanDirectory(root)) {
-                if (const auto found = std::ranges::find(loaded, asset.id, &Asset::id);
+                if (const auto found = bcn::asset_identity::Find(loaded, asset.id, &Asset::id);
                     found != loaded.end()) *found = std::move(asset);
                 else loaded.push_back(std::move(asset));
             }
@@ -585,7 +586,7 @@ namespace bcn::player_tint
     std::optional<Asset> Catalog::Find(const std::string_view id) const
     {
         std::scoped_lock lock(lock_);
-        const auto found = std::ranges::find(*assets_, id, &Asset::id);
+        const auto found = bcn::asset_identity::Find(*assets_, id, &Asset::id);
         return found != assets_->end() ? std::optional<Asset>{ *found } : std::nullopt;
     }
 
@@ -665,7 +666,7 @@ namespace bcn::player_tint
         auto selected = BestPackAssetsForPlayer(player, *catalog, pack);
         if (selected.empty()) {
             const auto packExists = std::ranges::any_of(*catalog,
-                [pack](const Asset& asset) { return asset.pack == pack; });
+                [pack](const Asset& asset) { return bcn::asset_identity::Equal{}(asset.pack, pack); });
             return packExists ? ApplyResult::incompatibleBodyFamily : ApplyResult::invalidAsset;
         }
         const auto* tasks = SKSE::GetTaskInterface();
@@ -676,7 +677,7 @@ namespace bcn::player_tint
             CurrentTintState committed{ .pack = pack };
             for (const auto& asset : selected) {
                 const auto draft = std::ranges::find_if(layerDrafts, [&](const auto& value) {
-                    return value.layer == asset.layer && value.assetID == asset.id;
+                    return value.layer == asset.layer && bcn::asset_identity::Equal{}(value.assetID, asset.id);
                 });
                 if (draft != layerDrafts.end() && draft->restored) committed.restoredLayers.insert(asset.layer);
                 else if (const auto color = draft != layerDrafts.end() ? std::optional{ draft->color } : CurrentColor(asset.layer)) {
@@ -765,7 +766,7 @@ namespace bcn::player_tint
             const auto count = ForEachPlayerMask(player, static_cast<Layer>(backup.type),
                 [&](RE::TintMask& mask) {
                     matches = matches && mask.texture &&
-                        std::string_view(mask.texture->textureName.c_str()) == backup.texturePath &&
+                        bcn::asset_identity::Equal{}(mask.texture->textureName.c_str(), backup.texturePath) &&
                         mask.color.red == backup.color[0] && mask.color.green == backup.color[1] &&
                         mask.color.blue == backup.color[2] &&
                         std::abs(mask.alpha - std::clamp(backup.alpha, 0.0F, 1.0F)) < 0.0001F;

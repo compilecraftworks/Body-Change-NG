@@ -1,7 +1,7 @@
 """Read-only UBE OSP / generated body TRI / preset XML audit.
 
 Body TRI layout: BodySlide-and-Outfit-Studio/src/files/TriFile.cpp.
-This checks assets and reconstruction math, NOT execution of the BCNG DLL.
+This checks assets and XML interpolation, NOT execution of the BCNG DLL.
 Pass the installed SliderSets directory and generated meshes/!UBE directory.
 Optional --presets directories are read recursively; nothing is rewritten.
 """
@@ -62,11 +62,6 @@ def tri_names(path):
     return result, hashlib.sha256(raw).hexdigest()
 
 
-def default(name, large):
-    name = name.casefold()
-    return 1.0 if name == 'nipplesshowup' or (name == 'skinnymorph' and not large) else 0.0
-
-
 def audit(osp_root, meshes, preset_roots):
     all_names, build_only, rows, baselines = set(), set(), [], {}
     cases = 0
@@ -84,7 +79,6 @@ def audit(osp_root, meshes, preset_roots):
             name = slider.get('name')
             assert name and slider.get('invert', 'false').lower() == 'false', 'Audit new inverted UBE slider'
             low, high = (float(slider.get(side, '0')) / 100 for side in ('small', 'big'))
-            assert low == default(name, False) and high == default(name, True), f'Changed build baseline: {name}'
             baselines[name.casefold()] = (low, high)
             if low or high:
                 defaults.append({'name': name, 'small': low, 'big': high})
@@ -94,9 +88,9 @@ def audit(osp_root, meshes, preset_roots):
             names.add(name.casefold())
             for target in (-1.5, -.5, 0, .25, 1, 1.5, 2.5):
                 for weight in (0, .25, .5, .73, 1):
-                    baseline = low + (high - low) * weight
-                    delta_low, delta_high = target - low, target + .3 - high
-                    got = baseline + delta_low + (delta_high - delta_low) * weight
+                    # OSP defaults are asset metadata, not a runtime subtraction.
+                    xml_low, xml_high = target, target + .3
+                    got = xml_low + (xml_high - xml_low) * weight
                     assert math.isclose(got, target + .3 * weight, abs_tol=1e-6)
                     cases += 1
         all_names |= names
@@ -118,22 +112,22 @@ def audit(osp_root, meshes, preset_roots):
                 if 'ube' not in (' '.join([preset.get('set', '')] +
                                          [g.get('name', '') for g in preset.findall('Group')])).casefold():
                     continue
-                values, differences, unsupported = [], [], set()
+                values, defaults_seen, unsupported = [], [], set()
                 for slider in preset.findall('SetSlider'):
                     name = slider.get('name', '')
                     value = float(slider.get('value', '0')) / 100
                     values.append(value)
-                    large = slider.get('size') == 'big'
+                    large = slider.get('size', '').casefold() == 'big'
                     if name.casefold() not in all_names and value != 0:
                         unsupported.add(name)
-                    baseline = default(name, large)
+                    baseline = baselines.get(name.casefold(), (0., 0.))[int(large)]
                     if baseline:
-                        differences.append({'name': name, 'size': slider.get('size'),
-                                            'xml': value, 'runtime_delta': value - baseline})
+                        defaults_seen.append({'name': name, 'size': slider.get('size'),
+                                              'xml': value, 'osp_default_not_subtracted': baseline})
                 presets.append({'name': preset.get('name'), 'set': preset.get('set'),
                                 'entries': len(values), 'empty_zeroed': not values,
                                 'range': [min(values), max(values)] if values else [],
-                                'changed_values': differences,
+                                'nonzero_osp_defaults': defaults_seen,
                                 'nonzero_outside_body_hands_feet': sorted(unsupported)})
     return {'note': 'Read-only asset/math audit; not a compiled-plugin or in-game test',
             'parts': rows, 'unique_runtime_names': len(all_names), 'math_cases': cases, 'presets': presets}

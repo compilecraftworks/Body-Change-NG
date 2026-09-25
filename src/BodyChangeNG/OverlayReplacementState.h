@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/AssetIdentity.h"
 
 #include <algorithm>
 #include <cstddef>
@@ -31,8 +32,8 @@ namespace bcn::overlay
         [[nodiscard]] const OverlayItemState* FindLive(std::string_view id) const noexcept
         {
             if (liveDefault) return nullptr;
-            if (live && live->selectedId == id) return &*live;
-            const auto found = std::ranges::find(batch, id, &OverlayItemState::selectedId);
+            if (live && bcn::asset_identity::Equal{}(live->selectedId, id)) return &*live;
+            const auto found = bcn::asset_identity::Find(batch, id, &OverlayItemState::selectedId);
             return found == batch.end() ? nullptr : &*found;
         }
 
@@ -50,8 +51,8 @@ namespace bcn::overlay
         {
             if (liveDefault || value.ownedSlot == overlay::kNoOwnedSlot) return nullptr;
             const auto matches = [&](const OverlayItemState& item) {
-                return item.selectedId == value.selectedId &&
-                    item.texturePath == value.texturePath && item.ownedSlot == value.ownedSlot;
+                return bcn::asset_identity::Equal{}(item.selectedId, value.selectedId) &&
+                    bcn::asset_identity::Equal{}(item.texturePath, value.texturePath) && item.ownedSlot == value.ownedSlot;
             };
             if (std::ranges::none_of(original, matches)) return nullptr;
             const auto found = std::ranges::find_if(committed, matches);
@@ -70,13 +71,13 @@ namespace bcn::overlay
         std::vector<OverlayItemState> result;
         for (const auto& item : previous) {
             const auto retained = std::ranges::any_of(desired, [&](const auto& wanted) {
-                return wanted.selectedId == item.selectedId && wanted.texturePath == item.texturePath;
+                return bcn::asset_identity::Equal{}(wanted.selectedId, item.selectedId) && bcn::asset_identity::Equal{}(wanted.texturePath, item.texturePath);
             });
             if (retained) result.push_back(item);
             else remove(item);
         }
         for (const auto& wanted : desired) {
-            auto found = std::ranges::find(result, wanted.selectedId, &OverlayItemState::selectedId);
+            auto found = bcn::asset_identity::Find(result, wanted.selectedId, &OverlayItemState::selectedId);
             const auto index = static_cast<std::size_t>(found - result.begin());
             const auto applied = upsert(wanted, found == result.end() ? nullptr : &*found,
                 std::span<const OverlayItemState>{ result });

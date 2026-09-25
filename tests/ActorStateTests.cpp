@@ -188,6 +188,14 @@ int main()
             "default and selected state collided");
         Require(body != StableStateSignature("body", "preset-a", false, 1U),
             "randomization options were not included");
+        Require(body != StableStateSignature("body", "PRESET-A", false, 0U),
+            "asset normalization changed existing body signatures");
+        const auto skin = StableStateSignature("skin", "BoDySkIn/Pack", false, 0U, 42U, true);
+        Require(skin == StableStateSignature("skin", "bodyskin\\pack", false, 0U, 42U, true),
+            "case-only saved skin ID would trigger repeated application");
+        Require(skin != StableStateSignature("skin", "bodyskin/other", false, 0U, 42U, true) &&
+                skin != StableStateSignature("skin", "bodyskin/pack", false, 0U, 43U, true),
+            "skin identity normalization lost pack or content changes");
         Require(bcn::UsesQueuedAutomaticPath(false) && bcn::UsesQueuedAutomaticPath(true),
             "an automatic actor mode bypassed the coalescing queue");
         Require(bcn::AutomaticActorBudget(false) == 4U,

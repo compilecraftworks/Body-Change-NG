@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include <iterator>
 #include <array>
 #include <optional>
@@ -40,7 +42,7 @@ namespace bcn::native_skin
         for (std::size_t shader{}; shader < slots.size(); ++shader) {
             const auto path = readShaderPath(shader);
             std::size_t record{};
-            while (record < probes.size() && path != probes[record]) ++record;
+            while (record < probes.size() && !asset_identity::Equal{}(path, probes[record])) ++record;
             if (record == probes.size() || used[record]) return std::nullopt;
             slots[shader] = record;
             used[record] = true;
@@ -59,6 +61,8 @@ namespace bcn::native_skin
         form.textures[index].textureName = path;
         form.textureFileIDs[index] = {};
         if (*path) form.textureFileIDs[index].GenerateFromPath(path);
-        return std::string_view(form.textures[index].textureName.c_str()) == path;
+        // BSFixedString may return a previously interned spelling of the same
+        // resource. A case-only difference is not a failed texture write.
+        return asset_identity::Equal{}(form.textures[index].textureName.c_str(), path);
     }
 }

@@ -1,4 +1,4 @@
-Body Change NG v1.2.2 — BodySkin 설치 안내
+Body Change NG v1.3.4 — BodySkin 설치 안내
 
 [한국어]
 일반적인 스킨팩은 설치된 스킨 모드 폴더를 통째로 이 BodySkin 폴더 안에
@@ -6,7 +6,7 @@ Body Change NG v1.2.2 — BodySkin 설치 안내
 FOMOD를 사용하는 팩은 모드 매니저에서 원하는 옵션을 설치한 결과 폴더를 사용합니다.
 
 게임 Data 기준 전체 DDS 경로 예시:
-Data\BodySkin\BnP female skin 4k (CBBE Player and Replacer)\Textures\actors\character\female\femalehead.dds
+Data\BodySkin\My Skin Pack\Textures\actors\character\female\femalehead.dds
 Data\BodySkin\My Male Skin\Textures\actors\character\male\malebody_1.dds
 Data\BodySkin\My UBE Skin\Textures\!UBE\Body\femalebody_1_d.dds
 Data\BodySkin\My UBE Skin\Textures\!UBE\Head\femalehead_d.dds
@@ -23,7 +23,7 @@ mods\Body Change NG\BodySkin\스킨 모드 폴더\Textures
 - 종족·노인·흡혈귀용 파일이 없으면 선택 팩의 일반 같은 채널을 먼저 사용합니다.
 - 일반 발은 원래 레이아웃에 따라 몸 아틀라스를 사용할 수 있습니다.
 - 남성 SOS/TNG 성기 스킨은 BodySkin 팩에 함께 둡니다. 여성 후타스킨은 Futanari입니다.
-- 스킨 profile.json은 필요하지 않습니다.
+- DDS 경로·확장자는 영문 대소문자를 구분하지 않으며, 실제 UV 호환성은 유지해야 합니다.
 
 틴트마스크도 같은 스킨팩 안에서 읽습니다. 전체 경로 예시:
 Data\BodySkin\My Skin\Textures\actors\character\character assets\tintmasks\FemaleHeadLips.dds
@@ -49,7 +49,8 @@ Keep all companion maps and conditional folders. Partial packs apply compatible
 available channels; a missing conditional channel falls back to the selected
 pack's ordinary channel, then to the underlying provider if absent there too.
 Conventional feet can use a native body atlas. Male addon skins belong here;
-female futanari skins belong under Futanari. No profile.json is required.
+female futanari skins belong under Futanari. DDS paths and extensions are
+case-insensitive; compatible UV layouts are still required.
 
 Tint masks share the pack's Textures\actors\character\character assets\tintmasks
 directory and are selected independently in the player-only Tint Masks tab.

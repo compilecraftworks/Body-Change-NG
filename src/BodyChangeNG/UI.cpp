@@ -116,7 +116,7 @@ namespace
     bool g_distributionFemale{ true };
     std::uint64_t g_distributionCatalogRevision{};
     std::unordered_set<std::string> g_distributionSelectedIds;
-    std::array<std::unordered_set<std::string>,
+    std::array<bcn::asset_identity::Set<>,
         bcn::overlay::Index(bcn::overlay::Area::count)> g_distributionSelectedOverlayIds;
     std::array<bool, bcn::overlay::Index(bcn::overlay::Area::count)> g_overlayDistributionPreviewDirty{};
     bool g_showOutfit{};
@@ -627,7 +627,7 @@ namespace
     void ToggleSkinFavorite(const std::string& id)
     {
         auto settings = bcn::Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.favoriteSkinProfiles, id);
+        const auto found = bcn::asset_identity::Find(settings.favoriteSkinProfiles, id);
         if (found == settings.favoriteSkinProfiles.end()) settings.favoriteSkinProfiles.push_back(id);
         else settings.favoriteSkinProfiles.erase(found);
         bcn::Settings::Get().Update(settings);
@@ -639,7 +639,7 @@ namespace
     void ToggleFutanariFavorite(const std::string& id)
     {
         auto settings = bcn::Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.favoriteFutanariSkins, id);
+        const auto found = bcn::asset_identity::Find(settings.favoriteFutanariSkins, id);
         if (found == settings.favoriteFutanariSkins.end()) settings.favoriteFutanariSkins.push_back(id);
         else settings.favoriteFutanariSkins.erase(found);
         bcn::Settings::Get().Update(settings);
@@ -651,7 +651,7 @@ namespace
     void ToggleTintFavorite(const std::string& pack)
     {
         auto settings = bcn::Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.favoriteTintPacks, pack);
+        const auto found = bcn::asset_identity::Find(settings.favoriteTintPacks, pack);
         if (found == settings.favoriteTintPacks.end()) settings.favoriteTintPacks.push_back(pack);
         else settings.favoriteTintPacks.erase(found);
         bcn::Settings::Get().Update(settings);
@@ -1391,7 +1391,7 @@ namespace
     void ToggleOverlayFavorite(const std::string& id)
     {
         auto settings = bcn::Settings::Get().Snapshot();
-        const auto found = std::ranges::find(settings.favoriteOverlays, id);
+        const auto found = bcn::asset_identity::Find(settings.favoriteOverlays, id);
         if (found == settings.favoriteOverlays.end()) settings.favoriteOverlays.push_back(id);
         else settings.favoriteOverlays.erase(found);
         bcn::Settings::Get().Update(settings);
@@ -1980,7 +1980,7 @@ namespace
             }
             if (!g_search.empty() && Lower(skin.name).find(Lower(g_search)) == std::string::npos &&
                 Lower(skin.id).find(Lower(g_search)) == std::string::npos) continue;
-            const auto favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
+            const auto favorite = bcn::asset_identity::Find(settings.favoriteSkinProfiles, skin.id) !=
                 settings.favoriteSkinProfiles.end();
             if (FavoritesOnly() && !favorite) continue;
             visibleSkins.push_back(&skin);
@@ -2013,7 +2013,7 @@ namespace
         const auto hasDefaultRow = !distributionSelecting;
         std::size_t preferredIndex{};
         if (!confirmedSkinId.empty()) {
-            const auto current = std::ranges::find(visibleSkins, confirmedSkinId,
+            const auto current = bcn::asset_identity::Find(visibleSkins, confirmedSkinId,
                 [](const bcn::SkinProfile* skin) -> const std::string& { return skin->id; });
             if (current != visibleSkins.end()) preferredIndex =
                 (hasDefaultRow ? 1U : 0U) + static_cast<std::size_t>(current - visibleSkins.begin());
@@ -2117,7 +2117,7 @@ namespace
             while (clipper.Step()) for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
                 row = entryRowBegin + static_cast<std::size_t>(index);
                 const auto& skin = *visibleSkins[static_cast<std::size_t>(index)];
-                const bool favorite = std::ranges::find(settings.favoriteSkinProfiles, skin.id) !=
+                const bool favorite = bcn::asset_identity::Find(settings.favoriteSkinProfiles, skin.id) !=
                     settings.favoriteSkinProfiles.end();
                 ImGui::PushID(skin.id.c_str());
                 const auto rowCursor = ImGui::GetCursorScreenPos();
@@ -2138,7 +2138,7 @@ namespace
                 const auto hovered = ImGui::IsItemHovered();
                 const auto clicked = ImGui::IsItemClicked();
                 const auto doubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-                const auto confirmedCurrent = skin.id == confirmedSkinId;
+                const auto confirmedCurrent = bcn::asset_identity::Equal{}(skin.id, confirmedSkinId);
                 auto* draw = ImGui::GetWindowDrawList();
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height),
                     confirmedCurrent ? kCardSelected :
@@ -2203,9 +2203,9 @@ namespace
         static EntriesCache cache;
         auto& entriesByArea = cache.entries;
         std::array<std::vector<const bcn::overlay::Entry*>, areaCount> visibleByArea;
-        std::array<std::unordered_set<std::string>, areaCount> confirmedIds;
+        std::array<bcn::asset_identity::Set<>, areaCount> confirmedIds;
         const auto settings = bcn::Settings::Get().Snapshot();
-        const std::unordered_set<std::string_view> favorites(settings.favoriteOverlays.begin(),
+        const bcn::asset_identity::Set<std::string_view> favorites(settings.favoriteOverlays.begin(),
             settings.favoriteOverlays.end());
         const auto needle = Lower(g_search);
         const auto* base = actor->GetActorBase();
@@ -2310,7 +2310,7 @@ namespace
             const auto& preferredId = g_overlayFocusedIds[bcn::overlay::Index(preferredArea)];
             const auto found = std::ranges::find_if(rows, [&](const OverlayRow& row) {
                 return row.area == preferredArea && (preferredId.empty() ?
-                    row.entry == nullptr : row.entry && row.entry->id == preferredId);
+                    row.entry == nullptr : row.entry && bcn::asset_identity::Equal{}(row.entry->id, preferredId));
             });
             if (found != rows.end()) {
                 preferredIndex = static_cast<std::size_t>(found - rows.begin());
@@ -2407,7 +2407,7 @@ namespace
                         kCardSubtext, visibleSubtitle.c_str());
                     if (hovered && visibleSubtitle != subtitle) ImGui::SetTooltip("%s", subtitle.c_str());
                     if (entry) {
-                        const auto favorite = std::ranges::find(settings.favoriteOverlays, entry->id) !=
+                        const auto favorite = bcn::asset_identity::Find(settings.favoriteOverlays, entry->id) !=
                             settings.favoriteOverlays.end();
                         ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
                         if (FavoriteButton(favorite, height)) ToggleOverlayFavorite(entry->id);
@@ -2486,7 +2486,7 @@ namespace
         // can be configured when the selected player uses another body layout.
         const auto distributionColorTarget = distributionSelecting &&
             std::ranges::any_of(entriesByArea[bcn::overlay::Index(colorArea)],
-                [&](const auto& entry) { return entry.id == colorEntryId; });
+                [&](const auto& entry) { return bcn::asset_identity::Equal{}(entry.id, colorEntryId); });
         ImGui::AlignTextToFramePadding();
         ImGui::Text("%s: %s", Text("색상 부위", "Color area", "颜色部位"),
             OverlayAreaLabel(colorArea));
@@ -2545,7 +2545,7 @@ namespace
         const auto profileSnapshot = bcn::FutanariSkinProfiles::Get().SharedSnapshot();
         const auto& profiles = *profileSnapshot;
         const auto settings = bcn::Settings::Get().Snapshot();
-        const std::unordered_set<std::string_view> favorites(settings.favoriteFutanariSkins.begin(),
+        const bcn::asset_identity::Set<std::string_view> favorites(settings.favoriteFutanariSkins.begin(),
             settings.favoriteFutanariSkins.end());
         const auto actorFamily = actor ?
             bcn::body_family::ResolveActor(actor) : bcn::body_family::Mask{};
@@ -2726,11 +2726,11 @@ namespace
                 auto subtitle = bcn::FutanariSkinTypeLabel(profile->type) + " · " +
                     Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(profile->layers.size()) +
                     Text("개", "", " 个");
-                if (profile->id == currentID) {
+                if (bcn::asset_identity::Equal{}(profile->id, currentID)) {
                     subtitle += " · ";
                     subtitle += Text("현재 적용", "Current", "当前应用");
                 }
-                drawRow(profile->id, profile->name, subtitle, profile->id == currentID, true);
+                drawRow(profile->id, profile->name, subtitle, bcn::asset_identity::Equal{}(profile->id, currentID), true);
             }
         }
         ImGui::EndChild();
@@ -2741,7 +2741,7 @@ namespace
     {
         std::vector<bcn::player_tint::PersistedLayerState> result;
         for (auto& entry : g_tintColorDrafts.Entries(g_selectedActorFormID)) {
-            if (entry.id.starts_with(pack) && entry.id.size() > pack.size() &&
+            if (bcn::asset_identity::StartsWith(entry.id, pack) && entry.id.size() > pack.size() &&
                 (entry.id[pack.size()] == '\\' || entry.id[pack.size()] == '/')) {
                 result.push_back(std::move(entry.color));
             }
@@ -2807,7 +2807,7 @@ namespace
         static std::vector<TintPackRow> packs;
         if (packSource.lock() != assetSnapshot || packFamily != actorFamily || packFemale != female) {
             packs.clear();
-            std::unordered_map<std::string_view, std::size_t> indices;
+            std::unordered_map<std::string_view, std::size_t, bcn::asset_identity::Hash, bcn::asset_identity::Equal> indices;
             for (const auto& asset : assets) {
                 if (!bcn::player_tint::TintAssetMatchesActor(asset.sex,
                         asset.bodyFamilies, actorFamily, female)) continue;
@@ -2822,7 +2822,7 @@ namespace
             packFamily = actorFamily;
             packFemale = female;
         }
-        if (std::ranges::find(packs, g_selectedTintPack, &TintPackRow::name) == packs.end()) {
+        if (bcn::asset_identity::Find(packs, g_selectedTintPack, &TintPackRow::name) == packs.end()) {
             g_selectedTintPack = packs.empty() ? std::string{} : packs.front().name;
         }
         const auto confirmedTintPack = g_pendingTint && g_pendingTint->actorFormID == selectedActor->GetFormID() ?
@@ -2832,14 +2832,14 @@ namespace
         visiblePacks.reserve(packs.size());
         for (const auto& pack : packs) {
             if (!g_search.empty() && Lower(pack.name).find(Lower(g_search)) == std::string::npos) continue;
-            const auto favorite = std::ranges::find(settings.favoriteTintPacks, pack.name) !=
+            const auto favorite = bcn::asset_identity::Find(settings.favoriteTintPacks, pack.name) !=
                 settings.favoriteTintPacks.end();
             if (FavoritesOnly() && !favorite) continue;
             visiblePacks.push_back(&pack);
         }
         std::size_t preferredIndex{};
         if (!confirmedTintPack.empty()) {
-            const auto current = std::ranges::find(visiblePacks, confirmedTintPack,
+            const auto current = bcn::asset_identity::Find(visiblePacks, confirmedTintPack,
                 [](const TintPackRow* pack) -> const std::string& { return pack->name; });
             if (current != visiblePacks.end()) preferredIndex = 1U + static_cast<std::size_t>(current - visiblePacks.begin());
         }
@@ -2872,11 +2872,11 @@ namespace
             if (baseline) bcn::player_tint::BeginPreview();
             const auto committedState = bcn::player_tint::SnapshotPersistedState();
             for (const auto& asset : assets) {
-                if (asset.pack != pack.name) continue;
+                if (!bcn::asset_identity::Equal{}(asset.pack, pack.name)) continue;
                 const auto layer = static_cast<std::uint8_t>(asset.layer);
                 if (!g_tintColorDrafts.Find(g_selectedActorFormID, layer, asset.id)) {
                     if (const auto color = g_tintSessionColors[layer]) {
-                        const auto restored = committedState.pack == pack.name &&
+                        const auto restored = committedState.pack && bcn::asset_identity::Equal{}(*committedState.pack, pack.name) &&
                             std::ranges::any_of(committedState.layers, [&](const auto& value) {
                                 return value.layer == asset.layer && value.restored;
                             });
@@ -2964,7 +2964,7 @@ namespace
             while (clipper.Step()) for (auto index = clipper.DisplayStart; index < clipper.DisplayEnd; ++index) {
                 row = entryRowBegin + static_cast<std::size_t>(index);
                 const auto& pack = *visiblePacks[static_cast<std::size_t>(index)];
-                const auto favorite = std::ranges::find(settings.favoriteTintPacks, pack.name) !=
+                const auto favorite = bcn::asset_identity::Find(settings.favoriteTintPacks, pack.name) !=
                     settings.favoriteTintPacks.end();
                 ImGui::PushID(pack.name.c_str());
                 cursor = ImGui::GetCursorScreenPos();
@@ -2974,7 +2974,7 @@ namespace
                 hovered = ImGui::IsItemHovered();
                 const auto packClicked = ImGui::IsItemClicked();
                 const auto packDoubleClicked = hovered && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left);
-                const auto selected = pack.name == confirmedTintPack;
+                const auto selected = bcn::asset_identity::Equal{}(pack.name, confirmedTintPack);
                 draw = ImGui::GetWindowDrawList();
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + height), selected ?
                     kCardSelected : hovered || (navigation.hasFocus && navigation.focused == row) ?
@@ -3028,7 +3028,7 @@ namespace
         }
         const auto nextAssetID = selectedLayer == availableLayers.end() ?
             std::string{} : selectedLayer->second.id;
-        if (g_selectedTintAssetID != nextAssetID) {
+        if (!bcn::asset_identity::Equal{}(g_selectedTintAssetID, nextAssetID)) {
             g_selectedTintAssetID = nextAssetID;
             ReadTintColorDraft();
         }
@@ -3524,47 +3524,33 @@ namespace
             const auto selectedFamily = bcn::body_morph_policy::ResolveFemaleFamily(
                 bcn::body_family::ResolveActor(SelectedActor()));
             const auto selectedUbe = selectedFamily == bcn::body_morph_policy::FemaleFamily::ube;
-            if (playerUbe) {
+            if (playerUbe || selectedUbe) {
                 ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
-                    "UBE 플레이어에는 가슴·유두 보정을 적용하지 않습니다. 활성화된 보정은 지원되는 NPC에만 적용됩니다.",
-                    "Breast/nipple correction skips the UBE player. The enabled corrections apply only to supported NPCs.",
-                    "胸部/乳头修正会跳过 UBE 玩家；已启用的修正仅应用于受支持的 NPC。"));
-            } else if (selectedUbe) {
-                ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
-                    "선택한 UBE 액터에는 가슴·유두 보정과 NPC 신체 무작위화를 적용하지 않습니다.",
-                    "Breast/nipple correction and NPC anatomy randomization are disabled for the selected UBE actor.",
-                    "不会对所选 UBE 角色应用胸部/乳头修正或 NPC 身体随机化。"));
+                    "UBE·Necoco: Nude → Pushup 차이값 보정. 신체 무작위화는 제외됩니다.",
+                    "UBE/Necoco: Nude → Pushup offsets; no anatomy randomization.",
+                    "UBE/Necoco：应用 Nude → Pushup 差值；不应用身体随机化。"));
             }
             ImGui::Separator();
             auto settings = bcn::Settings::Get().Snapshot();
-            // These settings remain enabled for supported NPCs even when the
-            // player uses UBE. Normalize an older disabled setting once, then
-            // present both controls as checked/read-only for that environment.
-            const auto normalizedNpcCorrection = playerUbe &&
-                (!settings.orefitEnabled || !settings.orefitNippleMorphing);
-            if (playerUbe) {
-                settings.orefitEnabled = true;
-                settings.orefitNippleMorphing = true;
-                ImGui::BeginDisabled();
-            }
-            auto settingsChanged = normalizedNpcCorrection;
-            const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 가슴 보정", "Correct breasts while clothed", "穿衣时修正胸部"), &settings.orefitEnabled);
+            // Global controls also affect supported NPCs. The player's body
+            // family must neither force them on nor prevent turning them off.
+            auto settingsChanged = false;
+            const auto refitChanged = ImGui::Checkbox(Text("의상 착용 시 보정", "Outfit correction while clothed", "穿衣时启用修正"), &settings.orefitEnabled);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA와 BHUNP/UNP를 지원합니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
-                "Supports CBBE 3BA and BHUNP/UNP. The UBE player is skipped and supported NPCs continue to receive it.",
-                "支持 CBBE 3BA 与 BHUNP/UNP；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
+                "CBBE 3BA·BHUNP/UNP: 기존 가슴·몸 보정.\nUBE·Necoco: Nude → Pushup의 가슴 8개 차이값을 체중에 맞춰 더합니다.\n플레이어와 NPC 각자의 바디 계열로 판정하며, 끄거나 탈의하면 추가 보정만 제거합니다.",
+                "CBBE 3BA/BHUNP/UNP: original breast/body correction.\nUBE/Necoco: adds 8 Nude → Pushup breast offsets interpolated by actor weight.\nUses each actor's own body family. Disabling or undressing removes only the added correction.",
+                "CBBE 3BA/BHUNP/UNP：原有胸部和身体修正。\nUBE/Necoco：按体重插值并叠加 8 项 Nude → Pushup 胸部差值。\n根据各角色体型判定；关闭或脱衣后仅移除附加修正。"));
             settingsChanged |= refitChanged;
             ImGui::Indent();
             if (!settings.orefitEnabled) ImGui::BeginDisabled();
             const auto nippleRefitChanged = ImGui::Checkbox(Text("의상 착용 시 유두 보정", "Correct nipples while clothed", "穿衣时修正乳头"), &settings.orefitNippleMorphing);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip | ImGuiHoveredFlags_AllowWhenDisabled)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA와 BHUNP/UNP를 지원합니다. UBE 플레이어에는 적용하지 않고 지원되는 NPC에만 적용합니다.",
-                "Supports CBBE 3BA and BHUNP/UNP. The UBE player is skipped and supported NPCs continue to receive it.",
-                "支持 CBBE 3BA 与 BHUNP/UNP；会跳过 UBE 玩家，并继续应用于受支持的 NPC。"));
+                "CBBE 3BA·BHUNP/UNP와 UBE·Necoco에 서로 다른 슬라이더를 사용합니다.\nUBE·Necoco는 Nude → Pushup의 유두·UV 6개 차이값을 더합니다. 기존 27개 상쇄식은 사용하지 않습니다.\n끄면 유두 보정만 제거하고 가슴 보정은 유지합니다. 바디·의상에 대응 TRI가 필요합니다.",
+                "Uses separate sliders for CBBE 3BA/BHUNP/UNP and UBE/Necoco.\nUBE/Necoco adds 6 Nude → Pushup nipple/UV offsets, not the former 27-morph cancellation.\nDisabling removes nipple correction only, keeping breast correction. Matching body/outfit TRI morphs are required.",
+                "CBBE 3BA/BHUNP/UNP 与 UBE/Necoco 使用不同的滑块。\nUBE/Necoco 叠加 6 项 Nude → Pushup 乳头/UV 差值，不再使用原来的 27 项抵消公式。\n关闭后仅移除乳头修正，保留胸部修正。身体和服装需要对应的 TRI 变形。"));
             settingsChanged |= nippleRefitChanged;
             if (!settings.orefitEnabled) ImGui::EndDisabled();
             ImGui::Unindent();
-            if (playerUbe) ImGui::EndDisabled();
             if (ImGui::Button(Text("ORefit 의상 보정 규칙 등록", "Register ORefit outfit-correction rules", "注册 ORefit 服装修正规则"))) {
                 const auto report = bcn::OutfitRefit::Get().LoadOBodyRules();
                 if (report.loaded) {
@@ -3617,7 +3603,7 @@ namespace
                 if (!bcn::Settings::Get().Save()) {
                     bcn::ui::Notify(Text("의상·랜덤화 설정을 저장하지 못했습니다.", "Could not save outfit and randomization settings.", "无法保存服装与随机化设置。"));
                 }
-                if (normalizedNpcCorrection || refitChanged || nippleRefitChanged) {
+                if (refitChanged || nippleRefitChanged) {
                     bcn::OutfitRefit::Get().ProcessActor(SelectedActor());
                 }
                 // The popup has no separate Apply button. Rebuild the owned
@@ -3626,7 +3612,7 @@ namespace
                 if (nippleRandomizationChanged || genitalRandomizationChanged) {
                     bcn::racemenu::QueueReapplyCurrent(SelectedActor());
                 }
-                if (normalizedNpcCorrection || refitChanged || nippleRefitChanged || nippleRandomizationChanged ||
+                if (refitChanged || nippleRefitChanged || nippleRandomizationChanged ||
                     genitalRandomizationChanged) {
                     // Signatures keep unchanged channels cheap: this scan
                     // updates only the body/outfit result whose option bits

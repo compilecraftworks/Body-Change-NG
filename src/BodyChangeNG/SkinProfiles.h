@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/SkinLayout.h"
 
@@ -215,7 +217,7 @@ namespace bcn
         mutable std::mutex lock_;
         std::atomic_bool refreshing_{};
         std::shared_ptr<const std::vector<SkinProfile>> profiles_ = std::make_shared<const std::vector<SkinProfile>>();
-        std::unordered_map<std::string, std::uint64_t> contentHashes_;
+        asset_identity::Map<std::uint64_t> contentHashes_;
     };
 
     class FutanariSkinProfiles final
@@ -239,6 +241,6 @@ namespace bcn
     private:
         mutable std::mutex lock_;
         std::shared_ptr<const std::vector<FutanariSkinProfile>> profiles_ = std::make_shared<const std::vector<FutanariSkinProfile>>();
-        std::unordered_map<std::string, std::uint64_t> contentHashes_;
+        asset_identity::Map<std::uint64_t> contentHashes_;
     };
 }

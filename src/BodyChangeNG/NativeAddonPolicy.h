@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include <algorithm>
 #include <array>
 #include <cstddef>
@@ -39,7 +41,10 @@ namespace bcn::native_addon
         std::uint32_t armor{};
         std::uint32_t addon{};
         std::vector<std::string> nodes;
-        bool operator==(const Target&) const = default;
+        bool operator==(const Target& other) const {
+            return armor == other.armor && addon == other.addon &&
+                std::ranges::equal(nodes, other.nodes, asset_identity::NameEqual{});
+        }
     };
 
     struct Selection final
@@ -47,7 +52,10 @@ namespace bcn::native_addon
         Channel channel{};
         std::vector<Target> targets;
         Paths overrides;
-        bool operator==(const Selection&) const = default;
+        bool operator==(const Selection& other) const {
+            return channel == other.channel && targets == other.targets &&
+                std::ranges::equal(overrides, other.overrides, asset_identity::Equal{});
+        }
     };
 
     struct BaselineIdentity final
@@ -57,7 +65,10 @@ namespace bcn::native_addon
         std::uint32_t addon{};
         Channel channel{};
         std::string node;
-        bool operator==(const BaselineIdentity&) const = default;
+        bool operator==(const BaselineIdentity& other) const {
+            return actor == other.actor && armor == other.armor && addon == other.addon &&
+                channel == other.channel && asset_identity::NameEqual{}(node, other.node);
+        }
     };
 
     struct BaselineIdentityHash final
@@ -71,7 +82,7 @@ namespace bcn::native_addon
             combine(std::hash<std::uint32_t>{}(value.armor));
             combine(std::hash<std::uint32_t>{}(value.addon));
             combine(std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(value.channel)));
-            combine(std::hash<std::string>{}(value.node));
+            combine(asset_identity::NameHash{}(value.node));
             return hash;
         }
     };
@@ -85,7 +96,8 @@ namespace bcn::native_addon
         {
             std::scoped_lock lock(mutex_);
             const auto found = values_.find(identity);
-            if (found != values_.end() && found->second == paths) return false;
+            if (found != values_.end() &&
+                std::ranges::equal(found->second, paths, asset_identity::Equal{})) return false;
             values_.insert_or_assign(std::move(identity), std::move(paths));
             return true;
         }
@@ -111,7 +123,7 @@ namespace bcn::native_addon
                 if (key.actor != actor || key.channel != channel) return false;
                 return std::ranges::none_of(targets, [&](const Target& target) {
                     return target.armor == key.armor && target.addon == key.addon &&
-                        std::ranges::find(target.nodes, key.node) != target.nodes.end();
+                        asset_identity::FindName(target.nodes, key.node) != target.nodes.end();
                 });
             });
         }

@@ -428,7 +428,7 @@ namespace bcn
         if (!state) return std::nullopt;
         const auto& selected = state->overlay.areas[overlay::Index(area)];
         if (selected.useDefault) return std::nullopt;
-        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        const auto found = bcn::asset_identity::Find(selected.items, overlayId, &OverlayItemState::selectedId);
         return found == selected.items.end() ? std::nullopt : std::optional{ *found };
     }
 
@@ -505,7 +505,7 @@ namespace bcn
             selected.items.clear();
             return;
         }
-        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        const auto found = bcn::asset_identity::Find(selected.items, overlayId, &OverlayItemState::selectedId);
         OverlayItemState item{ .selectedId = std::move(overlayId),
             .texturePath = std::move(texturePath), .ownedSlot = ownedSlot };
         if (found == selected.items.end()) selected.items.push_back(std::move(item));
@@ -521,7 +521,7 @@ namespace bcn
         if (!actor || area == overlay::Area::count || overlayId.empty()) return;
         std::scoped_lock lock(lock_);
         auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
-        std::erase_if(selected.items, [&](const auto& item) { return item.selectedId == overlayId; });
+        std::erase_if(selected.items, [&](const auto& item) { return bcn::asset_identity::Equal{}(item.selectedId, overlayId); });
         selected.manual = true;
         selected.useDefault = selected.items.empty();
     }
@@ -579,7 +579,7 @@ namespace bcn
         std::scoped_lock lock(lock_);
         auto& selected = EnsureLocked(actor).overlay.areas[overlay::Index(area)];
         if (selected.useDefault) return;
-        const auto found = std::ranges::find(selected.items, overlayId, &OverlayItemState::selectedId);
+        const auto found = bcn::asset_identity::Find(selected.items, overlayId, &OverlayItemState::selectedId);
         if (found == selected.items.end()) return;
         found->texturePath = std::move(texturePath);
         found->ownedSlot = ownedSlot;
@@ -611,7 +611,7 @@ namespace bcn
         if (!actor || area == overlay::Area::count) return;
         std::scoped_lock lock(lock_);
         auto& items = EnsureLocked(actor).overlay.areas[overlay::Index(area)].items;
-        const auto found = std::ranges::find(items, overlayId, &OverlayItemState::selectedId);
+        const auto found = bcn::asset_identity::Find(items, overlayId, &OverlayItemState::selectedId);
         if (found != items.end()) found->color = color;
     }
 
@@ -658,15 +658,18 @@ namespace bcn
     std::uint64_t ActorRegistry::BodySignature(const std::string_view bodyId, const bool useDefault)
     {
         const auto options = useDefault ? 0U : Settings::Get().BodyApplicationOptions();
-        // v3 also replaces OBody/OClothe; re-evaluate pre-fix saved bodies once.
-        return StableStateSignature("body-keyed-v3", bodyId, useDefault,
+        // v4 adopts OBody's numeric/randomization recipes. Reconcile saved
+        // presets once through the existing queue; explicit Default is unchanged.
+        return StableStateSignature(useDefault ? "body-keyed-v3" : "body-keyed-v4", bodyId, useDefault,
             options, useDefault ? 0 : PresetCatalog::Get().ContentHash(bodyId));
     }
 
     std::uint64_t ActorRegistry::SkinSignature(const std::string_view skinId, const bool useDefault)
     {
+        // Saved spelling and catalog spelling identify the same resource. A
+        // case-only difference must not schedule repeated skin rebuilds.
         return StableStateSignature("skin", skinId, useDefault, 0U,
-            useDefault ? 0 : SkinProfiles::Get().ContentHash(skinId));
+            useDefault ? 0 : SkinProfiles::Get().ContentHash(skinId), true);
     }
 
     bool ActorRegistry::NeedsBodyApply(RE::Actor* actor, const std::string_view bodyId,

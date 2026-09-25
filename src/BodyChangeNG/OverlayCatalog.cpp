@@ -6,6 +6,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/OverlayPolicy.h"
 #include "BodyChangeNG/PathText.h"
+#include "BodyChangeNG/AssetIdentity.h"
 #include "BodyChangeNG/SlaveTatsCatalog.h"
 
 #include <RE/A/Actor.h>
@@ -30,7 +31,7 @@ namespace
     constexpr float kPaintRequestMask = static_cast<float>(0x02 | 0x04 | 0x08 | 0x10);
 
     std::mutex g_catalogLock;
-    std::array<std::unordered_map<std::string, bcn::overlay::Entry>,
+    std::array<bcn::asset_identity::Map<bcn::overlay::Entry>,
         bcn::overlay::Index(bcn::overlay::Area::count)> g_catalog;
     std::atomic<std::uint64_t> g_revision{};
     std::atomic_bool g_requested{};
@@ -75,7 +76,7 @@ namespace
     {
         const auto logicalRoot = std::filesystem::current_path() / "Data" / "Textures" /
             "Actors" / "Character" / "slavetats";
-        std::unordered_map<std::string, bcn::overlay::Entry> merged;
+        bcn::asset_identity::Map<bcn::overlay::Entry> merged;
         for (const auto& root : bcn::catalog_roots::Discover(logicalRoot)) {
             const auto provider = bcn::path_text::GenericUtf8(root);
             for (auto& entry : bcn::overlay::ScanSlaveTatsDirectory(root)) {

@@ -88,9 +88,9 @@ int main()
         Require(SupportsOutfitCorrection(FemaleFamily::cbbe3ba) &&
                 SupportsOutfitCorrection(FemaleFamily::bhunpUnp),
             "CBBE/3BA or BHUNP/UNP outfit correction was disabled");
-        Require(!SupportsOutfitCorrection(FemaleFamily::ube) &&
+        Require(SupportsOutfitCorrection(FemaleFamily::ube) &&
                 !SupportsOutfitCorrection(FemaleFamily::none),
-            "unsupported female family received outfit correction");
+            "separate UBE outfit recipe was disabled or an unknown family received correction");
         Require(SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, false) &&
                 SupportsNpcAnatomyRandomization(FemaleFamily::bhunpUnp, false),
             "CBBE/3BA or BHUNP/UNP NPC anatomy randomization was disabled");

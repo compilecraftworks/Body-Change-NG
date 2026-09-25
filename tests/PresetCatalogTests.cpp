@@ -261,15 +261,15 @@ int main(const int argc, char** argv)
     const auto& unp = caseFind("UNP Mixed");
     const auto unpLow = valuesAt(unp, 0.0F);
     const auto unpHigh = valuesAt(unp, 1.0F);
-    if (!Require(unp.sliders.size() == 3U && std::abs(unpLow.at("Breasts") + .2F) < .00001F &&
-            unpHigh.at("breasts") == 2.5F && unpLow.at("NIPPLEsize") == .75F &&
+    if (!Require(unp.sliders.size() == 3U && unpLow.at("Breasts") == 1.2F &&
+            unpHigh.at("breasts") == -1.5F && unpLow.at("NIPPLEsize") == .25F &&
             unpHigh.at("NippleSize") == .25F && unpLow.at("HipBone") == -1.5F &&
-            unpHigh.at("HipBone") == 1.2F, "UNP inversion was casing-dependent or inverted a non-default slider")) return 1;
+            unpHigh.at("HipBone") == 1.2F, "UNP inversion differs from upstream's exact default-slider names")) return 1;
     const auto& duplicate = caseFind("Duplicates-Refit");
     if (!Require(duplicate.isRefit && duplicate.sliders.size() == 1U &&
-            duplicate.sliders[0].name == "Breasts" && duplicate.sliders[0].lowWeight == 1.2F &&
+            duplicate.sliders[0].name == "Breasts" && duplicate.sliders[0].lowWeight == .1F &&
             duplicate.sliders[0].highWeight == -1.5F,
-            "named refit duplicate did not retain last value per endpoint")) return 1;
+            "named refit duplicate did not retain first nonzero endpoint like OBody")) return 1;
     std::filesystem::remove_all(root);
     std::cout << "PresetCatalogTests passed: catalog, case variants, endpoint order, range and UNP inversion\n";
     return 0;

@@ -165,6 +165,20 @@ int main()
         const BaselineIdentity erfB{ 200, 0x10, 0x20, Channel::futanari, "CBBE Schlong" };
         Check(baselines.Put(erfA, provider), "first baseline was not stored");
         Check(!baselines.Put(erfA, provider), "same baseline caused duplicate mutation");
+        auto erfCase = erfA;
+        Check(!bcn::asset_identity::NameEqual{}("A/B", "a\\b") &&
+                bcn::asset_identity::NameEqual{}("A/B", "a/b"),
+            "node identity applied path normalization to a distinct geometry name");
+        erfCase.node = "cbbe SCHLONG";
+        auto providerCase = provider;
+        providerCase[0] = "DEFAULT_D.DDS";
+        Check(erfCase == erfA && BaselineIdentityHash{}(erfCase) == BaselineIdentityHash{}(erfA),
+            "case-insensitive addon identity has inconsistent hash");
+        Check(!baselines.Put(erfCase, providerCase) && baselines.Diffuse(erfCase) == provider[0],
+            "case-only addon change duplicated or replaced the original baseline");
+        baselines.Retain(100, Channel::futanari, { Target{ 0x10, 0x20, { "cbbe SCHLONG" } } });
+        Check(baselines.Diffuse(erfA) == provider[0],
+            "case-only target refresh discarded the original addon baseline");
         Check(baselines.Diffuse(erfA) == "default_d.dds", "baseline diffuse was lost");
         Check(baselines.Diffuse(erfB).empty(), "baseline leaked to another actor");
         auto providerB = provider;
@@ -207,6 +221,10 @@ int main()
         second.overrides[0] = "skin_B.dds";
         store.Publish(100, first);
         Check(!store.Publish(100, first), "same source/selection requested duplicate native refresh");
+        auto firstCase = first;
+        firstCase.targets.front().nodes.front() = "gENITALS";
+        firstCase.overrides[0] = "SKIN_a.DDS";
+        Check(!store.Publish(100, firstCase), "case-only addon selection requested duplicate refresh");
         store.Publish(200, second); // same ARMO/ARMA, different actor and skin
         auto lease = store.Get(100);
         std::weak_ptr<const Selection> previous = lease;

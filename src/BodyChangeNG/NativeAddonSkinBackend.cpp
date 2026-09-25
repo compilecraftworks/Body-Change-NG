@@ -65,7 +65,7 @@ namespace
         return std::ranges::any_of(selection.targets, [&](const Target& target) {
             return target.armor == part.item->GetFormID() &&
                 target.addon == part.addon->GetFormID() &&
-                std::ranges::find(target.nodes, name) != target.nodes.end();
+                bcn::asset_identity::FindName(target.nodes, name) != target.nodes.end();
         });
     }
 
@@ -390,7 +390,7 @@ namespace bcn::native_addon
             Target item{ target.armor->GetFormID(), target.addon->GetFormID(), {} };
             for (const auto& view : target.views)
                 for (const auto& node : view.nodes)
-                    if (std::ranges::find(item.nodes, node) == item.nodes.end()) item.nodes.push_back(node);
+                    if (bcn::asset_identity::FindName(item.nodes, node) == item.nodes.end()) item.nodes.push_back(node);
             if (!item.nodes.empty()) {
                 result.targets += item.nodes.size();
                 next.targets.push_back(std::move(item));

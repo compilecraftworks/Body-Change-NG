@@ -44,11 +44,165 @@ namespace
             return result;
         }
     };
+
+    void TestUbePushupValues()
+    {
+        using bcn::body_morph_policy::FemaleFamily;
+        using bcn::body_morph_policy::GenerateOutfitMorphs;
+        // Independently transcribed original endpoints, not production deltas.
+        // NipplesShowUp's absent Nude endpoints inherit 100 from the reference
+        // UBE OSP only when deriving this recipe (not when parsing runtime XML).
+        struct Source { const char* name; float nudeLow, nudeHigh, pushLow, pushHigh; bool nipple; };
+        const std::array sources{
+            Source{"Big_SaggyBreasts", 5, 15, 5, 10, false},
+            Source{"BreastCenterGapLowerHeight n|p", 15, 0, 0, 0, false},
+            Source{"BreastCenterGapWidth n|p", 0, 0, -80, -80, false},
+            Source{"BreastsCupSag n|p", -20, 0, -60, -20, false},
+            Source{"BreastsPositionWidth n|p", 0, 10, -30, -30, false},
+            Source{"BreastsRotate_Y", 10, 15, 0, 20, false},
+            Source{"BreastsTBD", 10, 20, 15, 25, false},
+            Source{"BreastUpperCurve n|p", 30, 10, 30, 0, false},
+            Source{"NEW_NippleCircularCrease_Uv_fix", 20, 20, 0, 0, true},
+            Source{"NippleCircularCrease", 20, 20, 0, 0, true},
+            Source{"NippleDispertionSides n|p", 0, -10, 0, 0, true},
+            Source{"NippleHeight n|p", 0, 0, 20, 30, true},
+            Source{"NipplesPerkiness", 30, 60, 20, 30, true},
+            Source{"NipplesShowUp", 100, 100, 0, 0, true}
+        };
+        for (bool enabled : {false, true}) {
+            for (float weight : {-.5F, 0.F, .25F, .5F, .73F, 1.F, 1.5F}) {
+                for (float own : {-1.5F, 0.F, .4F, 2.5F}) {
+                    unsigned reads{};
+                    std::map<std::string, float> output;
+                    GenerateOutfitMorphs(FemaleFamily::ube, weight, enabled,
+                        [&](const char*) { ++reads; return own; },
+                        [&](const char* name, float value) {
+                            Check(output.emplace(name, value).second, "UBE wrote duplicate slider");
+                        });
+                    Check(reads == 0U, "UBE delta was converted to a target/cancellation");
+                    Check(output.size() == (enabled ? 14U : 8U), "UBE breast/nipple coverage mismatch");
+                    for (const auto& source : sources) {
+                        if (source.nipple && !enabled) {
+                            Check(!output.contains(source.name), "nipple OFF wrote a nipple/UV morph");
+                            continue;
+                        }
+                        const float nude = source.nudeLow * (1.F - weight) + source.nudeHigh * weight;
+                        const float push = source.pushLow * (1.F - weight) + source.pushHigh * weight;
+                        Check(output.contains(source.name) && Near(output.at(source.name), (push - nude) / 100.F),
+                            "UBE value differs from authored Nude to Pushup change");
+                        for (const float foreign : {-1.F, 0.F, .2F, 2.F}) {
+                            const float baseline = own + foreign;
+                            Check(Near(baseline + output.at(source.name) - output.at(source.name), baseline),
+                                "UBE delta removal failed to restore the original preset/foreign sum");
+                        }
+                    }
+                    Check(!output.contains("NippleLength") && !output.contains("Necoco_Overall_Nipple") &&
+                        !output.contains("NEW_Nipples_Fantasy_UV_fix") && !output.contains("BreastCleavage"),
+                        "UBE inherited old cancellation, unchanged reference, or 3BA sliders");
+                }
+            }
+        }
+    }
+
+    void TestUbeRefitLifecycle()
+    {
+        namespace keys = bcn::racemenu::keys;
+        using bcn::body_morph_policy::FemaleFamily;
+        using bcn::body_morph_policy::GenerateOutfitMorphs;
+        Check(!keys::IsOwned("RSMLegacy") && !keys::IsReplacedBody("RSMLegacy"),
+            "RSMLegacy became a BCNG-owned/replaced key");
+        // A new recipe replaces the old layer without changing base/foreign
+        // keys. Preview cancellation restores the old layer, and SFS defers
+        // without guessing whether the final rendered outfit is visible.
+        Actor actor;
+        for (bool preserve : {false, true}) {
+            for (bool ready : {false, true}) {
+                for (bool clothed : {false, true}) {
+                    for (bool enabled : {false, true}) {
+                        for (float own : {-1.5F, 0.F, 2.5F}) {
+                            Morphs morphs;
+                            morphs.values["nipplesperkiness"] = {{keys::body, .6F}, {keys::outfit, -.8F},
+                                {"RSMLegacy", .2F}, {"Foreign", .3F},
+                                {keys::obody, .4F}, {keys::oclothe, -.1F}};
+                            morphs.values["Necoco_Boobs"] = {{keys::body, .6F}, {"RSMLegacy", .2F}};
+                            morphs.values["breastspositionwidth n|p"] = {{keys::body, .6F},
+                                {keys::outfit, .9F}, {"RSMLegacy", .2F}};
+                            morphs.values["NippleLength"] = {{keys::body, .7F}, {"RSMLegacy", .25F}, {keys::outfit, -.95F}};
+                            const auto original = morphs.values;
+                            const auto read = [&](const char* name, const char* key) {
+                                const auto found = morphs.values.find(name);
+                                if (found == morphs.values.end()) return 0.F;
+                                const auto value = found->second.find(key);
+                                return value == found->second.end() ? 0.F : value->second;
+                            };
+                            keys::PreviewBase baseline(preserve, ready);
+                            for (const auto& [name, values] : morphs.values)
+                                for (const auto& [key, value] : values) baseline.Visit(name.c_str(), key.c_str(), value);
+                            bcn::slider_name::Map<float> desired{{"NIPPLESPERKINESS", own},
+                                {"Necoco_Boobs", own}, {"BreastsPositionWidth n|p", own}, {"NippleLength", .7F}};
+                            const auto correction = [&](const char* name, float value) { desired[name] += value; };
+                            if (ready && clothed) GenerateOutfitMorphs(FemaleFamily::ube, .5F, enabled,
+                                [&](const char*) { return own; },
+                                correction);
+                            for (const auto& [name, value] : baseline.values) desired.try_emplace(name, 0.F);
+                            for (const auto& [name, value] : desired)
+                                morphs.values[name][keys::preview] = value - baseline.values[name];
+                            const float target = own + (preserve ? .5F : 0.F) +
+                                (ready ? (clothed && enabled ? -.2F : 0.F) : -.8F);
+                            Check(Near(morphs.Sum("NipplesPerkiness"), target), "UBE preview nipple delta/foreign preservation mismatch");
+                            const float breastTarget = own + (preserve ? .2F : 0.F) +
+                                (ready ? (clothed ? -.35F : 0.F) : .9F);
+                            Check(Near(morphs.Sum("BreastsPositionWidth n|p"), breastTarget),
+                                "UBE preview breast delta used a target or guessed an unready outfit");
+                            Check(Near(morphs.Sum("NippleLength"), .7F + (preserve ? .25F : 0.F) - (ready ? 0.F : .95F)),
+                                "UBE preview retained the discarded cancellation outside the new recipe");
+                            Check(Near(morphs.Sum("Necoco_Boobs"), own + (preserve ? .2F : 0.F)),
+                                "UBE nipple recipe changed breast/body shape");
+                            keys::ClearPreview(morphs, &actor);
+                            Check(morphs.values == original, "UBE preview cancel changed persistent keys");
+                            if (!ready) continue; // SFS defer retains its existing layer until a ready decision.
+                            keys::BeginPresetCommit(morphs, &actor, preserve);
+                            morphs.values["NipplesPerkiness"][keys::body] = own;
+                            morphs.values["Necoco_Boobs"][keys::body] = own;
+                            morphs.values["BreastsPositionWidth n|p"][keys::body] = own;
+                            morphs.values["NippleLength"][keys::body] = .7F;
+                            const auto apply = [&](bool nippleOn) {
+                                morphs.ClearBodyMorphKeys(&actor, keys::outfit);
+                                GenerateOutfitMorphs(FemaleFamily::ube, .5F, nippleOn,
+                                    [&](const char* name) { return read(name, keys::body); },
+                                    [&](const char* name, float value) { morphs.values[name][keys::outfit] = value; });
+                            };
+                            if (clothed) apply(enabled);
+                            Check(Near(morphs.Sum("NipplesPerkiness"), target) &&
+                                Near(morphs.Sum("BreastsPositionWidth n|p"), breastTarget), "UBE commit differs from preview");
+                            Check(Near(morphs.Sum("NippleLength"), .7F + (preserve ? .25F : 0.F)),
+                                "UBE commit failed to remove the old cancellation");
+                            const auto stable = morphs.values;
+                            if (clothed) for (unsigned repeat{}; repeat < 64U; ++repeat) apply(enabled);
+                            Check(morphs.values == stable, "repeated UBE correction accumulated values/keys");
+                            apply(false); // Disable nipples only; breast offsets remain.
+                            Check(Near(morphs.Sum("NipplesPerkiness"), own + (preserve ? .5F : 0.F)) &&
+                                Near(morphs.Sum("BreastsPositionWidth n|p"), own + (preserve ? .2F : 0.F) - .35F),
+                                "UBE nipple OFF removed breasts or retained nipple correction");
+                            morphs.ClearBodyMorphKeys(&actor, keys::outfit); // Master OFF / nude / both SFS torsos hidden.
+                            Check(Near(morphs.Sum("BreastsPositionWidth n|p"), own + (preserve ? .2F : 0.F)) &&
+                                Near(morphs.Sum("NipplesPerkiness"), own + (preserve ? .5F : 0.F)),
+                                "UBE master OFF/undress did not restore the uncorrected preset");
+                            Check(read("NipplesPerkiness", "RSMLegacy") == (preserve ? .2F : 0.F),
+                                "outfit cleanup modified RSMLegacy");
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 int main()
 {
     try {
+        TestUbePushupValues();
+        TestUbeRefitLifecycle();
         namespace keys = bcn::racemenu::keys;
         using bcn::body_morph_policy::FemaleFamily;
         Actor actor;
@@ -126,12 +280,12 @@ int main()
                 [&](const char* name) {
                     const auto found = desired.find(name);
                     return found == desired.end() ? 0.0F : found->second;
-                }, [&](const char* name, float value) { outfit.insert_or_assign(name, value); });
+                },
+                [&](const char* name, float value) { outfit.insert_or_assign(name, value); });
             for (const auto& [name, value] : outfit) desired[name] += value;
             Check(Near(desired.at("Breasts"), 1.15F) && Near(desired.at("BreastCleavage"), 1.0F),
                 "case-variant breast refit did not combine with the XML value");
-            Check(Near(desired.at(family == FemaleFamily::cbbe3ba ? "NipBGone" : "NippleAreola"),
-                family == FemaleFamily::cbbe3ba ? 1.0F : -.3F), "case-variant nipple target used a zero baseline");
+            Check(Near(desired.at("NipBGone"), 1.0F), "case-variant nipple target used a zero baseline");
         }
         for (bool preserve : {false, true}) {
             Morphs morphs;
@@ -172,7 +326,7 @@ int main()
             Check(!morphs.values["Breasts"].contains(keys::obody) &&
                 !morphs.values["Breasts"].contains(keys::oclothe) && Near(morphs.Sum("OBodyOnly"), 0.0F),
                 "commit preserved OBody/OClothe when other-morph preservation was enabled");
-            for (float desired : {-.5F, .4F, 1.75F}) {
+            for (float desired : {-.5F, 0.F, .4F, 1.75F}) {
                 keys::BeginPresetCommit(morphs, &actor, preserve);
                 morphs.values["Breasts"][keys::body] = desired;
                 Check(morphs.values["Breasts"][keys::body] == desired &&
@@ -264,8 +418,7 @@ int main()
                         bcn::body_morph_policy::GenerateOutfitMorphs(family, weight, nipples,
                             [&](const char* name) { reads.insert(name); return own; },
                             [&](const char* name, float value) { output[name] = value; });
-                        const auto cbbe = family == FemaleFamily::cbbe3ba;
-                        Check(output.size() == (cbbe ? 15U : 13U) + (nipples ? 8U : 0U),
+                        Check(output.size() == 15U + (nipples ? 8U : 0U),
                             "procedural refit slider coverage changed");
                         Check(reads.size() == 8U + (nipples ? 6U : 0U),
                             "fixed offsets incorrectly started subtracting preset values");
@@ -283,16 +436,16 @@ int main()
                             "OBody additive breast offsets changed");
                         if (nipples) Check(Near(output["NippleDistance"], .05F + .03F * weight) &&
                             Near(output["NippleDown"], -.1F * weight), "nipple offsets changed");
-                        Check(!output.contains(cbbe ? "NippleAreola" : "NipBGone"),
-                            "CBBE and BHUNP refit dialects were mixed");
+                        Check(!output.contains("NippleAreola"), "non-upstream refit dialect was reintroduced");
                     }
                 }
             }
         }
-        for (auto family : {FemaleFamily::none, FemaleFamily::ube}) {
+        for (auto family : {FemaleFamily::none}) {
             unsigned writes{};
             bcn::body_morph_policy::GenerateOutfitMorphs(family, .5F, true,
-                [](const char*) { return .4F; }, [&](const char*, float) { ++writes; });
+                [](const char*) { return .4F; },
+                [&](const char*, float) { ++writes; });
             Check(writes == 0U, "unsupported family received procedural refit");
         }
         std::cout << "BodyMorphKeyTests passed: " << checks << " checks\n";

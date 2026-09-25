@@ -273,30 +273,34 @@ namespace bcn::distribution_authoring
     class AssetIndex final
     {
     public:
-        void Assign(std::vector<AssetEntry> entries) {
+        void Assign(std::vector<AssetEntry> entries, const bool caseInsensitiveAssets = false) {
+            caseInsensitiveAssets_ = caseInsensitiveAssets;
             entries_ = std::move(entries); names_.clear(); ids_.clear();
             for (std::size_t i{}; i < entries_.size(); ++i) {
-                names_[entries_[i].name].push_back(i); ids_[entries_[i].id] = i;
+                names_[Key(entries_[i].name)].push_back(i); ids_[Key(entries_[i].id)] = i;
             }
         }
         [[nodiscard]] std::vector<std::string> Candidates(std::string_view reference) const {
-            if (!reference.starts_with(kAssetPrefix)) return {std::string(reference)};
+            if (!reference.starts_with(kAssetPrefix)) {
+                const auto found = ids_.find(Key(reference));
+                return {found == ids_.end() ? std::string(reference) : entries_[found->second].id};
+            }
             const auto value = Json::parse(reference.substr(kAssetPrefix.size()));
-            const auto found = names_.find(value.at("name").get<std::string>());
+            const auto found = names_.find(Key(value.at("name").get_ref<const std::string&>()));
             if (found == names_.end()) return {};
             std::vector<std::string> result;
             for (auto index : found->second) {
                 const auto& entry = entries_[index];
-                if (value.contains("file") && value.at("file") != entry.file) continue;
-                if (value.contains("type") && value.at("type") != entry.type) continue;
-                if (value.contains("texture") && value.at("texture") != entry.texture) continue;
+                if (value.contains("file") && !Matches(value.at("file").get_ref<const std::string&>(), entry.file)) continue;
+                if (value.contains("type") && !Matches(value.at("type").get_ref<const std::string&>(), entry.type)) continue;
+                if (value.contains("texture") && !Matches(value.at("texture").get_ref<const std::string&>(), entry.texture)) continue;
                 result.push_back(entry.id);
             }
             return result;
         }
         [[nodiscard]] std::string Describe(std::string_view id) const {
             if (id.starts_with(kAssetPrefix)) return std::string(id);
-            const auto found = ids_.find(std::string(id));
+            const auto found = ids_.find(Key(id));
             if (found == ids_.end()) return std::string(id); // Missing assets retain exact old IDs.
             const auto& entry = entries_[found->second];
             Json value{{"name", entry.name}};
@@ -307,7 +311,7 @@ namespace bcn::distribution_authoring
             try {
                 const auto reference = Asset(value);
                 const auto candidates = Candidates(reference);
-                return candidates.size() == 1 && candidates.front() == id ? reference : std::string(id);
+                return candidates.size() == 1 && Matches(candidates.front(), id) ? reference : std::string(id);
             } catch (const std::exception&) {
                 // A catalog name that cannot be represented must not discard a
                 // valid legacy rule or throw through the in-game Save handler.
@@ -315,6 +319,16 @@ namespace bcn::distribution_authoring
             }
         }
     private:
+        [[nodiscard]] std::string Key(std::string_view value) const {
+            std::string result(value);
+            if (caseInsensitiveAssets_) for (auto& byte : result)
+                byte = static_cast<char>(asset_identity::Fold(static_cast<unsigned char>(byte)));
+            return result;
+        }
+        [[nodiscard]] bool Matches(std::string_view left, std::string_view right) const noexcept {
+            return caseInsensitiveAssets_ ? asset_identity::Equal{}(left, right) : left == right;
+        }
+        bool caseInsensitiveAssets_{};
         std::vector<AssetEntry> entries_;
         std::unordered_map<std::string, std::vector<std::size_t>> names_;
         std::unordered_map<std::string, std::size_t> ids_;

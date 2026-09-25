@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include <algorithm>
 #include <optional>
 #include <string>
@@ -38,7 +40,7 @@ namespace bcn::native_skin
             if (end == std::string::npos) break;
             begin = end + 1U;
         }
-        if (!relative.starts_with("BodyChangeNG\\Cache\\")) return std::nullopt;
+        if (!asset_identity::StartsWith(relative, "BodyChangeNG\\Cache\\")) return std::nullopt;
         return TexturePaths{ relative, "textures\\" + relative };
     }
 }

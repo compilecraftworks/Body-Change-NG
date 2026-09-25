@@ -1,5 +1,7 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
+
 #include <cstdint>
 #include <map>
 #include <optional>
@@ -39,10 +41,10 @@ namespace bcn::ui
             return result;
         }
         template<class SelectedIds, class Fallback>
-        [[nodiscard]] std::map<std::string, Color, std::less<>> CopySelection(
+        [[nodiscard]] std::map<std::string, Color, asset_identity::Less> CopySelection(
             std::uint32_t actor, std::uint8_t channel, const SelectedIds& ids, Fallback&& fallback) const
         {
-            std::map<std::string, Color, std::less<>> result;
+            std::map<std::string, Color, asset_identity::Less> result;
             for (const auto& id : ids) {
                 const auto draft = Find(actor, channel, id);
                 result[id] = draft ? *draft : fallback(id);
@@ -57,6 +59,14 @@ namespace bcn::ui
 
     private:
         using Key = std::tuple<std::uint32_t, std::uint8_t, std::string>;
-        std::map<Key, Color> values_;
+        struct KeyLess {
+            bool operator()(const Key& left, const Key& right) const noexcept
+            {
+                const auto a = std::tie(std::get<0>(left), std::get<1>(left));
+                const auto b = std::tie(std::get<0>(right), std::get<1>(right));
+                return a != b ? a < b : asset_identity::Less{}(std::get<2>(left), std::get<2>(right));
+            }
+        };
+        std::map<Key, Color, KeyLess> values_;
     };
 }
