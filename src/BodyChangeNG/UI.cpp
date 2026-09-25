@@ -3526,9 +3526,9 @@ namespace
             const auto selectedUbe = selectedFamily == bcn::body_morph_policy::FemaleFamily::ube;
             if (playerUbe || selectedUbe) {
                 ImGui::TextColored(ImVec4(.95F, .72F, .32F, 1.0F), "%s", Text(
-                    "UBE·Necoco: Nude → Pushup 차이값 보정. 신체 무작위화는 제외됩니다.",
-                    "UBE/Necoco: Nude → Pushup offsets; no anatomy randomization.",
-                    "UBE/Necoco：应用 Nude → Pushup 差值；不应用身体随机化。"));
+                    "UBE·Necoco: 전용 유두·생식기 랜덤화, 여성 플레이어와 NPC 지원.",
+                    "UBE/Necoco: separate nipple/genital recipes for female players and NPCs.",
+                    "UBE/Necoco：独立乳头/生殖器随机化，支持女性玩家和 NPC。"));
             }
             ImGui::Separator();
             auto settings = bcn::Settings::Get().Snapshot();
@@ -3584,19 +3584,19 @@ namespace
                 "文件路径：Data\\SKSE\\Plugins\\OBody_presetDistributionConfig.json"));
             ImGui::Separator();
             const auto nippleRandomizationChanged = ImGui::Checkbox(
-                Text("NPC 유두 형태 무작위화", "Randomize NPC nipple shape", "随机 NPC 乳头形态"),
+                Text("여성 유두 랜덤화", "Female nipple randomization", "女性乳头随机化"),
                 &settings.nippleRandomization);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA와 BHUNP/UNP NPC를 지원합니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
-                "Supports CBBE 3BA and BHUNP/UNP NPCs. The player and UBE NPCs are skipped.",
-                "支持 CBBE 3BA 与 BHUNP/UNP NPC；会跳过玩家和 UBE NPC。"));
+                "여성 플레이어와 NPC에 바디프리셋을 확정할 때 적용합니다. 배포 조건은 필수가 아닙니다.\nCBBE 3BA·BHUNP/UNP의 수치·분기는 유지합니다. UBE·Necoco도 같은 확률·독립 추첨·분기 순서를 사용하되 전용 슬라이더와 범위로 변환합니다.\nUBE의 유두 위치·간격은 유지하며 선택되지 않은 선택적 항목은 XML 값을 유지합니다. 끄고 재적용하면 프리셋 원래 값으로 돌아갑니다.",
+                "Applies when a body preset is committed to a female player or NPC; distribution rules are optional.\nCBBE 3BA/BHUNP/UNP keep their existing ranges and branches. UBE/Necoco use the same independent chances and branch order, translated to their own sliders and ranges.\nUBE nipple position/spacing stay unchanged; unselected optional entries keep their XML values. Disable and reapply to restore preset values.",
+                "向女性玩家或 NPC 确认应用身形预设时生效，无需分发规则。\nCBBE 3BA/BHUNP/UNP 保留原范围和分支；UBE/Necoco 使用相同的概率、独立抽取和分支顺序，转换为自身滑块与范围。\n不改变 UBE 乳头位置和间距；未选中的可选项保留 XML 值。关闭并重新应用后恢复预设原值。"));
             const auto genitalRandomizationChanged = ImGui::Checkbox(
-                Text("NPC 생식기 형태 무작위화", "Randomize NPC genital shape", "随机 NPC 生殖器形态"),
+                Text("여성 생식기 랜덤화", "Female genital randomization", "女性生殖器随机化"),
                 &settings.genitalRandomization);
             if (ImGui::IsItemHovered(ImGuiHoveredFlags_ForTooltip)) ImGui::SetTooltip("%s", Text(
-                "CBBE 3BA와 BHUNP/UNP NPC를 지원합니다. 플레이어와 UBE NPC에는 적용되지 않습니다.",
-                "Supports CBBE 3BA and BHUNP/UNP NPCs. The player and UBE NPCs are skipped.",
-                "支持 CBBE 3BA 与 BHUNP/UNP NPC；会跳过玩家和 UBE NPC。"));
+                "여성 플레이어와 NPC에 바디프리셋을 확정할 때 적용합니다. 배포 조건은 필수가 아닙니다.\nCBBE 3BA·BHUNP/UNP는 기존 방식, UBE·Necoco는 별도 Innie/Average/Outie 방식(20/60/20%)입니다.\nUBE는 AnusSpread를 건드리지 않으며, Necoco 추가 항목은 현재 로드된 TRI에 있을 때만 처리합니다. 끄고 재적용하면 프리셋 원래 값으로 돌아갑니다.",
+                "Applies when a body preset is committed to a female player or NPC. Distribution rules are optional.\nCBBE 3BA/BHUNP/UNP retain their recipe; UBE/Necoco use a separate Innie/Average/Outie recipe (20/60/20%).\nUBE leaves AnusSpread untouched. Necoco extras require matching loaded TRI morphs. Disable and reapply to restore preset values.",
+                "向女性玩家或 NPC 确认应用身形预设时生效，无需分发规则。\nCBBE 3BA/BHUNP/UNP 保留原算法；UBE/Necoco 使用独立的 Innie/Average/Outie 方案（20/60/20%）。\nUBE 不修改 AnusSpread；Necoco 扩展项仅在已加载 TRI 包含对应变形时处理。关闭并重新应用后恢复预设原值。"));
             settingsChanged |= nippleRandomizationChanged || genitalRandomizationChanged;
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);

@@ -1,10 +1,14 @@
 [center][size=6][color=#FFD600][b]Body Change NG v1.3.4[/b][/color][/size]
-[size=4][color=#5CFFA3][b]Morph calculations, UBE outfit correction, skin identity and NPC distribution[/b][/color][/size][/center]
+[size=4][color=#5CFFA3][b]Morphs, UBE correction and randomization, skins and NPC distribution[/b][/color][/size][/center]
 [hr]
 [size=4][color=#19D8FF][b]Body presets and outfit correction[/b][/color][/size]
 [list]
+[*]Add separate UBE/Necoco female genital randomization: correlated Innie/Average/Outie recipes (20%/60%/20%). Leave AnusSpread and existing 3BA/BHUNP calculations unchanged. Necoco genital extras require nonzero position morphs in loaded BODYTRI files; the bounded session-only metadata cache clears on game-session reset. Save formats and RaceMenu interfaces are unchanged.
+[*]Add UBE/Necoco nipple randomization using the original OBody NG 4.4.3 independent probability/branch program, including the nested inversion branch and preservation of unselected optional XML values. Translate results to UBE-specific sliders/ranges; do not introduce exclusive shape classes or extra random draws. Existing 3BA/BHUNP numerical recipes are unchanged.
+[*]Include female players as well as NPCs in both anatomy options when a body preset is committed. Rename the controls to Female nipple randomization / Female genital randomization in Korean, English and Chinese. Distribution rules are not required; previews do not reroll anatomy, and disabling an option then reapplying restores the preset values.
+[*]Outfit/breast correction, nipple correction, female genital randomization and female nipple randomization all default to OFF. Enable only the features you want; explicitly saved settings are preserved.
 [*]Align base preset values with OBody NG 4.4.3: interpolate small/big XML endpoints by actor weight, divide by 100, use zero for omitted endpoints, preserve negative/over-100 values, and retain the original UNP reverse-slider and first-nonzero duplicate rules. Remove the extra UBE build-default subtraction and weight clamp.
-[*]Align CBBE 3BA/BHUNP correction and supported NPC anatomy-randomization calculations with the original recipes. Preserve the other-morph option, existing actor eligibility, NPC-only randomization, SFS integration and cancellable previews.
+[*]Align CBBE 3BA/BHUNP correction and supported anatomy-randomization calculations with the original recipes. Preserve the other-morph option, actor-family separation, SFS integration and cancellable previews.
 [*]Add a separate additive UBE/Necoco outfit recipe derived from Fit to Thicc v1 Nude → Pushup: eight breast offsets, plus six nipple/UV offsets when nipple correction is enabled. Interpolate the offsets by actor weight without subtracting BCNG or RaceMenu morphs. The reference NipplesShowUp default affects this fixed recipe only, not normal preset XML parsing.
 [*]Keep global outfit/nipple switches editable with a UBE player. Turning nipple correction off removes only its offsets; turning outfit correction off or undressing removes the outfit layer. Each actor uses its own body-family recipe.
 [*]Apply ORefit name/plugin/FormID exclusions to both breast and nipple correction for all supported families. Keep explicit force-refit precedence and compatible named-refit priority. With SFS, evaluate the final visible outfit; otherwise use actual equipment. Existing stored body selections and correction layers reconcile once through the existing work queue.
@@ -27,6 +31,6 @@
 [size=4][color=#19D8FF][b]Updating and verification[/b][/color][/size]
 [list]
 [*]Preserve customized BodyChangeNGdistribution.json, settings, packs and texture cache. The rule schema remains 8, with no active rules in the starter. No new runtime hook, polling loop, persistent cache, dependency, RaceMenu ABI or co-save-format change is introduced.
-[*]Release build and all 38 offline regression executables passed. Coverage includes reference morph calculations, distribution candidates, 1,000 list-mode cycles, 36 header layouts and mixed-case texture/identity paths. The earlier 1,200,000-call overlay predicate allocation check retained zero blocks/bytes.
-[*]The user reported the latest build working in a TOFU in-game test. This is not verification of every supported runtime/setup or a whole-engine leak guarantee. The mouse/input implementation was left unchanged.
+[*]Release build and all 40 offline regression executables passed, including 51,712 UBE nipple mappings, comparison against the unmodified upstream probability/branch code, 9,696 UBE genital recipes and packed/legacy TRI boundary tests. Coverage includes reference morph calculations, distribution candidates, 1,000 list-mode cycles, 36 header layouts and mixed-case texture/identity paths. The earlier 1,200,000-call overlay predicate allocation check retained zero blocks/bytes.
+[*]The mouse/input implementation was left unchanged.
 [/list]

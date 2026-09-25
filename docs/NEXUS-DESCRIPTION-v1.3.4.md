@@ -1,6 +1,6 @@
 # BODY CHANGE NG
 
-**v1.3.4: Unified preset calculations, UBE/Necoco outfit correction, case-insensitive skin paths, restored overlay slots, and clearer NPC distribution.**
+**v1.3.4: Updated preset calculations, UBE/Necoco correction and randomization, skin paths, overlay slots, and NPC distribution. Correction and randomization options default to OFF.**
 
 ### v1.3.4 · Your character. Your choices.
 
@@ -123,7 +123,7 @@ For example, small 20 and big 80 at weight 25 produce 0.35 (35%). Negative value
 
 Slider names are case-insensitive: Breasts and breasts identify the same morph. Low/high entries merge within each preset; another preset's zero values do not change the selected preset. Previews and outfit correction use the same name matching. Original XML files and authored values are not rewritten.
 
-UNP-family presets have a small set of reverse-defined base sliders, including Breasts and NippleDistance. BCNG converts those endpoints with 1 - (XML value / 100) before interpolation; it does not reverse every slider. Optional NPC nipple/genital randomization can separately replace its selected anatomical sliders, and does not apply to the player.
+UNP-family presets have a small set of reverse-defined base sliders, including Breasts and NippleDistance. BCNG converts those endpoints with 1 - (XML value / 100) before interpolation; it does not reverse every slider. Optional female nipple/genital randomization can separately replace its selected anatomical sliders for both the player and NPCs.
 
 **UBE preset values:** UBE preset endpoints also use XML value / 100, followed by the same weight interpolation. BCNG does not subtract UBE OSP build defaults or synthesize absent sliders. A missing endpoint starts at zero; duplicate endpoints retain the first non-zero parsed value. Zero, negative and over-100 XML values remain valid. Empty UBE Zeroed presets clear the replaced preset layers without inventing morphs. Use matching UBE body/outfit meshes and TRI files; XML numbers cannot supply a morph absent from the TRI.
 
@@ -354,22 +354,6 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (optional ORefit input)
 - **Tint saves:** the confirmed pack, per-layer color/opacity, restored layers, and captured original DDS/color are stored in that save's co-save. Original tints are not borrowed from another character's shared settings.
 
 
-### Name-based rules outside the game
-
-The updated schema-8 DLL accepts BodySlide/BCNG preset names, skin/futa pack names
-and registered overlay names. Targets include `NordRace`, `BanditFaction` and
-game-provided unique names across all eleven existing scopes. The annotated
-JSON and `BodyChangeNGdistribution-README.txt` contain 19 examples, 39 copyable
-vanilla targets, multiple candidates, colors and ambiguity guidance.
-No numeric-ID helper is required for ordinary editing.
-
-Duplicate names can use file/plugin/type/texture qualifiers. Some custom forms
-expose no unique runtime name/EditorID; those need the documented plugin plus
-local hexadecimal formId. Existing actor compatibility restrictions remain.
-Schemas 3–7 are backed up before migration; unresolved names/old IDs are retained.
-Use the matching DLL, not only a new schema-8 JSON with an older DLL.
-In-game saves preserve comments below the active rules. This is BCNG's format,
-not an importer for OBody distribution JSON.
 
 MO2 may place generated files in Overwrite or a configured output mod. Check the winning virtual Data path rather than assuming every generated file is physically inside the BCNG mod.
 
@@ -411,9 +395,11 @@ The tool skips external hard links, read-only/locked files, junctions and unknow
 
 ### Outfit correction & randomization
 
-The **Outfit · randomization** popup provides **Outfit correction while clothed** and a dependent **Correct nipples while clothed** switch. CBBE 3BA and BHUNP/UNP use breast/body correction with optional nipple correction. UBE 2.0/Necoco use eight breast offsets from the Nude-to-Pushup difference in [Fit to Thicc](https://www.nexusmods.com/skyrimspecialedition/mods/118826), plus six nipple/UV offsets when nipple correction is enabled. Offsets are interpolated by actor weight and added to, not substituted for, the selected body preset. Turning nipple correction off keeps the breast offsets; turning the main switch off or undressing removes the whole outfit layer and restores the uncorrected preset result. Each actor's actual body family controls the recipe, independently of the player's body.
-CBBE 3BA/BHUNP refit combines target adjustments and fixed offsets: targets subtract only BCNG's own preset value, while fixed offsets remain additive. The UBE/Necoco recipe is additive only: it neither cancels the preset's nipple values nor subtracts RaceMenu or other mods' morphs. The reference's omitted NipplesShowUp starts at its BodySlide project default of 100, giving a fixed -100-point outfit offset; this does not change how ordinary preset XML is parsed. Matching body/outfit TRI morphs are required, and results vary with the starting body and outfit. Body-preset previews use the same outfit-rule decision without changing committed morphs; disabling other-morph preservation also previews the absence of those values after confirmation.
-NPC nipple/genital-shape randomization remains limited to supported conventional female bodies, not UBE/Necoco or the player. This is morph adjustment, not genital-addon registration.
+Outfit/breast correction, nipple correction, female genital randomization and female nipple randomization all default to OFF. Enable only the features you want; explicitly saved settings are preserved.
+
+The **Outfit · randomization** popup provides **Outfit correction while clothed** and a dependent **Correct nipples while clothed** switch. CBBE 3BA and BHUNP/UNP use breast/body correction with optional nipple correction. UBE 2.0/Necoco use eight breast-correction sliders, plus six nipple/UV-correction sliders when nipple correction is enabled. Offsets are interpolated by actor weight and added to, not substituted for, the selected body preset. Turning nipple correction off keeps the breast offsets; turning the main switch off or undressing removes the whole outfit layer and restores the uncorrected preset result. Each actor's actual body family controls the recipe, independently of the player's body.
+CBBE 3BA/BHUNP refit combines target adjustments and fixed offsets: targets subtract only BCNG's own preset value, while fixed offsets remain additive. The UBE/Necoco recipe is additive only: it neither cancels the preset's nipple values nor subtracts RaceMenu or other mods' morphs. These corrections do not change how ordinary preset XML is parsed. Matching body/outfit TRI morphs are required, and results vary with the starting body and outfit. Body-preset previews use the same outfit-rule decision without changing committed morphs; disabling other-morph preservation also previews the absence of those values after confirmation.
+Female nipple randomization supports CBBE 3BA/BHUNP/UNP and UBE/Necoco. UBE/Necoco use the same independent chance and branch rules with their own sliders and ranges, not mutually exclusive shape classes. Female genital randomization uses the existing CBBE 3BA/BHUNP/UNP recipe and a separate correlated Innie/Average/Outie recipe (20%/60%/20%) for UBE/Necoco. UBE leaves AnusSpread unchanged; Necoco genital extras require matching loaded TRI morphs. Both options include female players and NPCs when BCNG commits a body preset, directly or through NPC distribution. Distribution rules are optional; enabling an option alone does not randomize every world NPC, and previews do not reroll anatomy. Turn an option off and reapply the preset to restore its original values. These are morph adjustments, not genital-addon registration.
 
 The outfit popup opens centered on first use instead of jumping to the top of the screen. Outfit, settings, NPC-condition, and color popups remember their individual positions for the next time you open them.
 
@@ -463,7 +449,7 @@ These mods overlap with BCNG's appearance control. Choose one controller for the
 - **Overlay unavailable or color has little effect:** check the area's RaceMenu enable/count settings, foreign reserved slots, and the texture itself. A colored texture will not necessarily tint like a grayscale mask.
 - **Futanari tab missing / Not eligible:** distinguish supported female-addon installation from the actor's SOS/TNG registration. Neither an ordinary male addon nor a texture-only pack satisfies both conditions.
 
-The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.4 passed its Release build and 38 offline regression executables. The user also reported the latest build working in a TOFU in-game test; this does not verify every supported runtime or mod setup.
+The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.4 passed its Release build and 40 offline regression executables.
 
 ---
 

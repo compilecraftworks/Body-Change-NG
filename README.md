@@ -15,6 +15,17 @@ correction uses separate additive Nude-to-Pushup breast and optional nipple/UV
 offsets; CBBE 3BA/BHUNP keep their reference correction recipes. SFS visible-outfit
 rules and ORefit exclusions apply to the appropriate body-family recipe.
 
+Female nipple and genital randomization now include the player when a body
+preset is committed. UBE/Necoco use separate slider recipes: correlated
+Innie/Average/Outie genital variants (20%/60%/20%, excluding AnusSpread), and
+the reference independent nipple probability branches mapped to UBE sliders.
+Existing 3BA/BHUNP numerical recipes are unchanged. Previews do not reroll
+anatomy; no NPC distribution rule is required.
+
+Breast correction, nipple correction, female genital randomization and female
+nipple randomization all default to OFF. Explicitly saved settings are preserved.
+The Release build and 40 offline regression executables pass.
+
 Skin, futanari, overlay and tint paths/identities are case-insensitive. Fix false
 texture-write failures caused by interned filename casing without changing
 ownership checks or save formats. Existing previews, favorites and colors remain

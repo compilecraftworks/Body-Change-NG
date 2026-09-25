@@ -819,6 +819,27 @@ int main()
     Require(!uiSource.contains("normalizedNpcCorrection") &&
         !uiSource.contains("settings.orefitEnabled = true") &&
         !uiSource.contains("settings.orefitNippleMorphing = true"));
+    // Both anatomy options stay inside the female committed-preset block.
+    // Player eligibility is intentional; preview/outfit never reroll anatomy.
+    const auto anatomyBegin = morphSource.find("if (mode == bcn::racemenu::ApplyMode::commit && actorBase && actorBase->GetSex() == RE::SEX::kFemale)");
+    const auto ubeGenitalBegin = morphSource.find("if (femaleFamily == bcn::body_morph_policy::FemaleFamily::ube &&", anatomyBegin);
+    const auto ubeGenitalEnd = morphSource.find("if (mode != bcn::racemenu::ApplyMode::outfit)", ubeGenitalBegin);
+    Require(anatomyBegin != std::string::npos && ubeGenitalBegin != std::string::npos && ubeGenitalEnd != std::string::npos);
+    const auto ubeGenital = std::string_view(morphSource).substr(ubeGenitalBegin, ubeGenitalEnd - ubeGenitalBegin);
+    Require(ubeGenital.contains("femaleFamily == bcn::body_morph_policy::FemaleFamily::ube") &&
+        !morphSource.substr(anatomyBegin, ubeGenitalEnd - anatomyBegin).contains("PlayerCharacter") &&
+        ubeGenital.contains("ube_anatomy::SupportedExtras(actor.get())") &&
+        ubeGenital.contains("if (settings.nippleRandomization)") &&
+        ubeGenital.contains("if (settings.genitalRandomization)") &&
+        ubeGenital.contains("ube_nipple::Generate(") &&
+        ubeGenital.contains("body_morph_policy::OBodyChance, bcn::body_morph_policy::OBodyRandom, write") &&
+        !ubeGenital.contains("ube_nipple::SelectShape") &&
+        ubeGenital.contains("ube_genital::Generate(shape, blend,") &&
+        !ubeGenital.contains("GenerateNippleMorphs"));
+    Require(morphSource.contains("bcn::ube_anatomy::ClearSupportCache();"));
+    Require(uiSource.contains("여성 유두 랜덤화") && uiSource.contains("Female nipple randomization") &&
+        uiSource.contains("女性乳头随机化") && uiSource.contains("여성 생식기 랜덤화") &&
+        uiSource.contains("Female genital randomization") && uiSource.contains("女性生殖器随机化"));
     // Values, including zero, go to SetMorph; no BCNG range/epsilon filter.
     const auto morphWriteBegin = morphSource.find("for (const auto& [name, desired] : desiredMorphs)");
     const auto morphWriteEnd = morphSource.find("// UI requests", morphWriteBegin);

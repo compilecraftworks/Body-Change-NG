@@ -466,6 +466,9 @@ int main(const int argc, char** argv)
     }
 
     const bcn::SettingsData defaults;
+    if (!Require(!defaults.orefitEnabled && !defaults.orefitNippleMorphing &&
+            !defaults.nippleRandomization && !defaults.genitalRandomization,
+            "all four correction/randomization settings must default off")) return 1;
     if (!Require(defaults.preserveOtherMorphs && !defaults.pauseGameWhenOpen && !defaults.performanceMode && !defaults.removalMode &&
             defaults.characterPosition == bcn::CharacterPosition::left,
             "new settings must preserve foreign morphs, place actor left and disable pause/performance modes")) return 1;
@@ -486,6 +489,9 @@ int main(const int argc, char** argv)
     const auto migratedSettings = sandbox / "Data" / "SKSE" / "Plugins" /
         "BodyChangeNG" / "settings.json";
     const auto migratedSnapshot = bcn::Settings::Get().Snapshot();
+    if (!Require(!migratedSnapshot.orefitEnabled && !migratedSnapshot.orefitNippleMorphing &&
+            !migratedSnapshot.nippleRandomization && !migratedSnapshot.genitalRandomization,
+            "missing legacy correction/randomization settings must remain off")) return 1;
     if (!Require(migratedSnapshot.preserveOtherMorphs && !migratedSnapshot.performanceMode &&
             bcn::Settings::Get().MorphOptions().preserveOtherMorphs &&
             migratedSnapshot.characterPosition == bcn::CharacterPosition::right,
@@ -499,6 +505,29 @@ int main(const int argc, char** argv)
     if (!Require(migratedSnapshot.femaleNpcBodyType == bcn::FemaleNpcBodyType::cbbe3ba &&
             migratedSnapshot.maleNpcBodyType == bcn::MaleNpcBodyType::himbo,
             "legacy settings migration did not preserve the new CBBE 3BA/HIMBO defaults")) return 1;
+
+    // New defaults must not override any combination explicitly saved by a
+    // user, including nipple correction ON while the parent switch is OFF.
+    std::filesystem::current_path(sandbox);
+    for (unsigned mask{}; mask < 16U; ++mask) {
+        auto appearance = migratedSnapshot;
+        appearance.orefitEnabled = (mask & 1U) != 0U;
+        appearance.orefitNippleMorphing = (mask & 2U) != 0U;
+        appearance.nippleRandomization = (mask & 4U) != 0U;
+        appearance.genitalRandomization = (mask & 8U) != 0U;
+        bcn::Settings::Get().Update(appearance);
+        if (!Require(bcn::Settings::Get().Save(), "appearance option save failed")) return 1;
+        bcn::Settings::Get().Load();
+        const auto loaded = bcn::Settings::Get().MorphOptions();
+        if (!Require(loaded.outfitCorrection == appearance.orefitEnabled &&
+                loaded.outfitNippleCorrection == appearance.orefitNippleMorphing &&
+                loaded.nippleRandomization == appearance.nippleRandomization &&
+                loaded.genitalRandomization == appearance.genitalRandomization,
+                "explicit appearance options replaced by new defaults")) return 1;
+    }
+    bcn::Settings::Get().Update(migratedSnapshot);
+    if (!Require(bcn::Settings::Get().Save(), "appearance option fixture restore failed")) return 1;
+    std::filesystem::current_path(originalCurrentPath);
 
     const std::string skinPackName{ "피부팩 简体" };
     // Popup positions survive restart independently, including the four NPC

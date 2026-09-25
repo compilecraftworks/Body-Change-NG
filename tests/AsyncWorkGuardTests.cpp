@@ -66,7 +66,7 @@ int main()
         using bcn::body_family::Family;
         using bcn::body_morph_policy::FemaleFamily;
         using bcn::body_morph_policy::ResolveFemaleFamily;
-        using bcn::body_morph_policy::SupportsNpcAnatomyRandomization;
+        using bcn::body_morph_policy::UsesConventionalAnatomyRecipe;
         using bcn::body_morph_policy::SupportsOutfitCorrection;
         Require(ResolveFemaleFamily(Bit(Family::cbbe), Bit(Family::cbbe) | Bit(Family::ube)) ==
                 FemaleFamily::cbbe3ba,
@@ -91,14 +91,12 @@ int main()
         Require(SupportsOutfitCorrection(FemaleFamily::ube) &&
                 !SupportsOutfitCorrection(FemaleFamily::none),
             "separate UBE outfit recipe was disabled or an unknown family received correction");
-        Require(SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, false) &&
-                SupportsNpcAnatomyRandomization(FemaleFamily::bhunpUnp, false),
-            "CBBE/3BA or BHUNP/UNP NPC anatomy randomization was disabled");
-        Require(!SupportsNpcAnatomyRandomization(FemaleFamily::ube, false) &&
-                !SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, true) &&
-                !SupportsNpcAnatomyRandomization(FemaleFamily::bhunpUnp, true) &&
-                !SupportsNpcAnatomyRandomization(FemaleFamily::none, false),
-            "player or unsupported family received NPC anatomy randomization");
+        Require(UsesConventionalAnatomyRecipe(FemaleFamily::cbbe3ba) &&
+                UsesConventionalAnatomyRecipe(FemaleFamily::bhunpUnp),
+            "CBBE/3BA or BHUNP/UNP anatomy randomization was disabled");
+        Require(!UsesConventionalAnatomyRecipe(FemaleFamily::ube) &&
+                !UsesConventionalAnatomyRecipe(FemaleFamily::none),
+            "unsupported family received conventional anatomy randomization");
         std::cout << "AsyncWorkGuardTests passed\n";
     } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

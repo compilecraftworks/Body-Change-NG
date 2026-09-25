@@ -96,10 +96,12 @@ namespace bcn
         bool preserveOtherMorphs{ true };
         FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
         MaleNpcBodyType maleNpcBodyType{ MaleNpcBodyType::himbo };
-        bool orefitEnabled{ true };
-        bool orefitNippleMorphing{ true };
-        bool nippleRandomization{};
-        bool genitalRandomization{};
+        // Optional appearance changes are opt-in on new/missing settings.
+        // Settings::Load still honors every explicitly saved user value.
+        bool orefitEnabled{ false };
+        bool orefitNippleMorphing{ false };
+        bool nippleRandomization{ false };
+        bool genitalRandomization{ false };
         std::vector<std::string> favoriteBodyPresets;
         std::vector<std::string> favoriteSkinProfiles;
         std::vector<std::string> favoriteFutanariSkins;

@@ -8,6 +8,9 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/BodyRandomizationPolicy.h"
+#include "BodyChangeNG/UbeGenitalRandomization.h"
+#include "BodyChangeNG/UbeNippleRandomization.h"
+#include "BodyChangeNG/UbeAnatomyRuntime.h"
 #include "BodyChangeNG/BodyMorphKeys.h"
 #include "BodyChangeNG/RaceMenuCompatibility.h"
 #include "BodyChangeNG/PresetCatalog.h"
@@ -26,6 +29,7 @@
 #include <cmath>
 #include <mutex>
 #include <optional>
+#include <random>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -401,18 +405,33 @@ namespace
             const auto presetFamily = bcn::body_family::PresetMask(preset.family, false);
             const auto femaleFamily = bcn::body_morph_policy::ResolveFemaleFamily(
                 bcn::body_family::ResolveActor(actor.get()), presetFamily);
-            const auto randomizeNpcAnatomy = bcn::body_morph_policy::SupportsNpcAnatomyRandomization(
-                femaleFamily, actor.get() == RE::PlayerCharacter::GetSingleton());
+            const auto conventionalAnatomy = bcn::body_morph_policy::UsesConventionalAnatomyRecipe(femaleFamily);
             const auto write = [&](const char* name, float value) {
                 desiredMorphs.insert_or_assign(name, value);
             };
-            if (settings.nippleRandomization && randomizeNpcAnatomy) {
+            if (settings.nippleRandomization && conventionalAnatomy) {
                 bcn::body_morph_policy::GenerateNippleMorphs(
                     bcn::body_morph_policy::OBodyChance, bcn::body_morph_policy::OBodyRandom, write);
             }
-            if (settings.genitalRandomization && randomizeNpcAnatomy) {
+            if (settings.genitalRandomization && conventionalAnatomy) {
                 bcn::body_morph_policy::GenerateGenitalMorphs(
                     bcn::body_morph_policy::OBodyChance, bcn::body_morph_policy::OBodyRandom, write);
+            }
+            if (femaleFamily == bcn::body_morph_policy::FemaleFamily::ube &&
+                (settings.nippleRandomization || settings.genitalRandomization)) {
+                if (settings.nippleRandomization) {
+                    bcn::ube_nipple::Generate(
+                        bcn::body_morph_policy::OBodyChance, bcn::body_morph_policy::OBodyRandom, write);
+                }
+                if (settings.genitalRandomization) {
+                    // Only genital extras need TRI metadata. Nipple draws
+                    // use the common UBE/Necoco dialect, with no file lookup.
+                    const auto extras = bcn::ube_anatomy::SupportedExtras(actor.get());
+                    static thread_local std::mt19937 random{ std::random_device{}() };
+                    const auto shape = bcn::ube_genital::SelectShape(std::uniform_int_distribution<unsigned>(0U, 99U)(random));
+                    const auto blend = std::uniform_real_distribution<float>(0.F, 1.F)(random);
+                    bcn::ube_genital::Generate(shape, blend, extras, write);
+                }
             }
         }
         if (mode != bcn::racemenu::ApplyMode::outfit) {
@@ -584,6 +603,7 @@ namespace bcn::racemenu
 
     void ResetSessionState()
     {
+        bcn::ube_anatomy::ClearSupportCache();
         {
             std::scoped_lock lock(g_applyGenerationLock);
             g_applyGenerations.clear();

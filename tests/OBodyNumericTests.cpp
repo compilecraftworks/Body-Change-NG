@@ -1,5 +1,6 @@
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/BodyRandomizationPolicy.h"
+#include "BodyChangeNG/UbeNippleRandomization.h"
 #include "BodyChangeNG/PresetCatalog.h"
 
 #include <pugixml.hpp>
@@ -170,6 +171,21 @@ int main()
                         "randomization probability/branch order differs from upstream");
                     Check(actualDraws.ranges == expectedDraws.ranges,
                         "randomization ranges/order differ from upstream");
+                    if (nipples) {
+                        Draws ubeDraws{mask, 0U, fraction};
+                        Values ube;
+                        bcn::ube_nipple::Generate(
+                            [&](int p) { return ubeDraws.Chance(p); },
+                            [&](float low, float high) { return ubeDraws.Random(low, high); },
+                            [&](const char* name, float value) { ube.emplace(name, value); });
+                        Check(ubeDraws.probabilities == expectedDraws.probabilities &&
+                            ubeDraws.ranges == expectedDraws.ranges,
+                            "UBE draw program differs from unmodified OBody source");
+                        Check(ube.contains("Nippleinverted") == expected.contains("NippleInvert_v2") &&
+                            ube.contains("AreolaErection") == expected.contains("NipplePuffy_v2") &&
+                            ube.contains("NipplesShowUp") == expected.contains("NipBGone"),
+                            "UBE independent optional branch differs from upstream");
+                    }
                     Check(actual.size() == expected.size(), "optional writes differ from upstream");
                     for (const auto& [name, value] : expected) {
                         Check(actual.contains(name) && Near(actual.at(name), value.min) && Near(value.min, value.max),
@@ -210,13 +226,12 @@ int main()
             }
         }
         for (auto family : {FemaleFamily::none}) {
-            Check(!SupportsOutfitCorrection(family) && !SupportsNpcAnatomyRandomization(family, false),
+            Check(!SupportsOutfitCorrection(family) && !UsesConventionalAnatomyRecipe(family),
                 "unsupported actor became eligible");
         }
-        Check(!SupportsNpcAnatomyRandomization(FemaleFamily::cbbe3ba, true), "player became eligible");
+        Check(UsesConventionalAnatomyRecipe(FemaleFamily::cbbe3ba), "conventional anatomy disabled");
         Check(SupportsOutfitCorrection(FemaleFamily::ube) &&
-            !SupportsNpcAnatomyRandomization(FemaleFamily::ube, false) &&
-            !SupportsNpcAnatomyRandomization(FemaleFamily::ube, true), "UBE refit/randomization eligibility changed");
+            !UsesConventionalAnatomyRecipe(FemaleFamily::ube), "UBE entered conventional anatomy recipe");
         for (unsigned i{}; i < 1000U; ++i) {
             const float value = OBodyRandom(-1.5F, 2.5F);
             Check(value >= -1.5F && value < 2.5F, "random draw escaped upstream half-open bounds");

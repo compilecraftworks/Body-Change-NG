@@ -47,13 +47,11 @@ namespace bcn::body_morph_policy
             family == FemaleFamily::ube;
     }
 
-    // Anatomy randomization is an NPC-only feature. Both supported families
-    // retain their eligibility; UBE and ambiguous actors fail closed.
-    [[nodiscard]] constexpr bool SupportsNpcAnatomyRandomization(
-        const FemaleFamily family, const bool player) noexcept
+    // Player and NPC use the same eligibility. This selects only the original
+    // recipe; UBE has independent anatomy recipes and must never enter it.
+    [[nodiscard]] constexpr bool UsesConventionalAnatomyRecipe(const FemaleFamily family) noexcept
     {
-        return !player &&
-            (family == FemaleFamily::cbbe3ba || family == FemaleFamily::bhunpUnp);
+        return family == FemaleFamily::cbbe3ba || family == FemaleFamily::bhunpUnp;
     }
 
     struct UbeOutfitDelta
