@@ -179,8 +179,13 @@ namespace bcn::overlay
     [[nodiscard]] inline bool CanClaimNode(const bool hasStoredOverrides,
         const std::string_view liveDiffuse)
     {
-        // An invisible but reserved paint (alpha 0) still belongs to its mod.
-        return !hasStoredOverrides && IsRaceMenuDefaultTexture(liveDiffuse);
+        // SlaveTats clears a slot by installing its blank DDS, then removing
+        // its registered overrides. The live material can retain that DDS.
+        // Only reclaim the released node: ANY stored texture/tint/alpha still
+        // reserves it, including a real tattoo made invisible with alpha 0.
+        // Keep this exception out of StoredPathsMatch / ownership checks.
+        return !hasStoredOverrides && (IsRaceMenuDefaultTexture(liveDiffuse) ||
+            TextureIdentity(liveDiffuse) == "actors\\character\\slavetats\\blank.dds");
     }
 
     // RaceMenu v1 may consume a registered paint key after materializing the

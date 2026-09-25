@@ -214,6 +214,52 @@ int main()
                 !CanClaimNode(true, "") &&
                 !CanClaimNode(false, "textures\\dse-soulgem-oven\\veins_cbbe.dds"),
             "a reserved foreign overlay must not be stolen even when alpha is zero");
+        for (const auto* released : {
+                 "Actors\\Character\\slavetats\\blank.dds",
+                 "Textures/Actors/Character/SlaveTats/BLANK.DDS",
+                 "  ./Data/Textures/actors/character/slavetats/blank.dds  " }) {
+            Check(CanClaimNode(false, released), "released SlaveTats blank slot was blocked");
+            Check(!CanClaimNode(true, released), "still-registered SlaveTats slot was stolen");
+            Check(!IsRaceMenuDefaultTexture(released),
+                "SlaveTats empty-slot exception leaked into owned-texture matching");
+        }
+        for (const auto* reserved : {
+                 "blank.dds", "actors/character/another-mod/blank.dds",
+                 "actors/character/slavetats/pack/blank.dds",
+                 "actors/character/slavetats/blank.dds.backup",
+                 "actors/character/slavetats/basic/right_hand_slave.dds" }) {
+            Check(!CanClaimNode(false, reserved) && !CanClaimNode(true, reserved),
+                "unverified blank name or actual foreign tattoo was reclaimed");
+        }
+        // Same policy drives the displayed denominator and actual allocation.
+        // Model all four regions, empty registries, scalar/texture reservations,
+        // actual paints (also alpha-zero paints), and both loaded views.
+        for (const auto area : kAreas) {
+            for (const auto total : { 0U, 1U, 3U, 5U, 127U, 254U }) {
+                SlotAccounting releasedUsage;
+                SlotAccounting occupiedUsage;
+                for (unsigned slot{}; slot < total; ++slot) {
+                    releasedUsage.Observe(!CanClaimNode(false,
+                        "Actors/Character/slavetats/blank.dds"), false, false);
+                    occupiedUsage.Observe(!CanClaimNode(true,
+                        "Actors/Character/slavetats/blank.dds"), false, false);
+                }
+                Check(releasedUsage.Result(total, 0U).capacity == total &&
+                        releasedUsage.Result(total, 0U).applied == 0U &&
+                        occupiedUsage.Result(total, 0U).capacity == 0U,
+                    "released/registered slots crossed area or capacity boundaries");
+                (void)area;
+            }
+        }
+        const auto bothViewsFree = [](const char* third, const char* first) {
+            return CanClaimNode(false, third) && CanClaimNode(false, first);
+        };
+        Check(bothViewsFree("Actors/Character/slavetats/blank.dds", "") &&
+                bothViewsFree("Actors/Character/slavetats/blank.dds",
+                    "textures/actors/character/overlays/default.dds") &&
+                !bothViewsFree("Actors/Character/slavetats/blank.dds", "other/tattoo.dds") &&
+                !bothViewsFree("other/tattoo.dds", "Actors/Character/slavetats/blank.dds"),
+            "a tattoo visible in only one camera view lost its reservation");
         Check(OwnsRegisteredOrLive(true, false) &&
                 OwnsRegisteredOrLive(false, true) &&
                 !OwnsRegisteredOrLive(false, false),

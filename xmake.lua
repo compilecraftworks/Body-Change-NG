@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.3"
+local version = "1.3.4"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -221,6 +221,32 @@ target("BodyChangeNGPresetCatalogTests")
     add_files("tests/PresetCatalogTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp", "src/BodyChangeNG/CatalogRoots.cpp",
         "src/BodyChangeNG/BodyFamilyRules.cpp", "third_party/pugixml/src/pugixml.cpp")
     add_includedirs("src", "third_party/pugixml/src")
+
+target("BodyChangeNGDistributionPresetTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_files("tests/DistributionPresetTests.cpp", "src/BodyChangeNG/PresetCatalog.cpp",
+        "src/BodyChangeNG/CatalogRoots.cpp", "src/BodyChangeNG/BodyFamilyRules.cpp",
+        "third_party/pugixml/src/pugixml.cpp")
+    add_includedirs("src", "third_party/pugixml/src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "distribution-presets")
+        target:add("includedirs", generated)
+        local function extract(file, firstMarker, lastMarker, name)
+            local source = io.readfile(file)
+            local first = assert(source:find(firstMarker, 1, true))
+            local last = assert(source:find(lastMarker, first, true))
+            local content = source:sub(first, last - 1)
+            local output = path.join(generated, name)
+            if not os.isfile(output) or io.readfile(output) ~= content then io.writefile(output, content) end
+        end
+        extract("src/BodyChangeNG/UI.cpp", "    [[nodiscard]] bcn::body_family::Mask DistributionCatalogFamily(",
+            "    [[nodiscard]] RE::Actor* SelectedActor()", "distribution_body_items.inc")
+        extract("src/BodyChangeNG/Distribution.cpp", "    [[nodiscard]] std::vector<std::string> CompatiblePresetPoolIds(",
+            "    [[nodiscard]] std::vector<std::string> CompatiblePresetPool(", "distribution_preset_pool.inc")
+    end)
 
 target("BodyChangeNGUbeMorphTests")
     set_default(false)

@@ -685,7 +685,6 @@ namespace
             if (preset.male != selectedMale) continue;
             const auto presetMask = bcn::body_family::PresetMask(preset.family, preset.male);
             if (distributionSelecting) {
-                if ((presetMask & bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U) continue;
                 if (!bcn::body_family::Matches(presetMask, DistributionCatalogFamily(settings))) continue;
             } else if (!bcn::body_family::Matches(presetMask, actorFamily)) {
                 continue;
@@ -4111,86 +4110,96 @@ namespace bcn::ui
         const auto buttonWidth = [](const char* label) {
             return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0F;
         };
-        const auto reservedWidth = buttonWidth(refreshActorsLabel) + buttonWidth(outfitLabel) +
-            buttonWidth(settingsLabel) + ImGui::GetStyle().ItemSpacing.x * 3.0F;
-        const auto actorWidth = (std::max)(Scaled(150.0F), ImGui::GetContentRegionAvail().x - reservedWidth);
-        ImGui::SetNextItemWidth(actorWidth);
-        const auto actorSearch = ActorCatalog::Get().SearchSnapshot();
-        PrepareResizableDropdown((actorSearch.entries ? actorSearch.entries->size() : actors.size()) + 3U);
-        if (ImGui::BeginCombo("##actor", selectedName.c_str())) {
-            // Opening the actor combo must not immediately enter typing mode.
-            // Give the popup a tiny non-text default navigation item; the
-            // search field receives text ownership only after an explicit
-            // mouse/keyboard activation.
-            ImGui::Selectable("##actorComboFocusGuard", false,
-                ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(0.0F, 1.0F));
-            ImGui::SetItemDefaultFocus();
-            ImGui::SetNextItemWidth(-FLT_MIN);
-            const auto exactActorRequested = ImGui::InputTextWithHint("##actorSearch",
-                Text("이름 또는 RefID 입력 후 Enter로 전체 검색", "Name or RefID, Enter to search beyond nearby actors", "名称或 RefID，按 Enter 全局搜索"), &g_actorSearch,
-                ImGuiInputTextFlags_EnterReturnsTrue);
-            if (exactActorRequested) {
-                if (const auto formID = ExactActorFormID(g_actorSearch)) {
-                    if (auto* exactActor = ActorCatalog::Get().Resolve(*formID)) {
-                        SelectActor(exactActor->GetFormID());
-                        ImGui::CloseCurrentPopup();
-                        bcn::ui::Notify(exactActor->Is3DLoaded() ?
-                            Text("FormID 액터를 선택했습니다.", "Selected the FormID actor.", "已选择该 FormID 角色。") :
-                            Text("미로드 액터입니다. 더블클릭해 선택을 저장하면 3D 로드 시 적용합니다.", "Unloaded actor: double-click to save a choice for application when its 3D loads.", "未加载角色：双击保存选择，3D 加载后应用。"));
-                    } else {
-                        ActorCatalog::Get().Search(g_actorSearch);
-                        bcn::ui::Notify(Text("개별 NPC의 RefID를 사용하세요. BaseID는 개별 액터가 아닙니다.", "Use the NPC's RefID; a BaseID is not an individual actor.", "请使用 NPC 的 RefID；BaseID 不是独立角色。"));
-                    }
-                } else ActorCatalog::Get().Search(g_actorSearch);
-            }
-            ImGui::Separator();
-            const auto search = ActorCatalog::Get().SearchSnapshot();
-            const auto globalSearch = !search.query.empty() &&
-                search.query == bcn::actor_search::Normalize(g_actorSearch);
-            if (globalSearch) {
-                ImGui::TextDisabled("%s", search.failed ?
-                    Text("검색을 완료하지 못했습니다. Enter로 다시 검색하세요.", "Search could not complete. Press Enter to retry.", "搜索未完成，请按 Enter 重试。") : search.running ?
-                    Text("거리 제한 없이 검색 중...", "Searching beyond nearby actors...", "正在全局搜索...") :
-                    Text("거리·32명 제한 없는 검색 결과", "Search results without the nearby/32-NPC limit", "不限距离和32人限制的结果"));
-                if (!search.running && !search.failed && (!search.entries || search.entries->empty()))
-                    ImGui::TextWrapped("%s", Text("현재 게임에 등록된 개별 액터를 찾지 못했습니다. 아직 생성되지 않은 NPC 원본은 배포 조건을 사용하세요.",
-                        "No existing actor reference found. Use distribution rules for NPC bases that have not spawned yet.",
-                        "未找到独立角色。尚未生成的 NPC 请使用分发规则。"));
-            }
-            const auto drawActor = [&](const ActorEntry& entry) {
-                if (!ActorMatchesSearch(entry)) return;
-                const auto label = ActorLabel(entry);
-                ImGui::PushID(static_cast<int>(entry.formID));
-                if (ImGui::Selectable(label.c_str(), entry.formID == g_selectedActorFormID)) {
-                    if (ActorCatalog::Get().Resolve(entry.formID)) {
-                        SelectActor(entry.formID);
-                        ImGui::CloseCurrentPopup();
-                    } else {
-                        bcn::ui::Notify(Text("더 이상 존재하지 않는 액터입니다. 다시 검색하세요.",
-                            "This actor no longer exists. Search again.", "该角色已不存在，请重新搜索。"));
-                    }
+        if (g_distributionSelectionMode || g_showDistribution) {
+            const auto actionsWidth = buttonWidth(outfitLabel) + buttonWidth(settingsLabel) +
+                ImGui::GetStyle().ItemSpacing.x * 2.0F;
+            bcn::ui_text::FittedDisabledLine(Text(
+                "선택된 항목을 범위 지정하여 월드 NPC에게 배포",
+                "Distribute selected items to world NPCs within a chosen scope",
+                "指定范围，向世界 NPC 分发所选项目"),
+                (std::max)(0.0F, ImGui::GetContentRegionAvail().x - actionsWidth));
+        } else {
+            const auto reservedWidth = buttonWidth(refreshActorsLabel) + buttonWidth(outfitLabel) +
+                buttonWidth(settingsLabel) + ImGui::GetStyle().ItemSpacing.x * 3.0F;
+            const auto actorWidth = (std::max)(Scaled(150.0F), ImGui::GetContentRegionAvail().x - reservedWidth);
+            ImGui::SetNextItemWidth(actorWidth);
+            const auto actorSearch = ActorCatalog::Get().SearchSnapshot();
+            PrepareResizableDropdown((actorSearch.entries ? actorSearch.entries->size() : actors.size()) + 3U);
+            if (ImGui::BeginCombo("##actor", selectedName.c_str())) {
+                // Opening the actor combo must not immediately enter typing mode.
+                // Give the popup a tiny non-text default navigation item; the
+                // search field receives text ownership only after an explicit
+                // mouse/keyboard activation.
+                ImGui::Selectable("##actorComboFocusGuard", false,
+                    ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(0.0F, 1.0F));
+                ImGui::SetItemDefaultFocus();
+                ImGui::SetNextItemWidth(-FLT_MIN);
+                const auto exactActorRequested = ImGui::InputTextWithHint("##actorSearch",
+                    Text("이름 또는 RefID 입력 후 Enter로 전체 검색", "Name or RefID, Enter to search beyond nearby actors", "名称或 RefID，按 Enter 全局搜索"), &g_actorSearch,
+                    ImGuiInputTextFlags_EnterReturnsTrue);
+                if (exactActorRequested) {
+                    if (const auto formID = ExactActorFormID(g_actorSearch)) {
+                        if (auto* exactActor = ActorCatalog::Get().Resolve(*formID)) {
+                            SelectActor(exactActor->GetFormID());
+                            ImGui::CloseCurrentPopup();
+                            bcn::ui::Notify(exactActor->Is3DLoaded() ?
+                                Text("FormID 액터를 선택했습니다.", "Selected the FormID actor.", "已选择该 FormID 角色。") :
+                                Text("미로드 액터입니다. 더블클릭해 선택을 저장하면 3D 로드 시 적용합니다.", "Unloaded actor: double-click to save a choice for application when its 3D loads.", "未加载角色：双击保存选择，3D 加载后应用。"));
+                        } else {
+                            ActorCatalog::Get().Search(g_actorSearch);
+                            bcn::ui::Notify(Text("개별 NPC의 RefID를 사용하세요. BaseID는 개별 액터가 아닙니다.", "Use the NPC's RefID; a BaseID is not an individual actor.", "请使用 NPC 的 RefID；BaseID 不是独立角色。"));
+                        }
+                    } else ActorCatalog::Get().Search(g_actorSearch);
                 }
-                ImGui::PopID();
-            };
-            if (globalSearch) {
-                if (search.entries) {
-                    ImGuiListClipper clipper;
-                    clipper.Begin(static_cast<int>(search.entries->size()));
-                    while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
-                        drawActor((*search.entries)[i]);
+                ImGui::Separator();
+                const auto search = ActorCatalog::Get().SearchSnapshot();
+                const auto globalSearch = !search.query.empty() &&
+                    search.query == bcn::actor_search::Normalize(g_actorSearch);
+                if (globalSearch) {
+                    ImGui::TextDisabled("%s", search.failed ?
+                        Text("검색을 완료하지 못했습니다. Enter로 다시 검색하세요.", "Search could not complete. Press Enter to retry.", "搜索未完成，请按 Enter 重试。") : search.running ?
+                        Text("거리 제한 없이 검색 중...", "Searching beyond nearby actors...", "正在全局搜索...") :
+                        Text("거리·32명 제한 없는 검색 결과", "Search results without the nearby/32-NPC limit", "不限距离和32人限制的结果"));
+                    if (!search.running && !search.failed && (!search.entries || search.entries->empty()))
+                        ImGui::TextWrapped("%s", Text("현재 게임에 등록된 개별 액터를 찾지 못했습니다. 아직 생성되지 않은 NPC 원본은 배포 조건을 사용하세요.",
+                            "No existing actor reference found. Use distribution rules for NPC bases that have not spawned yet.",
+                            "未找到独立角色。尚未生成的 NPC 请使用分发规则。"));
                 }
-            } else for (const auto& entry : actors) drawActor(entry);
-            ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button(refreshActorsLabel)) {
-            ActorCatalog::Get().Refresh(false);
-            if (!bcn::actor_search::Normalize(g_actorSearch).empty())
-                ActorCatalog::Get().Search(g_actorSearch);
-            actors = ActorCatalog::Get().Snapshot();
-            if (std::ranges::find(actors, g_selectedActorFormID, &ActorEntry::formID) == actors.end() && !actors.empty() &&
-                !ActorCatalog::Get().Resolve(g_selectedActorFormID)) {
-                SelectActor(actors.front().formID);
+                const auto drawActor = [&](const ActorEntry& entry) {
+                    if (!ActorMatchesSearch(entry)) return;
+                    const auto label = ActorLabel(entry);
+                    ImGui::PushID(static_cast<int>(entry.formID));
+                    if (ImGui::Selectable(label.c_str(), entry.formID == g_selectedActorFormID)) {
+                        if (ActorCatalog::Get().Resolve(entry.formID)) {
+                            SelectActor(entry.formID);
+                            ImGui::CloseCurrentPopup();
+                        } else {
+                            bcn::ui::Notify(Text("더 이상 존재하지 않는 액터입니다. 다시 검색하세요.",
+                                "This actor no longer exists. Search again.", "该角色已不存在，请重新搜索。"));
+                        }
+                    }
+                    ImGui::PopID();
+                };
+                if (globalSearch) {
+                    if (search.entries) {
+                        ImGuiListClipper clipper;
+                        clipper.Begin(static_cast<int>(search.entries->size()));
+                        while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i)
+                            drawActor((*search.entries)[i]);
+                    }
+                } else for (const auto& entry : actors) drawActor(entry);
+                ImGui::EndCombo();
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(refreshActorsLabel)) {
+                ActorCatalog::Get().Refresh(false);
+                if (!bcn::actor_search::Normalize(g_actorSearch).empty())
+                    ActorCatalog::Get().Search(g_actorSearch);
+                actors = ActorCatalog::Get().Snapshot();
+                if (std::ranges::find(actors, g_selectedActorFormID, &ActorEntry::formID) == actors.end() && !actors.empty() &&
+                    !ActorCatalog::Get().Resolve(g_selectedActorFormID)) {
+                    SelectActor(actors.front().formID);
+                }
             }
         }
         ImGui::SameLine();

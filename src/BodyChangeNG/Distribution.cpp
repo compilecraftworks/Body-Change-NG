@@ -479,17 +479,15 @@ namespace
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorMale = base->GetSex() != RE::SEX::kFemale;
-        std::vector<std::string> legacyPool;
-        legacyPool.reserve(pool.size());
-        for (const auto& id : pool) {
-            const auto preset = bcn::PresetCatalog::Get().Find(id);
-            if (!preset || preset->male != actorMale ||
-                (bcn::body_family::PresetMask(preset->family, preset->male) &
-                    bcn::body_family::Bit(bcn::body_family::Family::ube)) != 0U) continue;
-            legacyPool.push_back(id);
-        }
+        // Filter before choosing/storing a rule result, not only at QueueApply.
+        // The global candidate family must not override a known actor family.
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        auto compatiblePool = bcn::PresetCatalog::Get().CompatibleIds(
+            pool, actorMale, distributionFamily);
+        if (actorFamily == 0U || actorFamily == distributionFamily) return compatiblePool;
+        // CompatibleIds reads catalog metadata without copying slider vectors.
         return bcn::PresetCatalog::Get().CompatibleIds(
-            legacyPool, actorMale, distributionFamily);
+            compatiblePool, actorMale, actorFamily);
     }
 
     [[nodiscard]] std::vector<std::string> CompatiblePresetPool(

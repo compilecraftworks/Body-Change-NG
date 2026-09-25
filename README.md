@@ -1,4 +1,4 @@
-# Body Change NG — v1.3.3
+# Body Change NG — v1.3.4
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,27 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.3
+## Current version — v1.3.4
+
+NPC distribution mode now replaces the actor dropdown/refresh controls with
+world-NPC scope guidance in every supported tab. UBE body-preset candidates
+are restored in both the selection list and automatic rule evaluation. The
+ordinary list and previews remain actor-compatible; automatic presets must
+also match the receiving NPC's known body family. This does not convert
+NPC bodies or change the existing skin/futanari distribution restrictions.
+
+Fix overlay slots remaining unavailable after SlaveTats / SlaveTats NG has
+released them but left its blank DDS on the live node. Reuse only the exact
+known blank resource with no registered texture, tint or alpha overrides.
+Keep actual tattoos, transparent reserved paints, both camera views and other
+mods' similarly named textures protected. No blanket overlay reset, polling,
+persistent cache or RaceMenu ABI changes are introduced.
+
+- [English changelog](CHANGELOG.md#134) · [한국어 변경 내역](CHANGELOG-KO.md#134)
+- [v1.3.4 Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.4-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.4-KO.html)
+- [v1.3.4 English text](docs/NEXUS-CHANGELOG-v1.3.4-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.4-KO.txt)
+
+## Preserved v1.3.3 distribution authoring
 
 Distribution schema 8 uses readable names: BodySlide/BCNG preset names,
 skin/futa pack names, registered overlay names and named targets such as

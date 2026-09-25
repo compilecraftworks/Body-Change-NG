@@ -2,6 +2,16 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.4
+
+- In every NPC-distribution tab, replace the actor dropdown and Refresh actors button with the one-line title "Distribute selected items to world NPCs within a chosen scope". Provide Korean, English and Chinese text fitted to the available width. Keep Outfit/randomization and Mod settings available. Retain the title while the conditions popup is open and restore actor controls on leaving distribution mode.
+- Restore UBE body presets, including UBE Zeroed presets, in the configured distribution candidate list and the actual rule-selection pool. The ordinary list remains actor-filtered; distribution candidates follow the configured family, with actor compatibility still controlling previews.
+- Filter automatic preset candidates against both the configured family and the actual NPC's known family before recording a selection. Preserve the existing unknown-family fallback and sex checks. Read catalog metadata without copying each candidate's slider vector. This does not convert NPC bodies or add independent simultaneous per-family distribution settings; skin/futanari distribution restrictions are unchanged.
+- Recognize the exact SlaveTats blank texture left on an overlay node after its registered overrides have been removed. Released Face/Body/Hands/Feet slots can be reused and counted correctly instead of appearing as exhausted capacity (for example, 0/0).
+- Keep every registered texture, tint and alpha reservation protected, including invisible tattoos. Check both loaded camera views and do not treat arbitrary files named blank.dds as free slots. No other mod's tattoo records are erased.
+- Preserve existing ownership matching, cumulative checkbox previews, color editing, deferred application and save restoration. No new cache, polling loop, dependency, runtime layout, RaceMenu interface or serialization changes.
+- Verification: Release build and 37 offline regression executables passed, including the actual UI/preset-pool functions, 1,000 repeated list-mode cycles and fitted header text at multiple sizes/scales. A 1,200,000-call allocation probe retained zero blocks/bytes in the changed overlay-slot predicate. This is not an in-game or whole-engine leak guarantee. See [verification](docs/RELEASE-VERIFICATION-v1.3.4-KO.md).
+
 ## 1.3.3
 
 - Added human-readable schema 8 for NPC rules: use BodySlide/BCNG preset names, skin and futa pack names, and registered overlay names instead of internal IDs.

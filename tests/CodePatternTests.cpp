@@ -459,6 +459,17 @@ int main()
     const auto bodyItemsSource = uiSection("std::vector<CatalogItem> BodyItems()", "RE::Actor* SelectedActor()");
     Require(bodyItemsSource.contains("PresetCatalog::Get().ListSnapshot()") &&
         !bodyItemsSource.contains("PresetCatalog::Get().Snapshot()"));
+    Require(!bodyItemsSource.contains("Family::ube")); // No unconditional UBE exclusion.
+    const auto worldDistributionHeader = uiSection("if (g_distributionSelectionMode || g_showDistribution)",
+        "const auto* selectedActor = SelectedActor();");
+    const auto actorBranch = worldDistributionHeader.find("} else {");
+    Require(actorBranch != std::string_view::npos &&
+        worldDistributionHeader.substr(0, actorBranch).contains("Distribute selected items to world NPCs within a chosen scope") &&
+        !worldDistributionHeader.substr(0, actorBranch).contains("BeginCombo") &&
+        worldDistributionHeader.find("ImGui::BeginCombo(\"##actor\"") > actorBranch &&
+        worldDistributionHeader.find("ImGui::Button(refreshActorsLabel)") > actorBranch &&
+        worldDistributionHeader.contains("ImGui::Button(outfitLabel)") &&
+        worldDistributionHeader.contains("ImGui::Button(settingsLabel)"));
     const auto bodyRowsSource = uiSection("void DrawCatalog(", "void DrawSkinCatalog()");
     Require(bodyRowsSource.contains("ImGuiListClipper") && bodyRowsSource.contains("IncludeItemByIndex") &&
         bodyRowsSource.contains("Scaled(53.0F) + ImGui::GetStyle().ItemSpacing.y"));
@@ -592,6 +603,20 @@ int main()
         "RaceMenuOverlay.cpp", std::ios::binary);
     Require(overlayFile.good());
     const std::string overlaySource((std::istreambuf_iterator<char>(overlayFile)), {});
+    const auto freeBegin = overlaySource.find("bool NodeIsFree(");
+    const auto freeEnd = overlaySource.find("bool LiveNodeMatches(", freeBegin);
+    Require(freeBegin != std::string::npos && freeEnd != std::string::npos);
+    const auto freeBody = std::string_view(overlaySource).substr(freeBegin, freeEnd - freeBegin);
+    // Releasing SlaveTats' live blank DDS must not bypass any registered
+    // texture/tint/alpha reservation, or ignore the other loaded camera view.
+    Require(freeBody.contains("index < 8U") &&
+        freeBody.contains("bcn::overlay::kTextureKey, index)) return false;") &&
+        freeBody.contains("bcn::overlay::kTintKey, bcn::overlay::kScalarIndex)") &&
+        freeBody.contains("bcn::overlay::kAlphaKey, bcn::overlay::kScalarIndex)) return false;") &&
+        freeBody.contains("for (const bool firstPerson : { false, true })") &&
+        freeBody.contains("CanClaimNode(false, diffuse)"));
+    Require(overlaySource.contains("accounting.Observe(!NodeIsFree(interfaces, actor, female, *node)") &&
+        overlaySource.contains("if (node && NodeIsFree(interfaces, actor, female, *node))"));
     const auto colorBegin = overlaySource.find("ApplyResult QueueColor(");
     const auto colorEnd = overlaySource.find("ApplyResult QueueClear(", colorBegin);
     Require(colorBegin != std::string::npos && colorEnd != std::string::npos);

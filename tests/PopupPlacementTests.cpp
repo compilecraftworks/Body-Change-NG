@@ -153,6 +153,46 @@ int main()
         ImGui::End();
         ImGui::Render();
     }
+    // The shared distribution header reserves the old actor/refresh area,
+    // leaving both right-side action buttons on the same row at every scale.
+    const auto fontsBeforeHeader = io.Fonts->Fonts.Size;
+    for (const auto scale : { 0.75F, 1.0F, 1.25F, 1.875F }) {
+        io.FontGlobalScale = scale;
+        for (const auto windowWidth : { 480.0F, 720.0F, 1050.0F }) {
+            for (const auto* text : {
+                     "선택된 항목을 범위 지정하여 월드 NPC에게 배포",
+                     "Distribute selected items to world NPCs within a chosen scope",
+                     "指定范围，向世界 NPC 分发所选项目" }) {
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+                ImGui::SetNextWindowSize(ImVec2(windowWidth * scale, 400.0F));
+                ImGui::Begin("Distribution header test");
+                const auto origin = ImGui::GetCursorScreenPos();
+                const auto fullWidth = ImGui::GetContentRegionAvail().x;
+                const auto actionWidth = ImGui::CalcTextSize("Outfit / randomization").x +
+                    ImGui::CalcTextSize("Mod settings").x + ImGui::GetStyle().FramePadding.x * 4.0F +
+                    ImGui::GetStyle().ItemSpacing.x * 2.0F;
+                const auto helpWidth = (std::max)(0.0F, fullWidth - actionWidth);
+                auto* draw = ImGui::GetWindowDrawList();
+                const auto first = draw->VtxBuffer.Size;
+                bcn::ui_text::FittedDisabledLine(text, helpWidth);
+                Require(std::abs(ImGui::GetItemRectSize().x - helpWidth) < 1.0F);
+                Require(ImGui::GetItemRectSize().y == ImGui::GetFrameHeight());
+                for (auto vertex = first; vertex < draw->VtxBuffer.Size; ++vertex)
+                    Require(draw->VtxBuffer[vertex].pos.x <= origin.x + helpWidth + 1.0F);
+                ImGui::SameLine();
+                ImGui::Button("Outfit / randomization");
+                Require(std::abs(ImGui::GetItemRectMin().y - origin.y) < 1.0F);
+                Require(ImGui::GetItemRectMin().x >= origin.x + helpWidth);
+                ImGui::SameLine();
+                ImGui::Button("Mod settings");
+                Require(ImGui::GetItemRectMax().x <= origin.x + fullWidth + 1.0F);
+                ImGui::End();
+                ImGui::Render();
+            }
+        }
+    }
+    Require(io.Fonts->Fonts.Size == fontsBeforeHeader);
     // Title decoration must survive the content clip installed by Begin().
     // At narrow widths every character must still emit geometry, with no
     // overlap over the title/X and no extra body row or font-size cache entry.

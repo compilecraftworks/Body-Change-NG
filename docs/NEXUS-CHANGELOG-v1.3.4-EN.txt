@@ -1,0 +1,20 @@
+Body Change NG v1.3.4
+Overlay slots, UBE preset distribution and a clearer distribution header
+
+NPC distribution
+- In every supported tab, replace the actor dropdown and Refresh actors button with "Distribute selected items to world NPCs within a chosen scope". Korean, English and Chinese titles fit on one line. Outfit/randomization and Mod settings stay available. Actor controls return when distribution mode ends.
+- Restore UBE body presets, including UBE Zeroed, in the configured distribution list and actual rule-selection pool. The ordinary list still follows the selected actor; distribution candidates follow the configured body family, while previews remain actor-compatible.
+- Before recording an automatic preset choice, check both the configured body family and the receiving NPC's known family. Preserve sex checks and the unknown-family fallback. Read candidate metadata without copying every preset's slider vector.
+- This does not convert NPC bodies or add simultaneous per-family distribution settings. Existing skin/futanari automatic-distribution restrictions are unchanged.
+
+Overlay slots
+- Recognize the exact blank texture SlaveTats / SlaveTats NG can leave on a released node after removing its registered overrides. Released Face/Body/Hands/Feet slots can be reused instead of appearing exhausted, such as 0/0.
+- Keep every registered texture, tint and alpha reservation protected, including invisible tattoos. Check both loaded camera views; unrelated blank.dds files and other mods' tattoo records remain untouched.
+- Existing ownership checks, cumulative checkbox previews, color editing, deferred application and save restoration are preserved. No new cache, polling loop, dependency, runtime layout, RaceMenu interface or save-format change.
+
+Updating
+- Preserve your customized BodyChangeNGdistribution.json. Its schema remains 8; the shipped template has no active rules.
+
+Verification
+- Release build and 37 offline regression executables passed, including production UI/preset-pool functions, 1,000 repeated list-mode cycles and 36 header layout combinations.
+- A 1,200,000-call allocation probe retained zero blocks/bytes in the changed overlay-slot predicate. This is not a whole-engine leak guarantee. No in-game test was performed for this release.

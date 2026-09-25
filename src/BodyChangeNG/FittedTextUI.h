@@ -48,9 +48,11 @@ namespace bcn::ui_text
         draw->PopClipRect();
     }
 
-    inline void FittedDisabledLine(const char* text)
+    inline void FittedDisabledLine(const char* text, const float requestedWidth = -1.0F)
     {
-        const auto width = (std::max)(0.0F, ImGui::GetContentRegionAvail().x);
+        const auto available = (std::max)(0.0F, ImGui::GetContentRegionAvail().x);
+        const auto width = requestedWidth < 0.0F ? available :
+            (std::clamp)(requestedWidth, 0.0F, available);
         const auto height = ImGui::GetFrameHeight();
         const auto origin = ImGui::GetCursorScreenPos();
         const auto measured = ImGui::CalcTextSize(text);
