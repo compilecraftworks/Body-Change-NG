@@ -2559,7 +2559,7 @@ namespace
         visible.reserve(profiles.size());
         for (const auto& profile : profiles) {
             if (distributionSelecting) {
-                if (profile.type == bcn::FutanariSkinType::ubeTrx) continue;
+                if (bcn::IsUbeFutanariSkinType(profile.type)) continue;
             } else if (!actorType || profile.type != *actorType ||
                 !bcn::FutanariSkinTypeMatchesActor(profile.type, actorFamily)) {
                 continue;
@@ -2710,9 +2710,9 @@ namespace
 
             if (visible.empty()) {
                 ImGui::TextWrapped("%s", Text(
-                    "현재 유형에 맞는 스킨이 없습니다. UBE SOS/TNG는 Textures\\!UBE\\Body, CBBE 3BA+TRX는 Textures\\[TRX] Futa addon\\Regular\\Default, ERF는 Textures\\ERF_Futanari\\FairSkinCBBE 경로를 사용하세요.",
-                    "No matching skin was found. Use Textures\\!UBE\\Body for UBE SOS/TNG, Textures\\[TRX] Futa addon\\Regular\\Default for CBBE 3BA+TRX, or Textures\\ERF_Futanari\\FairSkinCBBE for ERF.",
-                    "未找到匹配皮肤。UBE SOS/TNG 使用 Textures\\!UBE\\Body，CBBE 3BA+TRX 使用 Textures\\[TRX] Futa addon\\Regular\\Default，ERF 使用 Textures\\ERF_Futanari\\FairSkinCBBE。"));
+                    "현재 유형에 맞는 스킨이 없습니다. UBE SOS/TNG는 Textures\\!UBE\\Body, UBE+TRX는 Textures\\[TRX] Futa addon UBE, CBBE 3BA+TRX는 Textures\\[TRX] Futa addon\\Regular\\Default, ERF는 Textures\\ERF_Futanari\\FairSkinCBBE 경로를 사용하세요.",
+                    "No matching skin was found. Use Textures\\!UBE\\Body for native UBE SOS/TNG, Textures\\[TRX] Futa addon UBE for UBE+TRX, Textures\\[TRX] Futa addon\\Regular\\Default for CBBE 3BA+TRX, or Textures\\ERF_Futanari\\FairSkinCBBE for ERF.",
+                    "未找到匹配皮肤。UBE SOS/TNG 使用 Textures\\!UBE\\Body，UBE+TRX 使用 Textures\\[TRX] Futa addon UBE，CBBE 3BA+TRX 使用 Textures\\[TRX] Futa addon\\Regular\\Default，ERF 使用 Textures\\ERF_Futanari\\FairSkinCBBE。"));
             }
             const auto entryRowBegin = row;
             ImGuiListClipper clipper;

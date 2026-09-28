@@ -2,6 +2,29 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.5
+
+### Skin previews
+
+- Fix the player-face preview path that could be overwritten by RaceMenu's saved textures after a 3D update, causing the preview to differ from the confirmed skin. Preview the face using temporary RaceMenu texture keys as well as the visible texture. This applies to supported player body families, including UBE and CBBE 3BA.
+- Restore the original keys when cancelling, switching actors, opening RaceMenu, resetting a session, or abandoning a failed preview. Confirm through the normal persistent application path. Do not overwrite keys subsequently changed by another mod.
+- Restore temporary face keys before saving and keep them suspended until the save operation has finished. Keep the existing co-save format and NPC face-persistence policy; body, hand and foot skin routing is unchanged.
+- Use bounded recovery for already queued face-texture writes during the active preview. No whole-world NPC scan, permanent retry loop, or new compatibility patch for RSV/Selector is added.
+
+### UBE skin effects
+
+- UBE body skins replace only the six head/body _d, _n and _sk base maps. For installed loose DDS effects, preserve the MO2-winning default RFAOS/wet maps beside the cached normal map instead of selecting same-named effects from the skin pack. Original DDS files and effect settings remain unchanged.
+
+### UBE and 3BA futanari skins
+
+- Recognize native UBE SOS registration and the shared genital slot 54 used by native UBE and TRX UBE addons. Keep UBE body slot 53 out of the genital texture route.
+- Separate native UBE skins from TRX UBE skins. Add Data\Futanari\<pack>\Textures\[TRX] Futa addon UBE\schlong.dds and its matching maps; normal actor lists show only the matching addon type. Existing native UBE selection and favorite IDs remain valid.
+- Preserve the existing CBBE 3BA TRX/ERF slot-52 route, male-addon handling and hair materials. Do not change SOS/TNG scripts, addon plugins, meshes, equipment slots, or automatic-distribution eligibility.
+
+### Updating
+
+- Preserve settings, customized distribution rules, favorites, skin packs and texture caches when replacing the mod. No new game or save cleaning is required. Preset morph calculations, correction/randomization recipes, controls and supported game versions are unchanged.
+
 ## 1.3.4
 
 ### Body presets and outfit correction

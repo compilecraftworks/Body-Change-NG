@@ -3,6 +3,7 @@
 #include "BodyChangeNG/AssetIdentity.h"
 
 #include "BodyChangeNG/BodyFamily.h"
+#include "BodyChangeNG/FutanariRouting.h"
 #include "BodyChangeNG/SkinLayout.h"
 
 #include <array>
@@ -112,9 +113,10 @@ namespace bcn
 
     enum class FutanariSkinType : std::uint8_t
     {
-        ubeTrx,
+        ubeTrx, // Historical value/ID: native UBE malebody_1 textures, not TRX.
         cbbeTrx,
-        erf
+        erf,
+        ubeTrxAddon
     };
 
     struct FutanariSkinProfile final
@@ -129,6 +131,21 @@ namespace bcn
 
     [[nodiscard]] std::string FutanariSkinTypeLabel(FutanariSkinType a_type);
 
+    [[nodiscard]] constexpr bool IsUbeFutanariSkinType(const FutanariSkinType type) noexcept
+    { return type == FutanariSkinType::ubeTrx || type == FutanariSkinType::ubeTrxAddon; }
+
+    [[nodiscard]] constexpr std::optional<FutanariSkinType> FutanariSkinTypeForAddon(
+        const futanari::AddonKind kind, const body_family::Mask family) noexcept
+    {
+        const auto ube = (family & body_family::Bit(body_family::Family::ube)) != 0U;
+        const auto cbbe = (family & body_family::Bit(body_family::Family::cbbe)) != 0U;
+        if (kind == futanari::AddonKind::ube && ube) return FutanariSkinType::ubeTrx;
+        if (kind == futanari::AddonKind::ubeTrx && ube) return FutanariSkinType::ubeTrxAddon;
+        if (kind == futanari::AddonKind::trx && cbbe) return FutanariSkinType::cbbeTrx;
+        if (kind == futanari::AddonKind::erf && cbbe) return FutanariSkinType::erf;
+        return std::nullopt;
+    }
+
     [[nodiscard]] constexpr bool FutanariSkinTypeMatchesActor(
         const FutanariSkinType type, const body_family::Mask actorFamily) noexcept
     {
@@ -136,8 +153,8 @@ namespace bcn
         const auto legacy = body_family::kFemaleFamilies & ~ube;
         const auto hasUbe = (actorFamily & ube) != 0U;
         const auto hasLegacy = (actorFamily & legacy) != 0U;
-        if (hasUbe && !hasLegacy) return type == FutanariSkinType::ubeTrx;
-        if (hasLegacy && !hasUbe) return type != FutanariSkinType::ubeTrx;
+        if (hasUbe && !hasLegacy) return IsUbeFutanariSkinType(type);
+        if (hasLegacy && !hasUbe) return !IsUbeFutanariSkinType(type);
         return true;
     }
 

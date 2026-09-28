@@ -128,7 +128,7 @@ namespace
         registry.availability.providers |= static_cast<std::uint8_t>(added.provider);
         registry.availability.trx = registry.availability.trx || added.kind == AddonKind::trx;
         registry.availability.erf = registry.availability.erf || added.kind == AddonKind::erf;
-        registry.availability.ube = registry.availability.ube || added.kind == AddonKind::ube;
+        registry.availability.ube = registry.availability.ube || bcn::futanari::IsUbeAddon(added.kind);
     }
 
     [[nodiscard]] bool IsFemaleTngAddon(const RE::TESObjectARMO* armor)
@@ -159,11 +159,11 @@ namespace
         for (auto* armor : data->GetFormArray<RE::TESObjectARMO>()) {
             if (!armor || (armor->GetSlotMask().underlying() & slot52) == 0U) continue;
             for (auto* addon : armor->armorAddons) {
-                if (!addon || (addon->GetSlotMask().underlying() & slot52) == 0U ||
-                    !HasFemaleModel(addon)) continue;
+                if (!addon || !HasFemaleModel(addon)) continue;
                 const auto signals = FemaleModelSignals(armor, addon);
                 const auto kind = KindFromSignals(signals);
-                if (kind == AddonKind::none) continue;
+                if (kind == AddonKind::none || bcn::futanari::GenitalSlots(kind,
+                        armor->GetSlotMask().underlying(), addon->GetSlotMask().underlying()) == 0U) continue;
                 const auto provider = IsFemaleTngAddon(armor) ? Provider::tng :
                     IsSosAddon(armor, signals) ? Provider::sos : Provider::none;
                 AddInstalled(registry, {
@@ -175,17 +175,18 @@ namespace
         }
 
         // SOS keeps the selected addon in its addon-specific faction even
-        // while the slot-52 armor is covered or temporarily unequipped.
+        // while the genital armor is covered or temporarily unequipped.
         for (auto* faction : data->GetFormArray<RE::TESFaction>()) {
             if (!faction) continue;
             std::string signals;
             AppendFormSignals(signals, faction);
             const auto plugin = SourcePlugin(faction);
-            const auto lower = LowerAscii(signals);
-            if (!lower.contains("faction") ||
-                (!lower.contains("futa") && !lower.contains("futanari"))) continue;
+            const auto* editorID = faction->GetFormEditorID();
+            const auto* name = faction->GetName();
             for (const auto& addon : registry.addons) {
-                if (addon.provider == Provider::sos && addon.plugin == plugin) {
+                if (addon.provider == Provider::sos && addon.plugin == plugin &&
+                    bcn::futanari::IsAddonFaction(addon.kind, editorID ? editorID : "",
+                        name ? name : "", signals)) {
                     registry.sosFactions.emplace_back(faction, addon.kind);
                 }
             }
@@ -198,24 +199,6 @@ namespace
         std::scoped_lock lock(g_registryLock);
         if (!g_registry.scanned) Scan(g_registry);
         return g_registry;
-    }
-
-    [[nodiscard]] std::optional<bcn::FutanariSkinType> TypeFor(
-        const AddonKind kind, const bcn::body_family::Mask actorFamily)
-    {
-        const auto ube = bcn::body_family::Bit(bcn::body_family::Family::ube);
-        const auto cbbe = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
-        if (kind == AddonKind::ube && (actorFamily & ube) != 0U) {
-            return bcn::FutanariSkinType::ubeTrx;
-        }
-        if (kind == AddonKind::trx) {
-            if ((actorFamily & ube) != 0U) return bcn::FutanariSkinType::ubeTrx;
-            if ((actorFamily & cbbe) != 0U) return bcn::FutanariSkinType::cbbeTrx;
-        }
-        if (kind == AddonKind::erf && (actorFamily & cbbe) != 0U) {
-            return bcn::FutanariSkinType::erf;
-        }
-        return std::nullopt;
     }
 
     [[nodiscard]] std::optional<AddonKind> SkinArmorKind(RE::Actor* actor)
@@ -270,7 +253,7 @@ namespace bcn::futanari_support
         const auto family = body_family::ResolveActor(actor);
         if (registry.availability.Has(Provider::tng) &&
             base->HasKeywordString("TNG_Gentlewoman")) {
-            if (const auto kind = SkinArmorKind(actor)) return TypeFor(*kind, family);
+            if (const auto kind = SkinArmorKind(actor)) return FutanariSkinTypeForAddon(*kind, family);
         }
 
         std::optional<AddonKind> sosKind;
@@ -281,7 +264,7 @@ namespace bcn::futanari_support
                 sosKind = kind;
             }
         }
-        return sosKind ? TypeFor(*sosKind, family) : std::nullopt;
+        return sosKind ? FutanariSkinTypeForAddon(*sosKind, family) : std::nullopt;
     }
 
     bool Registered(RE::Actor* actor)

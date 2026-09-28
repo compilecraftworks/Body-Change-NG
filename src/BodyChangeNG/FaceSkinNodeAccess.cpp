@@ -32,10 +32,11 @@ namespace
     public:
         void Int(std::int32_t) override {}
         void Float(float) override {}
-        void String(const char* value) override { text = value ? value : ""; }
+        void String(const char* value) override { text = value ? value : ""; stringReceived = true; }
         void Bool(bool) override {}
         void TextureSet(const RE::BGSTextureSet*) override {}
         std::string text;
+        bool stringReceived{};
     };
 }
 
@@ -172,5 +173,68 @@ namespace bcn::face_skin
             static_cast<IOverrideInterfaceV2*>(interface_)->RemoveNodeOverride(actor, female, node.c_str(), textureKey, static_cast<std::uint8_t>(channel));
         }
         return true;
+    }
+
+    bool NodeAccess::ReadSaved(RE::Actor* actor, bool female, const std::string& node,
+        unsigned channel, SavedKey& value) const
+    {
+        value = {};
+        if (!interface_ || !actor || node.empty() || std::ranges::find(kChannels, channel) == kChannels.end()) return false;
+        const auto index = static_cast<std::uint8_t>(channel);
+        if (abi_ == NodeOverrideAbi::legacyV1) {
+            const RE::BSFixedString name(node);
+            const auto* found = static_cast<IOverrideInterfaceV1*>(interface_)->GetNodeOverride(actor, female, name, textureKey, index);
+            if (!found || found->type == LegacyOverrideVariant::kTypeNone) return true;
+            if (found->type != LegacyOverrideVariant::kTypeString || !found->string) return false;
+            value.legacy = *found;
+            value.path = value.legacy.string->c_str();
+        } else {
+            auto* api = static_cast<IOverrideInterfaceV2*>(interface_);
+            if (!api->HasNodeOverride(actor, female, node.c_str(), textureKey, index)) return true;
+            StringResult result;
+            if (!api->GetNodeOverride(actor, female, node.c_str(), textureKey, index, result) || !result.stringReceived) return false;
+            value.path = std::move(result.text);
+        }
+        value.present = true;
+        return true;
+    }
+
+    bool NodeAccess::RestoreSaved(RE::Actor* actor, bool female, const std::string& node,
+        unsigned channel, const SavedKey& value) const
+    {
+        if (!interface_ || !actor || node.empty() || std::ranges::find(kChannels, channel) == kChannels.end()) return false;
+        if (!value.present) return Remove(actor, female, node, channel);
+        if (abi_ == NodeOverrideAbi::legacyV1) {
+            if (value.legacy.type != LegacyOverrideVariant::kTypeString || !value.legacy.string) return false;
+            const RE::BSFixedString name(node);
+            auto original = value.legacy;
+            static_cast<IOverrideInterfaceV1*>(interface_)->AddNodeOverride(actor, female, name, original);
+        } else {
+            StringValue original(value.path);
+            static_cast<IOverrideInterfaceV2*>(interface_)->AddNodeOverride(actor, female, node.c_str(),
+                textureKey, static_cast<std::uint8_t>(channel), original);
+        }
+        return true;
+    }
+
+    bool NodeAccess::SaveCurrent(RE::Actor* actor, bool female, const std::string& node,
+        unsigned channel, const std::string& path) const
+    {
+        if (!interface_ || path.empty() || !Valid(actor, node, channel)) return false;
+        SavedKey current;
+        current.present = true;
+        current.path = path;
+        if (abi_ == NodeOverrideAbi::legacyV1) {
+            const RE::BSFixedString name(node);
+            current.legacy.key = textureKey;
+            current.legacy.index = static_cast<std::int8_t>(channel);
+            static_cast<IOverrideInterfaceV1*>(interface_)->GetNodeProperty(actor, false, name, &current.legacy);
+            if (current.legacy.type != LegacyOverrideVariant::kTypeString || !current.legacy.string ||
+                !Owns(current.legacy.string->c_str(), path)) return false;
+        } else {
+            std::string live;
+            if (!Read(actor, female, node, channel, false, live) || !Owns(live, path)) return false;
+        }
+        return RestoreSaved(actor, female, node, channel, current);
     }
 }

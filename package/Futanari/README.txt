@@ -1,4 +1,4 @@
-Body Change NG v1.3.4 — Futanari 설치 안내
+Body Change NG v1.3.5 — Futanari 설치 안내
 
 [한국어]
 설치된 후타스킨 모드 폴더를 통째로 이 Futanari 폴더 안에 복사하세요.
@@ -7,6 +7,7 @@ FOMOD는 모드 매니저에서 옵션을 고른 설치 결과 폴더를 사용�
 
 게임 Data 기준 전체 DDS 경로 예시:
 Data\Futanari\My UBE Addon Skin\Textures\!UBE\Body\malebody_1_d.dds
+Data\Futanari\My UBE TRX Skin\Textures\[TRX] Futa addon UBE\schlong.dds
 Data\Futanari\My TRX Skin\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
 Data\Futanari\My ERF Skin\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong.dds
 
@@ -24,6 +25,7 @@ MO2 모드 최상위는 게임 Data에 해당하므로 모드 안에 Data를 또
 - 수동 변경은 SOS/TNG에 지원 후타 애드온으로 등록된 여성 액터만 가능합니다.
 - 등록된 액터가 아직 없어도 지원 여성 애드온을 설치했다면 탭과 배포 도구는 활성화됩니다.
 - 스킨 선택은 애드온 설치·후타 등록·장착을 대신하지 않습니다.
+- UBE 기본 애드온과 TRX UBE는 서로 다른 스킨 유형입니다. 현재 등록·장착된 애드온에 맞는 목록만 표시합니다.
 - 애드온 본체와 선행 모드는 원래 방식으로 정상 설치하세요.
 - 일반 남성 SOS/TNG 스킨은 Futanari가 아니라 BodySkin 남성 팩에 넣습니다.
 
@@ -42,6 +44,7 @@ In MO2, the mod root is Data; a second Data folder is not needed.
 
 Keep the addon's companion maps and optional wet textures. Match the actual
 addon/mesh UV layout; renaming a DDS does not convert ERF, TRX, and UBE skins.
+Native UBE and TRX UBE are separate skin types; only the matching type is listed.
 Supported female SOS/TNG addon installation/loading enables the feature, even
 when no eligible actor is present. Ordinary male addons do not enable it.
 Manual editing additionally requires a female actor registered with a supported

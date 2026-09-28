@@ -9,7 +9,7 @@ function Get-Luminance([string]$HexColor) {
     return 0.2126 * $channels[0] + 0.7152 * $channels[1] + 0.0722 * $channels[2]
 }
 $checks = 0
-foreach ($file in @('docs/NEXUS-DESCRIPTION-v1.3.2-KO.html', 'docs/NEXUS-CHANGELOG-v1.3.3-KO.html', 'docs/NEXUS-DESCRIPTION-v1.3.4-KO.html', 'docs/NEXUS-CHANGELOG-v1.3.4-KO.html')) {
+foreach ($file in @('docs/NEXUS-DESCRIPTION-v1.3.2-KO.html', 'docs/NEXUS-CHANGELOG-v1.3.3-KO.html', 'docs/NEXUS-DESCRIPTION-v1.3.4-KO.html', 'docs/NEXUS-CHANGELOG-v1.3.4-KO.html', 'docs/NEXUS-DESCRIPTION-v1.3.5-KO.html', 'docs/NEXUS-CHANGELOG-v1.3.5-KO.html')) {
     $html = Get-Content -LiteralPath (Join-Path $repo $file) -Raw
     if (-not $html.Contains('color-scheme:light dark') -or
         -not $html.Contains('@media(prefers-color-scheme:dark)') -or
@@ -26,6 +26,10 @@ foreach ($file in @('docs/NEXUS-DESCRIPTION-v1.3.2-KO.html', 'docs/NEXUS-CHANGEL
         }
         # Standard browser CanvasText under light/dark color-scheme.
         $colors['body-text'] = if ($mode -eq 0) { '#000000' } else { '#ffffff' }
+        # Pages without an explicit background inherit the browser Canvas.
+        if (-not $colors.ContainsKey('bg')) {
+            $colors['bg'] = if ($mode -eq 0) { '#ffffff' } else { '#000000' }
+        }
         $pairs = @()
         foreach ($background in @('bg', 'panel', 'notice', 'table-head', 'code-bg')) {
             if (-not $colors.ContainsKey($background)) { continue }

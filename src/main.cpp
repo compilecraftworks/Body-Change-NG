@@ -3,6 +3,7 @@
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/CatalogRefreshQueue.h"
 #include "BodyChangeNG/FrameTasks.h"
+#include "BodyChangeNG/FacePreviewTransaction.h"
 #include "BodyChangeNG/FutanariSupport.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/InputSink.h"
@@ -81,6 +82,11 @@ namespace
     void OnSkseMessage(SKSE::MessagingInterface::Message* message)
     {
         if (!message) return;
+        if (message->type == SKSE::MessagingInterface::kSaveGame) {
+            // This precedes ALL plugin serialization callbacks, regardless of
+            // whether RaceMenu serializes before or after BCNG.
+            bcn::face_preview::BeforeSave();
+        }
         if (message->type == SKSE::MessagingInterface::kPreLoadGame) {
             bcn::frame_tasks::Reset(false);
             bcn::rendered_outfit::Reset();

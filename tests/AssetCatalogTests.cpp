@@ -24,6 +24,13 @@
 #include <unordered_set>
 #include <cstring>
 
+// This read-only catalog executable has no engine face backend. The real
+// preview journal is exercised by FacePreviewTransactionTests instead.
+namespace bcn::face_preview {
+    void OwnerChanged() {}
+    void Reset() {}
+}
+
 namespace
 {
     bool Require(const bool condition, const char* message)
@@ -44,6 +51,13 @@ namespace
         std::filesystem::create_directories(path.parent_path());
         std::ofstream stream(path, std::ios::binary);
         stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+    }
+
+    bool TextEquals(const std::filesystem::path& path, const std::string_view expected)
+    {
+        std::ifstream stream(path, std::ios::binary);
+        return stream && std::string{ std::istreambuf_iterator<char>{ stream },
+            std::istreambuf_iterator<char>{} } == expected;
     }
 
     std::string Lower(std::string value)
@@ -372,6 +386,15 @@ int main(const int argc, char** argv)
     if (!Require(bcn::AllowsBroadSkinSlotFallback(bcn::SkinLayout::ube),
             "UBE's shared body atlas lost its broad skin-slot fallback")) return 1;
 
+    if (argc == 3 && std::string_view{ argv[1] } == "--futanari") {
+        const auto profiles = bcn::FutanariSkinProfiles::ScanDirectory(std::filesystem::path{ argv[2] });
+        for (const auto& profile : profiles) {
+            std::cout << profile.id << " | " << bcn::FutanariSkinTypeLabel(profile.type)
+                      << " | layers=" << profile.layers.size() << '\n';
+        }
+        std::cout << "futanari=" << profiles.size() << '\n';
+        return profiles.empty() ? 1 : 0;
+    }
     if (argc == 3 || argc == 4) {
         std::cout << "scanning real skin root\n" << std::flush;
         const auto skins = bcn::SkinProfiles::ScanDirectory(std::filesystem::path{ argv[1] });
@@ -702,6 +725,12 @@ int main(const int argc, char** argv)
     for (const auto* file : { "femalehead_d.dds", "femalehead_n.dds", "femalehead_sk.dds" }) {
         Touch(ubeHead / file);
     }
+    // Selected packs must not replace the installed CS effect maps or add
+    // specular/environment/multilayer channels to the six base skin maps.
+    for (const auto* suffix : { "_RFAOS.dds", "_wet.dds", "_s.dds" }) {
+        WriteText(ubeBody / (std::string{ "femalebody_1" } + suffix), "pack-body-effect");
+        WriteText(ubeHead / (std::string{ "femalehead" } + suffix), "pack-head-effect");
+    }
 
     const auto malePartial = sandbox / "BodySkin" / "Male Partial" /
         "Textures" / "actors" / "character" / "male";
@@ -882,6 +911,16 @@ int main(const int argc, char** argv)
             if (!Require(skin.body.size() == 3U && skin.face.size() == 3U &&
                     skin.hands.empty() && skin.feet.empty(),
                     "UBE Body/Head d, n, and sk channels were not mapped exactly")) return 1;
+            for (const auto* layers : { &skin.body, &skin.face }) {
+                const std::string stem = layers == &skin.body ? "femalebody_1" : "femalehead";
+                const std::array suffixes{ "_d.dds", "_n.dds", "_sk.dds" };
+                for (std::size_t index{}; index < suffixes.size(); ++index) {
+                    if (!Require(std::ranges::any_of(*layers, [&](const auto& layer) {
+                            return layer.shaderTextureIndex == index &&
+                                Filename(Lower(layer.path)) == stem + suffixes[index];
+                        }), "UBE base-channel whitelist changed")) return 1;
+                }
+            }
             if (!Require(skin.id.ends_with(":female:ube"), "UBE profile id can collide with a conventional profile")) return 1;
             continue;
         }
@@ -1047,6 +1086,10 @@ int main(const int argc, char** argv)
     const auto futaUbe = futanariRoot / "UBE TRX" / "Textures" / "!UBE" / "Body";
     Touch(futaUbe / "malebody_1_d.dds");
     Touch(futaUbe / "malebody_1_n.dds");
+    // One pack can carry both UBE UV layouts without merging their rows.
+    const auto futaUbeTrx = futanariRoot / "UBE TRX" / "TeXtUrEs" / "[tRx] FuTa AdDoN UbE";
+    for (const auto* file : { "Schlong.DDS", "Schlong_msn.dds", "Schlong_sk.dds",
+             "Schlong_s.dds" }) Touch(futaUbeTrx / file);
     const auto futaTrx = futanariRoot / "CBBE TRX" / "textures" /
         "[TRX] Futa addon" / "Regular" / "Default";
     for (const auto* file : { "schlong.dds", "schlong_msn.dds", "schlong_sk.dds",
@@ -1060,8 +1103,14 @@ int main(const int argc, char** argv)
              "futanari_schlong_sk.dds", "futanari_schlong_s.dds" }) Touch(futaErf / file);
 
     const auto futanari = bcn::FutanariSkinProfiles::ScanDirectory(futanariRoot);
-    if (!Require(futanari.size() == 3U,
-            "futanari catalog did not isolate UBE TRX, CBBE TRX, and ERF rows")) return 1;
+    if (!Require(futanari.size() == 4U,
+            "futanari catalog did not isolate native UBE, TRX UBE, CBBE TRX, and ERF rows")) return 1;
+    const auto oldUbe = std::ranges::find(futanari, "futanari:UBE TRX:ube-trx", &bcn::FutanariSkinProfile::id);
+    const auto newUbeTrx = std::ranges::find(futanari, "futanari:UBE TRX:ube-trx-addon", &bcn::FutanariSkinProfile::id);
+    if (!Require(oldUbe != futanari.end() && newUbeTrx != futanari.end() &&
+            oldUbe->type == bcn::FutanariSkinType::ubeTrx &&
+            newUbeTrx->type == bcn::FutanariSkinType::ubeTrxAddon,
+            "existing native UBE saved/favorite ID changed or collided with the TRX UBE row")) return 1;
     const auto requireFutanari = [&](const bcn::FutanariSkinType type,
         const std::string_view stem) {
         const auto found = std::ranges::find(futanari, type, &bcn::FutanariSkinProfile::type);
@@ -1071,6 +1120,7 @@ int main(const int argc, char** argv)
             HasExactMaterialChannels(found->layers, stem);
     };
     if (!Require(requireFutanari(bcn::FutanariSkinType::ubeTrx, "malebody_1") &&
+            requireFutanari(bcn::FutanariSkinType::ubeTrxAddon, "schlong") &&
             requireFutanari(bcn::FutanariSkinType::cbbeTrx, "schlong") &&
             requireFutanari(bcn::FutanariSkinType::erf, "futanari_schlong"),
             "futanari skin files crossed addon/body types or material channels")) return 1;
@@ -1302,6 +1352,8 @@ int main(const int argc, char** argv)
     const auto ubeFamily = bcn::body_family::Bit(bcn::body_family::Family::ube);
     if (!Require(bcn::FutanariSkinTypeMatchesActor(
             bcn::FutanariSkinType::ubeTrx, ubeFamily) &&
+            bcn::FutanariSkinTypeMatchesActor(bcn::FutanariSkinType::ubeTrxAddon, ubeFamily) &&
+            !bcn::FutanariSkinTypeMatchesActor(bcn::FutanariSkinType::ubeTrxAddon, standardFamily) &&
             !bcn::FutanariSkinTypeMatchesActor(
                 bcn::FutanariSkinType::cbbeTrx, ubeFamily) &&
             bcn::FutanariSkinTypeMatchesActor(
@@ -1536,6 +1588,84 @@ int main(const int argc, char** argv)
     if (!Require(Filename(cachedTrxSpecular) == "schlong_s.dds" &&
             std::filesystem::is_regular_file(cachedTrxDirectory / "wetschlong_110_s.dds"),
             "TRX wet specular did not follow the selected futanari skin into the runtime cache")) return 1;
+
+    // CS resolves RFAOS/wet beside the active normal map. Preserve the global
+    // MO2-winning defaults, never the similarly named selected-pack files.
+    const auto ubeDefaults = sandbox / "Data" / "textures" / "!UBE";
+    const auto defaultBodyRfaos = ubeDefaults / "Body" / "femalebody_1_rFaOs.DDS";
+    const auto defaultHeadRfaos = ubeDefaults / "Head" / "femalehead_RFAOS.dds";
+    WriteText(defaultBodyRfaos, "default-body-a");
+    WriteText(defaultHeadRfaos, "default-head-a");
+    WriteText(ubeDefaults / "femalebody_1_wet.dds", "default-body-wet");
+    WriteText(ubeDefaults / "femalehead_wet.dds", "default-head-wet");
+    constexpr std::string_view ubeBodyKey =
+        "bOdYsKiN/UBE 2.0 Momo Skin/tExTuReS/!uBe/bOdY/FEMALEBODY_1_N.DDS";
+    constexpr std::string_view ubeHeadKey =
+        "BodySkin\\UBE 2.0 Momo Skin\\Textures\\!UBE\\Head\\femalehead_n.dds";
+    const auto prepareUbe = [&] {
+        bcn::runtime_assets::ClearGameRelativeSources("BodySkin\\");
+        bcn::runtime_assets::RegisterGameRelativeSource(ubeBodyKey, ubeBody / "femalebody_1_n.dds");
+        bcn::runtime_assets::RegisterGameRelativeSource(ubeHeadKey, ubeHead / "femalehead_n.dds");
+    };
+    prepareUbe();
+    const auto cachedUbeBody = bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin");
+    const auto cachedUbeHead = bcn::runtime_assets::TexturePathFromGameRelative(ubeHeadKey, "skin");
+    const auto ubeBodyCache = (sandbox / "Data" / cachedUbeBody).parent_path();
+    const auto ubeHeadCache = (sandbox / "Data" / cachedUbeHead).parent_path();
+    if (!Require(!cachedUbeBody.empty() && !cachedUbeHead.empty() &&
+            TextEquals(ubeBodyCache / "femalebody_1_rfaos.dds", "default-body-a") &&
+            TextEquals(ubeBodyCache / "femalebody_1_wet.dds", "default-body-wet") &&
+            TextEquals(ubeHeadCache / "femalehead_rfaos.dds", "default-head-a") &&
+            TextEquals(ubeHeadCache / "femalehead_wet.dds", "default-head-wet") &&
+            !std::filesystem::exists(ubeBodyCache / "femalebody_1_s.dds") &&
+            TextEquals(ubeBody / "femalebody_1_RFAOS.dds", "pack-body-effect"),
+            "UBE effect aliases did not preserve installed defaults independently of the pack")) return 1;
+    // A pack's effect changes cannot select new effects; installed default
+    // content changes must invalidate the normal bundle, even at equal stamps.
+    WriteText(ubeBody / "femalebody_1_RFAOS.dds", "different-pack-effect");
+    prepareUbe();
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == cachedUbeBody,
+            "selected-pack RFAOS affected the installed-default alias")) return 1;
+    const auto bodyRfaosTime = std::filesystem::last_write_time(defaultBodyRfaos);
+    WriteText(defaultBodyRfaos, "default-body-b");
+    std::filesystem::last_write_time(defaultBodyRfaos, bodyRfaosTime);
+    prepareUbe();
+    const auto changedUbeBody = bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin");
+    const auto changedUbeDirectory = (sandbox / "Data" / changedUbeBody).parent_path();
+    if (!Require(changedUbeBody != cachedUbeBody &&
+            TextEquals(changedUbeDirectory / "femalebody_1_rfaos.dds", "default-body-b") &&
+            TextEquals(defaultHeadRfaos, "default-head-a"),
+            "installed UBE effect content refresh retained stale lookup paths")) return 1;
+    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == changedUbeBody &&
+            TextEquals(changedUbeDirectory / "femalebody_1_wet.dds", "default-body-wet"),
+            "missing UBE effect alias was not repaired without refresh")) return 1;
+    // A normal success must not be reported if a known installed companion
+    // could not be published. Only a synthetic empty directory is removed.
+    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
+    std::filesystem::create_directory(changedUbeDirectory / "femalebody_1_wet.dds");
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin").empty(),
+            "UBE preparation accepted a failed required effect publication")) return 1;
+    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == changedUbeBody,
+            "UBE preparation could not recover after publication failure")) return 1;
+    WriteText(ubeDefaults / "Head" / "femalehead_wet.dds", "head-specific-wet");
+    prepareUbe();
+    const auto exactHeadPath = bcn::runtime_assets::TexturePathFromGameRelative(ubeHeadKey, "skin");
+    if (!Require(TextEquals((sandbox / "Data" / exactHeadPath).parent_path() /
+            "femalehead_wet.dds", "head-specific-wet"),
+            "UBE part-specific installed wet map did not take priority")) return 1;
+    std::filesystem::remove(defaultBodyRfaos);
+    std::filesystem::remove(ubeDefaults / "femalebody_1_wet.dds");
+    prepareUbe();
+    const auto noDefaults = bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin");
+    const auto noDefaultsDirectory = (sandbox / "Data" / noDefaults).parent_path();
+    if (!Require(!noDefaults.empty() &&
+            !std::filesystem::exists(noDefaultsDirectory / "femalebody_1_rfaos.dds") &&
+            !std::filesystem::exists(noDefaultsDirectory / "femalebody_1_wet.dds") &&
+            !std::filesystem::exists(cachedDirectory / "femalebody_1_rfaos.dds") &&
+            !std::filesystem::exists(cachedTrxDirectory / "femalebody_1_wet.dds"),
+            "missing defaults borrowed pack effects or leaked into non-UBE bundles")) return 1;
 
     Touch(sandbox / "Data" / "textures" / "BodyChangeNG" / "outside.dds");
     if (!Require(!bcn::runtime_assets::CachedTextureExists(

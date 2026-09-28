@@ -6,6 +6,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/RenderedOutfit.h"
 #include "BodyChangeNG/FaceSkinOverrides.h"
+#include "BodyChangeNG/FacePreviewTransaction.h"
 #include "BodyChangeNG/FaceSkinSerialization.h"
 #include "BodyChangeNG/NativeAddonSkinBackend.h"
 #include "BodyChangeNG/PresetCatalog.h"
@@ -125,6 +126,7 @@ namespace
 
     void SaveState(SKSE::SerializationInterface* output)
     {
+        bcn::face_preview::OnSerialization();
         auto states = bcn::ActorRegistry::Get().SnapshotAll();
         std::erase_if(states, [](const auto& state) { return !bcn::HasPersistentAppearance(state); });
         std::ranges::sort(states, {}, &bcn::ActorState::actorFormID);

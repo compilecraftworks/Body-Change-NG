@@ -46,7 +46,7 @@ namespace bcn::futanari_support
 
     // Returns a type only when a female actor is actually registered to a
     // loaded female SOS/TNG addon. Covering armor and a temporarily detached
-    // slot-52 geometry do not erase provider registration.
+    // genital geometry do not erase provider registration.
     [[nodiscard]] std::optional<FutanariSkinType> RegisteredType(RE::Actor* actor);
     [[nodiscard]] bool Registered(RE::Actor* actor);
 }

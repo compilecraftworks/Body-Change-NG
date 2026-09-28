@@ -1,6 +1,12 @@
 # Release documentation
 
-Current version: **Body Change NG v1.3.3**. See the [English changelog](../CHANGELOG.md#133), [한국어 변경 내역](../CHANGELOG-KO.md#133), [current usage / removal preparation](../README.md), and [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt). Earlier version files remain historical records.
+Current version: **Body Change NG v1.3.5**. See the [English changelog](../CHANGELOG.md#135), [한국어 변경 내역](../CHANGELOG-KO.md#135), [current usage / removal preparation](../README.md), and [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt). Earlier version files remain historical records.
+
+## v1.3.5 release documents
+
+- Description: [English Nexus BBCode](NEXUS-DESCRIPTION-v1.3.5-EN.bbcode) · [English Markdown](NEXUS-DESCRIPTION-v1.3.5.md) · [한국어 HTML](NEXUS-DESCRIPTION-v1.3.5-KO.html).
+- Changelog: [English BBCode](NEXUS-CHANGELOG-v1.3.5-EN.bbcode) · [한국어 HTML](NEXUS-CHANGELOG-v1.3.5-KO.html) · [English text](NEXUS-CHANGELOG-v1.3.5-EN.txt) · [한국어 텍스트](NEXUS-CHANGELOG-v1.3.5-KO.txt).
+- Technical scope: [face-preview transactions](FACE-PREVIEW-RACEMENU-REAPPLY-AUDIT-20260928-KO.md) and [UBE/3BA futanari routing](FUTANARI-UBE-SLOT-AUDIT-20260928-KO.md).
 
 ## v1.3.3 offline distribution authoring
 

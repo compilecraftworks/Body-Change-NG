@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Body Change NG v1.3.4 — 소개와 사용 안내</title>
+<title>Body Change NG v1.3.5 — 소개와 사용 안내</title>
 <style>
 :root{color-scheme:light dark;--line:#b7c8d5;--muted:#526574;--accent:#006779;--sub:#146a35;--title:#895c00;--warn:#805900;--code-text:#16495d}
 @media(prefers-color-scheme:dark){:root{--line:#33414f;--muted:#b4c2ce;--accent:#19D8FF;--sub:#5CFFA3;--title:#FFD600;--warn:#f4cc83;--code-text:#cff0fa}}
@@ -25,9 +25,10 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <main>
 <header>
 <div class="eyebrow">SKYRIM SE / AE · IN-GAME APPEARANCE CONTROL</div>
-<h1>Body Change NG <small>v1.3.4</small></h1>
-<p class="note">1.3.4 기준: 프리셋 수치 처리, UBE/Necoco 의상 보정·랜덤화, 스킨 경로 대소문자 처리, 오버레이 빈 슬롯 복원과 NPC 배포 개선까지 반영했습니다. 가슴·유두 보정과 여성 생식기·유두 랜덤화는 모두 기본값이 해제입니다.</p>
+<h1>Body Change NG <small>v1.3.5</small></h1>
+<p class="note">1.3.5 기준: 플레이어 얼굴 스킨 미리보기의 임시 적용·복원과 UBE 기본형·TRX UBE 후타스킨 인식을 개선했습니다. 기존 1.3.4의 모프 계산·보정·랜덤화·NPC 배포 개선도 포함합니다. 가슴·유두 보정과 여성 생식기·유두 랜덤화는 모두 기본값이 해제입니다.</p>
 <p class="lead">바디프리셋부터 스킨·틴트마스크·후타스킨·오버레이까지.<br>게임 안에서 미리 보고, 원하는 항목만 확정하고, 직접 고른 후보로 NPC에게 배포하세요.</p>
+<p>플레이어 얼굴 스킨은 미리보기 중 RaceMenu 얼굴 텍스처 키에도 임시로 반영합니다. 취소하면 원래 상태로 돌아가며, 세이브 저장에는 미확정 임시 키가 남지 않도록 처리합니다. 이 변경은 RSV나 RaceMenu Selector의 스킨 변경 기능과의 동시 사용을 지원하는 패치가 아닙니다.</p>
 <p>Body Change NG(BCNG)는 플레이어와 NPC의 외형을 한 창에서 관리하는 SKSE 플러그인입니다. 체형과 스킨을 독립적으로 선택하므로 조합마다 별도의 바디 메시 세트를 준비할 필요가 없습니다.</p>
 <p class="notice"><strong>NPC 한 명의 스킨을 바꾸는 데 배포 규칙은 필요하지 않습니다.</strong> 상단 액터 목록에서 NPC를 고른 뒤 바디스킨 탭에서 한 번 클릭해 미리 보고, 더블클릭으로 적용하세요. NPC 배포는 고른 후보들을 조건에 따라 배정하는 별도의 선택 기능입니다.</p>
 <p>BCNG 자체에는 <strong>ESP/ESL이나 MCM이 필요하지 않습니다.</strong> 바디 메시·스킨 DDS·문신·프리셋 모음은 포함하지 않습니다. 사용할 에셋과 해당 에셋의 선행 모드는 별도로 설치하세요.</p>
@@ -126,6 +127,7 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <p>의상 착용 시 가슴·유두 보정은 별도 레이어입니다. 기본 보정은 <strong>목표값에서 BCNG 프리셋값을 뺀 값</strong> 또는 <strong>체중에 맞춰 보간한 추가 보정값</strong>을 사용합니다. 지정된 의상 보정 프리셋이 있다면 그 프리셋의 보정값을 대신 사용하며, 원본 XML은 수정하지 않습니다. 의도한 기준 체형을 재현하려면 몸과 의상 모두 <strong>Zeroed Sliders</strong>와 <strong>Build Morphs</strong>로 빌드하세요.</p>
 
 <h3>바디스킨</h3>
+<p>UBE 바디스킨은 얼굴·몸의 _d / _n / _sk 기본 맵 6개만 교체합니다. DDS로 설치된 기본 RFAOS·wet 맵은 선택 스킨팩의 동명 파일로 바꾸지 않고, MO2 우선순위로 선택된 파일을 노멀맵 캐시 옆에도 연결하여 효과 검색 경로를 유지합니다. 원본 DDS와 효과 설정은 변경하지 않습니다.</p>
 <p>바디프리셋과 별개로 스킨팩을 선택합니다. <strong>액터 선택 → 바디스킨 → 한 번 클릭 미리보기 → 더블클릭 적용</strong> 순서이며, 배포 규칙을 만들거나 매번 기본 스킨을 거쳐 다른 팩으로 바꿀 필요가 없습니다. 배포 체크박스가 보인다면 <strong>배포 취소</strong>로 일반 직접 선택 목록에 돌아오세요.</p>
 <p class="notice"><strong>커스텀 팔로워·바디 계열 미확인 액터:</strong> BCNG는 BodySlide 계열을 식별하지 못한 액터도 직접 스킨을 선택할 수 있게 합니다. 성별·종족에 맞는 팩과 계열 미확인 안내를 표시하므로, 실제 바디에 맞는 3BA/UBE 스킨을 직접 선택하세요. 이미 확인된 비호환 레이아웃은 계속 차단합니다. 이 수동 선택 허용이 자동 배포의 호환 조건을 완화하거나 UV를 변환하는 것은 아닙니다.</p>
 <p>NPC 얼굴은 실제 로드된 FaceGen 하위에서 찾으며, 메시 이름이 HeadPart 이름과 달라도 피부 재질 대상이 명확하면 사용할 수 있습니다. 몸 전용 팩은 이전 얼굴 변경을 복원해야 하는 경우가 아니라면 얼굴 대상을 요구하지 않습니다. 얼굴 메시가 없거나 대상이 여러 개라 불명확한 경우에는 임의로 추측해 적용하지 않습니다.</p>
@@ -257,6 +259,7 @@ Data\Futanari\My ERF Skin\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong.dd
 <p>이것은 스킨팩 배치이며 SOS/TNG 애드온 등록을 대신하지 않습니다. 애드온 본체와 선행 모드는 정상 설치하세요. 별도 MO2 에셋 모드 최상위에 Futanari를 두어 플러그인과 스킨을 분리해도 됩니다.</p>
 <p><strong>지원 레이아웃별 전체 DDS 경로 예시:</strong></p>
 <pre><code>Data\Futanari\My UBE Addon Skin\Textures\!UBE\Body\malebody_1_d.dds
+Data\Futanari\My UBE TRX Skin\Textures\[TRX] Futa addon UBE\schlong.dds
 Data\Futanari\My TRX Skin\Textures\[TRX] Futa addon\Regular\Default\schlong.dds
 Data\Futanari\My ERF Skin\Textures\ERF_Futanari\FairSkinCBBE\futanari_schlong.dds</code></pre>
 <p>UBE 기본 애드온과 TRX UBE는 별도 유형이며 현재 등록·장착된 애드온과 일치하는 스킨만 표시합니다. 실제 변형의 전체 구조와 맵을 유지하세요. UBE 기본형은 주로 <code>_d</code>·<code>_n</code>·<code>_sk</code>, TRX/ERF는 diffuse 및 <code>_msn</code>·<code>_sk</code>·<code>_s</code>를 사용합니다. wet 보조 텍스처가 있다면 함께 보존합니다. ERF DDS의 이름만 바꿔 TRX/UBE용으로 만들 수는 없습니다.</p>
@@ -360,27 +363,27 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (선택적 ORefit 입력)
 <li><strong>후타탭 없음·대상이 아님:</strong> 지원 여성 애드온 설치 여부와 액터의 SOS/TNG 등록 여부를 구분하세요. 남성 애드온이나 텍스처 팩만으로 두 조건을 충족하지 않습니다.</li>
 </ul>
 <p>진단 로그는 SKSE 로그 폴더의 <code>BodyChangeNG.log</code>이며, 보통 <code>Documents\My Games\Skyrim Special Edition\SKSE</code> 아래에 있습니다. 게임 배포판·환경에 따라 위치가 다를 수 있습니다. 보고할 때 게임·SKSE·RaceMenu 버전, 바디·애드온 종류, 팩 경로, 재현 순서와 로그를 함께 제공하세요.</p>
-<p class="note">v1.3.4는 Release 빌드와 오프라인 회귀 실행 파일 40개를 통과했습니다.</p>
+<p class="note">v1.3.5는 Release 빌드와 오프라인 회귀 실행 파일 42개를 통과했습니다.</p>
 </section>
 
 <section id="upgrade">
 <h2>8. 이전 버전에서 업데이트할 때</h2>
-<p>v1.3.4 적용을 위해 새 게임이나 세이브 정리는 필요하지 않습니다. 기존 코세이브 형식을 유지합니다. 설정·사용자 규칙·에셋 팩·즐겨찾기와 런타임 텍스처 캐시를 보존하세요. 단순 업데이트를 위해 모드 삭제 준비를 실행하지 마세요.</p>
+<p>v1.3.5 적용을 위해 새 게임이나 세이브 정리는 필요하지 않습니다. 기존 코세이브 형식을 유지합니다. 설정·사용자 규칙·에셋 팩·즐겨찾기와 런타임 텍스처 캐시를 보존하세요. 단순 업데이트를 위해 모드 삭제 준비를 실행하지 마세요.</p>
 <ol>
 <li>Skyrim을 종료하고 세이브·동일 이름의 SKSE 코세이브, 설정, 사용자 배포 JSON, 에셋 팩을 백업한 뒤 플러그인을 교체합니다.</li>
 <li>삭제 준비 모드를 켰다가 계속 사용하기로 했다면 모드 설정의 <strong>BCNG 다시 사용</strong>으로 해제하세요. DLL 교체만으로 저장된 삭제 준비 설정이 해제되지는 않습니다.</li>
 <li>기존 BodySkin·Futanari 팩은 유지합니다. 옛 별도 틴트팩은 <code>Data\BodySkin\팩 이름\Textures\actors\character\character assets\tintmasks\</code> 구조로 옮기되 원래 텍스처 하위 구조를 보존합니다. 옛 TintMask 루트에만 두지 마세요.</li>
 <li>사용자 규칙 JSON을 빈 시작 파일로 덮어쓰지 마세요. 새 DLL은 schema 3~7을 읽고 원본 .schemaN.bak 백업을 남긴 뒤 이름 기반 schema 8로 변환합니다. 기존 옛 제외 규칙 정리는 유지하며 미확인 옛 에셋 ID도 보존합니다. 참조하는 플러그인·팩도 설치되어 있어야 합니다.</li>
 <li><strong>확정 동작 변경:</strong> 목록을 미리보기만 한 채 닫으면 취소됩니다. NPC 조건 팝업도 닫는 것만으로 다음 실행용 초안을 자동 저장하지 않습니다.</li>
-<li>가능하면 기존 팩 이름과 경로를 유지하세요. 이름 변경·삭제 이후에도 예전 선택 ID가 유지된다고 가정하지 마세요. v1.3.4에서 저장한 세이브의 다운그레이드 호환은 보장하지 않습니다.</li>
+<li>가능하면 기존 팩 이름과 경로를 유지하세요. 이름 변경·삭제 이후에도 예전 선택 ID가 유지된다고 가정하지 마세요. v1.3.5에서 저장한 세이브의 다운그레이드 호환은 보장하지 않습니다.</li>
 </ol>
-<p><a href="NEXUS-CHANGELOG-v1.3.4-KO.html">v1.3.4 한국어 변경 내역</a></p>
+<p><a href="NEXUS-CHANGELOG-v1.3.5-KO.html">v1.3.5 한국어 변경 내역</a></p>
 </section>
 
 <footer>
 <p><strong>크레딧</strong> — SKSE 팀, expired6978/RaceMenu, CommonLibSSE-NG 기여자, Dear ImGui, pugixml, 사용자가 설치하는 바디·스킨·애드온·오버레이 제작자 여러분께 감사드립니다.</p>
 <p><a href="https://github.com/compilecraftworks/Body-Change-NG">Body Change NG 소스 저장소</a> · GPL-3.0. LICENSE와 THIRD_PARTY_NOTICES.md를 확인하세요. 외부 에셋은 각 제작자의 라이선스를 따르며 BCNG에 포함하지 않습니다.</p>
-<p>v1.3.4 사용 안내 · 2026-09-25 정리. 과거 개발 중간 기록보다 이 문서의 사용법을 우선합니다.</p>
+<p>v1.3.5 사용 안내 · 2026-09-28 정리. 과거 개발 중간 기록보다 이 문서의 사용법을 우선합니다.</p>
 </footer>
 </main>
 </body>

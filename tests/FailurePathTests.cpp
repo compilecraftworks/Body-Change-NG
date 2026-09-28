@@ -23,6 +23,7 @@
 #include "BodyChangeNG/FrameTaskQueue.h"
 #include <cstdio>
 #endif
+namespace bcn::face_preview { bool Restore(unsigned) { return true; } }
 
 namespace RE {
     template<class T> using BSTSmartPointer = std::shared_ptr<T>;
@@ -226,11 +227,13 @@ namespace finish_probe {
     std::mutex g_mutex;
     unsigned g_epoch{1}, pumps{};
     void Pump(unsigned) { ++pumps; }
+    void ArmPreviewObservation(unsigned, unsigned, unsigned, int, int) {}
     struct Batch {
         unsigned actorId{1}, epoch{1}, generation{1}, channel{}, rollbacks{};
         bool finished{}, cleaningOld{}, rollbackDone{}, rollingBack{}, rollbackFailed{};
         unsigned mutated{};
         Request request;
+        int baseline{}, previewExpected{};
         bool Current() { return OwnsActiveBatch(epoch, g_epoch, generation, g_requests.at(actorId).activeGeneration); }
         std::shared_ptr<bool> Actor() { return std::make_shared<bool>(true); }
         #include "face_finish.inc"

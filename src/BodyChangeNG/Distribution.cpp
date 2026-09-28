@@ -460,7 +460,7 @@ namespace
             // once for every rule. No catalog pool means no provider scan.
             if (!type) {
                 type = bcn::futanari_support::RegisteredType(actor);
-                if (!type || *type == bcn::FutanariSkinType::ubeTrx) return nullptr;
+                if (!type || bcn::IsUbeFutanariSkinType(*type)) return nullptr;
             }
             const auto compatible = CompatibleFutanariPool(rule.futanariSkinIds, *type);
             selected = ChooseFromPool(rule, compatible, actor, "futanari",

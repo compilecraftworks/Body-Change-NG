@@ -79,6 +79,46 @@ int main()
             "installed female addon was hidden merely because no actor was assigned");
         Check(!bcn::futanari_support::Availability{}.Any(),
             "missing female addon unexpectedly enabled the futanari feature");
+        using Kind = bcn::futanari::AddonKind;
+        using Type = bcn::FutanariSkinType;
+        const auto ube = bcn::body_family::Bit(bcn::body_family::Family::ube);
+        const auto cbbe = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
+        Check(bcn::futanari::IsAddonFaction(Kind::ube, "sos_ADDON_ube_FACTION", "", "") &&
+            bcn::futanari::IsAddonFaction(Kind::ube, "", "SOS UBE", "") &&
+            !bcn::futanari::IsAddonFaction(Kind::ube, "OtherFaction", "Other", "UBE_SOS_Addon.esp") &&
+            !bcn::futanari::IsAddonFaction(Kind::none, "SOS_Addon_UBE_Faction", "SOS UBE", "") &&
+            !bcn::futanari::IsAddonFaction(Kind::trx, "SOS_Addon_UBE_Faction", "SOS UBE", "") &&
+            bcn::futanari::IsAddonFaction(Kind::ubeTrx, "", "TRX Futanari TRX Addon UBE", "") &&
+            bcn::futanari::IsAddonFaction(Kind::erf, "", "", "SOS_Addon_Futanari_Faction"),
+            "SOS native UBE registration or existing 3BA faction fallback regressed");
+        Check(bcn::futanari::IsAddonFaction(Kind::trx, "SOS_Addon_TRX_Futa_Faction",
+                "TRX Futanari TRX Addon", "SOS - TRX - Futanari Addon.esp SOS_Addon_TRX_Futa_Faction") &&
+            bcn::futanari::IsAddonFaction(Kind::erf, "SOS_Addon_ERF_Futa1_Faction",
+                "ERF Futanari CBBE", "SOS - ERF - Futanari CBBE - Addon.esp SOS_Addon_ERF_Futa1_Faction"),
+            "installed TuLED 3BA TRX/ERF faction markers were rejected");
+        Check(bcn::FutanariSkinTypeForAddon(Kind::ube, ube) == Type::ubeTrx &&
+            bcn::FutanariSkinTypeForAddon(Kind::ubeTrx, ube) == Type::ubeTrxAddon &&
+            bcn::FutanariSkinTypeForAddon(Kind::trx, cbbe) == Type::cbbeTrx &&
+            bcn::FutanariSkinTypeForAddon(Kind::erf, cbbe) == Type::erf &&
+            !bcn::FutanariSkinTypeForAddon(Kind::trx, ube) &&
+            !bcn::FutanariSkinTypeForAddon(Kind::ube, cbbe) &&
+            !bcn::FutanariSkinTypeForAddon(Kind::ubeTrx, cbbe) &&
+            !bcn::FutanariSkinTypeForAddon(Kind::none, ube),
+            "native UBE, TRX UBE and 3BA texture types are not isolated");
+        Check(bcn::futanari::ClassifyEvidence("Meshes/!UbE/SoS_Addon/UBE_Penis_1.nif") == Kind::ube &&
+            bcn::futanari::ClassifyEvidence("Meshes/[TRX] Futa addon UBE/trx_schlong_1.nif") == Kind::ubeTrx &&
+            bcn::futanari::ClassifyEvidence({}, "FemaleDick", "Textures/[trx] Futa addon UBE/Schlong.dds") == Kind::ubeTrx &&
+            bcn::futanari::ClassifyEvidence("[TRX] Futa addon UBE/trx_schlong_1.nif", "CBBE_Schlong",
+                "Textures/BodyChangeNG/Cache/futanari/123/skin.dds") == Kind::ubeTrx,
+            "UBE addon evidence changed with casing, separators or cached materials");
+        for (const auto node : {"CBBE_Shlong", "CBBE_Schlong"}) {
+            Check(bcn::futanari::ClassifyEvidence("[TRX] Futa addon/Regular/trx_schlong_1.nif",
+                    node, "textures/[TRX] Futa addon/Regular/Default/Schlong.dds") == Kind::trx,
+                "installed 3BA TRX original/BodySlide node spelling no longer routes");
+        }
+        Check(bcn::futanari::ClassifyEvidence("ERF_Futanari/futanari_schlong_cbbe_1.nif",
+                "CBBE Schlong", "textures/erf_futanari/fairskincbbe/futanari_schlong.dds") == Kind::erf,
+            "installed 3BA ERF BodySlide geometry no longer routes");
         // Provider classification must survive a native TXST selection without
         // treating the new private cache namespace as UBE/ERF/TRX evidence.
         const std::string cache = R"(textures\BodyChangeNG\Cache\futanari\1234\skin.dds)";
@@ -88,6 +128,7 @@ int main()
         for (const auto& [original, kind] : std::array{
                  std::pair{R"(textures\[TRX] Futa addon\Regular\Schlong.dds)", bcn::futanari::AddonKind::trx},
                  std::pair{R"(textures\ERF_Futanari\fairskincbbe\futanari_schlong.dds)", bcn::futanari::AddonKind::erf},
+                 std::pair{R"(textures\[TRX] Futa addon UBE\Schlong.dds)", bcn::futanari::AddonKind::ubeTrx},
                  std::pair{R"(textures\!UBE\Body\malebody_1_d.dds)", bcn::futanari::AddonKind::ube}}) {
             for (int i{}; i < 8; ++i) {
                 Check(bcn::futanari::ClassifyEvidence({}, "Penis", original) == kind,

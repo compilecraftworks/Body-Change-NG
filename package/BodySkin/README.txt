@@ -1,4 +1,4 @@
-Body Change NG v1.3.4 — BodySkin 설치 안내
+Body Change NG v1.3.5 — BodySkin 설치 안내
 
 [한국어]
 일반적인 스킨팩은 설치된 스킨 모드 폴더를 통째로 이 BodySkin 폴더 안에
@@ -18,6 +18,7 @@ mods\Body Change NG\BodySkin\스킨 모드 폴더\Textures
 
 - 여러 스킨의 내용물을 한 팩에 합치지 말고 모드 폴더별로 구분합니다.
 - 여성 CBBE/UNP, 남성, UBE는 실제 바디 메시와 맞는 파일을 사용합니다.
+- UBE 바디스킨은 얼굴·몸의 _d / _n / _sk 기본 맵 6개만 교체합니다. DDS로 설치된 기본 RFAOS·wet 맵은 선택 스킨팩의 동명 파일로 바꾸지 않고, MO2 우선순위로 선택된 파일을 노멀맵 캐시 옆에도 연결하여 효과 검색 경로를 유지합니다. 원본 DDS와 효과 설정은 변경하지 않습니다.
 - 몸·손·발·얼굴의 normal/skin/specular와 조건부 하위 폴더도 보존합니다.
 - 일부 DDS만 있어도 적용 가능한 채널을 사용하며, 없는 채널은 원래 제공자를 유지합니다.
 - 종족·노인·흡혈귀용 파일이 없으면 선택 팩의 일반 같은 채널을 먼저 사용합니다.
@@ -45,6 +46,7 @@ In MO2, the mod root is Data: do not add another Data directory inside the mod.
 A separate asset mod with BodySkin at its top level is also valid.
 
 Keep packs separate and choose files compatible with your actual body UVs.
+UBE body skins replace only the six head/body _d, _n and _sk base maps. For installed loose DDS effects, preserve the MO2-winning default RFAOS/wet maps beside the cached normal map instead of selecting same-named effects from the skin pack. Original DDS files and effect settings remain unchanged.
 Keep all companion maps and conditional folders. Partial packs apply compatible
 available channels; a missing conditional channel falls back to the selected
 pack's ordinary channel, then to the underlying provider if absent there too.

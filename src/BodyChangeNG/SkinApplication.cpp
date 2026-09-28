@@ -213,11 +213,12 @@ namespace
         auto targets = female ? FindLoadedFutanariRoute(actor).targets :
             FindLoadedPartTargets(actor, kSosMaleGenitalSlot,
                 bcn::skin_geometry::BodySelection::maleGenitals);
-        const auto slot = static_cast<std::uint32_t>(kSosMaleGenitalSlot);
+        // Female targets are already classified by model/geometry. UBE uses
+        // shared slot 54; ordinary male and 3BA routes retain slot 52.
+        const auto slot = bcn::futanari::kSlot52 | (female ? bcn::futanari::kSlot54 : 0U);
         for (auto& target : targets) {
             std::erase_if(target.views, [&target, slot](const LoadedPartView& view) {
-                // SOS and TNG intentionally use this same exact native slot-52
-                // admission path. Provider identity never changes ownership.
+                // Body slot 53 is never a genital texture target.
                 return !bcn::native_addon::AcceptTargetView(
                     (target.slotMask & slot) != 0U,
                     view.object != nullptr, !view.nodes.empty());
@@ -547,7 +548,7 @@ namespace bcn::skin_application
         const auto handle = actor->GetHandle();
         const auto generation = BeginFutanariChange(actor->GetFormID());
         // The desired selection is persistent and independent of whether a
-        // provider currently has a slot-52 addon attached.
+        // provider currently has a compatible genital addon attached.
         if (!actor->Is3DLoaded()) return ApplyResult::queued;
         frame_tasks::Queue(actor->GetFormID(),
             [handle, profile = *profile, generation] {

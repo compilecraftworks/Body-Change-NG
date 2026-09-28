@@ -828,6 +828,7 @@ namespace bcn
     {
         switch (type) {
         case FutanariSkinType::ubeTrx: return "UBE · SOS/TNG";
+        case FutanariSkinType::ubeTrxAddon: return "UBE · TRX";
         case FutanariSkinType::cbbeTrx: return "CBBE 3BA · TRX";
         case FutanariSkinType::erf: return "CBBE 3BA · ERF";
         }
@@ -1095,6 +1096,9 @@ namespace bcn
             append(FutanariSkinType::ubeTrx, "ube-trx",
                 FindDescendantDirectory(packDirectory, { "Textures", "!UBE", "Body" }),
                 "malebody_1", true);
+            append(FutanariSkinType::ubeTrxAddon, "ube-trx-addon",
+                FindDescendantDirectory(packDirectory, { "Textures", "[TRX] Futa addon UBE" }),
+                "schlong", false);
             append(FutanariSkinType::cbbeTrx, "cbbe-trx",
                 FindDescendantDirectory(packDirectory,
                     { "Textures", "[TRX] Futa addon", "Regular", "Default" }),

@@ -32,12 +32,23 @@ namespace
         std::uint64_t value{};
         std::string gamePath;
         std::vector<std::filesystem::path> textureCompanions;
+        std::vector<std::filesystem::path> defaultUbeEffects;
     };
     std::unordered_map<std::string, SourceHash> g_sourceHashes;
     // Cache existence is immutable for normal gameplay. Catalog Refresh clears
     // this set so an external MO2 overwrite cleanup is detected without doing
     // one filesystem stat per actor for a shared skin file.
     std::unordered_set<std::string> g_verifiedCachePaths;
+
+    struct DefaultUbeEffects
+    {
+        std::uint64_t signature{};
+        std::vector<std::filesystem::path> files;
+    };
+    // Only two fixed atlases. Resolve/hash the MO2-winning defaults once per
+    // BodySkin refresh, never once per actor or once per skin pack.
+    std::mutex g_defaultUbeEffectsLock;
+    std::array<std::optional<DefaultUbeEffects>, 2> g_defaultUbeEffects;
 
     [[nodiscard]] std::optional<std::filesystem::path> FinalSourcePath(
         const std::filesystem::path& path)
@@ -254,6 +265,40 @@ namespace
         }
     }
 
+    [[nodiscard]] DefaultUbeEffects FindDefaultUbeEffects(const std::string& gamePath)
+    {
+        if (!gamePath.starts_with("bodyskin\\")) return {};
+        const bool body = gamePath.ends_with("\\textures\\!ube\\body\\femalebody_1_n.dds");
+        const bool head = gamePath.ends_with("\\textures\\!ube\\head\\femalehead_n.dds");
+        if (!body && !head) return {};
+
+        std::scoped_lock lock(g_defaultUbeEffectsLock);
+        auto& saved = g_defaultUbeEffects[body ? 0U : 1U];
+        if (saved) return *saved;
+        DefaultUbeEffects result;
+        const auto atlas = std::filesystem::current_path() / "Data" / "textures" / "!UBE";
+        const auto part = atlas / (body ? "Body" : "Head");
+        const std::string stem = body ? "femalebody_1" : "femalehead";
+        const auto add = [&](const std::filesystem::path& path) {
+            std::error_code error;
+            if (!std::filesystem::is_regular_file(path, error) || error) return false;
+            result.files.push_back(FinalSourcePath(path).value_or(path.lexically_normal()));
+            return true;
+        };
+        // Read only the canonical installed defaults, NOT the selected pack's
+        // siblings. CS derives both names beside the active normal-map alias.
+        add(part / (stem + "_RFAOS.dds"));
+        if (!add(part / (stem + "_wet.dds"))) add(atlas / (stem + "_wet.dds"));
+        if (!result.files.empty()) {
+            bcn::ContentSignature hash;
+            hash.Text("ube-mo2-default-effects-v1");
+            for (const auto& file : result.files) HashFile(hash, file);
+            result.signature = hash.value;
+        }
+        saved = result;
+        return result;
+    }
+
     [[nodiscard]] std::string CacheFilename(const std::filesystem::path& source,
         const std::string_view identity)
     {
@@ -337,6 +382,10 @@ namespace bcn::runtime_assets
     void ClearGameRelativeSources(const std::string_view prefix)
     {
         const auto normalized = NormalizeGamePath(prefix);
+        if (normalized.empty() || normalized == "bodyskin\\") {
+            std::scoped_lock defaultsLock(g_defaultUbeEffectsLock);
+            g_defaultUbeEffects = {};
+        }
         std::scoped_lock lock(g_registeredSourcesLock);
         std::erase_if(g_registeredSources, [&normalized](const auto& entry) {
             return entry.first.starts_with(normalized);
@@ -374,12 +423,15 @@ namespace bcn::runtime_assets
         HashFile(hash, stableSource);
         auto companions = TextureCompanions(stableSource);
         for (const auto& companion : companions) HashFile(hash, companion);
+        auto defaultEffects = FindDefaultUbeEffects(normalizedPath);
+        if (!defaultEffects.files.empty()) hash.Text(std::to_string(defaultEffects.signature));
 
         std::scoped_lock lock(g_registeredSourcesLock);
         g_sourceHashes.try_emplace(identity, SourceHash{
             .value = hash.value,
             .gamePath = normalizedPath,
-            .textureCompanions = std::move(companions)
+            .textureCompanions = std::move(companions),
+            .defaultUbeEffects = std::move(defaultEffects.files)
         });
         g_registeredSources.insert_or_assign(normalizedPath, stableSource);
     }
@@ -406,16 +458,25 @@ namespace bcn::runtime_assets
         const auto destination = std::filesystem::current_path() / "Data" /
             path_text::FromUtf8(result);
         bool previouslyVerified{};
+        std::vector<std::filesystem::path> defaultEffects;
         {
             std::scoped_lock lock(g_registeredSourcesLock);
             previouslyVerified = g_verifiedCachePaths.contains(normalizedResult);
+            const auto found = g_sourceHashes.find(SourceIdentity(source));
+            if (found != g_sourceHashes.end()) defaultEffects = found->second.defaultUbeEffects;
         }
         if (previouslyVerified) {
             // Preparation is off the render/actor hot path. A user can remove
             // the cache while the game runs; an old positive must not make a
             // new apply publish a missing DDS forever. The native visitor
             // still performs no disk access.
-            if (std::filesystem::is_regular_file(destination, error) && !error) return result;
+            bool complete = std::filesystem::is_regular_file(destination, error) && !error;
+            for (const auto& effect : defaultEffects) {
+                error.clear();
+                complete = std::filesystem::is_regular_file(
+                    destination.parent_path() / effect.filename(), error) && !error && complete;
+            }
+            if (complete) return result;
             std::scoped_lock lock(g_registeredSourcesLock);
             g_verifiedCachePaths.erase(normalizedResult);
             error.clear();
@@ -449,6 +510,16 @@ namespace bcn::runtime_assets
                 // detail/mask/overlay companion cannot be cached.
                 SKSE::log::warn("Body Change NG could not materialize optional normal-map companion {}: {}",
                     path_text::Utf8(companion), error.message());
+            }
+        }
+
+        for (const auto& effect : defaultEffects) {
+            const auto effectDestination = destination.parent_path() / effect.filename();
+            if (SameFile(effectDestination, effect)) continue;
+            if (!cache_files::Publish(effect, effectDestination, error)) {
+                SKSE::log::warn("BCNG could not preserve installed UBE skin effect {}: {}",
+                    path_text::Utf8(effect), error.message());
+                return {};
             }
         }
 

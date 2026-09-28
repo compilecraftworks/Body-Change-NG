@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.4"
+local version = "1.3.5"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -305,6 +305,63 @@ target("BodyChangeNGFaceSkinPolicyTests")
         local output = path.join(generated, "face_resolve_node.inc")
         local content = source:sub(first, last - 1)
         if not os.isfile(output) or io.readfile(output) ~= content then io.writefile(output, content) end
+    end)
+
+target("BodyChangeNGFacePreviewTransactionTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_files("tests/FacePreviewTransactionTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "face-preview-transaction")
+        target:add("includedirs", generated)
+        local function extract(file, first, last, output)
+            local source = io.readfile(file):gsub("\r\n", "\n")
+            local begin = assert(source:find(first, 1, true))
+            local finish = last and assert(source:find(last, begin + #first, true)) or (#source + 1)
+            local content = source:sub(begin, finish - 1)
+            local dest = path.join(generated, output)
+            if not os.isfile(dest) or io.readfile(dest) ~= content then io.writefile(dest, content) end
+        end
+        extract("src/BodyChangeNG/FacePreviewTransaction.cpp", "namespace\n{", nil, "preview_transaction.inc")
+        extract("src/BodyChangeNG/FaceSkinNodeAccess.h", "    struct SavedKey", "    // Owned name", "preview_saved_key.inc")
+        extract("src/BodyChangeNG/FaceSkinNodeAccess.cpp", "    bool NodeAccess::ReadSaved(", nil, "preview_key_access.inc")
+        -- Compile the pinned upstream accessor/relocation body with a fake
+        -- loaded runtime, not a duplicated BCNG offset-selection formula.
+        local relocation = io.readfile("third_party/CommonLibSSE-NG/include/REL/Relocation.h"):gsub("\r\n", "\n")
+        local first = assert(relocation:find("\ttemplate <class T, class This>\n\t[[nodiscard]] inline T& RelocateMemberIfNewer", 1, true))
+        local last = assert(relocation:find("\n\t}", first, true))
+        io.writefile(path.join(generated, "save_relocate.inc"), relocation:sub(first, last + 3))
+        extract("third_party/CommonLibSSE-NG/include/REL/RuntimeDataAccessors.h",
+            "#define RUNTIME_DATA_ACCESSOR_VERSIONED_EX", "// Standard name variants", "save_accessor_macro.inc")
+        extract("third_party/CommonLibSSE-NG/include/REL/RuntimeDataAccessors.h",
+            "#define RUNTIME_DATA_ACCESSOR_VERSIONED(StructType", "// Generates a GetXXX() accessor for a field", "save_accessor_alias.inc")
+        local manager = io.readfile("third_party/CommonLibSSE-NG/include/RE/B/BGSSaveLoadManager.h")
+        local accessor = assert(manager:match("[^\r\n]*RUNTIME_DATA_ACCESSOR_VERSIONED%(RUNTIME_DATA,[^\r\n]+"))
+        io.writefile(path.join(generated, "save_manager_accessor.inc"), accessor)
+    end)
+
+target("BodyChangeNGFacePreviewReplayTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    add_files("tests/FacePreviewReplayTests.cpp")
+    add_includedirs("src")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "face-preview-replay")
+        target:add("includedirs", generated)
+        local source = io.readfile("src/BodyChangeNG/FaceSkinOverrides.cpp")
+        for _, item in ipairs({
+            {"    struct PreviewObservation", "    static_assert(offsetof", "preview_state.inc"},
+            {"    bool CurrentPreview(", "    void CheckRebuild(", "preview_observer.inc"}
+        }) do
+            local first = assert(source:find(item[1], 1, true))
+            local last = assert(source:find(item[2], first + #item[1], true))
+            local file = path.join(generated, item[3])
+            local content = source:sub(first, last - 1)
+            if not os.isfile(file) or io.readfile(file) ~= content then io.writefile(file, content) end
+        end
     end)
 
 for _, probeName in ipairs({"BodyChangeNGFailurePathTests", "BodyChangeNGOfflineMemoryProbe"}) do

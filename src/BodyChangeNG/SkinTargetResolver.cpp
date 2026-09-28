@@ -58,23 +58,6 @@ namespace
         return path;
     }
 
-    [[nodiscard]] std::optional<bcn::FutanariSkinType> FutanariTypeFor(
-        const bcn::futanari::AddonKind kind, const bcn::body_family::Mask actorFamily)
-    {
-        const auto ube = bcn::body_family::Bit(bcn::body_family::Family::ube);
-        const auto cbbe = bcn::body_family::Bit(bcn::body_family::Family::cbbe);
-        if (kind == bcn::futanari::AddonKind::ube && (actorFamily & ube) != 0U) {
-            return bcn::FutanariSkinType::ubeTrx;
-        }
-        if (kind == bcn::futanari::AddonKind::trx) {
-            if ((actorFamily & ube) != 0U) return bcn::FutanariSkinType::ubeTrx;
-            if ((actorFamily & cbbe) != 0U) return bcn::FutanariSkinType::cbbeTrx;
-        } else if (kind == bcn::futanari::AddonKind::erf && (actorFamily & cbbe) != 0U) {
-            return bcn::FutanariSkinType::erf;
-        }
-        return std::nullopt;
-    }
-
     [[nodiscard]] LoadedPartTarget& FindOrAppendTarget(
         std::vector<LoadedPartTarget>& targets, RE::TESObjectARMO* armor,
         RE::TESObjectARMA* addon, const std::uint32_t slotMask)
@@ -246,17 +229,21 @@ namespace bcn::skin_target
                 auto* partClone = object.partClone.get();
                 if (!armor || !addon || !addon->IsValidRace(actor->GetRace())) continue;
 
-                const auto slot52 = static_cast<std::uint32_t>(kSosMaleGenitalSlot);
-                if ((armor->GetSlotMask().underlying() & slot52) == 0U ||
-                    (addon->GetSlotMask().underlying() & slot52) == 0U) continue;
-
+                const auto armorMask = armor->GetSlotMask().underlying();
+                const auto addonMask = addon->GetSlotMask().underlying();
+                // Keep ordinary equipment out before allocating/scanning model
+                // paths. Slot 54 still requires explicit UBE evidence below.
+                if ((armorMask & futanari::kSlot52) == 0U ||
+                    (addonMask & (futanari::kSlot52 | futanari::kSlot54)) == 0U) continue;
                 const auto modelKind = futanari::ClassifyEvidence(
                     AddonModelPath(addon, firstPerson));
+                const auto slots = futanari::GenitalSlots(modelKind, armorMask, addonMask);
+                if (slots == 0U) continue;
                 if (modelKind != futanari::AddonKind::none) {
                     if (result.addonKind != futanari::AddonKind::none &&
                         result.addonKind != modelKind) {
                         SKSE::log::warn(
-                            "Body Change NG found simultaneous TRX and ERF futanari equipment on actor {:08X}; refusing an ambiguous texture route",
+                            "Body Change NG found conflicting futanari addon families on actor {:08X}; refusing an ambiguous texture route",
                             actor->GetFormID());
                         return {};
                     }
@@ -285,19 +272,18 @@ namespace bcn::skin_target
                 if (result.addonKind != futanari::AddonKind::none &&
                     result.addonKind != targetKind) {
                     SKSE::log::warn(
-                        "Body Change NG found simultaneous TRX and ERF futanari targets on actor {:08X}; refusing an ambiguous texture route",
+                        "Body Change NG found conflicting futanari texture targets on actor {:08X}; refusing an ambiguous texture route",
                         actor->GetFormID());
                     return {};
                 }
                 result.addonKind = targetKind;
-                auto& target = FindOrAppendTarget(result.targets, armor, addon,
-                    armor->GetSlotMask().underlying() & addon->GetSlotMask().underlying());
+                auto& target = FindOrAppendTarget(result.targets, armor, addon, slots);
                 AppendView(target, firstPerson, armor == actor->GetSkin(),
                     partClone, matchingNodes);
             }
         }
 
-        result.type = FutanariTypeFor(result.addonKind, body_family::ResolveActor(actor));
+        result.type = FutanariSkinTypeForAddon(result.addonKind, body_family::ResolveActor(actor));
         if (!result.type) result.targets.clear();
         return result;
     }

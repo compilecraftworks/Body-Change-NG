@@ -1,4 +1,4 @@
-# Body Change NG — v1.3.4
+# Body Change NG — v1.3.5
 
   Automatic checkbox-mode targeting skips custom followers and elder NPCs;
   manual actor selection and distribution rules remain unchanged.
@@ -7,7 +7,34 @@ face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Fee
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.4
+## Current version — v1.3.5
+
+Player-face skin previews now temporarily update RaceMenu face-texture keys
+along with the visible skin. Cancelling restores the original keys; confirming
+uses the normal persistent path. Temporary keys are restored before saving.
+This addresses RaceMenu's delayed texture reapplication without adding
+compatibility with simultaneous RSV/Selector skin control.
+
+Native UBE SOS and TRX UBE genital slot 54 are recognized separately from the
+existing CBBE 3BA TRX/ERF slot-52 route. UBE body slot 53 and hair materials
+remain excluded. TRX UBE skin packs have their own catalog type and texture
+path; existing native UBE favorites and selections are preserved.
+
+UBE body skins replace only the six head/body diffuse, normal and subsurface
+maps. Installed loose RFAOS/wet effects retain the MO2-winning defaults through
+normal-map cache aliases; effects from selected skin packs do not replace them.
+
+The Release build and all 42 offline regression executables pass. Existing
+preset calculations, correction/randomization recipes, supported runtimes and
+co-save formats are unchanged. Preserve settings, customized rules, packs and
+texture caches when updating; no new game or save cleaning is required.
+
+- [English Nexus description](docs/NEXUS-DESCRIPTION-v1.3.5-EN.bbcode) · [한국어 HTML 소개글](docs/NEXUS-DESCRIPTION-v1.3.5-KO.html) · [English Markdown](docs/NEXUS-DESCRIPTION-v1.3.5.md)
+- [English changelog](CHANGELOG.md#135) · [한국어 변경 내역](CHANGELOG-KO.md#135)
+- [Nexus BBCode changelog](docs/NEXUS-CHANGELOG-v1.3.5-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.5-KO.html)
+- [English text](docs/NEXUS-CHANGELOG-v1.3.5-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.5-KO.txt)
+
+## Preserved v1.3.4 improvements
 
 Preset values now follow the reference XML/weight calculations, including missing
 endpoints, negative/over-100 values and UNP reverse sliders. UBE/Necoco outfit

@@ -5,6 +5,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/FutanariSupport.h"
 #include "BodyChangeNG/FaceSkinOverrides.h"
+#include "BodyChangeNG/FacePreviewTransaction.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/Distribution.h"
@@ -365,6 +366,7 @@ namespace bcn
             g_raceMenuRestoreGeneration.fetch_add(1U, std::memory_order_acq_rel);
             if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                 frame_tasks::CancelActor(player->GetFormID());
+                face_preview::Restore(player->GetFormID());
                 std::scoped_lock lock(g_equipmentLock);
                 g_equipmentGeneration.erase(player->GetFormID());
             }

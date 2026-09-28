@@ -1,6 +1,7 @@
 #pragma once
 
 #include "BodyChangeNG/AssetIdentity.h"
+#include "BodyChangeNG/FutanariRouting.h"
 
 #include <algorithm>
 #include <array>
@@ -184,9 +185,19 @@ namespace bcn::native_addon
         return index == 22 && (mask & (1U << 22U)) != 0U; // biped index 22 = equipment slot 52
     }
 
-    [[nodiscard]] constexpr bool AcceptTargetView(bool hasSlot52, bool hasObject,
+    [[nodiscard]] constexpr bool IsCandidateSlotIndex(std::int32_t index) noexcept
+    { return index == 22 || index == 24; }
+
+    [[nodiscard]] constexpr bool AcceptGenitalSlot(std::int32_t index, std::uint32_t mask,
+        Channel channel, futanari::AddonKind kind) noexcept
+    {
+        return AcceptSlot(index, mask) || (index == 24 && channel == Channel::futanari &&
+            futanari::IsUbeAddon(kind) && (mask & futanari::kSlot54) != 0U);
+    }
+
+    [[nodiscard]] constexpr bool AcceptTargetView(bool hasGenitalSlot, bool hasObject,
         bool hasGeometryNodes) noexcept
-    { return hasSlot52 && hasObject && hasGeometryNodes; }
+    { return hasGenitalSlot && hasObject && hasGeometryNodes; }
 
     // Exact SE/AE visitor ABI confirmed in the two captured game versions.
     // The engine reads a slot index, BIPOBJECT array and actor handle.

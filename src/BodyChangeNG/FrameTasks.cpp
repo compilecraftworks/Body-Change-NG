@@ -1,6 +1,7 @@
 #include "BodyChangeNG/FrameTasks.h"
 #include "BodyChangeNG/ActorWorkQueue.h"
 #include "BodyChangeNG/FrameTaskQueue.h"
+#include "BodyChangeNG/FacePreviewTransaction.h"
 #include "BodyChangeNG/Settings.h"
 #include <RE/R/RaceSexMenu.h>
 #include <chrono>
@@ -119,15 +120,22 @@ namespace bcn::frame_tasks
     }
     void Reset(bool active)
     {
-        std::scoped_lock lock(g_lock);
-        g_queue.Reset(active);
-        g_previewActor = 0U;
-        g_scheduled = false;
+        {
+            std::scoped_lock lock(g_lock);
+            g_queue.Reset(active);
+            g_previewActor = 0U;
+            g_scheduled = false;
+        }
+        face_preview::Reset();
     }
     void SetPreviewActor(std::uint32_t actor)
     {
-        std::scoped_lock lock(g_lock);
-        g_previewActor = g_queue.Active() ? actor : 0U;
+        {
+            std::scoped_lock lock(g_lock);
+            g_previewActor = g_queue.Active() ? actor : 0U;
+        }
+        // Do not acquire the face journal lock while holding the queue lock.
+        face_preview::OwnerChanged();
     }
     bool HasPreview(std::uint32_t actor)
     {

@@ -126,16 +126,14 @@ namespace
         // All ordinary body/face calls are passed through untouched. Never
         // infer a genital from shader type or geometry name alone.
         if (!g_available.load(std::memory_order_acquire) ||
-            !context || context->index != 22 || !context->parts || !object)
+            !context || !IsCandidateSlotIndex(context->index) || !context->parts || !object)
             return {};
         auto* geometry = object->AsGeometry();
         if (!geometry) { return {}; }
         const auto* parts = reinterpret_cast<const RE::BIPOBJECT*>(context->parts);
-        const auto& part = parts[22];
-        if (!part.addon || !AcceptSlot(context->index,
-                part.addon->GetSlotMask().underlying())) {
-            return {};
-        }
+        const auto& part = parts[context->index];
+        auto* armor = part.item ? part.item->As<RE::TESObjectARMO>() : nullptr;
+        if (!part.addon || !armor) return {};
         auto* shader = geometry->lightingShaderProp_cast();
         // Genital SkinTint (feature 5) has its own material on engine clone.
         // Do not route hair, cloth or an arbitrary non-skin lighting material.
@@ -151,6 +149,12 @@ namespace
         auto* base = actor ? actor->GetActorBase() : nullptr;
         if (!base) { return {}; }
         const auto channel = base->GetSex() == RE::SEX::kFemale ? Channel::futanari : Channel::maleGenitals;
+        const auto* model = part.addon->bipedModels[1U].GetModel();
+        const auto kind = channel == Channel::futanari ?
+            bcn::futanari::ClassifyEvidence(model ? model : "") : bcn::futanari::AddonKind::none;
+        const auto slots = bcn::futanari::GenitalSlots(kind,
+            armor->GetSlotMask().underlying(), part.addon->GetSlotMask().underlying());
+        if (!AcceptGenitalSlot(context->index, slots, channel, kind)) return {};
         const auto selection = g_selections.Get(actor->GetFormID());
         const bool selected = selection && selection->channel == channel &&
             Matches(*selection, part, geometry->name.c_str());
@@ -386,7 +390,14 @@ namespace bcn::native_addon
             next.overrides[layer.shaderTextureIndex] = path->native;
         }
         for (const auto& target : targets) {
-            if (!target.armor || !target.addon || !AcceptSlot(22, target.slotMask)) continue;
+            if (!target.armor || !target.addon) continue;
+            const auto* model = target.addon->bipedModels[1U].GetModel();
+            const auto kind = channel == Channel::futanari ?
+                futanari::ClassifyEvidence(model ? model : "") : futanari::AddonKind::none;
+            const auto slots = target.slotMask & futanari::GenitalSlots(kind,
+                target.armor->GetSlotMask().underlying(), target.addon->GetSlotMask().underlying());
+            if (!AcceptGenitalSlot(22, slots, channel, kind) &&
+                !AcceptGenitalSlot(24, slots, channel, kind)) continue;
             Target item{ target.armor->GetFormID(), target.addon->GetFormID(), {} };
             for (const auto& view : target.views)
                 for (const auto& node : view.nodes)

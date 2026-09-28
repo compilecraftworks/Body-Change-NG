@@ -8,6 +8,8 @@
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/FaceSkinSerialization.h"
 #include "BodyChangeNG/FaceSkinNodeAccess.h"
+#include "BodyChangeNG/FacePreviewWatch.h"
+#include "BodyChangeNG/FacePreviewTransaction.h"
 #include "BodyChangeNG/RuntimeCompatibility.h"
 #include <RE/P/PackUnpack.h>
 #include <RE/B/BSLightingShaderMaterialBase.h>
@@ -57,6 +59,17 @@ namespace
     std::unordered_map<std::uint32_t, Request> g_requests;
     std::vector<Baseline> g_baselines;
     std::uint64_t g_epoch{ 1 }, g_generation{};
+    struct PreviewObservation
+    {
+        std::uint32_t actor{}, base{};
+        std::uint64_t epoch{}, generation{};
+        std::string node;
+        bool female{}, queued{};
+        PreviewWatch watch;
+    };
+    // At most one actor is being previewed by the UI. Store strings/IDs only,
+    // not retained actors, geometry, textures, callbacks, or an extra worker.
+    PreviewObservation g_preview;
     static_assert(offsetof(RE::MiddleHighProcessData, update3DModel) == 0x311);
 
     // Read-only, game-thread observation. Never retain a geometry/material or
@@ -129,6 +142,8 @@ namespace
         return true;
     }
     void Pump(std::uint32_t actor);
+    void ArmPreviewObservation(std::uint32_t actor, std::uint64_t epoch,
+        std::uint64_t generation, const Baseline& baseline, const Paths& expected);
 
 
 
@@ -193,6 +208,7 @@ namespace
         Baseline baseline;
         Baseline beforeBaseline;
         Paths beforeVisible, beforeSaved;
+        Paths previewExpected;
         std::uint8_t mutated{};
         bool hadBaseline{}, rollingBack{}, rollbackDone{}, rollbackFailed{};
         std::vector<Baseline> oldTargets;
@@ -221,6 +237,7 @@ namespace
         void Finish(bool success)
         {
             if (finished) return;
+            if (!success && Current()) bcn::face_preview::Restore(actorId);
             if (!success && Current() && !cleaningOld && mutated != 0U && !rollbackDone) {
                 if (rollingBack) {
                     rollbackFailed = true;
@@ -260,6 +277,7 @@ namespace
                 }
             }
             if (!newer) {
+                if (success) ArmPreviewObservation(actorId, epoch, generation, baseline, previewExpected);
                 if (!success) {
                     if (auto actor = Actor()) bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
                     SKSE::log::warn("BCNG face NiOverride transaction incomplete actor={:08X} profile='{}'", actorId, request.profile);
@@ -368,6 +386,9 @@ namespace
             if (nodeAccess && !cleaningOld) {
                 if (!bcn::frame_tasks::Active() || !nodeAccess.Write(actor.get(), baseline.female,
                         baseline.node, kChannels[channel], path, persist)) { Finish(false); return; }
+                if (!rollingBack && request.mode == bcn::skin_transaction::Mode::preview &&
+                    !bcn::face_preview::Publish(nodeAccess, actor.get(), baseline.female,
+                        baseline.node, kChannels[channel], path)) { Finish(false); return; }
                 next();
                 return;
             }
@@ -462,6 +483,12 @@ namespace
                     self->Finish(false);
                     return;
                 }
+                if (self->request.mode == bcn::skin_transaction::Mode::preview &&
+                    !self->cleaningOld && !self->rollingBack) {
+                    const auto* observed = VisibleTexture(actor.get(), self->baseline.node, shaderChannel);
+                    if (observed && observed->rendererTexture && Owns(textureName, expected))
+                        self->previewExpected[self->channel] = expected;
+                }
                 if (verified) verified();
                 else self->Next();
             });
@@ -520,6 +547,11 @@ namespace
                             if ((!firstHead || firstHead == thirdHead) &&
                                 CanKeepVisibleTexture(desired, property, name,
                                     texture && texture->rendererTexture, self->persistent, current)) {
+                                if (self->request.mode == bcn::skin_transaction::Mode::preview) {
+                                    if (!bcn::face_preview::Publish(self->nodeAccess, actor.get(), self->baseline.female,
+                                            self->baseline.node, kChannels[index], desired)) { self->Finish(false); return; }
+                                    self->previewExpected[index] = desired;
+                                }
                                 self->Next();
                                 return;
                             }
@@ -563,8 +595,8 @@ namespace
                 auto finish = [self, visible] {
                     auto commit = [self] {
                         if (self->request.mode == bcn::skin_transaction::Mode::preview && !self->cleaningOld) {
-                            // Default preview changes only live material. Keep the
-                            // committed key and its restoration ownership intact.
+                            // Default preview retains committed ownership. Its
+                            // temporary saved key is tracked separately from it.
                             self->Next();
                             return;
                         }
@@ -681,6 +713,131 @@ namespace
         return ObserveRebuild(true, pending, ready, expired);
     }
 
+    bool CurrentPreview(std::uint32_t actor, std::uint64_t epoch, std::uint64_t generation)
+    {
+        const auto it = g_requests.find(actor);
+        return g_epoch == epoch && g_preview.actor == actor && g_preview.epoch == epoch &&
+            g_preview.generation == generation && it != g_requests.end() &&
+            it->second.generation == generation && it->second.complete && !it->second.running &&
+            !it->second.rebuild.Blocked() && it->second.mode == bcn::skin_transaction::Mode::preview;
+    }
+
+    void SchedulePreviewObservation(std::uint32_t actor, std::uint64_t epoch, std::uint64_t generation);
+
+    void CheckPreviewObservation(std::uint32_t actorId, std::uint64_t epoch, std::uint64_t generation)
+    {
+        PreviewObservation observed;
+        RE::ActorHandle handle;
+        {
+            std::scoped_lock lock(g_mutex);
+            if (!CurrentPreview(actorId, epoch, generation)) return;
+            g_preview.queued = false;
+            observed = g_preview;
+            handle = g_requests.at(actorId).handle;
+        }
+        if (!bcn::frame_tasks::Active() || !bcn::frame_tasks::HasPreview(actorId)) {
+            std::scoped_lock lock(g_mutex);
+            if (CurrentPreview(actorId, epoch, generation)) g_preview = {};
+            return;
+        }
+        const auto actor = handle.get();
+        const auto* base = actor ? actor->GetActorBase() : nullptr;
+        if (!base || base->GetFormID() != observed.base || !actor->Is3DLoaded()) return;
+        // Never inspect/write a rebuilding head, a player being edited in
+        // RaceMenu, or geometry still owned by another queued appearance job.
+        const auto rebuild = ReadRebuildState(actor.get(), true, false);
+        if (bcn::frame_tasks::HasActorWork(actorId) || rebuild == RebuildObservation::waiting) {
+            SchedulePreviewObservation(actorId, epoch, generation);
+            return;
+        }
+        if (rebuild != RebuildObservation::ready || ResolveNodeName(actor.get()) != observed.node) return;
+        Paths properties, textures;
+        std::array<bool, kChannels.size()> ready{};
+        const auto access = NodeAccess::Connect();
+        for (std::size_t i{}; i < kChannels.size(); ++i) {
+            if (observed.watch.expected[i].empty()) continue;
+            const auto* texture = VisibleTexture(actor.get(), observed.node, kChannels[i]);
+            if (texture && !texture->name.empty()) textures[i] = texture->name.c_str();
+            ready[i] = texture && texture->rendererTexture;
+            // Unknown Override ABI still uses the existing Papyrus writer.
+            // Observation itself never dispatches per-frame Papyrus calls.
+            properties[i] = textures[i];
+            if (access && !access.Read(actor.get(), observed.female, observed.node,
+                    kChannels[i], false, properties[i])) return;
+        }
+        if (!bcn::frame_tasks::HasPreview(actorId)) return;
+        PreviewWatch::Action action;
+        {
+            std::scoped_lock lock(g_mutex);
+            if (!CurrentPreview(actorId, epoch, generation)) return;
+            action = g_preview.watch.Observe(properties, textures, ready);
+            if (action == PreviewWatch::Action::repair) {
+                // Keep the same generation and repair budget. The ordinary
+                // face transaction skips matching channels and handles failure
+                // rollback; it does not rebuild the body or persist preview.
+                g_requests.at(actorId).complete = false;
+            } else if (action == PreviewWatch::Action::stop) {
+                g_preview = {};
+            }
+        }
+        if (action == PreviewWatch::Action::repair) Pump(actorId);
+        else if (action == PreviewWatch::Action::unchanged) {
+            // Re-publish after a save suspension has ended. Active identical
+            // entries are no-ops: no registry reads/writes or texture loads.
+            for (std::size_t i{}; i < kChannels.size(); ++i) {
+                if (!observed.watch.expected[i].empty() &&
+                    !bcn::face_preview::Publish(access, actor.get(), observed.female,
+                        observed.node, kChannels[i], observed.watch.expected[i])) {
+                    bcn::face_preview::Restore(actorId);
+                    return;
+                }
+            }
+            SchedulePreviewObservation(actorId, epoch, generation);
+        }
+        else SKSE::log::warn("BCNG face preview repeatedly overwritten actor={:08X}; stopped transient repair", actorId);
+    }
+
+    void SchedulePreviewObservation(std::uint32_t actor, std::uint64_t epoch, std::uint64_t generation)
+    {
+        {
+            std::scoped_lock lock(g_mutex);
+            if (!CurrentPreview(actor, epoch, generation) || g_preview.queued || g_preview.watch.Empty()) return;
+            g_preview.queued = true;
+        }
+        // FrameTasks is paced by external input updates, unlike SKSE's live
+        // FIFO. One read-only check per two ticks, only while a UI preview is
+        // owned; no fixed seconds-long delay and no whole-world NPC scan.
+        if (!bcn::frame_tasks::Queue(0, [actor, epoch, generation] {
+                CheckPreviewObservation(actor, epoch, generation);
+            }, 2U, bcn::appearance::WorkChannel::none, false, true)) {
+            std::scoped_lock lock(g_mutex);
+            if (CurrentPreview(actor, epoch, generation)) g_preview = {};
+        }
+    }
+
+    void ArmPreviewObservation(std::uint32_t actor, std::uint64_t epoch,
+        std::uint64_t generation, const Baseline& baseline, const Paths& expected)
+    {
+        if (!bcn::frame_tasks::HasPreview(actor)) return;
+        {
+            std::scoped_lock lock(g_mutex);
+            const auto it = g_requests.find(actor);
+            if (g_epoch != epoch || it == g_requests.end() || it->second.generation != generation ||
+                !it->second.complete || it->second.mode != bcn::skin_transaction::Mode::preview) return;
+            if (g_preview.actor != actor || g_preview.epoch != epoch || g_preview.generation != generation) {
+                g_preview = {};
+                g_preview.actor = actor;
+                g_preview.epoch = epoch;
+                g_preview.generation = generation;
+            }
+            g_preview.base = baseline.base;
+            g_preview.node = baseline.node;
+            g_preview.female = baseline.female;
+            g_preview.watch.expected = expected;
+        }
+        SchedulePreviewObservation(actor, epoch, generation);
+    }
+
     void CheckRebuild(std::uint32_t actorId, std::uint64_t ticket, std::uint64_t epoch)
     {
         RE::ActorHandle handle;
@@ -777,7 +934,7 @@ namespace
             }
         }
         if (rebuild) {
-            if (!rebuild()) {
+            if (!bcn::face_preview::Restore(actorId) || !rebuild()) {
                 FailRebuild(actorId, rebuildTicket, epoch);
             } else {
                 {
@@ -790,6 +947,10 @@ namespace
             }
             return;
         }
+        // Baselines must see real committed keys, not our previous preview.
+        // Restore registry only; leave live materials in place until the next
+        // complete face batch. This also promotes same-skin commits normally.
+        if (!bcn::face_preview::Restore(actorId)) { batch->Finish(false); return; }
         if (!batch->noFaceWork) batch->nodeAccess = NodeAccess::Connect();
         batch->BeginTarget();
     }
@@ -812,6 +973,7 @@ namespace
                 request.generation = ++g_generation;
                 request.complete = false;
                 request.hasSelection = true;
+                if (g_preview.actor == actor->GetFormID()) g_preview = {};
                 if (deferForRebuild) request.rebuild.Request();
             }
         }
@@ -863,6 +1025,7 @@ namespace bcn::face_skin
                 request.rebuild.Request();
                 request.generation = ++g_generation;
                 request.complete = false;
+                if (g_preview.actor == actor->GetFormID()) g_preview = {};
             }
         }
         if (capacityExceeded) {
@@ -884,6 +1047,7 @@ namespace bcn::face_skin
             auto& request = it->second;
             request.generation = ++g_generation;
             request.complete = false;
+            if (g_preview.actor == id) g_preview = {};
             epoch = g_epoch;
             if (!request.hasSelection && !request.rebuild.Blocked() && !request.running) {
                 g_requests.erase(it);
@@ -921,15 +1085,19 @@ namespace bcn::face_skin
     }
     void Reset(bool preserveBaselines)
     {
+        bcn::face_preview::Reset();
         std::scoped_lock lock(g_mutex);
         ++g_epoch;
+        g_preview = {};
         decltype(g_requests){}.swap(g_requests);
         if (!preserveBaselines) decltype(g_baselines){}.swap(g_baselines);
     }
     void Forget(std::uint32_t actor)
     {
+        bcn::face_preview::Restore(actor);
         std::scoped_lock lock(g_mutex);
         g_requests.erase(actor);
+        if (g_preview.actor == actor) g_preview = {};
         // Cell detach discards jobs, not the original appearance needed by Default.
     }
     bool Matches(const RE::Actor* actor, std::string_view profileId, skin_transaction::Mode mode)

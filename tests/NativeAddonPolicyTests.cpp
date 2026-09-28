@@ -131,18 +131,51 @@ int main()
         }
         Check(AcceptSlot(22, 1U << 22), "slot52 rejected");
         Check(!AcceptSlot(2, 1U << 22) && !AcceptSlot(22, 4), "body slot admitted");
+        using Kind = bcn::futanari::AddonKind;
+        constexpr auto slot52 = bcn::futanari::kSlot52;
+        constexpr auto slot53 = 1U << 23U;
+        constexpr auto slot54 = bcn::futanari::kSlot54;
+        for (const auto kind : {Kind::ube, Kind::ubeTrx, Kind::trx, Kind::erf, Kind::none}) {
+            const bool ube = bcn::futanari::IsUbeAddon(kind);
+            // Exact installed UBE_SOS_Addon / TRX UBE BOD2 masks.
+            const auto slots = bcn::futanari::GenitalSlots(kind, slot52 | slot54, slot53 | slot54);
+            Check(slots == (ube ? slot54 : 0U), "UBE slot ownership leaked to another addon family");
+            Check(bcn::futanari::GenitalSlots(kind, slot52, slot52) == slot52,
+                "existing SOS/TNG slot52 route regressed");
+            Check(bcn::futanari::GenitalSlots(kind, slot53, slot53) == 0U &&
+                bcn::futanari::GenitalSlots(kind, slot52, slot53 | slot54) == 0U,
+                "ordinary UBE body or disjoint equipment slots admitted");
+            for (const auto channel : {Channel::maleGenitals, Channel::futanari}) {
+                for (int index = -1; index <= 42; ++index) {
+                    const bool expected = index == 24 && channel == Channel::futanari && ube;
+                    Check(AcceptGenitalSlot(index, slots, channel, kind) == expected,
+                        "native visitor admitted a body, male or foreign UBE slot");
+                    Check(AcceptGenitalSlot(index, slot52, channel, kind) == (index == 22),
+                        "legacy slot52 admission changed");
+                    Check(IsCandidateSlotIndex(index) == (index == 22 || index == 24),
+                        "native visitor can index an unverified biped slot");
+                }
+            }
+        }
         std::array<std::byte, 0x78 * 42> parts{};
+        for (std::size_t index{}; index < 42U; ++index) {
+            std::fill_n(parts.begin() + index * 0x78U, 0x78U, static_cast<std::byte>(index));
+        }
         const auto before = parts;
         VisitorContext original{ 22, 0, parts.data(), 123, 0 };
         int texture{};
-        {
+        for (const int index : {22, 24}) {
+            original.index = index;
             ScopedSupply supplied(original, &texture);
             const void* read{};
             std::memcpy(&read, supplied.context.parts + 0x18, sizeof(read));
             Check(read == &texture, "private TXST not supplied");
+            Check(supplied.part.front() == static_cast<std::byte>(index) &&
+                supplied.part.back() == static_cast<std::byte>(index),
+                "private supply copied the wrong engine biped slot");
             Check(supplied.context.index == 0 && supplied.context.actorHandle == 123,
                 "visitor identity changed");
-            Check(parts == before && original.index == 22 && original.parts == parts.data(),
+            Check(parts == before && original.index == index && original.parts == parts.data(),
                 "engine-owned BIPOBJECT was modified");
         }
         Check(parts == before, "borrowed pointer escaped into engine data");

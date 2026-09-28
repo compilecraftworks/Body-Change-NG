@@ -448,6 +448,22 @@ int main()
     Require(distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\n            !bcn::MatchesDistributionScopeFilters") ||
         distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\r\n            !bcn::MatchesDistributionScopeFilters"));
     const auto skinApplicationSource = readFeatureSource("SkinApplication.cpp");
+    const auto futanariSupportSource = readFeatureSource("FutanariSupport.cpp");
+    const auto targetResolverSource = readFeatureSource("SkinTargetResolver.cpp");
+    const auto nativeAddonSource = readFeatureSource("NativeAddonSkinBackend.cpp");
+    Require(futanariSupportSource.contains("futanari::GenitalSlots(kind,") &&
+        futanariSupportSource.contains("futanari::IsAddonFaction(addon.kind") &&
+        futanariSupportSource.contains("addon.plugin == plugin") &&
+        targetResolverSource.contains("futanari::GenitalSlots(modelKind,") &&
+        targetResolverSource.contains("FutanariSkinTypeForAddon(result.addonKind") &&
+        nativeAddonSource.contains("IsCandidateSlotIndex(context->index)") &&
+        nativeAddonSource.contains("parts[context->index]") &&
+        nativeAddonSource.contains("AcceptGenitalSlot(context->index, slots, channel, kind)") &&
+        nativeAddonSource.contains("AcceptGenitalSlot(24, slots, channel, kind)") &&
+        !nativeAddonSource.contains("parts[22]") &&
+        skinApplicationSource.contains("female ? bcn::futanari::kSlot54 : 0U"));
+    Require(futaSelection.contains("IsUbeFutanariSkinType(profile.type)") &&
+        distributionSource.contains("IsUbeFutanariSkinType(*type)"));
     const auto reapplyStart = skinApplicationSource.find("void QueueReapplyCurrentFutanari(");
     const auto reapplyEnd = skinApplicationSource.find("void InvalidateFutanariDetection(", reapplyStart);
     Require(reapplyStart != std::string::npos && reapplyEnd != std::string::npos);
@@ -908,6 +924,16 @@ int main()
     std::ifstream mainFeatureFile(std::filesystem::path("src") / "main.cpp", std::ios::binary);
     Require(mainFeatureFile.good());
     const std::string mainFeatureSource((std::istreambuf_iterator<char>(mainFeatureFile)), {});
+    const auto preSaveBoundary = mainFeatureSource.find("message->type == SKSE::MessagingInterface::kSaveGame");
+    Require(preSaveBoundary != std::string::npos &&
+        mainFeatureSource.find("bcn::face_preview::BeforeSave()", preSaveBoundary) <
+        mainFeatureSource.find("message->type == SKSE::MessagingInterface::kPreLoadGame", preSaveBoundary));
+    const auto previewTransactionSource = readFeatureSource("FacePreviewTransaction.cpp");
+    Require(previewTransactionSource.contains("manager->GetRuntimeData().thread.isBusy") &&
+        previewTransactionSource.contains("state->GetSaveGameSaving()") &&
+        previewTransactionSource.contains("state->GetSaveGameLoading()") &&
+        previewTransactionSource.contains("runtime::ResolveGameBranch(REL::Module::get().version())") &&
+        previewTransactionSource.contains("EXCLUSIVE_SKYRIM_FLAT"));
     Require(mainFeatureSource.contains("racemenu_form_delete::InstallInGame()") &&
         !mainFeatureSource.contains("BODY_CHANGE_NG_FORM_DELETE_GUARD_TRIAL"));
     const auto newGameBoundary = mainFeatureSource.find("message->type == SKSE::MessagingInterface::kNewGame");
