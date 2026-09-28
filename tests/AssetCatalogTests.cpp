@@ -1614,12 +1614,20 @@ int main(const int argc, char** argv)
     const auto ubeHeadCache = (sandbox / "Data" / cachedUbeHead).parent_path();
     if (!Require(!cachedUbeBody.empty() && !cachedUbeHead.empty() &&
             TextEquals(ubeBodyCache / "femalebody_1_rfaos.dds", "default-body-a") &&
-            TextEquals(ubeBodyCache / "femalebody_1_wet.dds", "default-body-wet") &&
+            !std::filesystem::exists(ubeBodyCache / "femalebody_1_wet.dds") &&
             TextEquals(ubeHeadCache / "femalehead_rfaos.dds", "default-head-a") &&
-            TextEquals(ubeHeadCache / "femalehead_wet.dds", "default-head-wet") &&
+            !std::filesystem::exists(ubeHeadCache / "femalehead_wet.dds") &&
             !std::filesystem::exists(ubeBodyCache / "femalebody_1_s.dds") &&
             TextEquals(ubeBody / "femalebody_1_RFAOS.dds", "pack-body-effect"),
-            "UBE effect aliases did not preserve installed defaults independently of the pack")) return 1;
+            "UBE effect aliases activated parent-folder wet maps or borrowed pack effects")) return 1;
+    // The parent-folder files are not part of CS's original normal-derived
+    // lookup. Even edits to them must not change the selected skin alias.
+    WriteText(ubeDefaults / "femalebody_1_wet.dds", "changed-root-wet");
+    WriteText(ubeDefaults / "femalehead_wet.dds", "changed-root-head-wet");
+    prepareUbe();
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == cachedUbeBody &&
+            bcn::runtime_assets::TexturePathFromGameRelative(ubeHeadKey, "skin") == cachedUbeHead,
+            "out-of-lookup root wet maps changed the normal cache signature")) return 1;
     // A pack's effect changes cannot select new effects; installed default
     // content changes must invalidate the normal bundle, even at equal stamps.
     WriteText(ubeBody / "femalebody_1_RFAOS.dds", "different-pack-effect");
@@ -1636,27 +1644,43 @@ int main(const int argc, char** argv)
             TextEquals(changedUbeDirectory / "femalebody_1_rfaos.dds", "default-body-b") &&
             TextEquals(defaultHeadRfaos, "default-head-a"),
             "installed UBE effect content refresh retained stale lookup paths")) return 1;
-    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
-    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == changedUbeBody &&
-            TextEquals(changedUbeDirectory / "femalebody_1_wet.dds", "default-body-wet"),
+    // A wet map actually installed beside the default normal remains supported.
+    // Switching between absent/present effects must not mutate old aliases.
+    const auto defaultBodyWet = ubeDefaults / "Body" / "femalebody_1_wet.dds";
+    WriteText(defaultBodyWet, "body-specific-wet");
+    prepareUbe();
+    const auto wetUbeBody = bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin");
+    const auto wetUbeDirectory = (sandbox / "Data" / wetUbeBody).parent_path();
+    if (!Require(!wetUbeBody.empty() && wetUbeBody != changedUbeBody &&
+            TextEquals(wetUbeDirectory / "femalebody_1_wet.dds", "body-specific-wet") &&
+            !std::filesystem::exists(changedUbeDirectory / "femalebody_1_wet.dds"),
+            "in-lookup UBE wet map did not receive an isolated alias")) return 1;
+    std::filesystem::remove(wetUbeDirectory / "femalebody_1_wet.dds");
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == wetUbeBody &&
+            TextEquals(wetUbeDirectory / "femalebody_1_wet.dds", "body-specific-wet"),
             "missing UBE effect alias was not repaired without refresh")) return 1;
     // A normal success must not be reported if a known installed companion
     // could not be published. Only a synthetic empty directory is removed.
-    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
-    std::filesystem::create_directory(changedUbeDirectory / "femalebody_1_wet.dds");
+    std::filesystem::remove(wetUbeDirectory / "femalebody_1_wet.dds");
+    std::filesystem::create_directory(wetUbeDirectory / "femalebody_1_wet.dds");
     if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin").empty(),
             "UBE preparation accepted a failed required effect publication")) return 1;
-    std::filesystem::remove(changedUbeDirectory / "femalebody_1_wet.dds");
-    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == changedUbeBody,
+    std::filesystem::remove(wetUbeDirectory / "femalebody_1_wet.dds");
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == wetUbeBody,
             "UBE preparation could not recover after publication failure")) return 1;
     WriteText(ubeDefaults / "Head" / "femalehead_wet.dds", "head-specific-wet");
     prepareUbe();
     const auto exactHeadPath = bcn::runtime_assets::TexturePathFromGameRelative(ubeHeadKey, "skin");
-    if (!Require(TextEquals((sandbox / "Data" / exactHeadPath).parent_path() /
+    if (!Require(exactHeadPath != cachedUbeHead && TextEquals((sandbox / "Data" / exactHeadPath).parent_path() /
             "femalehead_wet.dds", "head-specific-wet"),
-            "UBE part-specific installed wet map did not take priority")) return 1;
+            "UBE head wet map at the original lookup location was not preserved")) return 1;
+    std::filesystem::remove(defaultBodyWet);
+    prepareUbe();
+    if (!Require(bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin") == changedUbeBody &&
+            !std::filesystem::exists(changedUbeDirectory / "femalebody_1_wet.dds") &&
+            TextEquals(wetUbeDirectory / "femalebody_1_wet.dds", "body-specific-wet"),
+            "removing the installed wet map reused wet aliases or deleted save-referenced files")) return 1;
     std::filesystem::remove(defaultBodyRfaos);
-    std::filesystem::remove(ubeDefaults / "femalebody_1_wet.dds");
     prepareUbe();
     const auto noDefaults = bcn::runtime_assets::TexturePathFromGameRelative(ubeBodyKey, "skin");
     const auto noDefaultsDirectory = (sandbox / "Data" / noDefaults).parent_path();

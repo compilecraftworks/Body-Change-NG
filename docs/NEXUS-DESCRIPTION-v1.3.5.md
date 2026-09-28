@@ -135,7 +135,7 @@ Clothed breast/nipple correction is a separate layer. The built-in correction us
 
 ### Body Skins
 
-UBE body skins replace only the six head/body _d, _n and _sk base maps. For installed loose DDS effects, preserve the MO2-winning default RFAOS/wet maps beside the cached normal map instead of selecting same-named effects from the skin pack. Original DDS files and effect settings remain unchanged.
+UBE body skins replace only the six head/body _d, _n and _sk base maps. Installed loose RFAOS/wet maps are preserved only when they exist beside the original default normal map in its Head or Body folder. BCNG keeps the MO2-winning files and does not borrow effects from the selected skin pack or the parent !UBE folder. Original DDS files and effect settings remain unchanged.
 
 Choose a texture pack independently of the body preset. **Select the actor → Body Skins → single-click to preview → double-click to apply.** You do not need to create NPC rules or select Default between every pair of custom packs. If distribution checkboxes are showing, press **Cancel distribution** to return to ordinary direct editing.
 
@@ -454,7 +454,7 @@ These mods overlap with BCNG's appearance control. Choose one controller for the
 - **Overlay unavailable or color has little effect:** check the area's RaceMenu enable/count settings, foreign reserved slots, and the texture itself. A colored texture will not necessarily tint like a grayscale mask.
 - **Futanari tab missing / Not eligible:** distinguish supported female-addon installation from the actor's SOS/TNG registration. Neither an ordinary male addon nor a texture-only pack satisfies both conditions.
 
-The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.5 passed its Release build and 42 offline regression executables.
+The log is **BodyChangeNG.log** in SKSE's log directory, commonly under Documents\My Games\Skyrim Special Edition\SKSE; the location can differ by game edition/setup. For reports, include game/SKSE/RaceMenu versions, body/addon type, pack path, reproduction steps, and the log. v1.3.5 passed its Release build and 43 offline regression executables.
 
 ---
 

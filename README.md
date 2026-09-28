@@ -21,10 +21,12 @@ remain excluded. TRX UBE skin packs have their own catalog type and texture
 path; existing native UBE favorites and selections are preserved.
 
 UBE body skins replace only the six head/body diffuse, normal and subsurface
-maps. Installed loose RFAOS/wet effects retain the MO2-winning defaults through
-normal-map cache aliases; effects from selected skin packs do not replace them.
+maps. Installed loose RFAOS/wet effects retain the MO2-winning defaults only
+from the original normal's Head/Body folder. Skin-pack or parent-folder effects
+are not substituted. New aliases avoid the old parent-wet fallback while
+preserving existing save-referenced cache files.
 
-The Release build and all 42 offline regression executables pass. Existing
+The Release build and all 43 offline regression executables pass. Existing
 preset calculations, correction/randomization recipes, supported runtimes and
 co-save formats are unchanged. Preserve settings, customized rules, packs and
 texture caches when updating; no new game or save cleaning is required.

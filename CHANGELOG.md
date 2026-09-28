@@ -13,7 +13,8 @@ All notable public changes to Body Change NG are documented here.
 
 ### UBE skin effects
 
-- UBE body skins replace only the six head/body _d, _n and _sk base maps. For installed loose DDS effects, preserve the MO2-winning default RFAOS/wet maps beside the cached normal map instead of selecting same-named effects from the skin pack. Original DDS files and effect settings remain unchanged.
+- UBE body skins replace only the six head/body _d, _n and _sk base maps. Installed loose RFAOS/wet maps are preserved only when they exist beside the original default normal map in its Head or Body folder. BCNG keeps the MO2-winning files and does not borrow effects from the selected skin pack or the parent !UBE folder. Original DDS files and effect settings remain unchanged.
+- Remove the parent-folder wet fallback that could activate a droplet effect only after choosing a BCNG skin. New applications use separate cache paths; existing cache files referenced by older saves are retained.
 
 ### UBE and 3BA futanari skins
 

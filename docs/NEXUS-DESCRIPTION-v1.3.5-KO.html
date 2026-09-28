@@ -127,7 +127,7 @@ footer{margin-top:3em;padding-top:20px;border-top:1px solid var(--line);color:va
 <p>의상 착용 시 가슴·유두 보정은 별도 레이어입니다. 기본 보정은 <strong>목표값에서 BCNG 프리셋값을 뺀 값</strong> 또는 <strong>체중에 맞춰 보간한 추가 보정값</strong>을 사용합니다. 지정된 의상 보정 프리셋이 있다면 그 프리셋의 보정값을 대신 사용하며, 원본 XML은 수정하지 않습니다. 의도한 기준 체형을 재현하려면 몸과 의상 모두 <strong>Zeroed Sliders</strong>와 <strong>Build Morphs</strong>로 빌드하세요.</p>
 
 <h3>바디스킨</h3>
-<p>UBE 바디스킨은 얼굴·몸의 _d / _n / _sk 기본 맵 6개만 교체합니다. DDS로 설치된 기본 RFAOS·wet 맵은 선택 스킨팩의 동명 파일로 바꾸지 않고, MO2 우선순위로 선택된 파일을 노멀맵 캐시 옆에도 연결하여 효과 검색 경로를 유지합니다. 원본 DDS와 효과 설정은 변경하지 않습니다.</p>
+<p>UBE 바디스킨은 얼굴·몸의 _d / _n / _sk 기본 맵 6개만 교체합니다. 기본 노멀맵과 같은 Head 또는 Body 폴더에 DDS로 설치된 RFAOS·wet 맵만 MO2 우선순위에 따라 유지합니다. 선택 스킨팩이나 상위 !UBE 폴더에서 효과 파일을 대신 가져오지 않습니다. 원본 DDS와 효과 설정은 변경하지 않습니다.</p>
 <p>바디프리셋과 별개로 스킨팩을 선택합니다. <strong>액터 선택 → 바디스킨 → 한 번 클릭 미리보기 → 더블클릭 적용</strong> 순서이며, 배포 규칙을 만들거나 매번 기본 스킨을 거쳐 다른 팩으로 바꿀 필요가 없습니다. 배포 체크박스가 보인다면 <strong>배포 취소</strong>로 일반 직접 선택 목록에 돌아오세요.</p>
 <p class="notice"><strong>커스텀 팔로워·바디 계열 미확인 액터:</strong> BCNG는 BodySlide 계열을 식별하지 못한 액터도 직접 스킨을 선택할 수 있게 합니다. 성별·종족에 맞는 팩과 계열 미확인 안내를 표시하므로, 실제 바디에 맞는 3BA/UBE 스킨을 직접 선택하세요. 이미 확인된 비호환 레이아웃은 계속 차단합니다. 이 수동 선택 허용이 자동 배포의 호환 조건을 완화하거나 UV를 변환하는 것은 아닙니다.</p>
 <p>NPC 얼굴은 실제 로드된 FaceGen 하위에서 찾으며, 메시 이름이 HeadPart 이름과 달라도 피부 재질 대상이 명확하면 사용할 수 있습니다. 몸 전용 팩은 이전 얼굴 변경을 복원해야 하는 경우가 아니라면 얼굴 대상을 요구하지 않습니다. 얼굴 메시가 없거나 대상이 여러 개라 불명확한 경우에는 임의로 추측해 적용하지 않습니다.</p>
@@ -363,7 +363,7 @@ Data\SKSE\Plugins\OBody_presetDistributionConfig.json  (선택적 ORefit 입력)
 <li><strong>후타탭 없음·대상이 아님:</strong> 지원 여성 애드온 설치 여부와 액터의 SOS/TNG 등록 여부를 구분하세요. 남성 애드온이나 텍스처 팩만으로 두 조건을 충족하지 않습니다.</li>
 </ul>
 <p>진단 로그는 SKSE 로그 폴더의 <code>BodyChangeNG.log</code>이며, 보통 <code>Documents\My Games\Skyrim Special Edition\SKSE</code> 아래에 있습니다. 게임 배포판·환경에 따라 위치가 다를 수 있습니다. 보고할 때 게임·SKSE·RaceMenu 버전, 바디·애드온 종류, 팩 경로, 재현 순서와 로그를 함께 제공하세요.</p>
-<p class="note">v1.3.5는 Release 빌드와 오프라인 회귀 실행 파일 42개를 통과했습니다.</p>
+<p class="note">v1.3.5는 Release 빌드와 오프라인 회귀 실행 파일 43개를 통과했습니다.</p>
 </section>
 
 <section id="upgrade">

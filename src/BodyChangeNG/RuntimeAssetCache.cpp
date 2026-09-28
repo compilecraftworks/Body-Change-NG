@@ -285,13 +285,17 @@ namespace
             result.files.push_back(FinalSourcePath(path).value_or(path.lexically_normal()));
             return true;
         };
-        // Read only the canonical installed defaults, NOT the selected pack's
-        // siblings. CS derives both names beside the active normal-map alias.
+        // Read only effects beside the canonical installed normal, NOT the
+        // selected pack's siblings. CS retains the normal's directory when
+        // deriving these names. Searching the parent !UBE directory would
+        // enable a wet map that the default skin itself never resolves.
         add(part / (stem + "_RFAOS.dds"));
-        if (!add(part / (stem + "_wet.dds"))) add(atlas / (stem + "_wet.dds"));
+        add(part / (stem + "_wet.dds"));
         if (!result.files.empty()) {
             bcn::ContentSignature hash;
-            hash.Text("ube-mo2-default-effects-v1");
+            // Do not reuse aliases published under the parent-fallback policy.
+            // Old save-referenced paths remain intact; new applies use v2.
+            hash.Text("ube-mo2-default-effects-v2");
             for (const auto& file : result.files) HashFile(hash, file);
             result.signature = hash.value;
         }
