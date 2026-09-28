@@ -1,6 +1,6 @@
 # BODY CHANGE NG
 
-**v1.3.5: Improved player-face skin previews and native UBE / TRX UBE futanari skin detection. Includes the v1.3.4 morph, correction, randomization and distribution improvements. Correction and randomization options default to OFF.**
+**v1.3.5: Open distribution rules directly, search target lists, and change rule candidates without recreating rules. Also improves face previews, UBE skin effects and futanari detection, with a targeted UBE SE outfit-morph compatibility fix. Correction and randomization options default to OFF.**
 
 ### v1.3.5 · Your character. Your choices.
 
@@ -50,6 +50,16 @@ Skyrim AE: 1.6.317 / 1.6.318 / 1.6.323 / 1.6.342 / 1.6.353
 Here, SE/AE refers to the executable version, not whether you purchased the Anniversary Upgrade. **Skyrim VR, LE, Epic 1.6.678, Microsoft Store/Game Pass, and unlisted runtimes—including 1.7.x—are not supported.**
 
 **Do not blindly install the newest SKSE or RaceMenu file.** Use releases made for your game version, including the correct Steam/GOG variant. BCNG handles the known older and newer RaceMenu interfaces rather than requiring one product version; it cannot make a mismatched RaceMenu DLL load.
+
+### Skyrim 1.5.97 — recommended UBE installation
+
+**Even on Skyrim 1.5.97, select UBE's DLL-free 1.6.x / AE option and use skee64backports with RaceMenu for 1.5.97 (official 0.4.16).** This is the UBE installer option—not an instruction to install the AE version of RaceMenu.
+
+Check MO2's Data/conflict view: **SKSE\Plugins\skee64.dll should come from the 1.5.97 RaceMenu installation, not UBE's bundled SE DLL.** Ensure skee64backports is enabled in the same profile. This configuration worked with the UBE body and outfit checked during testing.
+
+UBE's bundled SE DLL can cause outfits to appear inflated by applying morphs on top of an already-deformed shape. BCNG 1.3.5 also includes a targeted compatibility fix for the identified bundled DLL; the recommended setup above does not require that fix to activate.
+
+**Fully exit and restart the game after changing DLLs.** Build both body and outfits with **Zeroed Sliders + Build Morphs**; changing DLLs does not remove a preset already baked into a mesh.
 
 ---
 
@@ -193,20 +203,32 @@ Slot capacity is read from RaceMenu and depends on your configuration. An invisi
 
 ---
 
-## NPC DISTRIBUTION — SELECT FIRST, SAVE EXPLICITLY
+## NPC DISTRIBUTION — CREATE AND EDIT RULES
 
-Available in **Body Presets, Body Skins, Futanari Skin, and Overlays**. Not available in Tint Masks. New installations start with **no rules**; BCNG does not randomly distribute the entire installed catalog.
+Available in **Body Presets, Body Skins, Futanari Skin, and Overlays**, not Tint Masks. New installations have **no rules**; BCNG does not randomly distribute the entire installed catalog.
 
-1. For ordinary NPC body/skin pools, set the female and male **NPC distribution body type** in Mod Settings.
-1. Open the relevant tab and press **NPC distribution** at the right of the Refresh row. The buttons become **Female · Male · Distribute · Cancel distribution**, starting with Female. Female/Male selects the nearest locally loaded NPC of that sex for preview, or the player if none is available. Catalogs and new rules follow the selected distribution sex regardless of the player's sex; body-preset/skin candidates also follow the configured NPC distribution body type. Changing sex clears previous checkmarks and previews. Futanari Skin is female-only: it selects the nearest SOS/TNG-registered female futanari NPC, falling back to the player if none is available. Incompatible candidates can be checked without being previewed on the current actor. Automatic preview targeting in NPC-distribution checkbox mode skips custom followers and elder NPCs, including futanari targets. Manual actor selection and actual distribution rules are unchanged.
-1. In distribution mode, the actor dropdown and Refresh actors button are replaced by the title "Distribute selected items to world NPCs within a chosen scope". The current actor is only the preview target, not the distribution scope. The title stays while the conditions popup is open; leaving distribution mode restores the actor controls.
-1. Check the entries to use. **Select all** and **Clear selection** operate on the visible eligible list. Default/reset rows are not asset candidates.
-1. Press **Distribute** to open the conditions popup. This button alone does not save or distribute. The selected IDs stay attached to this editing session; adding another rule uses that selection.
-1. Choose sex and target: all NPCs, name, NPC base FormID, race, faction, class, keyword, combat style, custom followers, elders, or plugin. For **All NPCs**, **Exclude custom followers** and **Exclude elder NPCs** are checked by default.
-1. Use **+ Add rule**, **Delete rule**, **Up**, and **Down** above the condition list to manage priority.
-1. Choose **Distribute to loaded NPCs now** to save, activate, and process loaded NPCs, or **Distribute next game launch** to save without changing this session's active rules.
+### Open the editor
 
-**Press Distribute to loaded NPCs now or Distribute next game launch to save your conditions.**
+- **Distribution conditions:** open the conditions editor directly on the current feature's tab. No need to select candidates or create a rule first.
+- **NPC distribution:** check candidates in the catalog, then press **Distribute** to open the editor with that selection. **Select all / Clear selection** affect visible eligible entries; default/reset rows are not candidates. For body/skin pools, first set the female/male NPC distribution body type in Mod Settings.
+
+### Edit and save
+
+1. Choose a feature tab and an existing rule, or use **+ Add rule**. Use **Delete rule / Up / Down** to manage rules and priority. List labels identify each rule's feature.
+1. Set the sex and target conditions. Open **plugin, race, faction, keyword, or class** dropdowns to search by name, EditorID, plugin, or FormID. English letter case does not matter. Missing faction EditorIDs are also looked up in the plugin.
+1. Press **Edit items** beside the candidate count. Use search, checkboxes, **Select all / Clear selection** to change candidates. **Save** in this picker updates the pending rule; **Close** cancels that item's pending edits. This picker does not apply appearance previews.
+1. Press **Save next to Close in the conditions window** to save and activate the rules. The result appears beside the feature tabs. This does not run an immediate pass over loaded NPCs.
+1. Use **Distribute to loaded NPCs now** to also process loaded NPCs immediately, or **Distribute next game launch** to save without changing this session's active rules.
+
+**The item picker's Save is not the final rule save. Finish with Save in the conditions window. Closing the conditions window does not save pending edits.**
+
+### Distribution previews
+
+**Female / Male** controls the distribution sex and selects a nearby eligible NPC for preview, falling back to the player when none is available. Changing sex clears previous checkmarks and previews. Futanari Skin is female-only; NPC previews require a registered SOS/TNG addon. Preset/skin pools follow the configured NPC body type, not the preview actor's body.
+
+Automatic NPC preview selection uses recognized **Nord, Breton, Imperial, Redguard, High Elf, Wood Elf, Dark Elf, and Orc** families, including recognizable custom variants. Khajiit, Argonians, other/unrecognized races, custom followers, and elders are excluded from this automatic selection. **These filters do not change manual actor selection or actual distribution rules.**
+
+In distribution mode, actor controls are replaced by **Distribute selected items to world NPCs within a chosen scope**. The displayed actor is only a preview target, not the rule's scope. **Cannot preview on the current actor** does not prevent checking a candidate for compatible NPCs. A body-preset preview on a nearby actor is labelled **Previewing distribution item on a nearby actor**.
 
 Rules are evaluated in order independently for each feature, and independently for each overlay area. A single compatible candidate gives a fixed assignment; several candidates form a stable per-NPC random pool. **Automatic overlay distribution picks one candidate per configured area; it does not apply every checked overlay at once.** Manual overlay editing supports the multi-overlay stack.
 

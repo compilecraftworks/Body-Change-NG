@@ -1,5 +1,6 @@
 #pragma once
 
+#include "BodyChangeNG/AssetIdentity.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -9,6 +10,23 @@
 
 namespace bcn::ui_catalog
 {
+    // Automatic distribution preview only. Do not apply this allow-list to
+    // direct actor selection or to the actual distribution rule matcher.
+    [[nodiscard]] inline bool HumanElfPreviewRace(const std::uint32_t formID, std::string_view editorID)
+    {
+        std::string lower(editorID);
+        for (auto& c : lower) c = static_cast<char>(asset_identity::FoldCase(static_cast<unsigned char>(c)));
+        if (lower.find("khajiit") != std::string::npos || lower.find("argonian") != std::string::npos) return false;
+        constexpr std::array names{"nordrace", "bretonrace", "imperialrace", "redguardrace",
+            "highelfrace", "woodelfrace", "darkelfrace", "orcrace"};
+        for (const auto* name : names) if (lower.find(name) != std::string::npos) return true;
+        // Exact Skyrim.esm IDs, including vampire counterparts. Never mask a
+        // foreign plugin's runtime ID down to these local IDs.
+        constexpr std::array<std::uint32_t, 16> builtins{79681,79682,79683,79684,79686,79687,79688,79689,
+            559164,559165,559168,559172,558996,688825,559174,559236};
+        return std::ranges::find(builtins, formID) != builtins.end();
+    }
+
     // ActorCatalog supplies NPCs in distance order. The player is only a
     // fallback, never a distance-zero candidate ahead of a matching NPC.
     template <class Entries, class Eligible>

@@ -58,6 +58,14 @@
                 url = "https://gitlab.com/tboox/xmake-repo.git"
             },
             version = "v7.06"
+        },
+        ["zlib v1.3.2#a0c24696"] = {
+            repo = {
+                branch = "master",
+                commit = "e36e822129b0fcbdfb51633a7fcee8c76af344bf",
+                url = "https://github.com/xmake-io/xmake-repo.git"
+            },
+            version = "v1.3.2"
         }
     }
 }

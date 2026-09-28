@@ -15,6 +15,7 @@
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
 #include "BodyChangeNG/Distribution.h"
+#include "BodyChangeNG/DistributionEditorState.h"
 #include "BodyChangeNG/DistributionAuthoring.h"
 #include "BodyChangeNG/DistributionRuleNames.h"
 #include "BodyChangeNG/InputSink.h"
@@ -36,6 +37,8 @@
 #include <RE/T/TESClass.h>
 #include <RE/RTTI.h>
 #include "BodyChangeNG/DistributionTargetRead.h"
+#include "BodyChangeNG/DistributionTargetSearch.h"
+#include "BodyChangeNG/FactionEditorIDs.h"
 
 #include <algorithm>
 #include <charconv>
@@ -52,13 +55,7 @@ namespace
     std::mutex g_uiLifecycleLock;
     using ActiveTab = bcn::ui_catalog::Tab;
 
-    enum class DistributionPool
-    {
-        body,
-        skin,
-        futanari,
-        overlay
-    };
+    using DistributionPool = bcn::distribution_editor::Pool;
 
     struct CatalogItem
     {
@@ -96,6 +93,7 @@ namespace
         std::string plugin;
         std::uint32_t localFormID{};
         std::uint32_t runtimeFormID{};
+        std::string name;
     };
 
     struct DistributionTargetSnapshot
@@ -105,6 +103,9 @@ namespace
     };
     bcn::async_work::SessionSnapshot<DistributionTargetSnapshot> g_distributionTargets;
     std::shared_ptr<const DistributionTargetSnapshot> g_distributionTargetOptions;
+    bcn::distribution_editor::TargetSearch g_distributionTargetSearch;
+    std::string g_distributionStatus;
+    double g_distributionStatusUntil{};
 
     ActiveTab g_activeTab{ ActiveTab::body };
     DistributionPool g_distributionPool{ DistributionPool::body };
@@ -127,6 +128,16 @@ namespace
     bool g_distributionEditorLoaded{};
     std::vector<bcn::DistributionRule> g_distributionRules;
     std::size_t g_selectedDistributionRule{};
+    bcn::distribution_editor::Tabs g_distributionRuleTabs;
+    std::optional<bcn::distribution_editor::Items> g_distributionItemDraft;
+    struct DistributionItemRow
+    {
+        std::string id, name, detail;
+        bcn::overlay::Area area{ bcn::overlay::Area::body };
+    };
+    std::vector<DistributionItemRow> g_distributionItemRows;
+    std::string g_distributionItemSearch;
+    std::uint64_t g_distributionItemOverlayRevision{};
     std::uint32_t g_nextDraftRuleID{ 1U };
     std::optional<bcn::UiLanguage> g_distributionRuleNameLanguage;
     std::uint32_t g_selectedActorFormID{};
@@ -734,8 +745,20 @@ namespace
         }
     }
 
+    void ResetDistributionEditorAuxiliary()
+    {
+        g_distributionRuleTabs.emptyPools.clear();
+        g_distributionItemDraft.reset();
+        g_distributionItemRows.clear();
+        g_distributionItemSearch.clear();
+        g_distributionTargetSearch = {};
+        g_distributionStatus.clear();
+        g_distributionStatusUntil = 0.0;
+    }
+
     void ResetDistributionEditor()
     {
+        ResetDistributionEditorAuxiliary();
         g_distributionEditorLoaded = false;
         g_distributionRules.clear();
         g_selectedDistributionRule = 0;
@@ -799,7 +822,12 @@ namespace
         const auto target = bcn::ui_catalog::NearestDistributionActor(catalog.Snapshot(),
             female, player ? player->GetFormID() : 0U, [&](const std::uint32_t id) {
                 auto* candidate = catalog.Resolve(id);
-                return candidate && candidate->Is3DLoaded() && !candidate->IsDisabled() &&
+                const auto* race = candidate ? candidate->GetRace() : nullptr;
+                const auto* raceEditorID = race ? race->GetFormEditorID() : nullptr;
+                return race && bcn::ui_catalog::HumanElfPreviewRace(race->GetFormID(),
+                    raceEditorID ? std::string_view{raceEditorID} : std::string_view{}) &&
+                    candidate->Is3DLoaded() && !candidate->IsDisabled() &&
+                    candidate->HasKeywordString("ActorTypeNPC") &&
                     !candidate->IsDead() && !bcn::IsCustomFollowerActor(candidate) &&
                     !bcn::IsElderActor(candidate->GetActorBase()) &&
                     (g_distributionPool != DistributionPool::futanari ||
@@ -904,7 +932,8 @@ namespace
                 .editorID = editorID,
                 .plugin = plugin,
                 .localFormID = localFormID,
-                .runtimeFormID = form->GetFormID()
+                .runtimeFormID = form->GetFormID(),
+                .name = name
             });
         });
     }
@@ -958,6 +987,39 @@ namespace
         return result;
     }
 
+    // File worker: owned strings/IDs only, never TESForm/TESFile pointers.
+    void CompleteFactionEditorIDs(DistributionTargetSnapshot& snapshot,
+        const std::filesystem::path& dataDirectory, const std::function<bool()>& current)
+    {
+        bcn::asset_identity::Map<std::unordered_set<std::uint32_t>> queries;
+        for (const auto& option : snapshot.factions) {
+            if (option.editorID.empty()) queries[option.plugin].insert(option.localFormID);
+        }
+        for (const auto& [plugin, wanted] : queries) {
+            if (!current()) return;
+            try {
+                const auto result = bcn::faction_editor_ids::ReadFile(dataDirectory, plugin, wanted, current);
+                if (!result.valid) continue;
+                for (auto& option : snapshot.factions) {
+                    if (!option.editorID.empty() || !bcn::asset_identity::Equal{}(option.plugin, plugin)) continue;
+                    const auto found = result.ids.find(option.localFormID);
+                    if (found == result.ids.end()) continue;
+                    option.editorID = found->second;
+                    option.display = option.name;
+                    if (option.display.empty()) option.display = option.editorID;
+                    else if (Lower(option.name) != Lower(option.editorID)) option.display += " · " + option.editorID;
+                    option.display += std::format(" · {}:{:06X}", option.plugin, option.localFormID);
+                }
+            } catch (const std::exception&) {
+                // Missing/unreadable plugin metadata must not hide valid game
+                // targets or prevent saving rules. Keep the original label.
+            }
+        }
+        std::ranges::sort(snapshot.factions, [](const auto& left, const auto& right) {
+            return Lower(left.display) < Lower(right.display);
+        });
+    }
+
     void RequestDistributionTargetOptions()
     {
         const auto ticket = g_distributionTargets.Begin();
@@ -973,7 +1035,17 @@ namespace
                     // ImGui rendering. Only owned values cross back to UI.
                     auto result = CollectDistributionTargetOptions(unnamed);
                     if (result && bcn::frame_tasks::IsCurrent(epoch)) {
-                        g_distributionTargets.Publish(ticket, std::move(*result));
+                        const auto current = [ticket, epoch] {
+                            return bcn::frame_tasks::IsCurrent(epoch) && g_distributionTargets.Current(ticket);
+                        };
+                        const auto accepted = bcn::catalog_refresh::Get().SubmitLatest(&g_distributionTargets,
+                            [ticket, current, dataDirectory = std::filesystem::current_path() / "Data",
+                                snapshot = std::move(*result)]() mutable {
+                                if (!current()) return;
+                                CompleteFactionEditorIDs(snapshot, dataDirectory, current);
+                                if (current()) g_distributionTargets.Publish(ticket, std::move(snapshot));
+                            }, [ticket](std::exception_ptr) { g_distributionTargets.Fail(ticket); });
+                        if (!accepted) g_distributionTargets.Fail(ticket);
                     } else {
                         g_distributionTargets.Fail(ticket);
                     }
@@ -1034,43 +1106,10 @@ namespace
         }
     }
 
-    [[nodiscard]] bool RuleUsesDistributionPool(const bcn::DistributionRule& rule,
-        const DistributionPool pool)
-    {
-        switch (pool) {
-        case DistributionPool::body:
-            return !rule.presetIds.empty();
-        case DistributionPool::skin:
-            return !rule.skinProfileIds.empty();
-        case DistributionPool::futanari:
-            return !rule.futanariSkinIds.empty();
-        default:
-            return std::ranges::any_of(rule.overlayIds,
-                [](const auto& ids) { return !ids.empty(); });
-        }
-    }
-
-    [[nodiscard]] bool RuleHasAnyDistributionPool(const bcn::DistributionRule& rule)
-    {
-        return !rule.presetIds.empty() || !rule.skinProfileIds.empty() ||
-            !rule.futanariSkinIds.empty() ||
-            std::ranges::any_of(rule.overlayIds,
-                [](const auto& ids) { return !ids.empty(); });
-    }
-
     [[nodiscard]] std::size_t RuleDistributionPoolCount(const bcn::DistributionRule& rule,
         const DistributionPool pool)
     {
-        switch (pool) {
-        case DistributionPool::body: return rule.presetIds.size();
-        case DistributionPool::skin: return rule.skinProfileIds.size();
-        case DistributionPool::futanari: return rule.futanariSkinIds.size();
-        default: {
-            std::size_t count{};
-            for (const auto& ids : rule.overlayIds) count += ids.size();
-            return count;
-        }
-        }
+        return bcn::distribution_editor::Count(rule, pool);
     }
 
     void SetRuleDistributionSelection(bcn::DistributionRule& rule)
@@ -1118,6 +1157,7 @@ namespace
         EnsureDistributionEditor();
         auto rule = NewDistributionRule();
         SetRuleDistributionSelection(rule);
+        g_distributionRuleTabs.Remember(rule, g_distributionPool);
         g_distributionRules.push_back(std::move(rule));
         g_selectedDistributionRule = g_distributionRules.size() - 1U;
         RollbackSingleCatalogPreview(SelectedActor(), g_distributionPool);
@@ -1125,6 +1165,20 @@ namespace
         // The popup owns this catalog-selection snapshot until it closes.
         // Hiding the checkboxes must not erase the IDs that + Add rule copies.
         g_distributionSelectionMode = false;
+        ResetCatalogNavigation();
+    }
+
+    void OpenDistributionConditions(const DistributionPool pool)
+    {
+        RollbackSingleCatalogPreview(SelectedActor(), pool);
+        ClearDistributionCatalogSelection();
+        g_distributionSelectionMode = false;
+        g_distributionPool = pool;
+        EnsureDistributionEditor();
+        g_selectedDistributionRule = g_distributionRuleTabs.Select(
+            g_distributionRules, pool, g_selectedDistributionRule);
+        g_showDistribution = true;
+        ++g_distributionCatalogRevision;
         ResetCatalogNavigation();
     }
 
@@ -1175,6 +1229,12 @@ namespace
                 }
             } else if (ImGui::Button(Text("NPC 배포", "NPC distribution", "NPC 分发"))) {
                 BeginDistributionCatalogSelection(pool);
+            }
+            if (!selecting) {
+                ImGui::SameLine();
+                if (ImGui::Button(Text("배포 조건", "Distribution conditions", "分发条件"))) {
+                    OpenDistributionConditions(pool);
+                }
             }
             ImGui::EndTable();
         }
@@ -1285,6 +1345,21 @@ namespace
         return changed;
     }
 
+    void DrawDistributionTargetSearch()
+    {
+        // Opening the dropdown alone must not capture gameplay typing.
+        ImGui::Selectable("##targetSearchFocusGuard", false,
+            ImGuiSelectableFlags_NoAutoClosePopups, ImVec2(0.0F, 1.0F));
+        ImGui::SetItemDefaultFocus();
+        ImGui::SetNextItemWidth(-FLT_MIN);
+        ImGui::InputTextWithHint("##distributionTargetSearch",
+            Text("이름 · EditorID · 플러그인 · FormID 검색", "Search name / EditorID / plugin / FormID", "搜索名称 / EditorID / 插件 / FormID"),
+            &g_distributionTargetSearch.query);
+        if (g_distributionTargetSearch.Filter()) ImGui::SetNextWindowScroll(ImVec2(0.0F, 0.0F));
+        ImGui::Separator();
+        if (EscapePressed()) ImGui::CloseCurrentPopup();
+    }
+
     [[nodiscard]] bool DistributionTargetCombo(const char* id, std::string& target,
         const std::vector<std::string>& options)
     {
@@ -1293,24 +1368,46 @@ namespace
         const auto savedValueRow = !target.empty() && !std::ranges::any_of(options, [&target](const auto& option) {
             return Lower(option) == Lower(target);
         }) ? 1U : 0U;
-        PrepareDownwardResizableDropdown(options.size() + savedValueRow);
+        PrepareDownwardResizableDropdown(options.size() + savedValueRow + 3U);
         if (ImGui::BeginCombo(id, preview, ImGuiComboFlags_PopupOnlyDown)) {
+            const auto appearing = ImGui::IsWindowAppearing();
+            if (appearing) g_distributionTargetSearch.Build(options, [](const auto& option) { return option; });
+            DrawDistributionTargetSearch();
+            if (ImGui::BeginChild("##targetResults", ImVec2(0, ImGui::GetContentRegionAvail().y))) {
             const auto installed = std::ranges::any_of(options, [&target](const auto& option) {
                 return Lower(option) == Lower(target);
             });
             if (!target.empty() && !installed) {
                 const auto savedLabel = target + Text(" (저장값)", " (saved value)", "（保存值）");
-                if (ImGui::Selectable(savedLabel.c_str(), true)) changed = true;
+                if (ImGui::Selectable(savedLabel.c_str(), true)) {
+                    changed = true;
+                    ImGui::CloseCurrentPopup();
+                }
                 ImGui::Separator();
             }
-            for (const auto& option : options) {
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(g_distributionTargetSearch.visible.size()));
+            if (appearing) {
+                const auto found = std::ranges::find_if(options, [&target](const auto& option) { return Lower(option) == Lower(target); });
+                if (found != options.end()) clipper.IncludeItemByIndex(static_cast<int>(found - options.begin()));
+            }
+            while (clipper.Step()) for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                const auto index = g_distributionTargetSearch.visible[row];
+                const auto& option = options[index];
+                ImGui::PushID(static_cast<int>(index));
                 const auto selected = Lower(option) == Lower(target);
                 if (ImGui::Selectable(option.c_str(), selected)) {
                     target = option;
                     changed = true;
+                    ImGui::CloseCurrentPopup();
                 }
                 if (selected) ImGui::SetItemDefaultFocus();
+                ImGui::PopID();
             }
+            if (g_distributionTargetSearch.visible.empty()) ImGui::TextDisabled("%s",
+                Text("검색 결과 없음", "No results", "无搜索结果"));
+            }
+            ImGui::EndChild();
             ImGui::EndCombo();
         }
         return changed;
@@ -1338,22 +1435,41 @@ namespace
         const auto* preview = selected != options.end() ? selected->display.c_str() :
             savedValue ? savedLabel.c_str() : Text("선택", "Select", "选择");
         auto changed = false;
-        PrepareDownwardResizableDropdown(options.size() + (savedValue ? 1U : 0U));
+        PrepareDownwardResizableDropdown(options.size() + (savedValue ? 1U : 0U) + 3U);
         if (ImGui::BeginCombo(id, preview, ImGuiComboFlags_PopupOnlyDown)) {
+            const auto appearing = ImGui::IsWindowAppearing();
+            if (appearing) g_distributionTargetSearch.Build(options, [](const auto& option) {
+                return option.display + " " + option.editorID + " " + option.plugin +
+                    std::format(" {:08X} {:06X}", option.runtimeFormID, option.localFormID);
+            });
+            DrawDistributionTargetSearch();
+            if (ImGui::BeginChild("##targetResults", ImVec2(0, ImGui::GetContentRegionAvail().y))) {
             if (savedValue) {
                 ImGui::Selectable(savedLabel.c_str(), true);
                 ImGui::Separator();
             }
-            for (const auto& option : options) {
+            ImGuiListClipper clipper;
+            clipper.Begin(static_cast<int>(g_distributionTargetSearch.visible.size()));
+            if (appearing && selected != options.end()) clipper.IncludeItemByIndex(static_cast<int>(selected - options.begin()));
+            while (clipper.Step()) for (int row = clipper.DisplayStart; row < clipper.DisplayEnd; ++row) {
+                const auto index = g_distributionTargetSearch.visible[row];
+                const auto& option = options[index];
+                ImGui::PushID(static_cast<int>(index));
                 const auto isSelected = selected != options.end() &&
                     option.runtimeFormID == selected->runtimeFormID;
                 if (ImGui::Selectable(option.display.c_str(), isSelected)) {
                     if (auto* form = RE::TESForm::LookupByID(option.runtimeFormID)) {
                         changed = bcn::SetDistributionRuleTargetForm(rule, form);
+                        if (changed) ImGui::CloseCurrentPopup();
                     }
                 }
                 if (isSelected) ImGui::SetItemDefaultFocus();
+                ImGui::PopID();
             }
+            if (g_distributionTargetSearch.visible.empty()) ImGui::TextDisabled("%s",
+                Text("검색 결과 없음", "No results", "无搜索结果"));
+            }
+            ImGui::EndChild();
             ImGui::EndCombo();
         }
         return changed;
@@ -1369,6 +1485,7 @@ namespace
 
     void DiscardDistributionDraft()
     {
+        ResetDistributionEditorAuxiliary();
         // Keep catalog metadata cached. Discarding edits must not trigger a
         // new faction/race/keyword scan on the next popup in this menu session.
         g_distributionRules = g_distributionEditorLoaded ?
@@ -1771,6 +1888,7 @@ namespace
     void DrawCatalog(std::vector<CatalogItem>& items, const bool body)
     {
         auto* actor = SelectedActor();
+        const auto* incompatibleLabel = Text("현재 액터로 미리보기 불가", "Cannot preview on the current actor", "无法在当前角色身上预览");
         const auto distributionSelecting = body &&
             IsDistributionSelectionFor(DistributionPool::body);
         const auto backendCurrentBody = bcn::racemenu::CurrentPresetId(actor);
@@ -1803,7 +1921,6 @@ namespace
                 RememberPending(g_pendingBody, actor, item.id, false, confirmedBodyId);
             } else if (!item.compatible) {
                 if (distributionSelecting) RollbackSingleCatalogPreview(actor, DistributionPool::body);
-                bcn::ui::Notify(Text("현재 액터와 호환되지 않습니다.", "This item is incompatible with the selected actor.", "与所选角色不兼容。"));
             } else if (distributionSelecting) {
                 RollbackSingleCatalogPreview(actor, DistributionPool::body);
             }
@@ -1822,8 +1939,6 @@ namespace
             auto& item = *visibleItems[row - (hasDefaultRow ? 1U : 0U)];
             if (item.compatible) {
                 if (body && QueuePreset(item, bcn::racemenu::ApplyMode::commit)) g_pendingBody.reset();
-            } else {
-                bcn::ui::Notify(Text("현재 액터와 호환되지 않습니다.", "This item is incompatible with the selected actor.", "与所选角色不兼容。"));
             }
         };
         if (navigation.preview) previewRow(navigation.focused);
@@ -1906,8 +2021,13 @@ namespace
                     kCardHovered : kCardNormal;
                 draw->AddRectFilled(cursor, ImVec2(cursor.x + width, cursor.y + cardHeight), fill, Scaled(4.0F));
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(7.0F)), kCardText, item.name.c_str());
-                const auto sub = item.family + (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) :
-                    item.compatible ? "" : " · " + std::string(Text("호환되지 않음", "Not compatible", "不兼容")));
+                const auto nearbyPreview = distributionSelecting && actor && !actor->IsPlayerRef() &&
+                    g_pendingBody && g_pendingBody->actorFormID == actor->GetFormID() &&
+                    g_pendingBody->id == item.id && backendCurrentBody == item.id;
+                const auto sub = item.family + (!item.compatible ? " · " + std::string(incompatibleLabel) :
+                    nearbyPreview ? " · " + std::string(Text("가까운 액터로 배포항목 미리보기 중",
+                        "Previewing distribution item on a nearby actor", "正在附近角色上预览分发项目")) :
+                    confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
                     item.compatible ? kCardSubtext : kCardIncompatible, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
@@ -3179,14 +3299,191 @@ namespace
         }
     }
 
+    void BuildDistributionItemRows()
+    {
+        g_distributionItemRows.clear();
+        if (!g_distributionItemDraft) return;
+        auto& draft = *g_distributionItemDraft;
+        const auto female = draft.value.female;
+        const auto settings = bcn::Settings::Get().Snapshot();
+        const auto family = female ? bcn::NpcDistributionFamily(settings.femaleNpcBodyType) :
+            bcn::NpcDistributionFamily(settings.maleNpcBodyType);
+        const auto area = bcn::overlay::Area::body;
+        std::array<bcn::asset_identity::Set<>, bcn::overlay::Index(bcn::overlay::Area::count)> known;
+        const auto add = [&](const std::string& id, const std::string& name,
+                             const std::string& detail, const bcn::overlay::Area part) {
+            if (known[bcn::overlay::Index(part)].insert(id).second)
+                g_distributionItemRows.push_back({ id, name, detail, part });
+        };
+        // Mirror the existing distribution catalogs, not the preview actor's
+        // body. No DDS, morph arrays, actor mutation or per-frame file scans.
+        switch (draft.pool) {
+        case DistributionPool::body: {
+            const auto catalog = bcn::PresetCatalog::Get().ListSnapshot();
+            for (const auto& preset : *catalog) {
+                if (preset.male == female || !bcn::body_family::Matches(
+                        bcn::body_family::PresetMask(preset.family, preset.male), family)) continue;
+                add(preset.id, preset.name, preset.family, area);
+            }
+            break;
+        }
+        case DistributionPool::skin: {
+            const auto catalog = bcn::SkinProfiles::Get().SharedSnapshot();
+            for (const auto& skin : *catalog) {
+                if (skin.layout != bcn::SkinLayout::legacy ||
+                    !bcn::SkinProfileCompatibility(skin,
+                        female ? bcn::SkinSex::female : bcn::SkinSex::male,
+                        bcn::SkinRace::humanoid, family).Compatible()) continue;
+                add(skin.id, skin.name, {}, area);
+            }
+            break;
+        }
+        case DistributionPool::futanari: {
+            const auto catalog = bcn::FutanariSkinProfiles::Get().SharedSnapshot();
+            for (const auto& skin : *catalog) {
+                if (!female || bcn::IsUbeFutanariSkinType(skin.type)) continue;
+                add(skin.id, skin.name, bcn::FutanariSkinTypeLabel(skin.type), area);
+            }
+            break;
+        }
+        case DistributionPool::overlay:
+            for (const auto part : bcn::overlay::kAreas)
+                for (const auto& entry : bcn::overlay::SnapshotLegacy(part, female))
+                    add(entry.id, entry.name, OverlayAreaLabel(part), part);
+            g_distributionItemOverlayRevision = bcn::overlay::CatalogRevision();
+            break;
+        }
+        // A missing/filtered asset must remain editable, never disappear just
+        // because this installation or its distribution body setting changed.
+        const auto addRetained = [&](const bcn::overlay::Area part) {
+            for (const auto& id : draft.Ids(part)) add(id, id, Text(
+                "기존 선택 · 현재 배포 목록에 없음", "Existing selection · not in the current catalog",
+                "原有选择 · 不在当前分发列表中"), part);
+        };
+        if (draft.pool == DistributionPool::overlay)
+            for (const auto part : bcn::overlay::kAreas) addRetained(part);
+        else addRetained(area);
+    }
+
+    void BeginDistributionItemEdit(const bcn::DistributionRule& rule)
+    {
+        g_distributionItemDraft = bcn::distribution_editor::Items{ rule, g_distributionPool };
+        g_distributionItemSearch.clear();
+        if (g_distributionPool == DistributionPool::overlay) {
+            [[maybe_unused]] const auto requested = bcn::overlay::RequestCatalog(SelectedActor());
+        }
+        BuildDistributionItemRows();
+    }
+
+    void DrawDistributionItemPopup()
+    {
+        if (!g_distributionItemDraft) return;
+        const auto title = std::string{ DistributionPoolLabel(g_distributionItemDraft->pool) } +
+            "###DistributionItems";
+        if (!ImGui::IsPopupOpen(title.c_str())) ImGui::OpenPopup(title.c_str());
+        auto bounds = DefaultWindowSize(680.0F, 640.0F);
+        if (const auto* viewport = ImGui::GetMainViewport()) {
+            bounds.x = (std::min)(bounds.x, viewport->WorkSize.x * 0.92F);
+            bounds.y = (std::min)(bounds.y, viewport->WorkSize.y * 0.90F);
+            ImGui::SetNextWindowPos(viewport->GetWorkCenter(), ImGuiCond_Appearing, ImVec2(.5F, .5F));
+        }
+        ImGui::SetNextWindowSize(bounds, ImGuiCond_Appearing);
+        ImGui::SetNextWindowSizeConstraints(ImVec2((std::min)(bounds.x, Scaled(400.0F)),
+            (std::min)(bounds.y, Scaled(250.0F))), bounds);
+        bool open = true;
+        ImGui::PushStyleColor(ImGuiCol_ModalWindowDimBg, ImVec4(0, 0, 0, 0));
+        const auto began = ImGui::BeginPopupModal(title.c_str(), &open,
+            ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoScrollbar);
+        ImGui::PopStyleColor();
+        if (began) {
+            auto& draft = *g_distributionItemDraft;
+            if (bcn::popup_placement::CanConsumeCancel() && EscapePressed()) open = false;
+            if (draft.pool == DistributionPool::overlay &&
+                g_distributionItemOverlayRevision != bcn::overlay::CatalogRevision()) BuildDistributionItemRows();
+            ImGui::SetNextItemWidth(-1.0F);
+            ImGui::InputTextWithHint("##distributionItemSearch",
+                Text("이름 검색", "Search names", "搜索名称"), &g_distributionItemSearch);
+            const auto needle = Lower(g_distributionItemSearch);
+            std::vector<std::size_t> visible;
+            for (std::size_t i{}; i < g_distributionItemRows.size(); ++i) {
+                const auto& row = g_distributionItemRows[i];
+                if (needle.empty() || Lower(row.name).contains(needle) || Lower(row.id).contains(needle))
+                    visible.push_back(i);
+            }
+            if (ImGui::Button(Text("전체 선택", "Select all", "全选"))) {
+                for (const auto i : visible) {
+                    const auto& row = g_distributionItemRows[i];
+                    draft.Set(row.id, row.area, true);
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button(Text("선택 해제", "Clear selection", "清除选择"))) draft.Clear();
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s %zu", Text("선택", "Selected", "已选"),
+                bcn::distribution_editor::Count(draft.value, draft.pool));
+            const auto footer = ImGui::GetFrameHeightWithSpacing() + ImGui::GetTextLineHeightWithSpacing();
+            if (ImGui::BeginChild("##distributionItems", ImVec2(0, (std::max)(1.0F,
+                    ImGui::GetContentRegionAvail().y - footer)), true)) {
+                ImGuiListClipper clipper;
+                clipper.Begin(static_cast<int>(visible.size()), ImGui::GetFrameHeightWithSpacing());
+                while (clipper.Step()) for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
+                    const auto index = visible[static_cast<std::size_t>(i)];
+                    const auto& row = g_distributionItemRows[index];
+                    ImGui::PushID(static_cast<int>(index));
+                    auto selected = draft.Selected(row.id, row.area);
+                    if (ImGui::Checkbox("##selected", &selected)) draft.Set(row.id, row.area, selected);
+                    ImGui::SameLine();
+                    const auto label = row.detail.empty() ? row.name : row.name + " · " + row.detail;
+                    // Use a hidden ID and draw user-authored names literally;
+                    // names containing ## must not turn into ImGui identifiers.
+                    const auto position = ImGui::GetCursorScreenPos();
+                    if (ImGui::Selectable("##item", selected, ImGuiSelectableFlags_DontClosePopups,
+                            ImVec2(0, ImGui::GetFrameHeight()))) draft.Set(row.id, row.area, !selected);
+                    ImGui::GetWindowDrawList()->AddText(ImVec2(position.x,
+                        position.y + ImGui::GetStyle().FramePadding.y),
+                        ImGui::GetColorU32(ImGuiCol_Text), label.c_str());
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n%s", label.c_str(), row.id.c_str());
+                    ImGui::PopID();
+                }
+                if (visible.empty()) ImGui::TextDisabled("%s", Text(
+                    "표시할 항목이 없습니다.", "No items to display.", "没有可显示的项目。"));
+            }
+            ImGui::EndChild();
+            ImGui::TextDisabled("%s", Text("규칙에 반영한 뒤 조건 창에서 최종 저장하세요.",
+                "After updating items, save the changes in the conditions window.",
+                "更新项目后，请在条件窗口保存最终更改。"));
+            if (ImGui::Button(Text("저장", "Save", "保存"))) {
+                const auto rule = std::ranges::find(g_distributionRules, draft.value.id, &bcn::DistributionRule::id);
+                if (rule != g_distributionRules.end() && draft.Commit(*rule)) {
+                    g_distributionRuleTabs.Remember(*rule, draft.pool);
+                    open = false;
+                }
+            }
+            ImGui::SameLine();
+            if (RightAlignedButton(Text("닫기", "Close", "关闭"))) open = false;
+            if (!open) ImGui::CloseCurrentPopup();
+            ImGui::EndPopup();
+        }
+        if (!open) {
+            g_distributionItemDraft.reset();
+            g_distributionItemRows.clear();
+            g_distributionItemSearch.clear();
+        }
+    }
+
+    void NotifyDistributionEditor(std::string message)
+    {
+        g_distributionStatus = std::move(message);
+        g_distributionStatusUntil = ImGui::GetTime() + 3.5;
+    }
+
     void DrawDistributionPopup()
     {
         if (!g_showDistribution) return;
         EnsureDistributionEditor();
         SynchronizeDistributionRuleNames();
 
-        const auto popupTitle = std::string{ DistributionPoolLabel(g_distributionPool) } + " · " +
-            Text("NPC 배포 조건", "NPC distribution conditions", "NPC 分发条件") +
+        const auto popupTitle = std::string{ Text("NPC 배포 조건", "NPC distribution conditions", "NPC 分发条件") } +
             "###DistributionPopup";
         ImGui::OpenPopup(popupTitle.c_str());
         auto popupSize = DefaultWindowSize(760.0F, 700.0F);
@@ -3208,38 +3505,37 @@ namespace
                 g_showDistribution = false;
                 ImGui::CloseCurrentPopup();
             };
-            if (EscapePressed()) {
+            if (!g_distributionItemDraft && bcn::popup_placement::CanConsumeCancel() && EscapePressed()) {
                 closeEditor();
                 ImGui::EndPopup();
                 return;
             }
 
-            ImGui::TextWrapped("%s", (std::string{ Text(
-                "선택한 ", "Only the selected ", "仅将所选") } +
-                DistributionPoolLabel(g_distributionPool) +
-                Text("만 이 조건에 맞는 NPC에게 배포합니다. 비어 있는 다른 기능은 건드리지 않습니다.",
-                    " items are distributed to matching NPCs. Other empty features are left unchanged.",
-                    "项目分发给符合条件的 NPC；其他空白功能保持不变。")).c_str());
+            for (const auto pool : { DistributionPool::body, DistributionPool::skin,
+                     DistributionPool::futanari, DistributionPool::overlay }) {
+                if (pool != DistributionPool::body) ImGui::SameLine();
+                if (TabButton(DistributionPoolLabel(pool), pool == g_distributionPool) && pool != g_distributionPool) {
+                    g_distributionPool = pool;
+                    ClearDistributionCatalogSelection();
+                    g_selectedDistributionRule = g_distributionRuleTabs.Select(
+                        g_distributionRules, pool, g_selectedDistributionRule);
+                }
+            }
+            if (!g_distributionStatus.empty() && ImGui::GetTime() < g_distributionStatusUntil) {
+                ImGui::SameLine();
+                ImGui::PushStyleColor(ImGuiCol_TextDisabled, ImVec4(.48F, .82F, .96F, 1.0F));
+                bcn::ui_text::FittedDisabledLine(g_distributionStatus.c_str());
+                ImGui::PopStyleColor();
+                if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", g_distributionStatus.c_str());
+            }
             ImGui::Separator();
 
             const auto relevantIndices = [&] {
-                std::vector<std::size_t> result;
-                result.reserve(g_distributionRules.size());
-                for (std::size_t index{}; index < g_distributionRules.size(); ++index) {
-                    if (RuleUsesDistributionPool(g_distributionRules[index], g_distributionPool) ||
-                        (index == g_selectedDistributionRule &&
-                            !RuleHasAnyDistributionPool(g_distributionRules[index]))) {
-                        result.push_back(index);
-                    }
-                }
-                return result;
+                return g_distributionRuleTabs.Visible(g_distributionRules, g_distributionPool);
             };
 
-            if (g_selectedDistributionRule >= g_distributionRules.size() &&
-                !g_distributionRules.empty()) {
-                const auto visible = relevantIndices();
-                g_selectedDistributionRule = visible.empty() ? 0U : visible.front();
-            }
+            g_selectedDistributionRule = g_distributionRuleTabs.Select(
+                g_distributionRules, g_distributionPool, g_selectedDistributionRule);
 
             if (g_selectedDistributionRule < g_distributionRules.size()) {
                 auto& rule = g_distributionRules[g_selectedDistributionRule];
@@ -3252,7 +3548,6 @@ namespace
                 ImGui::TextUnformatted(Text("성별", "Sex", "性别"));
                 ImGui::SameLine();
                 if (g_distributionPool == DistributionPool::futanari) {
-                    rule.female = true;
                     ImGui::TextDisabled("%s", Text("여성 후타 NPC (고정)",
                         "Female futanari NPCs (fixed)", "女性扶她 NPC（固定）"));
                 } else {
@@ -3263,6 +3558,7 @@ namespace
                             Text("여성\0남성\0", "Female\0Male\0", "女性\0男性\0"))) {
                         const auto oldNameKey = rule.nameKey;
                         if (bcn::SetDistributionRuleSex(rule, sex == 0)) {
+                            g_distributionRuleTabs.Remember(rule, g_distributionPool);
                             if (const auto retargeted =
                                     bcn::distribution_names::RetargetGeneratedRuleKey(
                                         oldNameKey, rule.female);
@@ -3274,9 +3570,9 @@ namespace
                                 rule.nameKey.clear();
                             }
                             bcn::ui::Notify(Text(
-                                "성별이 바뀌어 이전 성별의 배포 항목 선택을 비웠습니다. 해당 성별 액터 목록에서 항목을 다시 선택하세요.",
-                                "Changing sex cleared the previous sex's selected items. Select items again from an actor of that sex.",
-                                "性别已更改，原性别的分发项目已清空。请从该性别角色的列表中重新选择项目。"));
+                                "성별이 바뀌어 이전 성별의 배포 항목 선택을 비웠습니다. 항목변경에서 다시 선택하세요.",
+                                "Changing sex cleared the previous items. Use Edit items to choose again.",
+                                "性别已更改，原项目已清空。请在更改项目中重新选择。"));
                         }
                     }
                 }
@@ -3381,8 +3677,11 @@ namespace
                     }
                 }
 
-                ImGui::TextDisabled("%s: %zu", DistributionPoolLabel(g_distributionPool),
+                ImGui::AlignTextToFramePadding();
+                ImGui::TextDisabled("%s: %zu", Text("배포 항목", "Distribution items", "分发项目"),
                     RuleDistributionPoolCount(rule, g_distributionPool));
+                ImGui::SameLine();
+                if (ImGui::Button(Text("항목변경", "Edit items", "更改项目"))) BeginDistributionItemEdit(rule);
                 ImGui::PopID();
             } else {
                 ImGui::TextDisabled("%s", Text(
@@ -3391,18 +3690,27 @@ namespace
 
             ImGui::Separator();
             if (ImGui::Button(Text("+ 규칙 추가", "+ Add rule", "+ 添加规则"))) {
+                // Preserve the catalog-first Add workflow, but never copy
+                // candidates from another tab or the opposite selected sex.
                 auto rule = NewDistributionRule();
-                SetRuleDistributionSelection(rule);
+                rule.female = g_distributionPool == DistributionPool::futanari ||
+                    (g_selectedDistributionRule < g_distributionRules.size() ?
+                        g_distributionRules[g_selectedDistributionRule].female : g_distributionFemale);
+                if (rule.female == g_distributionFemale) SetRuleDistributionSelection(rule);
+                rule.nameKey = std::string{ bcn::distribution_names::NewRuleKey(rule.female) };
+                rule.name = bcn::distribution_names::Localized(rule.nameKey, CurrentLanguage());
+                g_distributionRuleTabs.Remember(rule, g_distributionPool);
                 g_distributionRules.push_back(std::move(rule));
                 g_selectedDistributionRule = g_distributionRules.size() - 1U;
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("- 규칙 삭제", "- Delete rule", "- 删除规则")) &&
                 g_selectedDistributionRule < g_distributionRules.size()) {
+                g_distributionRuleTabs.emptyPools.erase(g_distributionRules[g_selectedDistributionRule].id);
                 g_distributionRules.erase(g_distributionRules.begin() +
                     static_cast<std::ptrdiff_t>(g_selectedDistributionRule));
                 const auto visible = relevantIndices();
-                g_selectedDistributionRule = visible.empty() ? 0U : visible.front();
+                g_selectedDistributionRule = visible.empty() ? bcn::distribution_editor::noRule : visible.front();
             }
             ImGui::SameLine();
             if (ImGui::Button(Text("위로", "Up", "上移"))) {
@@ -3430,7 +3738,23 @@ namespace
             }
 
             ImGui::TextUnformatted(Text("지정한 조건", "Configured conditions", "已设置条件"));
-            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() + Scaled(12.0F);
+            const auto* immediateLabel = Text("로드된 NPC 즉시 배포",
+                "Distribute to loaded NPCs now", "立即分发给已加载的 NPC");
+            const auto* nextLaunchLabel = Text("다음 게임 실행 시 배포",
+                "Distribute on next game launch", "下次启动游戏时分发");
+            const auto* saveLabel = Text("저장", "Save", "保存");
+            const auto* closeLabel = Text("닫기", "Close", "关闭");
+            const auto buttonWidth = [](const char* label) {
+                return ImGui::CalcTextSize(label).x + ImGui::GetStyle().FramePadding.x * 2.0F;
+            };
+            const auto spacing = ImGui::GetStyle().ItemSpacing.x;
+            const auto footerWidth = ImGui::GetContentRegionAvail().x;
+            const auto actionWidth = buttonWidth(immediateLabel) + spacing + buttonWidth(nextLaunchLabel);
+            const auto actionsWrap = actionWidth > footerWidth;
+            const auto pairWidth = buttonWidth(saveLabel) + spacing + buttonWidth(closeLabel);
+            const auto pairWrap = (actionsWrap ? buttonWidth(nextLaunchLabel) : actionWidth) + spacing + pairWidth > footerWidth;
+            const auto footerHeight = ImGui::GetFrameHeightWithSpacing() *
+                (1.0F + (actionsWrap ? 1.0F : 0.0F) + (pairWrap ? 1.0F : 0.0F)) + Scaled(12.0F);
             const auto listHeight = (std::max)(Scaled(150.0F),
                 ImGui::GetContentRegionAvail().y - footerHeight);
             if (ImGui::BeginChild("DistributionRuleList", ImVec2(0.0F, listHeight), true,
@@ -3438,16 +3762,24 @@ namespace
                 const auto visible = relevantIndices();
                 for (const auto index : visible) {
                     const auto& rule = g_distributionRules[index];
-                    const auto detail = std::to_string(index + 1U) + "  " + rule.name +
+                    const auto prefix = std::string{ DistributionPoolLabel(g_distributionPool) } +
+                        Text(" 배포 조건", " distribution conditions", "分发条件");
+                    const auto detail = std::to_string(index + 1U) + "  " + prefix + " · " + rule.name +
                         "\n    " + DistributionScopeLabel(rule.scope) + " · " +
                         std::to_string(RuleDistributionPoolCount(rule,
                             g_distributionPool)) +
                         Text("개 선택", " selected", " 个已选");
-                    if (ImGui::Selectable(detail.c_str(),
+                    ImGui::PushID(rule.id.c_str());
+                    const auto position = ImGui::GetCursorScreenPos();
+                    if (ImGui::Selectable("##rule",
                             index == g_selectedDistributionRule,
-                            ImGuiSelectableFlags_AllowDoubleClick)) {
+                            ImGuiSelectableFlags_AllowDoubleClick,
+                            ImVec2(0, ImGui::GetTextLineHeight() * 2.0F))) {
                         g_selectedDistributionRule = index;
                     }
+                    ImGui::GetWindowDrawList()->AddText(position, ImGui::GetColorU32(ImGuiCol_Text), detail.c_str());
+                    if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", detail.c_str());
+                    ImGui::PopID();
                 }
                 if (visible.empty()) {
                     ImGui::TextDisabled("%s", Text("이 기능의 규칙이 없습니다.",
@@ -3456,8 +3788,7 @@ namespace
             }
             ImGui::EndChild();
 
-            if (ImGui::Button(Text("로드된 NPC 즉시 배포",
-                    "Distribute to loaded NPCs now", "立即分发给已加载的 NPC"))) {
+            if (ImGui::Button(immediateLabel)) {
                 if (SaveActiveDistributionRules()) {
                     const auto queued = bcn::Distribution::Get().ApplyLoadedNPCs();
                     bcn::ui::Notify(std::to_string(queued) + Text(
@@ -3471,9 +3802,8 @@ namespace
                         "无法保存 NPC 分发规则，因此未开始立即分发。"));
                 }
             }
-            ImGui::SameLine();
-            if (ImGui::Button(Text("다음 게임 실행 시 배포",
-                    "Distribute on next game launch", "下次启动游戏时分发"))) {
+            if (!actionsWrap) ImGui::SameLine();
+            if (ImGui::Button(nextLaunchLabel)) {
                 if (bcn::Distribution::Get().SaveRulesForNextGame(g_distributionRules)) {
                     bcn::ui::Notify(Text(
                         "현재 편집 값을 다음 게임 실행용으로 저장했습니다.",
@@ -3486,11 +3816,20 @@ namespace
                         "无法保存下次启动游戏时使用的分发规则。"));
                 }
             }
-            const auto* closeLabel = Text("닫기", "Close", "关闭");
-            const auto closeWidth = ImGui::CalcTextSize(closeLabel).x +
-                ImGui::GetStyle().FramePadding.x * 2.0F;
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - closeWidth);
+            const auto pairX = (std::max)(ImGui::GetWindowContentRegionMin().x,
+                ImGui::GetWindowContentRegionMax().x - pairWidth);
+            if (pairWrap) ImGui::SetCursorPosX(pairX);
+            else ImGui::SameLine(pairX);
+            if (ImGui::Button(saveLabel)) {
+                const auto saveSucceeded = SaveActiveDistributionRules();
+                NotifyDistributionEditor(saveSucceeded ? Text("배포 조건 변경을 저장했습니다.",
+                    "Saved distribution changes.", "已保存分发条件更改。") :
+                    Text("배포 조건을 저장하지 못했습니다. 편집 내용은 유지됩니다.",
+                        "Could not save conditions. Your edits are retained.", "无法保存条件，编辑内容已保留。"));
+            }
+            ImGui::SameLine();
             if (ImGui::Button(closeLabel)) closeEditor();
+            DrawDistributionItemPopup();
             ImGui::EndPopup();
         }
         if (!g_showDistribution) {

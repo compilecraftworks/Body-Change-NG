@@ -47,6 +47,18 @@ int main()
     using bcn::ui_catalog::ChoiceIntent;
     using bcn::ui_catalog::Tab;
     {
+        using bcn::ui_catalog::HumanElfPreviewRace;
+        for (const auto* race : {"NordRace", "BretonRace", "ImperialRace", "RedguardRace", "HighElfRace",
+                 "WoodElfRace", "DarkElfRace", "OrcRace", "00UBE_nOrDrAcE", "UBE_HighElfRaceVampire"})
+            if (!Require(HumanElfPreviewRace(0xFE123456, race), "human/elf preview race rejected")) return 1;
+        for (const auto id : {79681U,79682U,79683U,79684U,79686U,79687U,79688U,79689U,
+                 559164U,559165U,559168U,559172U,558996U,688825U,559174U,559236U})
+            if (!Require(HumanElfPreviewRace(id, ""), "builtin race fallback rejected")) return 1;
+        for (const auto* race : {"KhajiitRace", "ArgonianRace", "UBE_KhajiitRaceVampire", "ARGONIANRACEVAMPIRE",
+                 "WolfRace", "DraugrRace", "DremoraRace", "ForceRace", "UnknownRace", ""})
+            if (!Require(!HumanElfPreviewRace(0xFE013746, race), "non-human/elf or foreign local ID admitted")) return 1;
+    }
+    {
         struct Candidate {
             std::uint32_t formID;
             bool female, player;

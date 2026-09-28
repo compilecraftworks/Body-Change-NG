@@ -18,6 +18,9 @@ add_rules("plugin.vsxmake.autoupdate")
 -- CommonLibSSE-NG is an exact, independently vendored upstream stable tag.
 includes("third_party/CommonLibSSE-NG")
 add_requires("nlohmann_json v3.12.0")
+-- FACT records may be zlib-compressed. Static, exact stable dependency; no
+-- extra runtime DLL and no changes to CommonLib's verified package closure.
+add_requires("zlib v1.3.2", {system = false, configs = {shared = false}})
 
 target("BodyChangeNG")
     set_kind("shared")
@@ -29,7 +32,7 @@ target("BodyChangeNG")
     -- the matching SDK include environment (notably winres.h) is preserved.
 
     add_deps("commonlibsse-ng")
-    add_packages("nlohmann_json")
+    add_packages("nlohmann_json", "zlib")
     add_rules("commonlibsse-ng.plugin", {
         name = "Body Change NG",
         author = "compilecraftworks",
@@ -51,7 +54,7 @@ target("BodyChangeNG")
         "third_party/pugixml/src/pugixml.cpp"
     )
     add_includedirs("src", "third_party/imgui", "third_party/imgui/backends", "third_party/pugixml/src")
-    add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32")
+    add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32", "bcrypt")
     set_pcxxheader("src/PCH.h")
 
 target("BodyChangeNGCache")
@@ -78,6 +81,32 @@ target("BodyChangeNGRemovalPreparationTests")
     add_files("tests/RemovalPreparationTests.cpp")
     add_includedirs("src")
 
+target("BodyChangeNGFactionEditorIDTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_packages("zlib")
+    add_files("tests/FactionEditorIDTests.cpp", "src/BodyChangeNG/FactionEditorIDs.cpp")
+    on_load(function (target)
+        local source = io.readfile("src/BodyChangeNG/UI.cpp")
+        local parts = {}
+        for _, signature in ipairs({"    struct DistributionTargetOption", "    struct DistributionTargetSnapshot",
+            "    void CompleteFactionEditorIDs("}) do
+            local first = assert(source:find(signature, 1, true))
+            local suffix = signature:find("struct", 1, true) and "\n    };" or "\n    }"
+            local last = assert(source:find(suffix, first, true)) + #suffix - 1
+            table.insert(parts, source:sub(first, last))
+        end
+        local generated = path.join(target:autogendir(), "faction-editor-ids")
+        os.mkdir(generated)
+        local file = path.join(generated, "FactionEditorUI.inl")
+        local contents = table.concat(parts, "\n\n")
+        if not os.isfile(file) or io.readfile(file) ~= contents then io.writefile(file, contents) end
+        target:add("includedirs", generated)
+    end)
+
 target("BodyChangeNGDistributionTargetReadTests")
     set_default(false)
     set_kind("binary")
@@ -85,6 +114,60 @@ target("BodyChangeNGDistributionTargetReadTests")
     set_encodings("utf-8")
     add_includedirs("src")
     add_files("tests/DistributionTargetReadTests.cpp")
+
+target("BodyChangeNGDistributionEditorTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_files("tests/DistributionEditorTests.cpp")
+
+target("BodyChangeNGDistributionEditorUITests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_defines("IMGUI_ENABLE_TEST_ENGINE")
+    add_packages("nlohmann_json")
+    add_includedirs("src", "third_party/imgui")
+    add_files("tests/DistributionEditorUITests.cpp", "third_party/imgui/imgui.cpp",
+        "third_party/imgui/imgui_draw.cpp", "third_party/imgui/imgui_tables.cpp",
+        "third_party/imgui/imgui_widgets.cpp", "third_party/imgui/misc/cpp/imgui_stdlib.cpp")
+    on_load(function (target)
+        local source = io.readfile("src/BodyChangeNG/UI.cpp")
+        local functions = {}
+        for _, signature in ipairs({
+            "    [[nodiscard]] bool RightAlignedButton(", "    [[nodiscard]] bool EscapePressed()",
+            "    void ResetDistributionEditorAuxiliary()",
+            "    [[nodiscard]] bcn::DistributionRule NewDistributionRule()",
+            "    [[nodiscard]] const char* DistributionPoolLabel(",
+            "    [[nodiscard]] std::size_t RuleDistributionPoolCount(",
+            "    void OpenDistributionEditorFromCatalog()", "    void OpenDistributionConditions(",
+            "    template <class Refresh, class SelectAll>",
+            "    [[nodiscard]] const char* TargetLabel(", "    [[nodiscard]] const char* DistributionScopeLabel(",
+            "    void DrawDistributionTargetSearch()", "    [[nodiscard]] bool DistributionTargetCombo(",
+            "    [[nodiscard]] bool DistributionFormTargetCombo(", "    void NotifyDistributionEditor(",
+            "    [[nodiscard]] bool DistributionScopeCombo(", "    [[nodiscard]] bool SaveActiveDistributionRules()",
+            "    void DiscardDistributionDraft()", "    void DrawDistributionItemPopup()",
+            "    void DrawDistributionPopup()"}) do
+            local first = assert(source:find(signature, 1, true))
+            local last = assert(source:find("\n    }", first, true)) + #"\n    }" - 1
+            table.insert(functions, source:sub(first, last))
+        end
+        local generated = path.join(target:autogendir(), "distribution-editor-ui")
+        os.mkdir(generated)
+        local file = path.join(generated, "DistributionEditorUI.inl")
+        local contents = table.concat(functions, "\n\n") .. "\n"
+        if not os.isfile(file) or io.readfile(file) ~= contents then io.writefile(file, contents) end
+        source = io.readfile("src/BodyChangeNG/NativeImGuiHost.cpp")
+        local first = assert(source:find("    [[nodiscard]] bool CurrentEditableTextInputActive()", 1, true))
+        local last = assert(source:find("\n    }", first, true)) + #"\n    }" - 1
+        local typingFile = path.join(generated, "DistributionTypingUI.inl")
+        local typing = source:sub(first, last) .. "\n"
+        if not os.isfile(typingFile) or io.readfile(typingFile) ~= typing then io.writefile(typingFile, typing) end
+        target:add("includedirs", generated)
+    end)
 
 target("BodyChangeNGDistributionAuthoringTests")
     set_default(false)
@@ -527,6 +610,16 @@ target("BodyChangeNGFormDeletePolicyTests")
     set_encodings("utf-8")
     add_files("tests/FormDeletePolicyTests.cpp")
     add_includedirs("src")
+
+target("BodyChangeNGRaceMenuExtraDataTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_defines("BODY_CHANGE_NG_EXTRA_DATA_TEST", "NOMINMAX", "WIN32_LEAN_AND_MEAN")
+    add_files("tests/RaceMenuExtraDataTests.cpp", "src/BodyChangeNG/RaceMenuExtraDataGuard.cpp")
+    add_includedirs("src")
+    add_syslinks("bcrypt")
 
 target("BodyChangeNGCodePatternTests")
     set_default(false)

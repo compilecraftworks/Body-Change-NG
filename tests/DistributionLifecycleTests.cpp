@@ -33,6 +33,8 @@ std::unordered_set<std::string> g_distributionSelectedIds;
 std::array<std::unordered_set<std::string>, 4> g_distributionSelectedOverlayIds;
 std::array<bool, 4> g_overlayDistributionPreviewDirty{};
 unsigned navigationResets{};
+unsigned auxiliaryResets{};
+void ResetDistributionEditorAuxiliary() { ++auxiliaryResets; }
 void ResetCatalogNavigation() { ++navigationResets; }
 #include "DistributionLifecycleFunctions.inl"
 
@@ -80,6 +82,7 @@ int main() try {
         }
     }
     Check(navigationResets == 16, "navigation not reset exactly once per boundary");
+    Check(auxiliaryResets == 32, "nested item editor/tab state was not discarded and reset");
 
     // Cancellation after Pump's first admission check is observed by the
     // production mutation checkpoint. Already executing engine calls are not

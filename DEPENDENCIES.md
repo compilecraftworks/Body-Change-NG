@@ -13,6 +13,11 @@ and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 - pugixml 1.16; vendored `pugixml.cpp` SHA-256
   `04CDC6BDE588039E7E3F2AF195A6CDAD33303B2DB39568067FA5CE55E0B723C9`
 - nlohmann/json v3.12.0
+- zlib v1.3.2, statically linked for compressed faction EditorID records;
+  upstream archive SHA-256
+  `b99a0b86c0ba9360ec7e78c4f1e43b1cbdf1e6936c8fa0f6835c0cd694a495a1`.
+  Exact package version and recipe commit are pinned in `xmake-requires.lock`.
+  No additional runtime DLL is required; CommonLib's transitive closure is unchanged.
 
 ## RaceMenu runtime interface compatibility
 

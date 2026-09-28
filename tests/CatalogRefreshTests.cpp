@@ -41,7 +41,29 @@ try {
     Check(lifetime.expired(), "completed refresh retained its closure");
     Check(queue.Submit(&second, [&] { retried.set_value(); }), "failed refresh permanently blocked its catalog");
     Check(retriedFuture.wait_for(2s) == std::future_status::ready, "refresh retry did not complete");
-    std::cout << "CatalogRefreshTests passed (10000 coalesced clicks, failure/retry, closure release)\n";
+    int latest{};
+    std::promise<void> latestStarted, latestRelease, latestFinished;
+    auto latestBarrier = latestRelease.get_future().share();
+    auto latestStartedFuture = latestStarted.get_future();
+    auto latestFinishedFuture = latestFinished.get_future();
+    std::atomic<int> seen{};
+    Check(queue.SubmitLatest(&latest, [&] { latestStarted.set_value(); latestBarrier.wait(); }), "latest start");
+    if (latestStartedFuture.wait_for(2s) != std::future_status::ready) {
+        latestRelease.set_value(); throw std::runtime_error("latest worker did not start");
+    }
+    auto pendingLifetime = std::make_shared<int>(2);
+    std::weak_ptr<int> pendingWeak = pendingLifetime;
+    queue.SubmitLatest(&latest, [pendingLifetime] {});
+    pendingLifetime.reset();
+    bool replacements = true;
+    for (int i = 1; i <= 10000; ++i)
+        replacements &= queue.SubmitLatest(&latest, [&, i] { seen += i; latestFinished.set_value(); });
+    const bool suppressed = !queue.Submit(&latest, [] {});
+    const bool released = pendingWeak.expired();
+    latestRelease.set_value();
+    Check(replacements && suppressed && released, "replacement bound / closure release / ordinary suppression");
+    Check(latestFinishedFuture.wait_for(2s) == std::future_status::ready && seen == 10000, "ran superseded metadata job");
+    std::cout << "CatalogRefreshTests passed (10000 coalesced clicks + 10000 latest replacements, failure/retry, closure release)\n";
     return 0;
 } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

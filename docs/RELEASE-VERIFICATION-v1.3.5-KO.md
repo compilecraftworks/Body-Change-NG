@@ -1,4 +1,29 @@
-# v1.3.5 릴리즈 점검 — 2026-09-28
+# v1.3.5 릴리즈 점검 — 2026-09-29
+
+## 최신 통합본
+
+- 기존 스킨·후타스킨 수정에 배포 조건 편집 UI, 후보 변경, 대상 검색,
+  팩션 EditorID 보완, 인간·엘프 자동 미리보기 대상을 포함했다.
+- 1.5.97의 확인된 UBE SE 동봉 DLL에 한정한 모프 원본 데이터 정렬 보완을 포함했다.
+  프리셋 수치·체중 보간·보정/랜덤화 계산식은 변경하지 않았다.
+- 한영 체인지로그를 사용자 관점으로 축약하고 소개글의 편집·저장 절차를 갱신했다.
+  1.5.97에서도 UBE의 DLL 없는 AE 옵션 + SE용 RaceMenu + skee64backports
+  권장 구성과 Zeroed Sliders / Build Morphs 준비를 안내한다.
+- 사용자가 텍스트 입력 중 Delete 차단을 확인했다. 입력 코드는 추가 변경하지 않았다.
+- 저장소 고정 XMake 3.1.0 / MSVC 14.51.36231 / flat SE/AE Release 전체 빌드 성공.
+- 최신 `*Tests.exe` 47개 전부 통과. 규칙 작성 PowerShell 검사와 문서 대비 108개 통과.
+- zlib 1.3.2를 정적으로 사용하며 기존 CommonLib 전이 의존성은 변경하지 않았다.
+- DLL 버전 `1.3.5.0`, SHA-256:
+  `459E1BDD768BB90D917B7BDB6893AC1F6C810AA54ECDE78A9E6A9AA1DDB14861`.
+- 툴레드 설치 DLL과 위 빌드 DLL의 해시 일치를 재확인했다.
+  경로: `D:\TuLED\File Mod Skyrim SE\mods\Body Change NG\SKSE\Plugins\BodyChangeNG.dll`.
+- 최신 DLL 교체 전 백업:
+  `build/mo2-backups/TuLED-20260929-ui-search-3e3f5ff8133b44b89193258bbeaa9386/`.
+- 이번 패키징 작업은 게임을 실행하거나 사용자 설정·규칙·세이브를 변경하지 않는다.
+  상세 동작과 검사 범위는 `DISTRIBUTION-EDITOR-AUDIT-20260929.md` 및
+  `UBE-SE-MORPH-BASELINE-AUDIT-20260928.md`를 참고한다.
+
+## 아래 내용은 2026-09-28 이전 통합본 기록
 
 ## 포함 범위
 

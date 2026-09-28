@@ -1,13 +1,24 @@
 # Body Change NG — v1.3.5
 
-  Automatic checkbox-mode targeting skips custom followers and elder NPCs;
-  manual actor selection and distribution rules remain unchanged.
 Native SKSE appearance control for Skyrim SE/AE: BodySlide presets, body and
 face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Feet
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
 ## Current version — v1.3.5
+
+Open Distribution conditions directly from each supported tab. Edit existing
+rule candidates without recreating rules, search plugin/race/faction/keyword/
+class dropdowns, and save beside Close with feedback inside the editor.
+Missing faction EditorIDs are recovered from plugin records when available.
+Automatic preview selection uses recognized human/elf races; this does not
+change manual actor selection or actual rule eligibility.
+
+For Skyrim 1.5.97 with UBE, select UBE's DLL-free 1.6.x/AE installer option,
+keep the 1.5.97 RaceMenu DLL, and enable matching skee64backports. This does
+not mean installing AE RaceMenu on SE. BCNG also includes a narrowly targeted
+compatibility fix for the identified UBE SE bundled DLL's inflated outfit
+morph issue. Restart the game after changing DLLs.
 
 Player-face skin previews now temporarily update RaceMenu face-texture keys
 along with the visible skin. Cancelling restores the original keys; confirming
@@ -26,7 +37,7 @@ from the original normal's Head/Body folder. Skin-pack or parent-folder effects
 are not substituted. New aliases avoid the old parent-wet fallback while
 preserving existing save-referenced cache files.
 
-The Release build and all 43 offline regression executables pass. Existing
+The Release build and all 47 offline regression test executables pass. Existing
 preset calculations, correction/randomization recipes, supported runtimes and
 co-save formats are unchanged. Preserve settings, customized rules, packs and
 texture caches when updating; no new game or save cleaning is required.

@@ -15,6 +15,7 @@
 #include "BodyChangeNG/RaceMenuBodyMorph.h"
 #include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/RaceMenuFormDeleteGuard.h"
+#include "BodyChangeNG/RaceMenuExtraDataGuard.h"
 #include "BodyChangeNG/RaceMenuPresetMigration.h"
 #include "BodyChangeNG/Distribution.h"
 #include "BodyChangeNG/Settings.h"
@@ -99,6 +100,12 @@ namespace
             bcn::skin_application::ResetSessionState();
         }
         if (message->type == SKSE::MessagingInterface::kPostPostLoad) {
+            // Fix only the fingerprinted UBE SE comparator, before geometry
+            // exists. Never run this installer during equip/load/preview jobs.
+            const auto extraDataGuard = bcn::racemenu_extra_data::Install(
+                GetModuleHandleW(L"skee64.dll"), REL::Module::get().version() == REL::Version{1, 5, 97, 0});
+            SKSE::log::info("BCNG RaceMenu ExtraData guard {}: {}", extraDataGuard,
+                bcn::racemenu_extra_data::Status());
             bcn::rendered_outfit::Initialize();
             // Public SKSE messaging only: SmoothCam remains entirely
             // optional and there is no load-time DLL dependency.

@@ -1,4 +1,5 @@
 #include "BodyChangeNG/BodyMorphPolicies.h"
+#include "BodyChangeNG/BodyMorphWeight.h"
 #include "BodyChangeNG/BodyRandomizationPolicy.h"
 #include "BodyChangeNG/UbeNippleRandomization.h"
 #include "BodyChangeNG/PresetCatalog.h"
@@ -125,6 +126,7 @@ namespace {
         Check(xml.save_file((path / "parity.xml").c_str()), "cannot create XML parity fixture");
         const auto catalog = bcn::PresetCatalog::ScanDirectory(path);
         Check(catalog.size() == cases, "production lost parity presets");
+        unsigned weightCases{};
         for (auto node : root.children("Preset")) {
             const auto expected = PresetManager::SliderSetFromNode(node,
                 PresetManager::GetBodyType(node.attribute("set").value()));
@@ -134,9 +136,23 @@ namespace {
                 const auto& reference = expected.at(slider.name);
                 Check(slider.lowWeight == reference.min && slider.highWeight == reference.max,
                     "zero/negative/over-100/missing/duplicate XML endpoint differs from OBody");
+                for (float engineWeight : {0.F, 0.5F, 1.F, 25.F, 50.F, 73.F, 100.F}) {
+                    const float referenceWeight = engineWeight / 100.0F; // OBody NG Body.cpp GetWeight
+                    const float weight = bcn::body_morph_weight::FromEnginePercent(engineWeight);
+                    const float expectedValue = ((reference.max - reference.min) * referenceWeight) + reference.min;
+                    const float applied = slider.lowWeight + (slider.highWeight - slider.lowWeight) * weight;
+                    Check(Near(applied, expectedValue), "engine-percent interpolation differs from OBody");
+                    if (engineWeight==100.F) Check(weight==1.F && Near(applied,slider.highWeight),
+                        "maximum engine weight must use the complete high endpoint");
+                    if (engineWeight==0.F) Check(weight==0.F && Near(applied,slider.lowWeight),
+                        "minimum engine weight must use the complete low endpoint");
+                    if (engineWeight==1.F) Check(weight==0.01F, "true 1% weight was incorrectly promoted to 100%");
+                    ++weightCases;
+                }
             }
         }
         std::cout << "OBody NG 4.4.3 unchanged-source XML parity: " << cases << " cases passed\n";
+        std::cout << "3BA/BHUNP/UBE/Necoco engine-weight units: " << weightCases << " interpolation cases passed\n";
     }
 }
 

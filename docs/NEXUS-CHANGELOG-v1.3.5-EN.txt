@@ -1,19 +1,17 @@
 Body Change NG v1.3.5
 
-Skin previews
-- Fix the player-face preview path that could be overwritten by RaceMenu's saved textures after a 3D update, causing the preview to differ from the confirmed skin. Preview the face using temporary RaceMenu texture keys as well as the visible texture. This applies to supported player body families, including UBE and CBBE 3BA.
-- Restore the original keys when cancelling, switching actors, opening RaceMenu, resetting a session, or abandoning a failed preview. Confirm through the normal persistent application path. Do not overwrite keys subsequently changed by another mod.
-- Restore temporary face keys before saving and keep them suspended until the save operation has finished. Keep the existing co-save format and NPC face-persistence policy; body, hand and foot skin routing is unchanged.
-- Use bounded recovery for already queued face-texture writes during the active preview. No whole-world NPC scan, permanent retry loop, or new compatibility patch for RSV/Selector is added.
+Easier NPC distribution
+- Added a Distribution conditions button to Body Presets, Body Skins, Futanari Skin, and Overlays. Open existing rules directly without selecting items or creating a new rule first.
+- Manage rules across four tabs and use Edit items to add or remove candidates from an existing rule. The item picker includes search, Select all, and Clear selection.
+- Added search to the plugin, race, faction, keyword, and class dropdowns. Find entries by name, EditorID, plugin, or FormID, with improved EditorID display for unnamed factions.
+- Moved the final Save button next to Close and show its result inside the conditions window. Improved feature labels and Korean, English, and Chinese UI text.
+- Automatic NPC previews now select human or elf races, excluding Khajiit and Argonians. This affects preview selection only, not actual distribution rules. Removed repeated notifications when checking items that cannot be previewed.
 
-UBE skin effects
-- UBE body skins replace only the six head/body _d, _n and _sk base maps. Installed loose RFAOS/wet maps are preserved only when they exist beside the original default normal map in its Head or Body folder. BCNG keeps the MO2-winning files and does not borrow effects from the selected skin pack or the parent !UBE folder. Original DDS files and effect settings remain unchanged.
-- Remove the parent-folder wet fallback that could activate a droplet effect only after choosing a BCNG skin. New applications use separate cache paths; existing cache files referenced by older saves are retained.
-
-UBE and 3BA futanari skins
-- Recognize native UBE SOS registration and the shared genital slot 54 used by native UBE and TRX UBE addons. Keep UBE body slot 53 out of the genital texture route.
-- Separate native UBE skins from TRX UBE skins. Add Data\Futanari\<pack>\Textures\[TRX] Futa addon UBE\schlong.dds and its matching maps; normal actor lists show only the matching addon type. Existing native UBE selection and favorite IDs remain valid.
-- Preserve the existing CBBE 3BA TRX/ERF slot-52 route, male-addon handling and hair materials. Do not change SOS/TNG scripts, addon plugins, meshes, equipment slots, or automatic-distribution eligibility.
+Body and skin fixes
+- Fixed player-face skins sometimes looking different in preview and after confirmation. Cancelling restores the original appearance, and unconfirmed face changes are kept out of saves.
+- Preserved the default UBE RFAOS/wet effect links during skin changes and fixed unwanted droplets appearing only after selecting a skin. Cache files referenced by older saves are retained.
+- Improved native UBE and TRX UBE futanari addon detection, showing skins for the matching addon. Existing CBBE 3BA TRX/ERF handling is preserved.
+- Added a targeted compatibility fix for inflated shapes after equipping outfits with a specific RaceMenu DLL bundled with UBE SE on Skyrim 1.5.97. Preset calculations, breast/nipple correction values, and randomization recipes are unchanged.
 
 Updating
-- Preserve settings, customized distribution rules, favorites, skin packs and texture caches when replacing the mod. No new game or save cleaning is required. Preset morph calculations, correction/randomization recipes, controls and supported game versions are unchanged.
+- Fully exit the game before replacing the mod, then restart. Keep your settings, distribution rules, favorites, skin packs, and texture caches. No new game or save cleaning is required; supported game versions are unchanged.

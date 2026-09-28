@@ -130,7 +130,16 @@ int main()
         return std::string_view(uiSource).substr(first, last - first);
     };
     const auto editorEntry = uiSection("void OpenDistributionEditorFromCatalog(",
-        "void DrawCatalogCommandRow(");
+        "void OpenDistributionConditions(");
+    const auto bodyCatalog = uiSection("void DrawCatalog(", "void DrawSkinCatalog()");
+    Require(bodyCatalog.contains("현재 액터로 미리보기 불가") && bodyCatalog.contains("Cannot preview on the current actor") &&
+        bodyCatalog.contains("无法在当前角色身上预览") && bodyCatalog.contains("가까운 액터로 배포항목 미리보기 중") &&
+        bodyCatalog.contains("backendCurrentBody == item.id") &&
+        bodyCatalog.contains("std::string(incompatibleLabel)"));
+    Require(!bodyCatalog.contains("This item is incompatible with the selected actor.") &&
+        bodyCatalog.contains("if (item.compatible && body && QueuePreset") &&
+        bodyCatalog.contains("if (item.compatible) {") &&
+        bodyCatalog.contains("if (distributionSelecting) RollbackSingleCatalogPreview(actor, DistributionPool::body)"));
     Require(editorEntry.contains("SetRuleDistributionSelection") &&
         !editorEntry.contains("ResetDistributionSelectionSession") &&
         !editorEntry.contains("ClearDistributionCatalogSelection"));
@@ -280,7 +289,7 @@ int main()
         !uiSource.contains("SaveDistributionDraft"));
     const auto popupStart = uiSource.find("void DrawDistributionPopup()");
     const auto closeEditorStart = uiSource.find("const auto closeEditor", popupStart);
-    const auto closeEditorEnd = uiSource.find("if (EscapePressed())", closeEditorStart);
+    const auto closeEditorEnd = uiSource.find("if (!g_distributionItemDraft", closeEditorStart);
     const auto closeEditor = std::string_view(uiSource).substr(closeEditorStart,
         closeEditorEnd - closeEditorStart);
     Require(closeEditor.contains("DiscardDistributionDraft()") && !closeEditor.contains("Save"));
@@ -349,6 +358,7 @@ int main()
     Require(switchSex.contains("RollbackPendingSelections(SelectedActor())") &&
         switchSex.contains("if (g_distributionFemale != female) ClearDistributionCatalogSelection()") &&
         switchSex.contains("catalog.Refresh()") && switchSex.contains("NearestDistributionActor") &&
+        switchSex.contains("ui_catalog::HumanElfPreviewRace") && switchSex.contains("HasKeywordString(\"ActorTypeNPC\")") &&
         switchSex.contains("!bcn::IsCustomFollowerActor(candidate)") &&
         switchSex.contains("!bcn::IsElderActor(candidate->GetActorBase())") &&
         switchSex.contains("futanari_support::RegisteredType(candidate).has_value()") &&
@@ -366,7 +376,7 @@ int main()
         uiSource.contains("(base->GetSex() == RE::SEX::kFemale) != g_distributionFemale") &&
         uiSource.contains("catalogRevision == g_distributionCatalogRevision"));
     const auto openDistributionBody = std::string_view(uiSource).substr(
-        openDistribution, commandRow - openDistribution);
+        openDistribution, uiSource.find("void OpenDistributionConditions", openDistribution) - openDistribution);
     Require(openDistributionBody.contains("SetRuleDistributionSelection(rule)") &&
         !openDistributionBody.contains("ClearDistributionCatalogSelection()"));
     const auto addRuleBegin = uiSource.find("+ Add rule");
@@ -374,9 +384,19 @@ int main()
     Require(addRuleBegin != std::string::npos && deleteRuleBegin != std::string::npos);
     const auto addRuleBody = std::string_view(uiSource).substr(
         addRuleBegin, deleteRuleBegin - addRuleBegin);
-    Require(addRuleBody.contains("SetRuleDistributionSelection(rule)") &&
+    Require(addRuleBody.contains("if (rule.female == g_distributionFemale) SetRuleDistributionSelection(rule)") &&
+        addRuleBody.contains("g_distributionRuleTabs.Remember(rule, g_distributionPool)") &&
         !addRuleBody.contains("source.presetIds") &&
         !addRuleBody.contains("source.skinProfileIds"));
+    const auto directOpenStart = uiSource.find("void OpenDistributionConditions(");
+    const auto directOpenBody = std::string_view(uiSource).substr(directOpenStart, commandRow - directOpenStart);
+    Require(directOpenStart != std::string::npos &&
+        !directOpenBody.contains("NewDistributionRule") &&
+        !directOpenBody.contains("push_back") && directOpenBody.contains("EnsureDistributionEditor()"));
+    Require(commands.contains("OpenDistributionConditions(pool)") &&
+        uiSource.contains("DrawDistributionItemPopup();") &&
+        uiSource.contains("!g_distributionItemDraft && bcn::popup_placement::CanConsumeCancel() && EscapePressed()") &&
+        uiSource.contains("prefix + \" · \" + rule.name"));
     Require(uiSource.contains("SameLine(ImGui::GetWindowContentRegionMax().x - closeWidth)"));
     Require(uiSource.contains("File path: Data\\\\SKSE\\\\Plugins\\\\OBody_presetDistributionConfig.json"));
     Require(uiSource.contains("선택 액터 설정 값 초기화") &&

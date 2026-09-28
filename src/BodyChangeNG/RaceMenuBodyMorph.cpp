@@ -7,6 +7,7 @@
 #include "BodyChangeNG/RenderedOutfit.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/BodyMorphPolicies.h"
+#include "BodyChangeNG/BodyMorphWeight.h"
 #include "BodyChangeNG/BodyRandomizationPolicy.h"
 #include "BodyChangeNG/UbeGenitalRandomization.h"
 #include "BodyChangeNG/UbeNippleRandomization.h"
@@ -369,7 +370,7 @@ namespace
         if (!actorBase || preset.male != (actorBase->GetSex() != RE::SEX::kFemale) ||
             !bcn::body_family::Matches(bcn::body_family::PresetMask(preset.family, preset.male),
                 bcn::body_family::ResolveActor(actor.get()))) return;
-        const auto weight = actorBase->GetWeight() / 100.0F;
+        const auto weight = bcn::body_morph_weight::FromEnginePercent(actorBase->GetWeight());
         const auto settings = bcn::Settings::Get().MorphOptions();
         const auto key = mode == bcn::racemenu::ApplyMode::preview ? kPreviewKey :
             mode == bcn::racemenu::ApplyMode::outfit ? kOutfitKey : kCommittedKey;
@@ -517,7 +518,7 @@ namespace
         if (!bodyMorph || !actor || !actor->Is3DLoaded()) return;
 
         const auto base = actor->GetActorBase();
-        const auto weight = base ? base->GetWeight() / 100.0F : 0.0F;
+        const auto weight = base ? bcn::body_morph_weight::FromEnginePercent(base->GetWeight()) : 0.0F;
         MigrateLegacyBodyChangeKeys(*bodyMorph, actor.get());
 
         bodyMorph->ClearBodyMorphKeys(actor.get(), kOutfitKey);
