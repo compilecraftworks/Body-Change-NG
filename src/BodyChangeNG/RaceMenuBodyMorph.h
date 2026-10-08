@@ -75,9 +75,10 @@ namespace bcn::racemenu
     // mutating any committed key. QueueCancelPreview restores the
     // entry state by removing only the transient compensating layer.
     [[nodiscard]] ApplyResult QueuePreviewDefault(RE::Actor* a_actor);
-    // RaceMenu recreates the player's 3D when character generation closes.
-    // Reapply the already selected preset to that fresh geometry.
-    void QueueReapplyCurrent(RE::Actor* a_actor);
+    // Refresh surviving committed keys after a geometry rebuild; recommit
+    // only if live keys, catalog content or application options changed.
+    // forceCommit is reserved for explicit option changes in the settings UI.
+    void QueueReapplyCurrent(RE::Actor* a_actor, bool a_forceCommit = false);
     // Event-driven live-key verification; never changes the saved selection
     // or takes ownership from an interactive preview.
     void QueueVerifySavedBody(RE::Actor* a_actor);

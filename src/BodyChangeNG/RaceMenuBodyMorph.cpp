@@ -290,13 +290,26 @@ namespace
         return previous;
     }
 
-    void ApplyVisibleMorphs(skee::IBodyMorphInterface& bodyMorph, RE::Actor* actor,
-        const bool deferUpdate)
+    void ApplyVisibleMorphs(skee::IBodyMorphInterface&, RE::Actor* actor,
+        const bool /*deferUpdate*/)
     {
-        // Preserve the public RaceMenu refresh preference. On the main thread
-        // RaceMenu may still do synchronous work even with deferUpdate=true;
-        // frame_tasks owns BCNG's cadence/budget, not this API flag.
-        bodyMorph.ApplyBodyMorphs(actor, deferUpdate);
+        if (!actor || !bcn::frame_tasks::CurrentWorkAllowed()) return;
+        const auto handle = actor->GetHandle();
+        const auto session = bcn::ActorRegistry::Get().SessionGeneration();
+        // All key writers share one latest-wins visual job. Resolve the actor's
+        // current 3D when it runs, after already queued body/outfit/undo writes.
+        // No geometry, partition or provider pointer survives a frame boundary.
+        bcn::frame_tasks::Queue(actor->GetFormID(), [handle, session] {
+            if (!bcn::frame_tasks::CurrentWorkAllowed() ||
+                bcn::ActorRegistry::Get().SessionGeneration() != session) return;
+            const auto resolved = handle.get();
+            auto* current = Interface();
+            if (!current || !resolved || !resolved->Is3DLoaded()) return;
+            // BCNG already defers/budgets this job on the game task thread.
+            // Complete the public refresh here instead of leaving RaceMenu's
+            // partition updates queued beyond our actor lease (v4/v5 prefix).
+            current->ApplyBodyMorphs(resolved.get(), false);
+        }, 1U, bcn::appearance::WorkChannel::bodyMorphRefresh);
     }
 
     void ClearPreviewNow(const RE::ActorHandle actorHandle)
@@ -476,10 +489,9 @@ namespace
                 bodyMorph->SetMorph(actor.get(), name.c_str(), key, value);
             }
         }
-        // UI requests keep RaceMenu's partition update synchronous so an older
-        // internal morph job cannot arrive after a later list selection.
-        // Automatic distribution and outfit correction explicitly select the
-        // deferred policy to avoid blocking a dense-cell frame.
+        // Both caller policies now share a coalesced, budgeted game-task
+        // refresh. Key writes finish here; no SKEE partition job outlives that
+        // later refresh's actor lease.
         ApplyVisibleMorphs(*bodyMorph, actor.get(),
             updatePolicy == bcn::racemenu::UpdatePolicy::deferred);
         if (mode == bcn::racemenu::ApplyMode::preview && !IsCurrentPreview(actorHandle, previewGeneration)) {
@@ -853,13 +865,40 @@ namespace bcn::racemenu
         return ApplyResult::queued;
     }
 
-    void QueueReapplyCurrent(RE::Actor* actor)
+    void QueueReapplyCurrent(RE::Actor* actor, const bool forceCommit)
     {
         const auto presetId = CurrentPresetId(actor);
-        if (!presetId) return;
-        if (QueueApply(actor, *presetId, ApplyMode::commit) == ApplyResult::queued) {
-            bcn::OutfitRefit::Get().ProcessActor(actor);
+        if (!actor || !presetId) return;
+        if (forceCommit) {
+            // The settings popup is an explicit user action, including while
+            // its preview owner is active. Preserve its immediate commit path.
+            if (QueueApply(actor, *presetId, ApplyMode::commit) == ApplyResult::queued) {
+                bcn::OutfitRefit::Get().ProcessActor(actor);
+            }
+            return;
         }
+        const auto handle = actor->GetHandle();
+        const auto session = ActorRegistry::Get().SessionGeneration();
+        QueueActorTask(handle, appearance::WorkChannel::bodyVerify, [handle, session, presetId] {
+            if (!frame_tasks::CurrentWorkAllowed() ||
+                ActorRegistry::Get().SessionGeneration() != session) return;
+            const auto resolved = handle.get();
+            if (!resolved || !resolved->Is3DLoaded() || !IsReady() ||
+                CurrentPresetId(resolved.get()) != presetId ||
+                frame_tasks::HasPreview(resolved->GetFormID()) || HasActivePreview(resolved.get()) ||
+                frame_tasks::HasActorChannelWork(resolved->GetFormID(), appearance::WorkChannel::bodyCommit) ||
+                frame_tasks::HasActorChannelWork(resolved->GetFormID(), appearance::WorkChannel::bodyPreviewCleanup)) return;
+            if (ActorRegistry::Get().NeedsBodyApply(resolved.get(), *presetId, false)) {
+                // Missing keys, changed XML or changed options still need a
+                // real commit. Explicit UI commits retain their normal recipe.
+                if (QueueApply(resolved.get(), *presetId, ApplyMode::commit) != ApplyResult::queued) return;
+            } else if (auto* current = Interface()) {
+                // Surviving cosave keys are already authoritative. Rebuilding
+                // geometry must not reroll or overwrite that committed layer.
+                ApplyVisibleMorphs(*current, resolved.get(), false);
+            }
+            bcn::OutfitRefit::Get().ProcessActor(resolved.get());
+        });
     }
 
     ApplyResult QueueApplyOutfit(RE::Actor* actor, std::string refitPresetId,

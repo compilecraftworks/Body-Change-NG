@@ -1,13 +1,11 @@
 # Pinned build dependencies
 
-Body Change NG v1.3.5 is built with xmake 3.1.0 and the exact dependency
+Body Change NG v1.3.6 is built with xmake 3.1.0 and the exact dependency
 closure below. `xmake-requires.lock` remains authoritative for xmake packages
 and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
 
-- CommonLibSSE-NG v6.7.1, commit
-  `70c1acd5261210982bd52f6d4468a082fe04d798`
-- OpenVR v1.0.15 headers, commit
-  `60eb187801956ad277f1cae6680e3a410ee0873b`
+- CommonLibSSE-NG v11.0.0, commit
+  `94faaed0c60eddd8347767f2d4d29a97c93bde8c`
 - Dear ImGui 1.92.9b; vendored `imgui.cpp` SHA-256
   `01CD8AFB847FE33F6D3386ECA9FA057BB87783364BF3BD13B0FC582D1F3FB5FF`
 - pugixml 1.16; vendored `pugixml.cpp` SHA-256
@@ -17,7 +15,12 @@ and pins the xmake-repo commit `e36e822129b0fcbdfb51633a7fcee8c76af344bf`.
   upstream archive SHA-256
   `b99a0b86c0ba9360ec7e78c4f1e43b1cbdf1e6936c8fa0f6835c0cd694a495a1`.
   Exact package version and recipe commit are pinned in `xmake-requires.lock`.
-  No additional runtime DLL is required; CommonLib's transitive closure is unchanged.
+  No additional runtime DLL is required; existing locked package versions are preserved.
+
+- CommonLib's patch-safety decoder: upstream MinHook v1.3.4 HDE sources only,
+  archive SHA-256 `1aebeae4ca898330c507860acc2fca2eb335fe446a3a2b8444c3bf8b2660a14e`.
+  This is v11.0.0's verified build closure, downloaded and checked by its own
+  xmake recipe; no MinHook DLL or runtime hook dependency is added.
 
 ## RaceMenu runtime interface compatibility
 
@@ -66,7 +69,8 @@ by `scripts/Package-Release.ps1`: Git-tracked project files plus a minimal
 build-required dependency tree, not Git's empty submodule placeholders.
 Downloaded xmake packages are resolved through the unchanged lock file.
 BCNG is built with `EXCLUSIVE_SKYRIM_FLAT`, with VR configuration disabled;
-vendored upstream VR headers do not imply a supported VR target.
+upstream VR declarations do not imply a supported VR target. The source archive
+does not bundle an OpenVR SDK; it is not required for the flat build.
 
 ## Optional SFS rendered-outfit ABI
 

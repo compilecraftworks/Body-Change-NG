@@ -23,11 +23,12 @@ function Export-FunctionBody([string]$source, [string]$signature, [string]$file)
 }
 Export-FunctionBody 'src/BodyChangeNG/FrameTasks.cpp' 'void Pump(std::uint64_t epoch)' 'frame_pump.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueActorTask(' 'body_queue_actor.inc'
+Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void ApplyVisibleMorphs(' 'body_visual_refresh.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void ClearPreviewNow(' 'body_clear_preview.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueCancelPreview()' 'body_cancel_preview.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueClearInactivePreview(' 'body_clear_inactive.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueClearBodyChangeMorphs(' 'body_clear_default.inc'
-Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueReapplyCurrent(RE::Actor* actor)' 'body_reapply.inc'
+Export-FunctionBody 'src/BodyChangeNG/RaceMenuBodyMorph.cpp' 'void QueueReapplyCurrent(' 'body_reapply.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuOverlay.cpp' 'void QueueCancelPreviews(RE::Actor* actor)' 'overlay_cancel.inc'
 Export-FunctionBody 'src/BodyChangeNG/RaceMenuOverlay.cpp' 'void QueueReapplySaved(RE::Actor* actor)' 'overlay_reapply.inc'
 Export-FunctionBody 'src/BodyChangeNG/ActorEvents.cpp' 'void ReapplyPlayerSelectionsAfterRaceMenu(' 'player_restore.inc'

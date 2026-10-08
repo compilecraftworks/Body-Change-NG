@@ -878,7 +878,7 @@ int main()
         uiSource.contains("Female genital randomization") && uiSource.contains("女性生殖器随机化"));
     // Values, including zero, go to SetMorph; no BCNG range/epsilon filter.
     const auto morphWriteBegin = morphSource.find("for (const auto& [name, desired] : desiredMorphs)");
-    const auto morphWriteEnd = morphSource.find("// UI requests", morphWriteBegin);
+    const auto morphWriteEnd = morphSource.find("ApplyVisibleMorphs(*bodyMorph, actor.get(),", morphWriteBegin);
     Require(morphWriteBegin != std::string::npos && morphWriteEnd != std::string::npos);
     const auto morphWrite = std::string_view(morphSource).substr(morphWriteBegin, morphWriteEnd - morphWriteBegin);
     Require(morphWrite.contains("bodyMorph->SetMorph(actor.get(), name.c_str(), key, value)") &&

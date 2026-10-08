@@ -16,23 +16,6 @@
 
 #include <vector>
 
-namespace RE
-{
-    class GFxCharEvent final : public GFxEvent
-    {
-    public:
-        GFxCharEvent() = default;
-        explicit GFxCharEvent(const std::uint32_t a_character) :
-            GFxEvent(EventType::kCharEvent), wcharCode(a_character)
-        {}
-
-        std::uint32_t wcharCode{};
-        std::uint32_t keyboardIndex{};
-    };
-
-    static_assert(sizeof(GFxCharEvent) == 0x0C);
-}
-
 namespace
 {
     constexpr std::string_view kMenuName = "BodyChangeNGMenu";
@@ -631,8 +614,8 @@ namespace
         case RE::GFxEvent::EventType::kCharEvent: {
             const auto* character = reinterpret_cast<const RE::GFxCharEvent*>(event);
             if (g_wantsTextInput.load(std::memory_order_acquire) &&
-                character->wcharCode >= 0x20U && character->wcharCode != 0x7FU) {
-                io.AddInputCharacter(character->wcharCode);
+                character->wCharCode >= 0x20U && character->wCharCode != 0x7FU) {
+                io.AddInputCharacter(character->wCharCode);
             }
             break;
         }

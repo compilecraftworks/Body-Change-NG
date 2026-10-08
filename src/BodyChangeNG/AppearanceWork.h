@@ -19,6 +19,7 @@ namespace bcn::appearance
         equipmentVerify = 104,
         renderedOutfitReconcile = 105,
         bodyVerify = 106,
+        bodyMorphRefresh = 107,
 
         bodyPreview = 200,
         bodyCommit = 201,

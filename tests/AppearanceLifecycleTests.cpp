@@ -70,6 +70,8 @@ struct ActorRegistry {
     std::optional<std::uint64_t> outfitSignature;
     static ActorRegistry& Get() { static ActorRegistry r; return r; }
     std::optional<ActorState> Snapshot(RE::Actor*) { return state; }
+    bool needsBodyApply = true;
+    bool NeedsBodyApply(RE::Actor*, const std::string&, bool) { return needsBodyApply; }
     unsigned SessionGeneration() { return session; }
     void InvalidateOutfit(RE::Actor*) { outfitSignature.reset(); }
     void MarkBodyApplied(RE::Actor*, const std::string&, bool) {}
@@ -99,6 +101,7 @@ bool Queue(unsigned actor, std::function<void()> work, unsigned delay = 1,
     return runtime_probe::g_queue.Submit(actor, appearance::ChannelValue(channel), std::move(work), delay, urgent);
 }
 bool HasActorWork(unsigned actor) { return runtime_probe::g_queue.HasActorWork(actor); }
+bool HasPreview(unsigned) { return false; }
 bool QueueRestoration(unsigned actor, std::function<void()> work, unsigned delay = 1,
     appearance::WorkChannel channel = appearance::WorkChannel::none) {
     return runtime_probe::g_queue.SubmitRestoration(actor, std::move(work), delay, appearance::ChannelValue(channel));
@@ -134,7 +137,15 @@ unsigned previewClears{}, bodyRefreshes{}, defaultClears{}, bodyCommits{};
 unsigned outfitWrites{};
 bool outfitPresent{};
 std::optional<std::string> currentPreset;
-struct Morphs { bool HasBodyMorphKey(RE::Actor*, const char*) { return previewKey; } } morphs;
+struct Morphs {
+    float keyedValue{}, visibleValue{};
+    bool deferred{};
+    void ApplyBodyMorphs(RE::Actor*, bool defer) {
+        ++bodyRefreshes; deferred = defer; visibleValue = keyedValue;
+    }
+    bool HasBodyMorphKey(RE::Actor*, const char*) { return previewKey; }
+} morphs;
+namespace skee { using IBodyMorphInterface = Morphs; }
 Morphs* Interface() { return &morphs; }
 bool HasActivePreview(RE::Actor*) { return activePreview; }
 namespace keys {
@@ -142,7 +153,7 @@ void ClearPreview(Morphs&, RE::Actor*) { previewKey = false; ++previewClears; }
 void ClearOwned(Morphs&, RE::Actor*) { ++defaultClears; outfitPresent = false; previewKey = false; }
 void ClearReplacedBody(Morphs& morph, RE::Actor* actor) { ClearOwned(morph, actor); }
 }
-void ApplyVisibleMorphs(Morphs&, RE::Actor*, bool) { ++bodyRefreshes; }
+#include "body_visual_refresh.inc"
 RE::ActorHandle CancelPreviewTracking(RE::ActorHandle = {}) {
     if (!activePreview) return {};
     activePreview = false; return RE::actor.GetHandle();
@@ -159,7 +170,10 @@ unsigned BeginApply(unsigned id, ApplyMode) { return ++generations[id]; }
 bool IsCurrentApply(unsigned id, ApplyMode, unsigned generation) { return generations[id] == generation; }
 ApplyResult QueueApply(RE::Actor* actor, const std::string&, ApplyMode) {
     ActorRegistry::Get().InvalidateOutfit(actor);
-    frame_tasks::Queue(actor->GetFormID(), [] { ++bodyCommits; outfitPresent = false; }, 1,
+    frame_tasks::Queue(actor->GetFormID(), [actor] {
+        ++bodyCommits; outfitPresent = false; ActorRegistry::Get().needsBodyApply = false;
+        ApplyVisibleMorphs(morphs, actor, true);
+    }, 1,
         appearance::WorkChannel::bodyCommit);
     return ApplyResult::queued;
 }
@@ -180,6 +194,7 @@ void QueueClearBodyChangeMorphs(RE::Actor*, bool ownedOnly = false);
 #include "body_cancel_preview.inc"
 #include "body_clear_inactive.inc"
 #include "body_clear_default.inc"
+void QueueReapplyCurrent(RE::Actor*, bool = false);
 #include "body_reapply.inc"
 }
 #include "outfit_process.inc"
@@ -229,6 +244,8 @@ void Reset() {
     bcn::OutfitRefit::Get().evaluatedPlan = {};
     bcn::ActorRegistry::Get().state = {};
     bcn::ActorRegistry::Get().outfitSignature.reset();
+    bcn::ActorRegistry::Get().needsBodyApply = true;
+    bcn::racemenu::morphs = {};
     ++bcn::ActorRegistry::Get().session;
     bcn::overlay::g_previews.clear(); bcn::overlay::restored = bcn::overlay::applied = 0;
     bcn::racemenu::activePreview = bcn::racemenu::previewKey = false;
@@ -325,7 +342,7 @@ int main() try {
         if (!useDefault) racemenu::currentPreset = "body-preset";
         event_probe::ReapplyPlayerSelectionsAfterRaceMenu(RE::actor.GetHandle(), 1, 120, 2, 0); Drain();
         Check(useDefault ? racemenu::defaultClears == 3 && refits == 3 && racemenu::outfitPresent :
-            racemenu::bodyCommits == 3 && refits == 3 && racemenu::outfitPresent,
+            racemenu::bodyCommits == 1 && refits == 3 && racemenu::outfitPresent,
             "player outfit not reapplied after body clear/commit");
         std::cout << "Player restore: default=" << useDefault << " refit-evaluations=" << refits << '\n';
     }
@@ -400,6 +417,57 @@ int main() try {
     Check(racemenu::defaultClears == 1 && !racemenu::outfitPresent && !refits,
         "explicit reset/removal incorrectly restored outfit corrections");
     std::cout << "Latest choices, inactive cleanup, NPCs, reset/removal and SFS policy controls PASS\n";
+    // Exercise the unchanged production refresh and restore functions, with
+    // the existing queue/lease implementation and fake engine/API boundaries.
+    Reset();
+    for (unsigned n = 1; n <= 10000; ++n) {
+        racemenu::morphs.keyedValue = static_cast<float>(n);
+        racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, true);
+        Check(g_queue.Pending() == 1, "visual refresh retained more than one job per actor");
+    }
+    Drain();
+    Check(racemenu::bodyRefreshes == 1 && racemenu::morphs.visibleValue == 10000 &&
+        !racemenu::morphs.deferred && !g_queue.HasWork(), "visual refresh lost final keys or deferred past lease");
+    Reset(); racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, false);
+    RE::actor.loaded = false; Drain();
+    Check(!racemenu::bodyRefreshes && !g_queue.HasWork(), "refresh used detached geometry or retained retry");
+    Reset(); racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, false);
+    ++ActorRegistry::Get().session; Drain();
+    Check(!racemenu::bodyRefreshes, "refresh crossed session boundary");
+    Reset(); racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, false);
+    g_queue.CancelActor(14); Drain();
+    Check(!racemenu::bodyRefreshes, "canceled actor still refreshed");
+    Reset(); racemenu::currentPreset = "saved"; ActorRegistry::Get().needsBodyApply = false;
+    racemenu::morphs.keyedValue = 0.75F;
+    for (unsigned n{}; n < 10000; ++n) racemenu::QueueReapplyCurrent(&RE::actor);
+    Check(g_queue.Pending() == 1, "saved restoration grew without coalescing");
+    Drain();
+    Check(!racemenu::bodyCommits && racemenu::bodyRefreshes == 1 &&
+        racemenu::morphs.visibleValue == 0.75F, "live committed layer was recommitted or lost");
+    Reset(); racemenu::currentPreset = "old"; racemenu::QueueReapplyCurrent(&RE::actor);
+    racemenu::currentPreset = "new"; Drain();
+    Check(!racemenu::bodyCommits && !racemenu::bodyRefreshes, "stale saved restoration overwrote new selection");
+    Reset(); racemenu::currentPreset = "saved"; ActorRegistry::Get().needsBodyApply = false;
+    racemenu::QueueReapplyCurrent(&RE::actor); racemenu::activePreview = true; Drain();
+    Check(!racemenu::bodyCommits && !racemenu::bodyRefreshes, "restoration interrupted active preview");
+    Reset(); racemenu::currentPreset = "saved"; ActorRegistry::Get().needsBodyApply = false;
+    racemenu::activePreview = true;
+    racemenu::QueueReapplyCurrent(&RE::actor, true); Drain();
+    Check(racemenu::bodyCommits == 1, "explicit settings reapply lost its immediate commit path");
+    // Body/outfit writes already queued must settle before their shared refresh.
+    Reset();
+    frame_tasks::Queue(14, [] {
+        racemenu::morphs.keyedValue = 1.0F;
+        racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, false);
+    }, 1, appearance::WorkChannel::bodyCommit);
+    frame_tasks::Queue(14, [] {
+        racemenu::morphs.keyedValue += 0.2F;
+        racemenu::ApplyVisibleMorphs(racemenu::morphs, &RE::actor, true);
+    }, 1, appearance::WorkChannel::outfitRefit);
+    Drain();
+    Check(racemenu::bodyRefreshes == 1 && racemenu::morphs.visibleValue == 1.2F,
+        "body/outfit composition produced stale or multiple refreshes");
+    std::cout << "Morph refresh: coalescing, final keys, detach/cancel/session, saved-layer preservation PASS\n";
     CheckQueueModel();
     std::cout << "AppearanceLifecycleTests passed (offline engine boundaries)\n";
 } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }

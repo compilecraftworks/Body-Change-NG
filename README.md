@@ -1,11 +1,30 @@
-# Body Change NG — v1.3.5
+# Body Change NG — v1.3.6
 
 Native SKSE appearance control for Skyrim SE/AE: BodySlide presets, body and
 face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Feet
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.5
+## Current version — v1.3.6
+
+Body, outfit and preview cleanup now share one actor refresh job. Save-load and
+RaceMenu restoration preserve surviving committed morph values instead of
+repeatedly committing the preset. Missing morph keys or changed preset/options
+still use the normal repair path; explicit preset selection and settings-popup
+changes retain their existing behavior.
+
+CommonLibSSE-NG v11.0.0 is pinned in the SE/AE-only flat configuration. The
+Release build and all 48 offline regression executables pass, including the
+declared 12 game runtimes and BodyMorph v4/v5 prefix fixtures. These checks do
+not establish the reported AE inflation's root cause or in-game compatibility
+with every RaceMenu binary. Use the RaceMenu/SKSE release matching your game.
+
+- [English changelog](CHANGELOG.md#136) · [한국어 변경 내역](CHANGELOG-KO.md#136)
+- [English text](docs/NEXUS-CHANGELOG-v1.3.6-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.6-KO.txt)
+- [Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.6-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.6-KO.html)
+- [Compatibility audit and limits](docs/MORPH-REFRESH-COMPATIBILITY-20261008.md)
+
+## Preserved v1.3.5 features
 
 Open Distribution conditions directly from each supported tab. Edit existing
 rule candidates without recreating rules, search plugin/race/faction/keyword/
@@ -393,7 +412,7 @@ submodules; each GitHub release also provides a complete source archive with
 the vendored dependency sources and applicable licenses needed to reproduce
 the release build. Exact versions are listed in `DEPENDENCIES.md`.
 Build with the pinned xmake 3.1.0 (`xmake f -m release`, then `xmake build
-BodyChangeNG`); output is `build/v1.3.0/windows/x64/release/BodyChangeNG.dll`.
+BodyChangeNG`); output is `build/v1.3.6/windows/x64/release/BodyChangeNG.dll`.
 The checked-in `scripts/Package-Release.ps1` creates versioned binary/source
 archives from a clean Git revision and verifies the archive contents. Referenced
 mods and compatible JSON files retain their respective authors' copyright and

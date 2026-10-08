@@ -2,6 +2,13 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.6
+
+- Coalesce body, preview, undo and outfit visual refreshes into one actor job. Complete the public RaceMenu refresh within the existing game-task lease, rather than leaving partition updates deferred beyond it.
+- Preserve surviving committed morph keys during load/RaceMenu restoration; repair missing keys or changed preset/options through the normal commit path. Explicit preset commits retain their recipe.
+- Pin CommonLibSSE-NG v11.0.0 in SE/AE-only flat configuration and use its upstream character-event definition.
+- Add production-function lifecycle regressions and independent BodyMorph v4/v5 prefix fixtures for all 12 declared game runtimes. These are offline checks, not in-game validation of every RaceMenu build.
+
 ## 1.3.5
 
 ### Easier NPC distribution

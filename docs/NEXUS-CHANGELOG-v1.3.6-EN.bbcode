@@ -1,0 +1,20 @@
+[size=6][color=#FFD600][b]Body Change NG v1.3.6[/b][/color][/size]
+[hr]
+[size=4][color=#19D8FF][b]Morph refresh and restoration[/b][/color][/size]
+[list]
+[*]Reduced duplicate visual updates by coalescing body, outfit, preview and cleanup refreshes into one actor job.
+[*]Save-load and RaceMenu restoration now preserve surviving committed morph values instead of repeatedly recommitting the preset. Missing keys or changed preset/options still use the normal repair path.
+[*]Explicit preset selection, preview cancellation, Default/reset and settings-popup reapplication retain their existing behavior. No additional OverlayFix dependency is required.
+[/list]
+
+[size=4][color=#19D8FF][b]Compatibility and validation[/b][/color][/size]
+[list]
+[*]Updated the pinned build dependency to CommonLibSSE-NG v11.0.0 in the SE/AE-only flat configuration.
+[*]Release build and all 48 offline regression executables passed, including the 12 declared game runtimes and RaceMenu BodyMorph v4/v5 prefix fixtures.
+[*]The existing targeted UBE SE RaceMenu fix remains limited to its verified DLL. These checks do not confirm the reported AE inflation's root cause or in-game compatibility with every RaceMenu binary.
+[/list]
+
+[size=4][color=#19D8FF][b]Updating[/b][/color][/size]
+[list]
+[*]Fully exit the game before replacing the mod, then restart. Preserve settings, customized distribution rules, favorites, skin packs and texture caches. Supported game versions and save formats are unchanged.
+[/list]
