@@ -109,7 +109,7 @@ try {
     foreach ($tree in @('include', 'src', 'res', 'cmake', 'licenses')) {
         Copy-ReleaseTree "third_party\CommonLibSSE-NG\$tree" $source
     }
-    foreach ($file in @('xmake.lua', 'COPYING', 'EXCEPTIONS.md', 'README.md', 'CMakeLists.txt', 'CMakePresets.json', 'vcpkg.json')) {
+    foreach ($file in @('xmake.lua', 'COPYING.txt', 'EXCEPTIONS.md', 'README.md', 'CMakeLists.txt', 'CMakePresets.json', 'vcpkg.json', 'vcpkg-configuration.json')) {
         Copy-ReleaseFile "third_party\CommonLibSSE-NG\$file" $source
     }
     foreach ($file in Get-ChildItem -LiteralPath (Join-Path $repo 'third_party\imgui') -File | Where-Object { $_.Extension -in '.cpp', '.h' -or $_.Name -eq 'LICENSE.txt' }) {
@@ -120,7 +120,7 @@ try {
     }
     Copy-ReleaseTree 'third_party\pugixml\src' $source
     Copy-ReleaseFile 'third_party\pugixml\LICENSE.md' $source
-    foreach ($required in @('third_party\CommonLibSSE-NG\include\RE\Skyrim.h', 'third_party\CommonLibSSE-NG\res\commonlibsse-ng-plugin.cpp.in', 'third_party\imgui\imgui.cpp', 'third_party\pugixml\src\pugixml.cpp')) {
+    foreach ($required in @('third_party\CommonLibSSE-NG\COPYING.txt', 'third_party\CommonLibSSE-NG\EXCEPTIONS.md', 'third_party\CommonLibSSE-NG\licenses\LICENSE-hde64.txt', 'third_party\CommonLibSSE-NG\include\RE\Skyrim.h', 'third_party\CommonLibSSE-NG\res\commonlibsse-ng-plugin.cpp.in', 'third_party\imgui\imgui.cpp', 'third_party\pugixml\src\pugixml.cpp')) {
         if (-not (Test-Path -LiteralPath (Join-Path $source $required))) { throw "Missing source dependency: $required" }
     }
     $prohibited = Get-ChildItem -LiteralPath $source -Recurse -File -Force | Where-Object {
