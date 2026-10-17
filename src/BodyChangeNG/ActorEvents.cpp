@@ -153,6 +153,7 @@ namespace bcn
                 // at close. The native Skin Armor graph remains authoritative
                 // for every new body clone; QueueApply only verifies or
                 // reattaches the already-owned graph after the rebuild settles.
+                racemenu::FinishBodySliderEdit(actor.get());
                 const auto saved = ActorRegistry::Get().Snapshot(actor.get());
                 if (saved && saved->body.selection.manual && saved->body.selection.useDefault) {
                     racemenu::QueueClearBodyChangeMorphs(actor.get());
@@ -367,6 +368,10 @@ namespace bcn
             if (auto* player = RE::PlayerCharacter::GetSingleton()) {
                 frame_tasks::CancelActor(player->GetFormID());
                 face_preview::Restore(player->GetFormID());
+                // Finish a rapidly reopened session before bridging the next
+                // one, so cancelled close work cannot accumulate the preset.
+                racemenu::FinishBodySliderEdit(player);
+                [[maybe_unused]] const auto editing = racemenu::BeginBodySliderEdit(player);
                 std::scoped_lock lock(g_equipmentLock);
                 g_equipmentGeneration.erase(player->GetFormID());
             }
@@ -410,6 +415,8 @@ namespace bcn
                     const auto resolved = handle.get();
                     auto* actor = resolved.get();
                     if (!actor || !actor->Is3DLoaded()) return;
+                    native_skin::LogCurrentSkinState(actor, "ni-node-settled");
+                    skin_application::QueueVerifyBodyTextures(actor);
                     if (appearance::NeedsReconcile(
                             appearance::Feature::maleGenitalAddon,
                             appearance::Event::niNodeUpdated)) {

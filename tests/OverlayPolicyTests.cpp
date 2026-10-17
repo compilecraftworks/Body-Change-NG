@@ -122,6 +122,13 @@ int main()
         defaultPreview.Observe(true, false, false);
         Check(defaultPreview.Result(16, 2).capacity == 14 && defaultPreview.Result(16, 2).applied == 2,
             "default preview changed confirmed selections");
+        Check(SlotUsage{}.availability == SlotAvailability::providerUnavailable,
+            "missing provider was reported as actual zero capacity");
+        Check(SlotAccounting{}.Result(0, 0).availability == SlotAvailability::disabled,
+            "disabled area was reported as a full provider");
+        Check(accounting.Result(16, 2).total == 16 && accounting.Result(16, 2).foreignReserved == 2 &&
+            accounting.Result(16, 2).availability == SlotAvailability::ready,
+            "reserved slot explanation differs from actual accounting");
         Check(accounting.Result(1, 2).capacity == 0 && accounting.Result(1, 2).applied == 0,
             "slot accounting underflowed a reduced provider capacity");
         const bcn::OverlayItemState saved{ .selectedId = "old", .texturePath = "old.dds",

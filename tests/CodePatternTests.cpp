@@ -467,6 +467,8 @@ int main()
         !futaRefresh.contains("SetManual"));
     Require(distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\n            !bcn::MatchesDistributionScopeFilters") ||
         distributionSource.contains("rule.scope == bcn::DistributionScope::allNPCs &&\r\n            !bcn::MatchesDistributionScopeFilters"));
+    Require(distributionSource.contains("!rule.includeChildNPCs && actor->IsChild()") &&
+        distributionSource.contains(".includeChildNPCs = source.value(\"includeChildNPCs\", false)"));
     const auto skinApplicationSource = readFeatureSource("SkinApplication.cpp");
     const auto futanariSupportSource = readFeatureSource("FutanariSupport.cpp");
     const auto targetResolverSource = readFeatureSource("SkinTargetResolver.cpp");
@@ -548,7 +550,7 @@ int main()
         packagedRules.contains("/* EXAMPLE: individual_body") &&
         !packagedRules.contains("Excluded") &&
         !packagedRules.contains("excluded"));
-    Require(readFeatureSource("Distribution.cpp").contains("distribution_json::Parse(stream)"));
+    Require(readFeatureSource("Distribution.cpp").contains("distribution_json::Read(sourcePath.path)"));
     std::ifstream packageScriptFile(std::filesystem::path("scripts") /
         "Package-Release.ps1", std::ios::binary);
     Require(packageScriptFile.good());
@@ -898,7 +900,7 @@ int main()
     Require(morphSource.contains("keys::ClearReplacedBody(*bodyMorph, resolved.get())") &&
         morphSource.contains("keys::ClearReplacedBody(*morph, resolved.get())") &&
         morphSource.contains("preset && preset->UsesBuildDefaults()") &&
-        morphSource.contains("return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody") &&
+        morphSource.contains("return (usesBuildDefaults || hasCommitted) && !hasOBody") &&
         morphSource.contains("return !hasBaseOrPreview && !hasOBody"));
     const auto defaultVerificationBegin = morphSource.find("const auto hasBaseOrPreview =");
     const auto defaultVerificationEnd = morphSource.find("return !hasBaseOrPreview", defaultVerificationBegin);

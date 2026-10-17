@@ -983,7 +983,10 @@ namespace bcn::overlay
     SlotUsage CurrentSlotUsage(RE::Actor* actor, const Area area)
     {
         SlotUsage result;
-        if (!actor || area == Area::count || !actor->Is3DLoaded()) return result;
+        if (!actor || area == Area::count || !actor->Is3DLoaded()) {
+            result.availability = SlotAvailability::actorUnavailable;
+            return result;
+        }
         const auto interfaces = InterfacesNow();
         if (!interfaces.overlay || !interfaces.override) return result;
         const auto total = OverlayCount(interfaces, area);

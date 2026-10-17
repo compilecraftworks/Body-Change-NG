@@ -675,9 +675,16 @@ namespace bcn::skin_application
         return native_skin::LiveStateMatches(actor, profileId, expectDefault);
     }
 
+    void QueueVerifyBodyTextures(RE::Actor* actor)
+    {
+        native_skin::QueueVerifyBodyTextures(actor,
+            [](RE::Actor* refreshed) { RefreshNativeSkin3D(refreshed); });
+    }
+
     void ForgetActorState(const std::uint32_t actorFormID)
     {
         face_skin::Forget(actorFormID);
+        native_skin::ForgetBodyTextureRecovery(actorFormID);
         // Face requests are reference/3D-specific even though body graphs are
         // shared and survive detach. Re-verify a committed face on attachment.
         if (auto* actor = RE::TESForm::LookupByID<RE::Actor>(actorFormID))

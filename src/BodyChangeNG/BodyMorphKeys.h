@@ -11,12 +11,15 @@ namespace bcn::racemenu::keys
     inline constexpr auto body = "BodyChangeNG";
     inline constexpr auto preview = "BodyChangeNGPreview";
     inline constexpr auto outfit = "BodyChangeNGOutfit";
+    // Value-only editor recovery layers travel with SKEE's own serialization.
+    inline constexpr auto editorBaseline = "BodyChangeNGEditorBaseline";
+    inline constexpr auto editorOffset = "BodyChangeNGEditorOffset";
     inline constexpr auto legacyBody = "BodyChangerNG";
     inline constexpr auto legacyPreview = "BodyChangerNGPreview";
     inline constexpr auto legacyOutfit = "BodyChangerNGOutfit";
     inline constexpr auto obody = "OBody";
     inline constexpr auto oclothe = "OClothe";
-    inline constexpr std::array owned{ body, preview, outfit, legacyBody, legacyPreview, legacyOutfit };
+    inline constexpr std::array owned{ body, preview, outfit, legacyBody, legacyPreview, legacyOutfit, editorBaseline, editorOffset };
 
     [[nodiscard]] constexpr bool IsOwned(const std::string_view key) noexcept
     {

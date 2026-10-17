@@ -134,7 +134,7 @@ namespace bcn::distribution_authoring
             return result;
         }
         Keys(source, {"id", "name", "nameKey", "enabled", "sex", "scope", "target", "presets", "skins",
-            "futaSkins", "overlays", "excludeCustomFollowers", "excludeElders"});
+            "futaSkins", "overlays", "excludeCustomFollowers", "excludeElders", "excludeChildren"});
         const auto scopeName = Text(source.at("scope"));
         const auto found = std::ranges::find(kScopes, scopeName);
         Check(found != kScopes.end(), "unknown scope: " + scopeName);
@@ -144,7 +144,8 @@ namespace bcn::distribution_authoring
         Json result{{"scope", scope}, {"female", sex == "female"},
             {"enabled", source.value("enabled", true)},
             {"includeCustomFollowers", !source.value("excludeCustomFollowers", true)},
-            {"includeElderNPCs", !source.value("excludeElders", true)}};
+            {"includeElderNPCs", !source.value("excludeElders", true)},
+            {"includeChildNPCs", !source.value("excludeChildren", true)}};
         for (const auto key : {"id", "name", "nameKey"}) if (source.contains(key)) result[key] = Text(source.at(key));
         if (scope == 0U || scope == 6U || scope == 7U) {
             Check(!source.contains("target"), "this scope takes no target");
@@ -236,6 +237,7 @@ namespace bcn::distribution_authoring
             if (!rule.enabled) row["enabled"] = false;
             row["excludeCustomFollowers"] = !rule.includeCustomFollowers;
             row["excludeElders"] = !rule.includeElderNPCs;
+            row["excludeChildren"] = !rule.includeChildNPCs;
             if (scope != 0U && scope != 6U && scope != 7U) {
                 if (NamedTarget(rule.target)) row["target"] = TargetValue(rule.target);
                 else if (scope == 2U || scope == 4U) row["target"] = rule.target;

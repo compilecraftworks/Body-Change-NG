@@ -171,6 +171,28 @@ int main() try {
         "complete body/skin pools are incomplete");
     Sandbox sandbox;
     const auto path = sandbox.root / "Data/SKSE/Plugins/BodyChangeNGdistribution.json";
+    // Production Load uses this same reader. Retain the decoded document across
+    // backup/replacement, proving no source handle survives to block migration.
+    for (int schema = 3; schema <= 7; ++schema) {
+        const auto migration = sandbox.root / ("migration-" + std::to_string(schema)) / path.filename();
+        std::filesystem::create_directories(migration.parent_path());
+        const auto original = "// preserved migration guide\n" +
+            nlohmann::json{{"schemaVersion", schema}, {"rules", nlohmann::json::array()}}.dump() + '\n';
+        WriteText(migration, original);
+        const auto decoded = bcn::distribution_authoring::Decode(bcn::distribution_json::Read(migration));
+        Require(decoded["schemaVersion"] == schema, "migration reader changed the schema");
+        {
+            HeldFile held{CreateFileW(migration.c_str(), GENERIC_READ, 0, nullptr, OPEN_EXISTING, 0, nullptr)};
+            Require(held.handle != INVALID_HANDLE_VALUE, "migration reader retained its handle");
+        }
+        Require(bcn::distribution_json::BackupForMigration(migration, schema), "same-path migration backup failed");
+        Require(WriteDistributionFile(migration, {}) && Read(migration)["schemaVersion"] == 8,
+            "same-path migration replacement failed while decoded document was retained");
+        Require(ReadText(migration.string() + ".schema" + std::to_string(schema) + ".bak") == original,
+            "migration backup did not preserve original bytes");
+        Require(bcn::distribution_json::Comments(ReadText(migration)) == "// preserved migration guide\n",
+            "migration discarded original comments");
+    }
     Require(WriteDistributionFile(path, {}), "empty rules did not save");
     Require(Read(path)["schemaVersion"] == 8 && Read(path)["rules"].empty(), "empty rule set changed");
     Require(Read(path).size() == 2, "writer unexpectedly changed the schema");
@@ -186,6 +208,7 @@ int main() try {
             rule.enabled = (scope % 2) != 0;
             rule.includeCustomFollowers = (feature % 2) != 0;
             rule.includeElderNPCs = (feature % 3) != 0;
+            rule.includeChildNPCs = (feature % 2) == 0;
             rule.npcPlugin = "NPC.esp"; rule.npcLocalFormID = 0x123;
             rule.targetPlugin = "Target.esl"; rule.targetLocalFormID = 0x456;
             rule.target = "Target name";
@@ -223,7 +246,8 @@ int main() try {
             value["nameKey"] == source.nameKey && value["enabled"] == source.enabled &&
             value["female"] == source.female && value["scope"] == static_cast<unsigned>(source.scope) &&
             value["includeCustomFollowers"] == source.includeCustomFollowers &&
-            value["includeElderNPCs"] == source.includeElderNPCs, "rule flags or identity changed");
+            value["includeElderNPCs"] == source.includeElderNPCs &&
+            value["includeChildNPCs"] == source.includeChildNPCs, "rule flags or identity changed");
         const auto scope = static_cast<unsigned>(source.scope);
         if (scope == 1) Require(value["npcPlugin"] == source.npcPlugin &&
             value["npcLocalFormID"] == source.npcLocalFormID, "NPC stable ID changed");

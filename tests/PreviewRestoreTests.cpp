@@ -1,6 +1,7 @@
 // Exact product function bodies; only engine/VM boundaries are fakes.
 // These tests neither start Skyrim nor read/write any game save.
 #include "BodyChangeNG/ActorState.h"
+#include "BodyChangeNG/BodyTextureRecovery.h"
 #include "BodyChangeNG/OverlayReplacementState.h"
 #include "BodyChangeNG/SkinTransactionPolicy.h"
 #include "BodyChangeNG/NativeSkinOwnership.h"
@@ -191,6 +192,8 @@ bool RestoreOwnedPointers(BaseInstance& value) {
     return restoreSucceeds;
 }
 bool OwnsCurrentPointers(const BaseInstance&) { return owns; }
+struct BodyTextureObservation { bcn::native_skin::BodyTextureState state = bcn::native_skin::BodyTextureState::ready; };
+BodyTextureObservation ReadBodyTextures(RE::Actor*, const BaseInstance&) { return {}; }
 bool RestoreApplied(BaseInstance&, const AppliedSnapshot&) { return false; }
 std::shared_ptr<AppliedSnapshot> CaptureApplied(const BaseInstance&) { return std::make_shared<AppliedSnapshot>(); }
 void RefreshLoadedActors(RE::Actor*, const std::function<void(RE::Actor*)>&) { ++refreshes; }

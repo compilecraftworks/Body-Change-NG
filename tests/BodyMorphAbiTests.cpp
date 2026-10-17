@@ -38,8 +38,12 @@ template<class CacheLimit> struct Body : Base {
     virtual void SetMorph(RE::TESObjectREFR*, const char* name, const char* key, float value) { values[{name,key}] = value; }
     virtual float GetMorph(RE::TESObjectREFR*, const char* name, const char* key) { return values[{name,key}]; }
     virtual void ClearMorph(RE::TESObjectREFR*, const char* name, const char* key) { values.erase({name,key}); }
-    virtual float GetBodyMorphs(RE::TESObjectREFR*, const char*) { return -1000; }
-    virtual void ClearBodyMorphNames(RE::TESObjectREFR*, const char*) { throw std::runtime_error("wrong slot"); }
+    virtual float GetBodyMorphs(RE::TESObjectREFR*, const char* name) {
+        float sum=0; for(const auto& [key,value]:values) if(key.first==name) sum+=value; return sum;
+    }
+    virtual void ClearBodyMorphNames(RE::TESObjectREFR*, const char* name) {
+        std::erase_if(values,[&](const auto& entry){ return entry.first.first==name; });
+    }
     virtual void VisitMorphs(RE::TESObjectREFR*, MorphVisitor&) {}
     virtual void VisitKeys(RE::TESObjectREFR*, const char*, KeyVisitor&) {}
     virtual void VisitMorphValues(RE::TESObjectREFR* actor, ValueVisitor& visitor) {
@@ -84,6 +88,12 @@ template<class Width> void Exercise(std::uint32_t revision) {
             unsigned count{};
             void Visit(RE::TESObjectREFR*, const char*, const char*, float) override { ++count; }
         } visitor;
+        api->SetMorph(nullptr,"BCNGABIProbe","BodyChangeNGEditorBaseline",.25F);
+        api->SetMorph(nullptr,"BCNGABIProbe","BodyChangeNGEditorOffset",.75F);
+        Check(api->GetBodyMorphs(nullptr,"BCNGABIProbe")==1.F);
+        api->ClearBodyMorphNames(nullptr,"BCNGABIProbe");
+        Check(!provider.values.contains({"BCNGABIProbe","BodyChangeNGEditorBaseline"}) &&
+            !provider.values.contains({"BCNGABIProbe","BodyChangeNGEditorOffset"}));
         api->VisitMorphValues(nullptr, visitor);
         Check(visitor.count == 2);
         api->ApplyBodyMorphs(nullptr, false);

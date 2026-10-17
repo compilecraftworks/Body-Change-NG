@@ -1,0 +1,11 @@
+[size=6][b]Body Change NG v1.3.7[/b][/size]
+[list]
+[*]Add a default-on Exclude children checkbox beside the elder exclusion in All NPCs rules for body presets, body skins, futa skins and overlays. Existing rules without this option also exclude children, using the game's child check. This prevents future matches; it does not automatically reset previously applied appearances.
+[*]Fix a file-handle conflict when automatically upgrading older distribution JSON files at the same path. Existing rules and comments are preserved; save-error UI is unchanged.
+[*]Show the applied CBBE/3BA, HIMBO or UBE shape in its supported RaceMenu body sliders and retain subsequent edits in BCNG. Keep other mods' morphs and clothing correction separate, including when saving during editing. Requires additive RaceMenu iBodyMorphMode=0.
+[*]Explain why overlays are unavailable instead of showing an ambiguous 0/0: target loading, unavailable RaceMenu, disabled slots or slots reserved by other mods. Add Korean, English and Chinese guidance while preserving the SlaveTats blank-slot fix and other mods' overlays.
+[*]Check body, hand and foot skin resources after rebuilding. Missing textures or stale BCNG cache paths no longer count as successful application; retry eligible failed selections up to twice without taking over other mods' skin changes.
+[/list]
+
+[b]Updating[/b]
+Fully exit the game before updating. Preserve customized distribution rules, settings, favorites, skin packs and texture caches. Supported runtimes and the distribution schema remain unchanged.

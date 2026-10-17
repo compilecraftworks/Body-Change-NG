@@ -44,11 +44,25 @@ namespace {
         rule.overlayColors = bcn::ReadDistributionOverlayColors(value.value("overlayColors", Json::array()), rule.overlayIds);
         rule.includeCustomFollowers = value.value("includeCustomFollowers", false);
         rule.includeElderNPCs = value.value("includeElderNPCs", false);
+        rule.includeChildNPCs = value.value("includeChildNPCs", false);
         return rule;
     }
 }
 int main() try {
     const Json basic{{"id","fixed-rule"},{"sex","female"},{"scope","all"},{"presets",{"Preset A","프리셋 B"}}};
+    Require(!Rule(DecodeRule(basic, 8)).includeChildNPCs,
+        "existing schema-8 rule without child field did not default to exclusion");
+    for (bool exclude : {false, true}) {
+        auto value = basic;
+        value["excludeChildren"] = exclude;
+        const auto rule = Rule(DecodeRule(value, 8));
+        Require(rule.includeChildNPCs == !exclude, "child exclusion polarity changed");
+        const auto encoded = Encode({rule});
+        Require(encoded["rules"][0]["excludeChildren"] == exclude &&
+            Rule(Decode(encoded)["rules"][0]).includeChildNPCs == !exclude,
+            "child exclusion did not survive save/reload");
+    }
+    Reject([&] { auto value = basic; value["excludeChildren"] = "false"; (void)DecodeRule(value, 8); });
     for (unsigned scope{}; scope < kScopes.size(); ++scope) for (bool female : {false,true})
         for (bool enabled : {false,true}) {
             auto value = basic;
@@ -75,6 +89,8 @@ int main() try {
         auto decoded = Decode(old).at("rules").at(0);
         Require(decoded.at("enabled") == true, "legacy enabled behavior changed");
         const auto migrated = Encode({Rule(decoded)});
+        Require(!Rule(decoded).includeChildNPCs && migrated["rules"][0]["excludeChildren"] == true,
+            "legacy rule migration did not default to child exclusion");
         auto reload = Decode(migrated).at("rules").at(0);
         Require(reload.at("presetIds") == decoded.at("presetIds") &&
             reload.at("targetLocalFormID") == 79686U && reload.at("targetPlugin") == "Skyrim.esm",

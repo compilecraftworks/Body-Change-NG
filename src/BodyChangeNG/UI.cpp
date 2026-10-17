@@ -2295,6 +2295,63 @@ namespace
         ImGui::EndChild();
     }
 
+    [[nodiscard]] const char* OverlayProviderHelp()
+    {
+        return Text(
+            "현재 게임 버전에 맞는 RaceMenu가 설치되어 있고 SKSE 플러그인이 정상 로드되었는지 확인하세요. 설치 또는 활성화 후 게임을 완전히 종료하고 다시 실행하세요.",
+            "Check that RaceMenu matches your game version and that its SKSE plugin loaded successfully. After installing or enabling it, fully exit and restart the game.",
+            "请确认 RaceMenu 与游戏版本匹配，且其 SKSE 插件已正常加载。安装或启用后，请完全退出并重新启动游戏。");
+    }
+
+    void DrawOverlaySlotTooltip(const bcn::overlay::SlotUsage& usage, const bcn::overlay::Area area)
+    {
+        using Availability = bcn::overlay::SlotAvailability;
+        if (!ImGui::BeginTooltip()) return;
+        const auto width = (std::min)(Scaled(420.0F),
+            (std::max)(1.0F, ImGui::GetMainViewport()->WorkSize.x - Scaled(40.0F)));
+        ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + width);
+        switch (usage.availability) {
+        case Availability::ready:
+            ImGui::TextWrapped(Text("BCNG 가용 용량: %u / 전체 슬롯: %u",
+                "BCNG capacity: %u / total slots: %u", "BCNG 可用容量：%u / 总槽位：%u"),
+                usage.capacity, usage.total);
+            ImGui::TextWrapped(Text("다른 모드 점유: %u", "Reserved by other mods: %u", "其他模组占用：%u"),
+                usage.foreignReserved);
+            ImGui::TextWrapped("%s", Text(
+                "적용/용량의 분모는 다른 모드 점유분을 제외한 슬롯 수이며, 이미 BCNG가 사용 중인 슬롯도 포함합니다.",
+                "The Applied/capacity denominator excludes other mods' reservations and includes slots already used by BCNG.",
+                "已应用/容量的分母不包含其他模组占用的槽位，但包含 BCNG 已使用的槽位。"));
+            if (usage.foreignReserved) {
+                ImGui::TextWrapped("%s", Text(
+                    "슬롯을 비우려면 해당 오버레이를 적용한 모드에서 해제하세요.",
+                    "To release reserved slots, remove those overlays in the mod that applied them.",
+                    "如需释放被占用的槽位，请在应用这些叠加层的模组中移除它们。"));
+            }
+            break;
+        case Availability::actorUnavailable:
+            ImGui::TextWrapped("%s", Text(
+                "대상 캐릭터가 있는 장소로 이동하고 로딩이 끝난 뒤 다시 확인하세요. 아직 슬롯 수를 확인할 수 없습니다.",
+                "Go to the target character's location and check again after loading finishes. Slot counts are not available yet.",
+                "请前往目标角色所在的位置，加载完成后再查看。目前尚无法读取槽位数量。"));
+            break;
+        case Availability::providerUnavailable:
+            ImGui::TextWrapped("%s", OverlayProviderHelp());
+            break;
+        case Availability::disabled:
+            ImGui::TextWrapped("%s", Text(
+                "RaceMenu 설정에서 bEnableOverlays를 켜고 이 부위의 iNumOverlays를 1 이상으로 설정하세요. 설정 변경 후 게임을 완전히 종료하고 다시 실행하세요.",
+                "In RaceMenu's settings, enable bEnableOverlays and set iNumOverlays for this area to at least 1. Fully exit and restart the game after changing these settings.",
+                "请在 RaceMenu 设置中启用 bEnableOverlays，并将此部位的 iNumOverlays 设为至少 1。修改设置后，请完全退出并重新启动游戏。"));
+            if (area == bcn::overlay::Area::face) {
+                ImGui::TextWrapped("%s", Text("얼굴은 bEnableFaceOverlays도 활성화해야 합니다.",
+                    "Face slots also require bEnableFaceOverlays.", "面部槽位还需要启用 bEnableFaceOverlays。"));
+            }
+            break;
+        }
+        ImGui::PopTextWrapPos();
+        ImGui::EndTooltip();
+    }
+
     void DrawOverlayCatalog()
     {
         const auto catalogRevision = g_distributionCatalogRevision;
@@ -2307,9 +2364,10 @@ namespace
 
         if (!bcn::overlay::IsReady()) {
             ImGui::TextColored(ImVec4(1.0F, .62F, .35F, 1.0F), "%s", Text(
-                "RaceMenu Overlay/Override 인터페이스를 기다리는 중입니다.",
-                "Waiting for RaceMenu's Overlay/Override interfaces.",
-                "正在等待 RaceMenu 的叠加层/覆盖接口。"));
+                "RaceMenu 오버레이 인터페이스를 사용할 수 없습니다.",
+                "RaceMenu's overlay interfaces are unavailable.",
+                "RaceMenu 叠加层接口不可用。"));
+            TextDisabledWrapped(OverlayProviderHelp());
             return;
         }
 
@@ -2460,24 +2518,29 @@ namespace
 
                 const auto wasOpen = g_overlaySectionsOpen[areaIndex];
                 const auto usage = bcn::overlay::CurrentSlotUsage(actor, area);
+                using SlotAvailability = bcn::overlay::SlotAvailability;
+                const auto foreignCapacityBlock = usage.availability == SlotAvailability::ready &&
+                    usage.total > 0 && usage.capacity == 0 && usage.foreignReserved == usage.total;
+                const auto usageLabel = foreignCapacityBlock ?
+                    std::string{Text("다른 모드 점유", "Reserved by other mods", "其他模组占用")} :
+                    usage.availability == SlotAvailability::ready ?
+                    std::format("{} {}/{}", Text("적용", "Applied", "已应用"), usage.applied, usage.capacity) :
+                    usage.availability == SlotAvailability::disabled ? std::string{Text("슬롯 비활성", "Slots disabled", "槽位已禁用")} :
+                    usage.availability == SlotAvailability::actorUnavailable ? std::string{Text("대상 로딩 중", "Target loading", "目标加载中")} :
+                    std::string{Text("RaceMenu 미연결", "RaceMenu unavailable", "RaceMenu 未连接")};
                 ImGui::SetNextItemOpen(wasOpen, ImGuiCond_Always);
                 const auto headerId = std::string{ "###overlayArea_" } +
                     std::string{ bcn::overlay::StableName(area) };
                 const auto open = ImGui::TreeNodeEx(headerId.c_str(),
                     ImGuiTreeNodeFlags_SpanAvailWidth | ImGuiTreeNodeFlags_FramePadding,
-                    "%s · %s  (%zu)  ·  %s %u/%u",
-                    OverlayAreaLabel(area), paintLabel, visible.size(),
-                    Text("적용", "Applied", "已应用"), usage.applied, usage.capacity);
+                    "%s · %s  (%zu)  ·  %s",
+                    OverlayAreaLabel(area), paintLabel, visible.size(), usageLabel.c_str());
                 if (ImGui::IsItemClicked()) {
                     g_overlayArea = area;
                     g_overlayCameraArea = area;
                 }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("%s", Text(
-                        "앞: BCNG 확정 적용 수 · 뒤: 전체 슬롯에서 다른 모드가 차지한 슬롯을 뺀 수\n미리보기는 두 숫자에 포함하지 않습니다.",
-                        "Applied: BCNG confirmed selections / total slots minus slots occupied by other mods.\nPreview does not change either number.",
-                        "已应用：BCNG 已确认数量 / 总槽位减去其他模组占用的槽位。\n预览不改变两个数值。"));
-                }
+                if (ImGui::IsItemHovered()) DrawOverlaySlotTooltip(usage, area);
+
                 g_overlaySectionsOpen[areaIndex] = open;
                 if (open != wasOpen) NavigationState() = {};
                 if (!open) continue;
@@ -3604,6 +3667,17 @@ namespace
                     if (ImGui::Checkbox(Text("노인 NPC 제외", "Exclude elder NPCs",
                             "排除老年 NPC"), &excludeElderNPCs)) {
                         rule.includeElderNPCs = !excludeElderNPCs;
+                    }
+                    const auto* childLabel = Text("어린이 제외", "Exclude children", "排除儿童");
+                    const auto childWidth = ImGui::GetFrameHeight() +
+                        ImGui::GetStyle().ItemInnerSpacing.x + ImGui::CalcTextSize(childLabel).x;
+                    if (ImGui::GetItemRectMax().x + ImGui::GetStyle().ItemSpacing.x + childWidth <=
+                        ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x) {
+                        ImGui::SameLine();
+                    }
+                    auto excludeChildren = !rule.includeChildNPCs;
+                    if (ImGui::Checkbox(childLabel, &excludeChildren)) {
+                        rule.includeChildNPCs = !excludeChildren;
                     }
                 } else if (rule.scope == bcn::DistributionScope::npcBaseForm) {
                     ImGui::TextUnformatted("FormID");

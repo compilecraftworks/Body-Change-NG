@@ -5,9 +5,13 @@
 
 namespace bcn::overlay
 {
+    enum class SlotAvailability : std::uint8_t { ready, actorUnavailable, providerUnavailable, disabled };
     struct SlotUsage final {
         std::uint32_t capacity{};
         std::uint32_t applied{};
+        std::uint32_t total{};
+        std::uint32_t foreignReserved{};
+        SlotAvailability availability{SlotAvailability::providerUnavailable};
     };
     struct SlotAccounting final {
         std::uint32_t foreignReserved{};
@@ -20,7 +24,9 @@ namespace bcn::overlay
         {
             const auto available = total - (std::min)(total, foreignReserved);
             return { available, static_cast<std::uint32_t>(
-                (std::min<std::size_t>)(available, confirmedSelections)) };
+                (std::min<std::size_t>)(available, confirmedSelections)), total,
+                (std::min)(total, foreignReserved),
+                total ? SlotAvailability::ready : SlotAvailability::disabled };
         }
     };
 }

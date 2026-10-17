@@ -148,6 +148,8 @@ struct Morphs {
 namespace skee { using IBodyMorphInterface = Morphs; }
 Morphs* Interface() { return &morphs; }
 bool HasActivePreview(RE::Actor*) { return activePreview; }
+bool IsBodySliderEditing(const RE::Actor*) { return false; }
+void FinishBodySliderEdit(RE::Actor*) {}
 namespace keys {
 void ClearPreview(Morphs&, RE::Actor*) { previewKey = false; ++previewClears; }
 void ClearOwned(Morphs&, RE::Actor*) { ++defaultClears; outfitPresent = false; previewKey = false; }

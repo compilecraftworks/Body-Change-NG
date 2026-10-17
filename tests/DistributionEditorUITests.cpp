@@ -174,6 +174,7 @@ int main() try {
     Check(g_showDistribution && g_distributionRules.empty() && saved.empty(), "opening conditions created a rule");
     Click("+ Add rule", "DistributionPopup");
     Check(g_distributionRules.size() == 1 && g_distributionRules[0].presetIds.empty(), "new direct rule inherited candidates");
+    Check(!g_distributionRules[0].includeChildNPCs, "new direct rule did not exclude children by default");
     Click("Edit items", "DistributionPopup");
     Check(g_distributionItemDraft.has_value(), "item popup did not open");
     Click("##distributionItemSearch", "DistributionItems");
@@ -195,12 +196,26 @@ int main() try {
     Check(!g_distributionItemDraft && g_showDistribution && g_distributionRules[0].presetIds.empty(), "child Escape committed or closed parent");
     Click("Edit items", "DistributionPopup"); Click("Select all", "DistributionItems"); Click("Save", "DistributionItems");
     Check(g_distributionRules[0].presetIds.size() == 2 && diskWrites == 0, "child Save did not stage exactly two candidates");
+    Click("Exclude children", "DistributionPopup");
+    Check(g_distributionRules[0].includeChildNPCs && diskWrites == 0, "child exclusion checkbox polarity or draft isolation is wrong");
     failSave = true; Click("Save", "DistributionPopup");
     Check(saved.empty() && activations == 0 && g_distributionRules[0].presetIds.size() == 2, "write failure lost edits or activated rules");
     Check(g_distributionStatus.contains("Could not save") && notification.empty(), "save failure escaped to main UI");
+    Click("Distribute to loaded NPCs now", "DistributionPopup");
+    Check(saved.empty() && activations == 0 && immediate == 0 &&
+        notification == "The rules could not be saved, so immediate distribution was not started.",
+        "failed immediate save still activated/applied the draft or gave the wrong error");
+    Click("Distribute on next game launch", "DistributionPopup");
+    Check(saved.empty() && activations == 0 && immediate == 0 &&
+        notification == "Could not save the distribution rules for the next game start.",
+        "failed next-launch save changed active rules or gave the wrong screenshot error");
+    notification.clear();
     failSave = false; Click("Save", "DistributionPopup");
     Check(saved.size() == 1 && active.size() == 1 && immediate == 0, "final Save forced immediate distribution or lost rules");
+    Check(saved[0].includeChildNPCs && active[0].includeChildNPCs, "child exclusion choice was not saved/activated");
     Check(g_distributionStatus == "Saved distribution changes." && notification.empty(), "save success escaped to main UI");
+    Click("Exclude children", "DistributionPopup");
+    Check(!g_distributionRules[0].includeChildNPCs && saved[0].includeChildNPCs, "unsaved checkbox leaked into saved rules");
     Click("##ruleName", "DistributionPopup");
     Check(CurrentEditableTextInputActive(), "rule name lost shared typing suppression");
     ImGui::GetIO().AddInputCharactersUTF8(" typed"); Frame(); Frame();
@@ -217,6 +232,7 @@ int main() try {
         "skin items altered body rule");
     Click("Close", "DistributionPopup");
     Check(!g_showDistribution && !g_distributionItemDraft && g_distributionRules.size() == 1, "parent close saved unsaved skin rule");
+    Check(g_distributionRules[0].includeChildNPCs, "parent close did not restore the saved child exclusion choice");
     Check(!CurrentEditableTextInputActive(), "closed editor retained keyboard ownership");
     Check(g_distributionStatus.empty() && g_distributionStatusUntil == 0.0, "closed editor retained status");
     Click("NPC distribution", "Host"); catalogSelection = {"a"}; Frame();
@@ -239,6 +255,11 @@ int main() try {
         Check(g_distributionPool == pool &&
             bcn::distribution_editor::Count(g_distributionRules.back(), pool) == 1,
             "catalog-first entry did not retain the source tab/candidates");
+        Check(!g_distributionRules.back().includeChildNPCs, "catalog-first rule did not exclude children by default");
+        Click("Exclude children", "DistributionPopup");
+        Check(g_distributionRules.back().includeChildNPCs, "child exclusion checkbox was not connected in a feature tab");
+        Click("Exclude children", "DistributionPopup");
+        Check(!g_distributionRules.back().includeChildNPCs, "child exclusion checkbox could not be restored");
         Click("Edit items", "DistributionPopup");
         g_distributionItemRows.clear();
         for (unsigned i{}; i < 20000; ++i)
@@ -314,6 +335,13 @@ int main() try {
             const auto down = Find(Text("아래로", "Down", "下移"), "DistributionPopup").rect;
             const auto edit = Find(Text("항목변경", "Edit items", "更改项目"), "DistributionPopup").rect;
             const auto close = Find(Text("닫기", "Close", "关闭"), "DistributionPopup").rect;
+            const auto childWidget = Find(Text("어린이 제외", "Exclude children", "排除儿童"), "DistributionPopup");
+            const auto children = childWidget.rect;
+            const auto elders = Find(Text("노인 NPC 제외", "Exclude elder NPCs", "排除老年 NPC"), "DistributionPopup").rect;
+            const auto* popup = ImGui::FindWindowByName(childWidget.window.c_str());
+            Check(popup && children.Max.x <= popup->Pos.x + popup->Size.x &&
+                (children.Min.x >= elders.Max.x || children.Min.y >= elders.Max.y),
+                "child exclusion checkbox clipped or overlaps the elder checkbox");
             Check(save.Min.y > down.Max.y && save.Max.x < close.Min.x &&
                 std::abs(save.Min.y-close.Min.y) < 1, "Save not immediately left of footer Close");
             const auto next = Find(Text("다음 게임 실행 시 배포", "Distribute on next game launch", "下次启动游戏时分发"), "DistributionPopup").rect;

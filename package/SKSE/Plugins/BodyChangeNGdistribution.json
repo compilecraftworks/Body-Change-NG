@@ -87,9 +87,12 @@
 // "#RRGGBB" is opaque; omitted color is "#FFFFFFFF". "#FF000080" = half-red.
 // excludeCustomFollowers
 // excludeElders
-// [KO] all 범위에서만 적용. 생략/true = 커스텀 동료/노인 제외, false = 허용.
+// excludeChildren
+// [KO] all 범위에서만 적용. 생략/true = 커스텀 동료/노인/어린이 제외, false = 허용.
+// 어린이는 게임의 IsChild 판정으로 구분하며, 기존 규칙에 항목이 없어도 기본 제외합니다.
 // 다른 범위에는 숨은 제외 조건으로 적용되지 않습니다.
-// [EN] Apply only to scope all. Omitted/true excludes custom followers/elders;
+// [EN] Apply only to scope all. Omitted/true excludes custom followers/elders/children;
+// children use the game's IsChild check. Older rules without the field also exclude them.
 // false allows them. These are not hidden filters on other scopes.
 //
 // SCOPES / 조건 11종 (각 규칙은 성별 + 범위 한 가지)
@@ -251,6 +254,7 @@ END EXAMPLE */
   "scope": "all",
   "excludeCustomFollowers": true,
   "excludeElders": true,
+  "excludeChildren": true,
   "presets": [
     "Preset A",
     "Preset B"

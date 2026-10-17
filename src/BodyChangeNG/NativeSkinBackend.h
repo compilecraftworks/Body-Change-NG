@@ -17,9 +17,10 @@ namespace RE
 namespace bcn::native_skin
 {
     // Body/Hands/Feet are implemented through cloned native TXST -> ARMA ->
-    // Skin Armor forms. The actor's equipment is never inspected or tracked.
-    // afterMutation runs once for each loaded reference sharing the mutated
-    // ActorBase, and only after its pointers actually changed. The facade is
+    // Skin Armor forms. Resource verification reads only current private skin
+    // parts; ordinary equipment is not tracked or repainted.
+    // afterMutation refreshes loaded references after graph mutation, or just
+    // the failing reference during bounded resource recovery. The facade is
     // the sole owner of the native Actor.QueueNiNodeUpdate equivalent; this backend
     // must never issue a second 3D reset or repaint outfit-owned geometry.
     [[nodiscard]] SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
@@ -38,6 +39,18 @@ namespace bcn::native_skin
     [[nodiscard]] std::optional<std::uint32_t> SourceBodyFamily(const RE::Actor* actor);
     [[nodiscard]] std::optional<bool> LiveStateMatches(
         const RE::Actor* actor, std::string_view profileId, bool expectDefault);
+
+    // Verifies/retries resources in the existing owned graph after rebuild.
+    void QueueVerifyBodyTextures(RE::Actor* actor, std::function<void(RE::Actor*)> refresh);
+    void ForgetBodyTextureRecovery(std::uint32_t actor);
+
+#ifdef BCNG_SKIN_DIAGNOSTICS
+    // Game task thread only. Reads current geometry by value, retains no
+    // render pointers and never changes forms/materials/application markers.
+    void LogCurrentSkinState(RE::Actor* actor, std::string_view stage, bool includeReady = false);
+#else
+    inline void LogCurrentSkinState(RE::Actor*, std::string_view, bool = false) {}
+#endif
 
     // Restores only pointers still owned by this backend. An external change
     // made after BCNG attached its clones is never overwritten.

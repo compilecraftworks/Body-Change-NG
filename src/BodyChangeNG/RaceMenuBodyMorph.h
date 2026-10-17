@@ -66,6 +66,11 @@ namespace bcn::racemenu
     // Cheap key lookup used to avoid scheduling equipment work for actors
     // that have neither an active nor a legacy BCNG outfit correction.
     [[nodiscard]] bool HasOutfitCorrection(const RE::Actor* a_actor);
+    // Player-only bridge for the verified CBBE, HIMBO and UBE slider keys.
+    // A menu session owns value snapshots and an actor handle, never geometry.
+    [[nodiscard]] bool BeginBodySliderEdit(RE::Actor* a_actor);
+    void FinishBodySliderEdit(RE::Actor* a_actor);
+    [[nodiscard]] bool IsBodySliderEditing(const RE::Actor* a_actor);
     void ForgetActorState(std::uint32_t a_actorFormID);
     [[nodiscard]] bool HasActivePreview(const RE::Actor* a_actor);
     [[nodiscard]] ApplyResult QueueApply(RE::Actor* a_actor, std::string a_presetId, ApplyMode a_mode,

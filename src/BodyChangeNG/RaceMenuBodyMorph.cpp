@@ -13,6 +13,7 @@
 #include "BodyChangeNG/UbeNippleRandomization.h"
 #include "BodyChangeNG/UbeAnatomyRuntime.h"
 #include "BodyChangeNG/BodyMorphKeys.h"
+#include "BodyChangeNG/BodySliderEdit.h"
 #include "BodyChangeNG/RaceMenuCompatibility.h"
 #include "BodyChangeNG/PresetCatalog.h"
 #include "BodyChangeNG/SliderName.h"
@@ -133,6 +134,17 @@ namespace
     std::atomic<skee::IInterfaceMap*> g_interfaceMap{};
     std::atomic_uint32_t g_version{};
     std::mutex g_initializeLock;
+    struct BodyEditorSession final
+    {
+        RE::ActorHandle actor;
+        std::uint64_t session{};
+        std::string presetId;
+        const char* key{};
+        bcn::racemenu::editor::Transfer transfer;
+        bcn::racemenu::editor::Values outfit;
+    };
+    std::mutex g_editorLock;
+    std::optional<BodyEditorSession> g_bodyEditor;
     std::mutex g_previewLock;
     std::mutex g_selectionLock;
     std::mutex g_applyGenerationLock;
@@ -391,6 +403,7 @@ namespace
         // keys survive by default. Preview must never clear persistent keys.
         if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         if (mode == bcn::racemenu::ApplyMode::commit) {
+            bcn::racemenu::FinishBodySliderEdit(actor.get());
             bcn::racemenu::keys::BeginPresetCommit(*bodyMorph, actor.get(), settings.preserveOtherMorphs);
         }
         bcn::slider_name::Map<float> desiredMorphs;
@@ -618,6 +631,12 @@ namespace bcn::racemenu
     {
         bcn::ube_anatomy::ClearSupportCache();
         {
+            // The old world's SKEE records are reverted by its provider.
+            // Never write through a previous-world actor during load/revert.
+            std::scoped_lock lock(g_editorLock);
+            g_bodyEditor.reset();
+        }
+        {
             std::scoped_lock lock(g_applyGenerationLock);
             g_applyGenerations.clear();
         }
@@ -665,11 +684,163 @@ namespace bcn::racemenu
         return bcn::ActorRegistry::Get().AppliedBodyId(actor);
     }
 
+    bool IsBodySliderEditing(const RE::Actor* actor)
+    {
+        if (!actor) return false;
+        std::scoped_lock lock(g_editorLock);
+        return g_bodyEditor && g_bodyEditor->session == ActorRegistry::Get().SessionGeneration() &&
+            g_bodyEditor->actor.get().get() == actor;
+    }
+
+    [[nodiscard]] bool UsesAdditiveBodyMorphs(skee::IBodyMorphInterface& api, RE::Actor* actor)
+    {
+        // Read the actual provider's aggregation policy through its common
+        // public prefix. The reserved name has no TRI; remove the entire name
+        // afterwards, including its map, even on early-v4 mean-mode providers.
+        constexpr auto probe = "BodyChangeNG:EditorModeProbe";
+        api.SetMorph(actor, probe, keys::editorBaseline, .25F);
+        api.SetMorph(actor, probe, keys::editorOffset, .75F);
+        const auto combined = api.GetBodyMorphs(actor, probe);
+        api.ClearBodyMorphNames(actor, probe);
+        return std::isfinite(combined) && std::abs(combined - 1.F) < .00001F;
+    }
+
+    bool BeginBodySliderEdit(RE::Actor* actor)
+    {
+        auto* bodyMorph = Interface();
+        auto* player = RE::PlayerCharacter::GetSingleton();
+        if (!actor || actor != player || !bodyMorph || !actor->Is3DLoaded() ||
+            Settings::Get().RemovalMode()) return false;
+        const auto presetId = CurrentPresetId(actor);
+        const auto preset = presetId ? PresetCatalog::Get().Find(*presetId) : std::nullopt;
+        if (!preset || ActorRegistry::Get().NeedsBodyApply(actor, *presetId, false)) return false;
+        const auto family = body_family::PresetMask(preset->family, preset->male);
+        const auto* key = editor::Key(family);
+        if (!key || !body_family::Matches(family, body_family::ResolveActor(actor))) return false;
+        std::scoped_lock lock(g_editorLock);
+        if (g_bodyEditor) return g_bodyEditor->actor.get().get() == actor;
+        if (!UsesAdditiveBodyMorphs(*bodyMorph, actor)) {
+            SKSE::log::warn("BCNG body slider editing requires additive RaceMenu iBodyMorphMode=0; the current provider is non-additive");
+            return false;
+        }
+        MigrateLegacyBodyChangeKeys(*bodyMorph, actor);
+        BodyEditorSession next{ actor->GetHandle(), ActorRegistry::Get().SessionGeneration(),
+            *presetId, key };
+        const auto collect = [&](const char* layer) {
+            OwnedMorphCollector visitor{layer};
+            bodyMorph->VisitMorphValues(actor, visitor);
+            editor::Values values;
+            for (const auto& [name, value] : visitor.values) values.insert_or_assign(name, value);
+            return values;
+        };
+        next.transfer.body = collect(kCommittedKey);
+        next.transfer.originalEditor = collect(key);
+        next.outfit = collect(kOutfitKey);
+        const auto editable = next.transfer.Editable();
+        if (!editor::Finite(next.transfer.body) || !editor::Finite(next.transfer.originalEditor) ||
+            !editor::Finite(editable)) return false;
+        // Slider requests read only their script's key. Offset our existing
+        // body once, while displaying its values through that key. Keep the
+        // baseline and inverse as owned SKEE layers: if its save callback runs
+        // before ours, load can finish the transfer without a second XML apply.
+        [[maybe_unused]] const auto oldPreview = CancelPreviewTracking(actor->GetHandle());
+        keys::ClearPreview(*bodyMorph, actor);
+        bodyMorph->ClearBodyMorphKeys(actor, kOutfitKey);
+        bodyMorph->ClearBodyMorphKeys(actor, key);
+        bodyMorph->ClearBodyMorphKeys(actor, keys::editorBaseline);
+        bodyMorph->ClearBodyMorphKeys(actor, keys::editorOffset);
+        for (const auto& [name, value] : next.transfer.originalEditor)
+            bodyMorph->SetMorph(actor, name.c_str(), keys::editorBaseline, value);
+        for (const auto& [name, value] : editable) {
+            bodyMorph->SetMorph(actor, name.c_str(), keys::editorOffset, -value);
+            bodyMorph->SetMorph(actor, name.c_str(), key, value);
+        }
+        // A zero-valued unknown name has no TRI effect; it marks an empty
+        // Zeroed Sliders session too. SKEE retains and serializes zero keys.
+        bodyMorph->SetMorph(actor, editor::Marker(key), keys::editorOffset, 0.F);
+        g_bodyEditor = std::move(next);
+        return true;
+    }
+
+    void FinishBodySliderEdit(RE::Actor* actor)
+    {
+        auto* bodyMorph = Interface();
+        if (!actor || !bodyMorph) return;
+        std::optional<BodyEditorSession> finished;
+        {
+            std::scoped_lock lock(g_editorLock);
+            if (!g_bodyEditor) {
+                if (actor != RE::PlayerCharacter::GetSingleton() ||
+                    !bodyMorph->HasBodyMorphKey(actor, keys::editorOffset)) return;
+                // Recover a provider snapshot saved during editing. Its own
+                // baseline keys and edited key belong to the same SKEE record,
+                // so callback order never mixes an old preset with new edits.
+                const char* key{};
+                for (const auto& info : editor::kKeys) {
+                    if (!bodyMorph->HasBodyMorph(actor, info.marker, keys::editorOffset)) continue;
+                    if (key) return; // Conflicting recovery markers are unverified.
+                    key = info.key;
+                }
+                if (!key) return;
+                const auto appliedId = ActorRegistry::Get().AppliedBodyId(actor);
+                const auto id = appliedId ? appliedId : CurrentPresetId(actor);
+                BodyEditorSession recovered{actor->GetHandle(), ActorRegistry::Get().SessionGeneration(),
+                    id.value_or(std::string{}), key};
+                const auto collect = [&](const char* layer) {
+                    OwnedMorphCollector collector{layer};
+                    bodyMorph->VisitMorphValues(actor, collector);
+                    editor::Values values;
+                    for (const auto& [name, value] : collector.values) values.insert_or_assign(name, value);
+                    return values;
+                };
+                recovered.transfer.body = collect(kCommittedKey);
+                recovered.transfer.originalEditor = collect(keys::editorBaseline);
+                if (!editor::Finite(recovered.transfer.body) || !editor::Finite(recovered.transfer.originalEditor)) return;
+                g_bodyEditor = std::move(recovered);
+            }
+            if (g_bodyEditor->actor.get().get() != actor) return;
+            if (g_bodyEditor->session != ActorRegistry::Get().SessionGeneration()) {
+                g_bodyEditor.reset();
+                return;
+            }
+            OwnedMorphCollector visitor{g_bodyEditor->key};
+            bodyMorph->VisitMorphValues(actor, visitor);
+            editor::Values edited;
+            for (const auto& [name, value] : visitor.values) edited.insert_or_assign(name, value);
+            auto committed = g_bodyEditor->transfer.Committed(edited);
+            if (!editor::Finite(edited) || !editor::Finite(committed)) {
+                committed = g_bodyEditor->transfer.body;
+                SKSE::log::warn("BCNG rejected non-finite RaceMenu body slider edits for actor {:08X}",
+                    actor->GetFormID());
+            }
+            bodyMorph->ClearBodyMorphKeys(actor, keys::editorBaseline);
+            bodyMorph->ClearBodyMorphKeys(actor, keys::editorOffset);
+            bodyMorph->ClearBodyMorphKeys(actor, g_bodyEditor->key);
+            for (const auto& [name, value] : g_bodyEditor->transfer.originalEditor)
+                bodyMorph->SetMorph(actor, name.c_str(), g_bodyEditor->key, value);
+            bodyMorph->ClearBodyMorphKeys(actor, kCommittedKey);
+            for (const auto& [name, value] : committed)
+                bodyMorph->SetMorph(actor, name.c_str(), kCommittedKey, value);
+            // Keep the previous clothing contribution until the normal outfit
+            // policy recomputes it; the editor never stores clothing in body.
+            for (const auto& [name, value] : g_bodyEditor->outfit)
+                bodyMorph->SetMorph(actor, name.c_str(), kOutfitKey, value);
+            finished = std::move(g_bodyEditor);
+            g_bodyEditor.reset();
+        }
+        if (CurrentPresetId(actor) == std::optional{finished->presetId}) {
+            ActorRegistry::Get().MarkBodyApplied(actor, finished->presetId, false);
+            ActorRegistry::Get().InvalidateOutfit(actor);
+        }
+    }
+
     std::optional<bool> LiveBodyChangeStateMatches(const RE::Actor* actor, const bool expectDefault)
     {
         auto* bodyMorph = Interface();
         if (!actor || !bodyMorph) return std::nullopt;
+        if (IsBodySliderEditing(actor)) return true;
         auto* reference = const_cast<RE::Actor*>(actor);
+        FinishBodySliderEdit(reference);
         const auto hasCommitted = bodyMorph->HasBodyMorphKey(reference, kCommittedKey) ||
             bodyMorph->HasBodyMorphKey(reference, kLegacyCommittedKey);
         const auto hasOBody = bodyMorph->HasBodyMorphKey(reference, keys::obody) ||
@@ -680,7 +851,7 @@ namespace bcn::racemenu
             const auto id = CurrentPresetId(actor);
             const auto preset = id ? PresetCatalog::Get().Find(*id) : std::nullopt;
             const auto usesBuildDefaults = preset && preset->UsesBuildDefaults();
-            return (usesBuildDefaults ? !hasCommitted : hasCommitted) && !hasOBody;
+            return (usesBuildDefaults || hasCommitted) && !hasOBody;
         }
         // A Default base body can legitimately wear an independent refit.
         // Explicit Default/reset still clears every owned layer; automatic
@@ -699,7 +870,7 @@ namespace bcn::racemenu
             const auto resolved = handle.get();
             auto* actor = resolved.get();
             if (!actor || !actor->Is3DLoaded() || !IsReady() ||
-                frame_tasks::HasPreview(actor->GetFormID()) || HasActivePreview(actor) ||
+                frame_tasks::HasPreview(actor->GetFormID()) || HasActivePreview(actor) || IsBodySliderEditing(actor) ||
                 frame_tasks::HasActorChannelWork(actor->GetFormID(), appearance::WorkChannel::bodyCommit) ||
                 frame_tasks::HasActorChannelWork(actor->GetFormID(), appearance::WorkChannel::bodyPreviewCleanup)) return;
             const auto state = ActorRegistry::Get().Snapshot(actor);
@@ -885,7 +1056,7 @@ namespace bcn::racemenu
             const auto resolved = handle.get();
             if (!resolved || !resolved->Is3DLoaded() || !IsReady() ||
                 CurrentPresetId(resolved.get()) != presetId ||
-                frame_tasks::HasPreview(resolved->GetFormID()) || HasActivePreview(resolved.get()) ||
+                frame_tasks::HasPreview(resolved->GetFormID()) || HasActivePreview(resolved.get()) || IsBodySliderEditing(resolved.get()) ||
                 frame_tasks::HasActorChannelWork(resolved->GetFormID(), appearance::WorkChannel::bodyCommit) ||
                 frame_tasks::HasActorChannelWork(resolved->GetFormID(), appearance::WorkChannel::bodyPreviewCleanup)) return;
             if (ActorRegistry::Get().NeedsBodyApply(resolved.get(), *presetId, false)) {
@@ -1019,6 +1190,7 @@ namespace bcn::racemenu
                 const auto resolved = actorHandle.get();
                 if (!bodyMorph || !resolved) return;
                 if (!IsCurrentApply(resolved->GetFormID(), ApplyMode::commit, clearGeneration)) return;
+                FinishBodySliderEdit(resolved.get());
                 if (ownedOnly) keys::ClearOwned(*bodyMorph, resolved.get());
                 else keys::ClearReplacedBody(*bodyMorph, resolved.get());
                 if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*bodyMorph, resolved.get(), false);
@@ -1062,7 +1234,9 @@ namespace bcn::racemenu
                     bodyMorph->HasBodyMorphKey(actor, kOutfitKey) ||
                     bodyMorph->HasBodyMorphKey(actor, kLegacyPreviewKey) ||
                     bodyMorph->HasBodyMorphKey(actor, kLegacyCommittedKey) ||
-                    bodyMorph->HasBodyMorphKey(actor, kLegacyOutfitKey);
+                    bodyMorph->HasBodyMorphKey(actor, kLegacyOutfitKey) ||
+                    bodyMorph->HasBodyMorphKey(actor, keys::editorBaseline) ||
+                    bodyMorph->HasBodyMorphKey(actor, keys::editorOffset);
                 if (!owned) continue;
                 InvalidateActorApplies(formID);
                 const auto generation = BeginApply(formID, ApplyMode::commit);
@@ -1074,6 +1248,7 @@ namespace bcn::racemenu
                     if (!resolved || !morph || !IsCurrentApply(resolved->GetFormID(), ApplyMode::commit, generation)) return;
                     // Keep the BCNG-actor eligibility above; remove competing
                     // OBody layers on these actors just like individual reset.
+                    FinishBodySliderEdit(resolved.get());
                     if (ownedOnly) keys::ClearOwned(*morph, resolved.get());
                     else keys::ClearReplacedBody(*morph, resolved.get());
                     if (resolved->Is3DLoaded()) ApplyVisibleMorphs(*morph, resolved.get(), false);

@@ -1,4 +1,5 @@
 #include "BodyChangeNG/ActorRegistry.h"
+#include <RE/R/RaceSexMenu.h>
 #include "BodyChangeNG/UI.h"
 #include "BodyChangeNG/ActorStateSerialization.h"
 #include "BodyChangeNG/ActorRecordBatches.h"
@@ -127,6 +128,12 @@ namespace
     void SaveState(SKSE::SerializationInterface* output)
     {
         bcn::face_preview::OnSerialization();
+        // Do not end an open editor on autosave: its offset/baseline recovery
+        // layers are saved together by SKEE. After close, settle ownership even
+        // if the normal deferred restoration has not run yet.
+        auto* ui = RE::UI::GetSingleton();
+        if (!ui || !ui->IsMenuOpen(RE::RaceSexMenu::MENU_NAME))
+            bcn::racemenu::FinishBodySliderEdit(RE::PlayerCharacter::GetSingleton());
         auto states = bcn::ActorRegistry::Get().SnapshotAll();
         std::erase_if(states, [](const auto& state) { return !bcn::HasPersistentAppearance(state); });
         std::ranges::sort(states, {}, &bcn::ActorState::actorFormID);
@@ -712,21 +719,20 @@ namespace bcn
             const auto* state = FindValidatedLocked(actor);
             if (!state || !state->skin.application.applied ||
                 state->skin.application.signature != expectedSignature) return true;
-            if (state->skin.application.verifiedThisSession) return false;
+            // Current resources can be lost in a later native rebuild.
+            // Session verification does not establish current material readiness.
         }
 
         const auto liveMatches = skin_application::LiveSkinStateMatches(actor, skinId, useDefault);
         std::scoped_lock lock(lock_);
         auto* state = const_cast<ActorState*>(FindValidatedLocked(actor));
         if (!state) return true;
-        const auto decision = EvaluateRestoredApplication(state->skin.application.applied,
-            state->skin.application.verifiedThisSession,
+        const auto decision = EvaluateLiveBodyApplication(state->skin.application,
             state->skin.application.signature == expectedSignature, liveMatches);
         if (decision == RestoredApplicationDecision::acceptLive) {
             state->skin.application.verifiedThisSession = true;
             return false;
         }
-        if (decision == RestoredApplicationDecision::skipVerified) return false;
         state->skin.application.applied = false;
         state->skin.application.verifiedThisSession = false;
         return true;

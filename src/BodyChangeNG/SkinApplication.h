@@ -50,8 +50,8 @@ namespace bcn::skin_application
     [[nodiscard]] bool HasTrackedSelection(const RE::Actor* a_actor);
     // Male SOS/TNG geometry is an optional external addon even though its
     // texture choice belongs to the selected general male BodySkin. Only this
-    // addon adapter observes provider rebuilds; native body/hand/foot TXSTs
-    // remain equipment-independent.
+    // addon adapter reconciles external providers. Native body/hand/foot
+    // verification only checks resources in the existing private skin graph.
     [[nodiscard]] bool HasCurrentMaleGenitalSkin(const RE::Actor* a_actor);
     void QueueReapplyCurrentMaleGenitals(
         RE::Actor* a_actor, bool a_onlyIfAddonChanged = false);
@@ -73,5 +73,6 @@ namespace bcn::skin_application
     // does not enumerate NPCs or the skin catalog.
     [[nodiscard]] std::optional<bool> LiveSkinStateMatches(
         RE::Actor* a_actor, std::string_view a_profileId, bool a_expectDefault);
+    void QueueVerifyBodyTextures(RE::Actor* a_actor);
     void ForgetActorState(std::uint32_t a_actorFormID);
 }

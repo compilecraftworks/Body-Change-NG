@@ -253,7 +253,8 @@ namespace
         if (rule.scope == bcn::DistributionScope::allNPCs &&
             !bcn::MatchesDistributionScopeFilters(rule,
                 !rule.includeCustomFollowers && IsCustomFollower(actor, base),
-                !rule.includeElderNPCs && bcn::IsElderActor(base))) return false;
+                !rule.includeElderNPCs && bcn::IsElderActor(base),
+                !rule.includeChildNPCs && actor->IsChild())) return false;
         switch (rule.scope) {
         case bcn::DistributionScope::allNPCs:
             return true;
@@ -831,8 +832,8 @@ namespace bcn
                 evaluationRules_.reset();
                 return false;
             }
-            std::ifstream stream(sourcePath.path);
-            const auto root = distribution_authoring::Decode(distribution_json::Parse(stream));
+            // Read owns and closes its handle before same-path schema migration.
+            const auto root = distribution_authoring::Decode(distribution_json::Read(sourcePath.path));
             const auto schemaVersion = root.value("schemaVersion", 0);
             if ((schemaVersion < 3 || schemaVersion > kSchemaVersion) ||
                 !root.contains("rules") || !root["rules"].is_array()) {
@@ -892,7 +893,8 @@ namespace bcn
                         ReadDistributionOverlayColors(source["overlayColors"], overlayPools) :
                         decltype(DistributionRule::overlayColors){},
                     .includeCustomFollowers = source.value("includeCustomFollowers", false),
-                    .includeElderNPCs = source.value("includeElderNPCs", false)
+                    .includeElderNPCs = source.value("includeElderNPCs", false),
+                    .includeChildNPCs = source.value("includeChildNPCs", false)
                 };
                 if (rule.id.empty()) rule.id = GenerateRuleId(loaded.size());
                 if (!IsValidScope(rule.scope)) continue;

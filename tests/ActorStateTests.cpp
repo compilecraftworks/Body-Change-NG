@@ -160,18 +160,21 @@ int main()
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::npcClass) == 9U);
         static_assert(static_cast<std::uint8_t>(bcn::DistributionScope::combatStyle) == 10U);
         for (unsigned scope = 0; scope <= 10U; ++scope) {
-            for (unsigned options = 0; options < 4U; ++options) {
-                for (unsigned traits = 0; traits < 4U; ++traits) {
+            for (unsigned options = 0; options < 8U; ++options) {
+                for (unsigned traits = 0; traits < 8U; ++traits) {
                     bcn::DistributionRule filter;
                     filter.scope = static_cast<bcn::DistributionScope>(scope);
                     filter.includeCustomFollowers = (options & 1U) != 0U;
                     filter.includeElderNPCs = (options & 2U) != 0U;
+                    filter.includeChildNPCs = (options & 4U) != 0U;
                     const auto follower = (traits & 1U) != 0U;
                     const auto elder = (traits & 2U) != 0U;
+                    const auto child = (traits & 4U) != 0U;
                     const auto expected = scope != 0U ||
                         ((!follower || filter.includeCustomFollowers) &&
-                            (!elder || filter.includeElderNPCs));
-                    Require(bcn::MatchesDistributionScopeFilters(filter, follower, elder) == expected,
+                            (!elder || filter.includeElderNPCs) &&
+                            (!child || filter.includeChildNPCs));
+                    Require(bcn::MatchesDistributionScopeFilters(filter, follower, elder, child) == expected,
                         "All-NPC exclusion leaked into an explicit target or ignored its checkbox");
                 }
             }
@@ -346,7 +349,7 @@ int main()
             .overlayIds = { std::vector<std::string>{ "face-paint" },
                 std::vector<std::string>{ "body-paint" }, {}, {} }
         };
-        Require(!rule.includeCustomFollowers && !rule.includeElderNPCs,
+        Require(!rule.includeCustomFollowers && !rule.includeElderNPCs && !rule.includeChildNPCs,
             "positive all-NPC rules did not exclude optional NPC groups by default");
         rule.overlayColors[0]["face-paint"] = 0x008000FFU;
         rule.overlayColors[1]["body-paint"] = 0xFF123456U;

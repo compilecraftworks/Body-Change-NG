@@ -140,16 +140,18 @@ namespace bcn
         // preserve the existing on-disk schema and evaluator semantics.
         bool includeCustomFollowers{ false };
         bool includeElderNPCs{ false };
+        bool includeChildNPCs{ false };
     };
 
     [[nodiscard]] constexpr bool MatchesDistributionScopeFilters(const DistributionRule& rule,
-        const bool customFollower, const bool elder) noexcept
+        const bool customFollower, const bool elder, const bool child) noexcept
     {
         // These checkboxes belong only to All NPCs. A hidden previous value
         // must not veto an explicitly selected NPC/name/faction/etc.
         return rule.scope != DistributionScope::allNPCs ||
             ((!customFollower || rule.includeCustomFollowers) &&
-                (!elder || rule.includeElderNPCs));
+                (!elder || rule.includeElderNPCs) &&
+                (!child || rule.includeChildNPCs));
     }
 
     [[nodiscard]] inline std::uint32_t DistributionOverlayColor(const DistributionRule& rule,

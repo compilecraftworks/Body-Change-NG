@@ -19,6 +19,14 @@ namespace bcn::distribution_json
         return nlohmann::json::parse(stream, nullptr, true, true);
     }
 
+    [[nodiscard]] inline nlohmann::json Read(const std::filesystem::path& path)
+    {
+        // Keep the parsed document, not its file handle, alive during migration.
+        // Replacing the same path on Windows requires this reader to be closed.
+        std::ifstream stream(path);
+        return Parse(stream);
+    }
+
     // Move comment tokens, not old JSON values, below the newly saved root.
     // Quoted/escaped strings and whole block comments must be skipped so that
     // paths, URLs and disabled example objects cannot become active rules.

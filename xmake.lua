@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.6"
+local version = "1.3.7"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -22,6 +22,14 @@ add_requires("nlohmann_json v3.12.0")
 -- extra runtime DLL and no changes to CommonLib's verified package closure.
 add_requires("zlib v1.3.2", {system = false, configs = {shared = false}})
 
+-- Read-only investigation build. Off for normal distribution; no new hooks,
+-- persistent state, material writes, or automatic recovery attempts.
+option("skin_diagnostics")
+    set_default(false)
+    set_showmenu(true)
+    set_description("Record native skin forms and loaded material readiness")
+option_end()
+
 target("BodyChangeNG")
     set_kind("shared")
     set_basename("BodyChangeNG")
@@ -41,6 +49,9 @@ target("BodyChangeNG")
 
     add_defines('BODY_CHANGE_NG_VERSION="' .. version .. '"')
     add_defines("BODY_CHANGE_NG_RUNTIME")
+    if has_config("skin_diagnostics") then
+        add_defines("BCNG_SKIN_DIAGNOSTICS")
+    end
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
     add_files(
@@ -56,6 +67,34 @@ target("BodyChangeNG")
     add_includedirs("src", "third_party/imgui", "third_party/imgui/backends", "third_party/pugixml/src")
     add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32", "bcrypt")
     set_pcxxheader("src/PCH.h")
+
+
+target("BodyChangeNGBodyTextureRecoveryTests")
+    set_default(false)
+    set_kind("binary")
+    set_basename("BodyChangeNGBodyTextureRecoveryChecks")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_files("tests/BodyTextureRecoveryTests.cpp")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "body-texture-recovery")
+        target:add("includedirs", generated)
+        local function extract(file, first, last, output)
+            local source = io.readfile(file)
+            local begin = assert(source:find(first, 1, true))
+            local finish = assert(source:find(last, begin + #first, true))
+            local destination = path.join(generated, output)
+            local content = source:sub(begin, finish - 1)
+            if not os.isfile(destination) or io.readfile(destination) ~= content then
+                io.writefile(destination, content)
+            end
+        end
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    struct BodyTextureObservation final", "    void VerifyBodyTexturesNow(", "body_texture_observer.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void VerifyBodyTexturesNow(", "    [[nodiscard]] bool CanRebaseFromRsv(", "body_texture_verify.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    std::optional<bool> LiveStateMatches(", "    void QueueVerifyBodyTextures(", "body_texture_live.inc")
+        extract("src/BodyChangeNG/ActorRegistry.cpp", "    bool ActorRegistry::NeedsSkinApply(", "    void ActorRegistry::MarkBodyApplied(", "body_texture_registry.inc")
+    end)
 
 target("BodyChangeNGCache")
     set_kind("binary")
@@ -794,4 +833,46 @@ target("BodyChangeNGBodyMorphAbiTests")
         local contents = source:sub(first, last - 1)
         if not os.isfile(destination) or io.readfile(destination) ~= contents then io.writefile(destination, contents) end
         target:add("includedirs", generated)
+    end)
+
+
+target("BodyChangeNGBodySliderEditTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_files("tests/BodySliderEditTests.cpp")
+    on_load(function (target)
+        local source = io.readfile("src/BodyChangeNG/RaceMenuBodyMorph.cpp")
+        local generated = path.join(target:autogendir(), "body-editor")
+        os.mkdir(generated)
+        target:add("includedirs", generated)
+        local function write(name, contents)
+            local destination = path.join(generated, name)
+            if not os.isfile(destination) or io.readfile(destination) ~= contents then io.writefile(destination, contents) end
+        end
+        local function section(first, last, name)
+            local a = assert(source:find(first, 1, true))
+            local b = assert(source:find(last, a + #first, true))
+            write(name, source:sub(a, b - 1))
+        end
+        local function func(signature, name)
+            local a = assert(source:find(signature, 1, true))
+            local opening = assert(source:find("{", a, true))
+            local depth, finish = 0, nil
+            for i = opening, #source do
+                local c = source:sub(i, i)
+                if c == "{" then depth = depth + 1 elseif c == "}" then depth = depth - 1 end
+                if depth == 0 then finish = i; break end
+            end
+            write(name, source:sub(a, assert(finish)))
+        end
+        section("    struct BodyEditorSession final", "    std::mutex g_previewLock;", "body_editor_state.inc")
+        section("    class OwnedMorphCollector final", "    class PreviewBaseCollector final", "body_owned_collector.inc")
+        func("    void MigrateLegacyBodyChangeKeys(", "body_migrate_keys.inc")
+        func("    bool IsBodySliderEditing(", "body_editor_active.inc")
+        func("    [[nodiscard]] bool UsesAdditiveBodyMorphs(", "body_editor_mode.inc")
+        func("    bool BeginBodySliderEdit(", "body_editor_begin.inc")
+        func("    void FinishBodySliderEdit(", "body_editor_finish.inc")
     end)

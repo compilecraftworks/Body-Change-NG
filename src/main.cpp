@@ -78,6 +78,9 @@ namespace
         // normal INFO output is flushed by the sink without blocking every NPC.
         logger->flush_on(spdlog::level::warn);
         spdlog::set_default_logger(std::move(logger));
+#ifdef BCNG_SKIN_DIAGNOSTICS
+        SKSE::log::info("BCNG read-only skin diagnostics enabled; no automatic material repair");
+#endif
     }
 
     void OnSkseMessage(SKSE::MessagingInterface::Message* message)

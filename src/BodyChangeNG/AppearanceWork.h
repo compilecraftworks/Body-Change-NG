@@ -37,7 +37,8 @@ namespace bcn::appearance
         overlayCatalogRequest = 213,
         skinFaceRefresh = 214,
         actorSearch = 215,
-        distributionTargets = 216
+        distributionTargets = 216,
+        skinBodyVerify = 217
     };
 
     [[nodiscard]] constexpr std::uint32_t ChannelValue(const WorkChannel channel) noexcept

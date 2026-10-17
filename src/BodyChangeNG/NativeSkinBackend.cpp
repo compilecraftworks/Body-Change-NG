@@ -21,6 +21,11 @@
 #include "BodyChangeNG/SkinTextureOwnership.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/SkinRefreshTargets.h"
+#include "BodyChangeNG/SkinTargetResolver.h"
+#include "BodyChangeNG/BodyTextureRecovery.h"
+#include <RE/B/BipedAnim.h>
+#include <RE/B/BGSBodyPartDefs.h>
+#include <RE/M/MiddleHighProcessData.h>
 
 #include <RE/B/BGSKeyword.h>
 #include <RE/B/BGSListForm.h>
@@ -166,6 +171,11 @@ namespace
     std::mutex g_lock;
     std::unordered_map<RE::FormID, BaseInstance> g_instances;
     std::atomic_uint64_t g_nextGeneration{ 1U };
+    // Failed recovery budgets store IDs/counters only, never scene pointers.
+    // Healthy observation/detach/load releases them. Exhaustion stops cycles.
+    std::unordered_map<RE::FormID, bcn::native_skin::BodyTextureRecoveryBudget> g_bodyRecoveries;
+    constexpr std::size_t kMaxBodyRecoveries = 4096U;
+    static_assert(offsetof(RE::MiddleHighProcessData, update3DModel) == 0x311);
 
     template <class T>
     [[nodiscard]] T* DuplicateForm(T* source)
@@ -885,6 +895,156 @@ namespace
         return true;
     }
 
+    struct BodyTextureObservation final
+    {
+        bcn::native_skin::BodyTextureState state{bcn::native_skin::BodyTextureState::unobserved};
+        bool resourcesAvailable{true};
+        bool foreignOverride{};
+    };
+
+    // Game task only. Borrow all geometry/material/texture pointers in this
+    // call, and wait for the pinned flat engine rebuild flag to clear.
+    [[nodiscard]] BodyTextureObservation ReadBodyTextures(RE::Actor* actor,
+        const BaseInstance& instance, const bool preflight = false)
+    {
+        using State = bcn::native_skin::BodyTextureState;
+        BodyTextureObservation result;
+        if (!instance.skinAttached || !instance.skin.armor) return result;
+        if (!actor || !actor->Is3DLoaded() ||
+            bcn::runtime::ResolveGameBranch(REL::Module::get().version()) ==
+                bcn::runtime::GameBranch::unsupported) return {State::waiting};
+        auto* process = actor->GetActorRuntimeData().currentProcess;
+        if (!process || !process->middleHigh || process->middleHigh->update3DModel.underlying() != 0U)
+            return {State::waiting};
+        const auto& biped = actor->GetBiped(false);
+        if (!biped) return {State::waiting};
+        bcn::native_skin::VisitOwnedBodyParts(*biped,
+            [&](auto* addon) {
+                return std::ranges::find(instance.skin.armor->armorAddons, addon) !=
+                    instance.skin.armor->armorAddons.end();
+            }, [&](const auto& object, auto* part) {
+                const auto ownedTxst = std::ranges::any_of(instance.skin.textures,
+                    [&](const TextureBinding& binding) { return binding.textureSet == object.skinTexture; });
+                if (!ownedTxst) {
+                    result.foreignOverride |= object.skinTexture != nullptr;
+                    return;
+                }
+                std::size_t visited{};
+                RE::BSVisit::TraverseScenegraphGeometries(part, [&](RE::BSGeometry* geometry) {
+                    if (++visited > 64U) return RE::BSVisit::BSVisitControl::kStop;
+                    if (!bcn::skin_target::IsSkinGeometry(geometry, false))
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    auto* shader = geometry->lightingShaderProp_cast();
+                    auto* material = shader ? static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+                    auto* set = bcn::skin_target::StableTextureSet(material);
+                    if (!set) {
+                        if (result.state == State::unobserved) result.state = State::waiting;
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    }
+                    const auto* name = geometry->name.c_str();
+                    const auto* diffuse = set->GetTexturePath(RE::BSTextureSet::Texture::kDiffuse);
+                    const std::string_view diffusePath{diffuse ? diffuse : ""};
+                    if (bcn::skin_geometry::IsMaleGenital(name ? name : "", diffusePath) ||
+                        bcn::skin_geometry::IsKnownGenitalAnalNode(name ? name : "") ||
+                        bcn::skin_geometry::IsCBBEGenitalAnalTexture(diffusePath) ||
+                        bcn::skin_geometry::IsUNPGenitalAnalTexture(diffusePath))
+                        return RE::BSVisit::BSVisitControl::kContinue;
+                    for (std::size_t channel{}; channel < 2U; ++channel) {
+                        const auto nativePath = TexturePath(object.skinTexture, channel);
+                        if (!bcn::skin_texture::ownership::IsOwnedTexturePath(nativePath)) continue;
+                        const auto* path = set->GetTexturePath(static_cast<RE::BSTextureSet::Texture>(channel));
+                        const auto matches = bcn::face_skin::Owns(path ? path : "", nativePath);
+                        const auto shaderOwned = bcn::skin_texture::ownership::IsOwnedBodySkinTexturePath(path ? path : "");
+                        if (!matches && !shaderOwned) {
+                            // A native actor refresh visits all of its parts.
+                            // One foreign override vetoes whole-actor recovery.
+                            result.foreignOverride = true;
+                            continue;
+                        }
+                        const auto& texture = channel == 0U ? material->diffuseTexture : material->normalTexture;
+                        if (result.state == State::unobserved) result.state = State::ready;
+                        if (matches && !bcn::native_skin::MissingOwnedBodyResource(true, matches,
+                                texture != nullptr, texture && texture->rendererTexture)) continue;
+                        // A previous BCNG cache path in our private part is stale
+                        // selection state, not a foreign provider override.
+                        result.state = State::missing;
+                        if (preflight) {
+                            const auto paths = bcn::native_skin::PathsFromCache("textures\\" + nativePath);
+                            if (!paths) result.resourcesAvailable = false;
+                            else {
+                                RE::BSResourceNiBinaryStream stream(paths->resource);
+                                std::array<char, 4> magic{};
+                                result.resourcesAvailable &= stream.good() && stream.read(magic.data(), 4U) &&
+                                    std::string_view{magic.data(), magic.size()} == "DDS ";
+                            }
+                        }
+                    }
+                    return RE::BSVisit::BSVisitControl::kContinue;
+                });
+            });
+        return result;
+    }
+
+    void VerifyBodyTexturesNow(RE::ActorHandle handle, RE::FormID baseId,
+        std::uint64_t generation, std::function<void(RE::Actor*)> refresh, unsigned checksLeft)
+    {
+        if (!bcn::frame_tasks::CurrentWorkAllowed() || bcn::Settings::Get().RemovalMode()) return;
+        const auto actor = handle.get();
+        if (!actor || !actor->GetActorBase() || actor->GetActorBase()->GetFormID() != baseId) return;
+        bool retry{}, missing{}, record{};
+        std::string id;
+        {
+            std::scoped_lock lock(g_lock);
+            const auto found = g_instances.find(baseId);
+            if (found == g_instances.end()) return;
+            const auto& instance = found->second;
+            if (instance.generation != generation || !instance.tracked || !instance.skinAttached ||
+                instance.appliedProfileId.empty() ||
+                !bcn::asset_identity::Equal{}(instance.desiredProfileId, instance.appliedProfileId) ||
+                instance.desiredContentHash != instance.appliedContentHash ||
+                instance.appliedContentHash != bcn::SkinProfiles::Get().ContentHash(instance.appliedProfileId) ||
+                !OwnsCurrentPointers(instance)) return;
+            id = instance.appliedProfileId;
+            const auto observation = ReadBodyTextures(actor.get(), instance, true);
+            using State = bcn::native_skin::BodyTextureState;
+            if (observation.state == State::waiting ||
+                bcn::face_skin::Pending(actor.get(), id, instance.desiredMode)) {
+                retry = true;
+            } else if (observation.state == State::missing) {
+                missing = true;
+                auto budget = g_bodyRecoveries.find(actor->GetFormID());
+                if (budget == g_bodyRecoveries.end() && g_bodyRecoveries.size() < kMaxBodyRecoveries)
+                    budget = g_bodyRecoveries.emplace(actor->GetFormID(), bcn::native_skin::BodyTextureRecoveryBudget{}).first;
+                retry = checksLeft != 0U && refresh && observation.resourcesAvailable &&
+                    !observation.foreignOverride && budget != g_bodyRecoveries.end() &&
+                    budget->second.Take(generation);
+            } else {
+                // A clothed/temporarily absent part cannot prove recovery.
+                // Preserve exhaustion until an actual owned channel is ready.
+                if (observation.state == State::ready) g_bodyRecoveries.erase(actor->GetFormID());
+                record = bcn::skin_transaction::RecordsApplication(instance.desiredMode) &&
+                    bcn::face_skin::Matches(actor.get(), id, instance.desiredMode);
+            }
+        }
+        if (missing) {
+            bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
+            if (retry) {
+                SKSE::log::warn("BCNG retrying missing owned body texture resources actor={:08X} profile='{}'",
+                    actor->GetFormID(), id);
+                refresh(actor.get()); // Existing facade/face barrier, no live material writes.
+            }
+        } else if (record) {
+            bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), id, false);
+        }
+        if (retry && checksLeft != 0U) {
+            const auto lease = bcn::frame_tasks::CurrentLease();
+            static_cast<void>(bcn::frame_tasks::Continue(lease,
+                [handle, baseId, generation, refresh = std::move(refresh), checksLeft] {
+                    VerifyBodyTexturesNow(handle, baseId, generation, refresh, checksLeft - 1U);
+                }, 2U));
+        }
+    }
+
     [[nodiscard]] bool CanRebaseFromRsv(const BaseInstance& instance)
     {
         if (!instance.base) return false;
@@ -1028,7 +1188,7 @@ namespace
     {
         auto actor = handle.get();
         if (!actor || !actor->GetActorBase() || actor->GetActorBase()->GetFormID() != baseId) return;
-        bool current{}, recovered{};
+        bool current{}, recovered{}, bodyReady{true};
         {
             std::scoped_lock lock(g_lock);
             const auto found = g_instances.find(baseId);
@@ -1036,6 +1196,11 @@ namespace
             auto& instance = found->second;
             current = instance.generation == generation && bcn::asset_identity::Equal{}(instance.desiredProfileId, id);
             if (success) {
+                if (current && !id.empty()) {
+                    const auto body = ReadBodyTextures(actor.get(), instance).state;
+                    bodyReady = body != bcn::native_skin::BodyTextureState::missing &&
+                        body != bcn::native_skin::BodyTextureState::waiting;
+                }
                 // Active face batches drain in order, including a batch that a
                 // newer click superseded. Remember its matching body snapshot.
                 if (completed && completed->skinGraph == instance.skin.armor &&
@@ -1052,7 +1217,9 @@ namespace
                 }
             }
         }
-        if (success && current && bcn::skin_transaction::RecordsApplication(mode))
+        if (success && current && !bodyReady)
+            bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
+        else if (success && current && bcn::skin_transaction::RecordsApplication(mode))
             bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), id, id.empty());
         else if (!success && current) {
             bcn::ActorRegistry::Get().InvalidateSkin(actor.get());
@@ -1119,6 +1286,7 @@ namespace
         auto* base = actor->GetActorBase();
         if (!base || base->GetFormID() != baseId) return;
 
+        bcn::native_skin::LogCurrentSkinState(actor.get(), "before-apply", true);
         std::unique_lock lock(g_lock);
         auto found = g_instances.find(baseId);
         if (found == g_instances.end() || found->second.generation != generation ||
@@ -1181,12 +1349,15 @@ namespace
             const auto action = bcn::face_skin::ResolveReapply(
                 bcn::face_skin::Matches(actor.get(), profile.id, mode),
                 bcn::face_skin::Pending(actor.get(), profile.id, mode));
+            const auto bodyState = ReadBodyTextures(actor.get(), instance).state;
             // An unchanged reconciliation pass allocates no rollback snapshot.
             const auto completed = action == bcn::face_skin::ReapplyAction::applyFace ?
                 CaptureApplied(instance) : nullptr;
             lock.unlock();
             if (action == bcn::face_skin::ReapplyAction::complete) {
-                if (bcn::skin_transaction::RecordsApplication(mode))
+                if (bodyState != bcn::native_skin::BodyTextureState::missing &&
+                    bodyState != bcn::native_skin::BodyTextureState::waiting &&
+                    bcn::skin_transaction::RecordsApplication(mode))
                     bcn::ActorRegistry::Get().MarkSkinApplied(actor.get(), profile.id, false);
             } else if (action == bcn::face_skin::ReapplyAction::applyFace) {
                 bcn::face_skin::Apply(actor.get(), plan.face, profile.id,
@@ -1194,6 +1365,7 @@ namespace
                         CompleteMutation(handle, baseId, generation, id, mode, completed, afterMutation, success);
                     }, false, mode);
             }
+            bcn::native_skin::QueueVerifyBodyTextures(actor.get(), afterMutation);
             // The body graph is current: never rebuild it to retry a face,
             // and never report a pending/failed face as whole-skin success.
             return;
@@ -1264,6 +1436,7 @@ namespace
                 CompleteMutation(handle, baseId, generation, id, mode, completed, afterMutation, success);
             }, static_cast<bool>(afterMutation) && actor->Is3DLoaded(), mode);
         RefreshLoadedActors(actor.get(), afterMutation);
+        bcn::native_skin::QueueVerifyBodyTextures(actor.get(), afterMutation);
     }
 
     void ClearNow(RE::ActorHandle handle, const RE::FormID baseId,
@@ -1561,10 +1734,124 @@ namespace bcn::native_skin
             return instance.appliedDefault && instance.appliedProfileId.empty() &&
                 bcn::face_skin::Matches(actor, {});
         }
-        return bcn::asset_identity::Equal{}(instance.appliedProfileId, profileId) &&
-            instance.appliedContentHash == SkinProfiles::Get().ContentHash(profileId) &&
-            OwnsCurrentPointers(instance) && bcn::face_skin::Matches(actor, profileId);
+        if (!bcn::asset_identity::Equal{}(instance.appliedProfileId, profileId) ||
+            instance.appliedContentHash != SkinProfiles::Get().ContentHash(profileId) ||
+            !OwnsCurrentPointers(instance)) return false;
+        const auto body = ReadBodyTextures(const_cast<RE::Actor*>(actor), instance).state;
+        return body != BodyTextureState::missing && body != BodyTextureState::waiting &&
+            bcn::face_skin::Matches(actor, profileId);
     }
+
+    void QueueVerifyBodyTextures(RE::Actor* actor, std::function<void(RE::Actor*)> refresh)
+    {
+        if (!actor || !frame_tasks::Active() || !refresh || Settings::Get().RemovalMode() ||
+            runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported) return;
+        const auto* base = actor->GetActorBase();
+        if (!base) return;
+        std::uint64_t generation{};
+        {
+            std::scoped_lock lock(g_lock);
+            const auto found = g_instances.find(base->GetFormID());
+            if (found == g_instances.end() || !found->second.tracked ||
+                !found->second.skinAttached || found->second.appliedProfileId.empty()) return;
+            generation = found->second.generation;
+        }
+        const auto handle = actor->GetHandle();
+        const auto baseId = base->GetFormID();
+        static_cast<void>(frame_tasks::Queue(actor->GetFormID(),
+            [handle, baseId, generation, refresh = std::move(refresh)] {
+                VerifyBodyTexturesNow(handle, baseId, generation, refresh, 30U);
+            }, 2U, appearance::WorkChannel::skinBodyVerify));
+    }
+
+    void ForgetBodyTextureRecovery(const std::uint32_t actor)
+    {
+        std::scoped_lock lock(g_lock);
+        g_bodyRecoveries.erase(actor);
+    }
+
+#ifdef BCNG_SKIN_DIAGNOSTICS
+    void LogCurrentSkinState(RE::Actor* actor, const std::string_view stage, const bool includeReady)
+    {
+        if (!actor || !actor->Is3DLoaded() ||
+            runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported) return;
+        const auto* base = actor->GetActorBase();
+        if (!base) return;
+        std::scoped_lock lock(g_lock);
+        const auto found = g_instances.find(base->GetFormID());
+        if (found == g_instances.end() || !found->second.tracked ||
+            found->second.appliedProfileId.empty() || !found->second.skin.armor) return;
+        const auto& instance = found->second;
+        const auto& biped = actor->GetBiped(false);
+        if (!biped) return;
+        // These four BOD2 editor slots are identical on every admitted flat
+        // runtime. Never use the SDK's runtime-inserted weapon enum or maximum
+        // as a bound, and never walk bufferedObjects or retain a scene pointer.
+        constexpr std::array<std::size_t, 4> slots{2U, 3U, 7U, 23U}; // 32/33/37/53
+        std::array<RE::NiAVObject*, slots.size()> seen{};
+        std::size_t seenCount{};
+        for (const auto slot : slots) {
+            const auto& object = biped->objects[slot];
+            auto* addon = object.addon;
+            auto* part = object.partClone.get();
+            // Diagnose only an ARMA from this private body graph. A worn
+            // outfit or a different provider's ARMA is not our DDS target.
+            if (!addon || !part || std::ranges::find(instance.skin.armor->armorAddons, addon) ==
+                    instance.skin.armor->armorAddons.end() ||
+                std::ranges::find(std::span{seen.data(), seenCount}, part) !=
+                    std::span{seen.data(), seenCount}.end()) continue;
+            seen[seenCount++] = part;
+            const auto nativeDiffuse = TexturePath(object.skinTexture, 0U);
+            const auto nativeNormal = TexturePath(object.skinTexture, 1U);
+            const auto belongsToGraph = std::ranges::any_of(instance.skin.textures,
+                [&](const TextureBinding& binding) { return binding.textureSet == object.skinTexture; });
+            std::size_t visited{};
+            RE::BSVisit::TraverseScenegraphGeometries(part, [&](RE::BSGeometry* geometry) {
+                if (++visited > 64U) return RE::BSVisit::BSVisitControl::kStop;
+                if (!bcn::skin_target::IsSkinGeometry(geometry, false)) return RE::BSVisit::BSVisitControl::kContinue;
+                const auto* name = geometry->name.c_str();
+                auto* shader = geometry->lightingShaderProp_cast();
+                auto* material = shader ? static_cast<RE::BSLightingShaderMaterialBase*>(shader->material) : nullptr;
+                auto* set = bcn::skin_target::StableTextureSet(material);
+                const auto* setDiffuse = set ? set->GetTexturePath(RE::BSTextureSet::Texture::kDiffuse) : nullptr;
+                const auto* setNormal = set ? set->GetTexturePath(RE::BSTextureSet::Texture::kNormal) : nullptr;
+                const std::string_view diffusePath{setDiffuse ? setDiffuse : ""};
+                if (skin_geometry::IsMaleGenital(name ? name : "", diffusePath) ||
+                    skin_geometry::IsKnownGenitalAnalNode(name ? name : "") ||
+                    skin_geometry::IsCBBEGenitalAnalTexture(diffusePath) ||
+                    skin_geometry::IsUNPGenitalAnalTexture(diffusePath)) return RE::BSVisit::BSVisitControl::kContinue;
+                const bool diffusePresent = material && material->diffuseTexture;
+                const bool normalPresent = material && material->normalTexture;
+                const bool missing = !set || (!nativeDiffuse.empty() && !diffusePresent) ||
+                    (!nativeNormal.empty() && !normalPresent);
+                if (!includeReady && !missing) return RE::BSVisit::BSVisitControl::kContinue;
+                const auto cachedHeader = [](const std::string& nativePath, const bool inspect) {
+                    if (!inspect) return "not-tested";
+                    const auto paths = PathsFromCache("textures\\" + nativePath);
+                    if (!paths) return "not-a-BCNG-cache-path";
+                    RE::BSResourceNiBinaryStream stream(paths->resource);
+                    std::array<char, 4> magic{};
+                    const auto valid = stream.good() && stream.read(magic.data(), 4U) &&
+                        std::string_view{magic.data(), magic.size()} == "DDS ";
+                    return valid ? "dds-magic-present" : "unavailable-or-no-dds-magic";
+                };
+                const auto line = std::format(
+                    "BCNG skin diagnostic stage={} actor={:08X} base={:08X} profile='{}' slot={} addon={:08X} txst={:08X} pointerOwned={} txstOwned={} node='{}' nativeDiffuse='{}' nativeNormal='{}' shaderDiffuse='{}' shaderNormal='{}' diffusePresent={} normalPresent={} visibleDiffuse='{}' visibleNormal='{}' cacheDiffuseDDSMagic={} cacheNormalDDSMagic={}",
+                    stage, actor->GetFormID(), base->GetFormID(), instance.appliedProfileId, slot + 30U,
+                    addon->GetFormID(), object.skinTexture ? object.skinTexture->GetFormID() : 0U,
+                    OwnsCurrentPointers(instance), belongsToGraph, name ? name : "", nativeDiffuse, nativeNormal,
+                    diffusePath, setNormal ? setNormal : "", diffusePresent, normalPresent,
+                    diffusePresent ? material->diffuseTexture->name.c_str() : "<absent>",
+                    normalPresent ? material->normalTexture->name.c_str() : "<absent>",
+                    cachedHeader(nativeDiffuse, missing && !diffusePresent),
+                    cachedHeader(nativeNormal, missing && !normalPresent));
+                if (missing) SKSE::log::warn("{}", line);
+                else SKSE::log::info("{}", line);
+                return RE::BSVisit::BSVisitControl::kContinue;
+            });
+        }
+    }
+#endif
 
     bool PrivateTexturesRestored()
     {
@@ -1586,6 +1873,7 @@ namespace bcn::native_skin
     {
         {
             std::scoped_lock lock(g_lock);
+            g_bodyRecoveries.clear();
             for (auto& [baseId, instance] : g_instances) {
                 RestoreOwnedPointers(instance);
                 // TESNPC and the private duplicate forms are game-data forms,

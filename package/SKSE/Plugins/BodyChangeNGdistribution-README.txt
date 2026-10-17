@@ -124,7 +124,9 @@ label은 메모이며 대체 검색어가 아닙니다. 보통은 이름만 쓰�
 못 찾거나 중복인 이름은 저장에서 삭제하지 않으며 잘못된 다른 항목을 적용하지 않습니다.
 
 7. 옵션·순서·기존 제한
-all의 excludeCustomFollowers와 excludeElders는 기본 true(제외)입니다.
+all의 excludeCustomFollowers, excludeElders, excludeChildren은 기본 true(제외)입니다.
+어린이는 게임의 IsChild 판정으로 구분하며 기존 규칙에 항목이 없어도 기본 제외합니다.
+이미 적용된 외형을 초기화하는 옵션은 아닙니다.
 다른 scope에는 숨은 제외 조건으로 작용하지 않습니다.
 "enabled": false는 schema 8에서 그 규칙을 잠시 끕니다.
 각 기능/부위는 위쪽의 일치하고 호환되는 규칙을 우선합니다.
@@ -205,7 +207,9 @@ scope/sex 오타, 마지막 쉼표, 잘못된 색상은 고쳐야 합니다.
    This is a hexadecimal local Base ID (regular: up to 6 digits; light: 3),
    not a full runtime ID or placed RefID. label is not a fallback identity.
    Unknown/ambiguous names are retained but are not applied arbitrarily.
-7. For all only, excludeCustomFollowers/excludeElders default to true.
+7. For all only, excludeCustomFollowers/excludeElders/excludeChildren default to true.
+   Children use the game's IsChild check; older rules without the field also
+   exclude them. This does not reset appearances that were already applied.
    enabled:false pauses one schema-8 rule. Earlier matching compatible rules
    win per feature/area. Mixed-feature rows may split on save (256-row limit).
    Existing automatic sex/body-family/non-UBE restrictions remain. Futa rules

@@ -45,6 +45,7 @@ struct ActorRegistry {
         completed.push_back(std::move(item)); return true;
     }
 };
+namespace racemenu { bool IsBodySliderEditing(const RE::Actor*) { return false; } }
 namespace body_family { unsigned ResolveActor(RE::Actor*) { return 1; } }
 namespace frame_tasks {
 using Lease = async_work::FrameTaskQueue::Lease;
@@ -221,12 +222,15 @@ struct Morphs {
     bool HasBodyMorphKey(RE::Actor*, const char* key) { return keys.contains(key); }
 } morphs;
 Morphs* Interface() { return &morphs; }
-std::optional<std::string> CurrentPresetId(const RE::Actor*) { return {}; }
-struct Preset { bool UsesBuildDefaults() const { return false; } };
+std::optional<std::string> currentPresetId;
+std::optional<std::string> CurrentPresetId(const RE::Actor*) { return currentPresetId; }
+struct Preset { bool UsesBuildDefaults() const { return true; } };
 struct PresetCatalog {
     static PresetCatalog& Get() { static PresetCatalog c; return c; }
-    std::optional<Preset> Find(const std::string&) { return {}; }
+    std::optional<Preset> Find(const std::string&) { return currentPresetId ? std::optional{Preset{}} : std::nullopt; }
 };
+bool IsBodySliderEditing(const RE::Actor*) { return false; }
+void FinishBodySliderEdit(RE::Actor*) {}
 #include "body_live.inc"
 bool IsReady() { return true; }
 bool HasActivePreview(RE::Actor*) { return false; }
@@ -258,6 +262,13 @@ void Run() {
     }
     Check(clearQueued == 6 && refits == 6, "actual base recovery skipped clear or normal outfit reevaluation");
     std::cout << "Default body: valid outfit retained; stale base recovery reevaluates clothing\n";
+    currentPresetId="zeroed";
+    Check(LiveBodyChangeStateMatches(&RE::actor,false)==true,"empty Zeroed XML rejected");
+    morphs.keys.insert(kCommittedKey);
+    Check(LiveBodyChangeStateMatches(&RE::actor,false)==true,"edited Zeroed Sliders would be recommitted");
+    morphs.keys.insert(keys::obody);
+    Check(LiveBodyChangeStateMatches(&RE::actor,false)==false,"competing base layer accepted on edited Zeroed Sliders");
+    morphs.keys.erase(keys::obody); morphs.keys.erase(kCommittedKey); currentPresetId.reset();
 }
 }
 int main() try {
