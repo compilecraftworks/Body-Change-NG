@@ -28,6 +28,7 @@
 #include "BodyChangeNG/RaceMenuOverlay.h"
 #include "BodyChangeNG/OverlayColor.h"
 #include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/TransformationSkin.h"
 #include "BodyChangeNG/SkinApplication.h"
 #include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/UiCatalogPolicy.h"
@@ -1617,6 +1618,10 @@ namespace
             return Text("같은 ActorBase를 공유하는 다른 NPC가 이미 다른 스킨을 사용 중입니다.", "Another NPC sharing this ActorBase already owns a different skin selection.", "共享此 ActorBase 的另一个 NPC 已使用不同的皮肤选择。");
         case bcn::skin_application::ApplyResult::ownershipConflict:
             return Text("다른 모드가 Skin Armor를 교체해 덮어쓰지 않았습니다.", "Another mod replaced the Skin Armor, so Body Change NG did not overwrite it.", "其他模组已替换皮肤护甲，因此 Body Change NG 未覆盖它。");
+        case bcn::skin_application::ApplyResult::transformationSuspended:
+            return Text("변신 중에는 변신체 기본 스킨을 사용합니다. 복귀하면 선택한 스킨이 복원됩니다.",
+                "The transformation uses its native skin. Your selected skin returns after reverting.",
+                "变身期间使用变身种族的默认皮肤，恢复原形后重新应用所选皮肤。");
         default:
             return Text("적용할 액터가 없습니다.", "No actor is available.", "没有可应用的角色。");
         }
@@ -2084,13 +2089,18 @@ namespace
         const auto backendCurrentSkin = bcn::skin_application::CurrentProfileId(actor);
         const auto confirmedSkinId = g_pendingSkin && g_pendingSkin->actorFormID == actor->GetFormID() ?
             g_pendingSkin->originalId : backendCurrentSkin.value_or(std::string{});
+        const auto transformationSuspended = bcn::transformation_skin::Suspended(actor);
+        if (!distributionSelecting && transformationSuspended) {
+            TextDisabledWrapped(Text("변신체 기본 스킨 사용 중 · 선택한 스킨은 변신 해제 후 복원됩니다.",
+                "Using the transformation's native skin. Your selected skin will return after reverting.",
+                "正在使用变身种族的默认皮肤；恢复原形后将重新应用所选皮肤。"));
+        }
 
         std::vector<const bcn::SkinProfile*> visibleSkins;
         visibleSkins.reserve(skins.size());
         for (const auto& skin : skins) {
             if (distributionSelecting) {
-                if (skin.sex != actorSex || skin.race != bcn::SkinRace::humanoid ||
-                    skin.layout != bcn::SkinLayout::legacy) continue;
+                if (skin.sex != actorSex || skin.race != bcn::SkinRace::humanoid) continue;
                 if (!bcn::SkinProfileCompatibility(skin, actorSex, bcn::SkinRace::humanoid,
                         DistributionCatalogFamily(settings)).Compatible()) continue;
             } else if (!bcn::SkinProfileCompatibility(
@@ -2270,7 +2280,9 @@ namespace
                 const auto sub = std::string{ female ? Text("여성", "Female", "女性") : Text("남성", "Male", "男性") } +
                     " · " + bcn::SkinFamilyLabel(skin.layout, skin.sex) +
                     " · " + Text("텍스처 ", "Textures ", "纹理 ") + std::to_string(textureCount) + Text("개", "", " 个") +
-                    (confirmedCurrent ? " · " + std::string(Text("현재 적용", "Current", "当前应用")) : "");
+                    (confirmedCurrent ? " · " + std::string(transformationSuspended ?
+                        Text("선택됨 · 변신 중 일시 중지", "Selected · paused during transformation", "已选择 · 变身期间暂停") :
+                        Text("현재 적용", "Current", "当前应用")) : "");
                 draw->AddText(ImVec2(cursor.x + Scaled(10.0F), cursor.y + Scaled(27.0F)),
                     kCardSubtext, sub.c_str());
                 ImGui::SetCursorScreenPos(ImVec2(cursor.x + width - favoriteWidth, cursor.y));
@@ -3393,8 +3405,7 @@ namespace
         case DistributionPool::skin: {
             const auto catalog = bcn::SkinProfiles::Get().SharedSnapshot();
             for (const auto& skin : *catalog) {
-                if (skin.layout != bcn::SkinLayout::legacy ||
-                    !bcn::SkinProfileCompatibility(skin,
+                if (!bcn::SkinProfileCompatibility(skin,
                         female ? bcn::SkinSex::female : bcn::SkinSex::male,
                         bcn::SkinRace::humanoid, family).Compatible()) continue;
                 add(skin.id, skin.name, {}, area);
@@ -4172,6 +4183,30 @@ namespace
                 "On by default. Preset application and Default body remove BCNG and OBody/OClothe morphs while preserving other mods' morphs. When off, committing a preset clears all body morphs.",
                 "默认开启。应用身体预设和恢复默认身体会清除 BCNG 及 OBody/OClothe 形态，保留其他模组形态。关闭后，确认预设时会清除全部身体形态。"));
             ImGui::Separator();
+            ImGui::TextUnformatted(Text("플레이어 변신 스킨", "Player transformation skins", "玩家变身皮肤"));
+            bool transformationSettingsChanged{};
+            const auto transformationOption = [&](const char* label, bool& keep) {
+                int choice = keep ? 1 : 0;
+                ImGui::SetNextItemWidth(Scaled(300.0F));
+                PrepareResizableDropdown(2U);
+                if (ImGui::Combo(label, &choice, Text(
+                        "변신체 기본 스킨\0BCNG 스킨 유지 (휴머노이드용)\0",
+                        "Transformation's native skin\0Keep BCNG skin (humanoid mods)\0",
+                        "变身种族默认皮肤\0保留 BCNG 皮肤（人形模组）\0"))) {
+                    keep = choice == 1;
+                    transformationSettingsChanged = true;
+                }
+            };
+            transformationOption(Text("뱀파이어 로드##vampireLordSkin", "Vampire Lord##vampireLordSkin", "吸血鬼领主##vampireLordSkin"),
+                settings.keepSkinDuringVampireLord);
+            transformationOption(Text("늑대인간##werewolfSkin", "Werewolf##werewolfSkin", "狼人##werewolfSkin"),
+                settings.keepSkinDuringWerewolf);
+            TextDisabledWrapped(Text(
+                "기본값은 변신체 고유 스킨입니다. 선택한 BCNG 스킨은 유지되며 변신 중 저장·불러오기 후에도 원래 모습으로 돌아오면 복원됩니다. 인간형 바디를 사용하는 변신 모드에서만 BCNG 스킨 유지를 선택하세요. 일반 뱀파이어 상태에는 영향을 주지 않습니다.",
+                "Native skin is the default. Your BCNG skin choice is preserved and restored after reverting, including saves loaded while transformed. Keep BCNG skin only for transformation mods using a compatible humanoid body. Ordinary vampires are unaffected.",
+                "默认使用变身种族的皮肤。BCNG 皮肤选择会被保留，变身期间存读档后恢复原形时也会重新应用。仅对使用兼容人形身体的变身模组选用保留 BCNG 皮肤。普通吸血鬼状态不受影响。"));
+            settingsChanged |= transformationSettingsChanged;
+            ImGui::Separator();
             ImGui::TextUnformatted(Text("화면 표시", "Display", "显示"));
             ImGui::SetNextItemWidth(Scaled(300.0F));
             const auto textScaleChanged = ImGui::SliderFloat(Text("텍스트 크기##textScale", "Text size##textScale", "文字大小##textScale"), &settings.textScale, 0.75F, 1.50F, "%.2fx", ImGuiSliderFlags_AlwaysClamp);
@@ -4218,6 +4253,9 @@ namespace
                 "无论此设置如何，自动 NPC 任务都会合并重复事件并逐个安全处理。启用后会在角色之间额外增加一次调度间隔；新出现的 NPC 始终优先于读档批量任务。直接选择仍会立即处理，最终结果相同。"));
             if (settingsChanged) {
                 bcn::Settings::Get().Update(settings);
+            }
+            if (transformationSettingsChanged) {
+                bcn::skin_application::QueueTransformationReconcile(RE::PlayerCharacter::GetSingleton());
             }
             DrawRemovalControls();
             if (bcn::Settings::Get().RemovalMode()) {

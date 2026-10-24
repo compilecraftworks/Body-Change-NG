@@ -31,6 +31,8 @@ namespace bcn::skin_application
     };
 
     void ResetSessionState();
+    // Event-driven, coalesced player race/settings reconciliation.
+    void QueueTransformationReconcile(RE::Actor* actor);
 
     // Applies a shared texture profile to either the player or an NPC through
     // a private clone of the current native TXST -> ARMA -> Skin Armor graph.

@@ -16,6 +16,33 @@ feet atlas exists; beast-race and unknown layouts never do. It does
 not replace a NIF, inventory, equipment slots, baked FaceGen files, or NPC tint
 masks.
 
+## Player transformations
+
+Mod settings has separate **Vampire Lord** and **Werewolf** skin choices.
+Both default to **Transformation's native skin**: BCNG detaches its private
+skin armor and releases its saved face-texture overrides during the
+transformation, without deleting the selected skin. Reverting restores that
+choice, including when the save was loaded while transformed. Normal vampire
+races are not suspended. These settings do not alter NPC distribution.
+
+Choose **Keep BCNG skin (humanoid mods)** separately for a transformation mod
+whose body uses compatible humanoid skin textures. This is not a conversion
+of human textures to creature UVs. Detection covers the vanilla transformation
+races (including replacers) and custom races inheriting their armor race.
+BCNG reuses per-race skin graphs and respects later foreign skin replacements.
+
+## NPC body-family selection
+
+Keep using **Mod settings → NPC distribution body type → Female → UBE**
+for UBE distribution. Both the NPC distribution checklist and the rule's
+**Change items** popup include UBE skin packs in this mode, and the runtime
+pool uses the same compatibility policy. A known CBBE/3BA or BHUNP/UNP NPC
+does not receive a UBE skin. This does not enable simultaneous automatic
+selection of different configured body families; the existing family setting
+and distribution rules remain authoritative.
+
+## Pack folders
+
 Put each skin pack below `BodySkin` at the MO2 mod root (the game's virtual
 `Data` root). Copy the source skin mod's `textures` folder contents directly
 into that skin's `Textures` folder:

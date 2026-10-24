@@ -20,6 +20,7 @@ namespace bcn
         actorBaseUnavailable,
         sharedActorBaseConflict,
         ownershipConflict,
-        actor3DUnavailable
+        actor3DUnavailable,
+        transformationSuspended
     };
 }

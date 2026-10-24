@@ -2,6 +2,7 @@
 // Only actor/provider boundaries are fakes; XML parsing and family filtering
 // use the real PresetCatalog and BodyFamilyRules implementations.
 #include "BodyChangeNG/PresetCatalog.h"
+#include "BodyChangeNG/SkinProfiles.h"
 #include "BodyChangeNG/Settings.h"
 #include <algorithm>
 #include <chrono>
@@ -17,6 +18,7 @@ public:
     NPC base;
     bcn::body_family::Mask family{};
     bool hasBase{ true };
+    bcn::SkinRace race{ bcn::SkinRace::humanoid };
     const NPC* GetActorBase() const { return hasBase ? &base : nullptr; }
 };
 }
@@ -29,6 +31,23 @@ namespace bcn {
 Settings& Settings::Get() { static Settings value; return value; }
 SettingsData Settings::Snapshot() const { return data_; }
 void Settings::Update(const SettingsData& data) { data_ = data; }
+SkinRace ResolveActorSkinRace(const RE::Actor* actor) { return actor->race; }
+SkinProfiles& SkinProfiles::Get() {
+    static SkinProfiles value;
+    static const bool initialized = [&] {
+        value.profiles_ = std::make_shared<const std::vector<SkinProfile>>(std::vector<SkinProfile>{
+            {.id="skin:ube", .layout=SkinLayout::ube},
+            {.id="skin:legacy", .layout=SkinLayout::legacy},
+            {.id="skin:male", .sex=SkinSex::male, .layout=SkinLayout::legacy},
+            {.id="skin:beast", .race=SkinRace::argonian, .layout=SkinLayout::argonian},
+            {.id="skin:unknown", .layout=SkinLayout::unknown}
+        });
+        return true;
+    }();
+    (void)initialized;
+    return value;
+}
+#include "distribution_skin_catalog.inc"
 struct ActorCatalog {
     static ActorCatalog& Get() { static ActorCatalog value; return value; }
     RE::Actor* Resolve(unsigned) const { return selectedActor; }
@@ -48,6 +67,7 @@ struct CatalogItem {
 };
 #include "distribution_body_items.inc"
 #include "distribution_preset_pool.inc"
+#include "distribution_skin_pool.inc"
 
 void Check(bool condition, const char* message)
 { if (!condition) throw std::runtime_error(message); }
@@ -136,6 +156,33 @@ int main()
         Check(row(items, ubeId) != items.end() && row(items, ubeId)->compatible,
             "UBE preview actor lost compatible candidate");
 
+        const std::vector<std::string> skinPool{
+            "SKIN:UBE", "skin:legacy", "skin:male", "skin:beast", "skin:unknown", "missing-skin"};
+        auto skinResult = CompatibleSkinPoolIds(skinPool, &npc, Bit(Family::ube));
+        Check(skinResult == std::vector<std::string>{"SKIN:UBE"},
+            "configured UBE NPC must receive UBE skin (case insensitive), not Legacy");
+        for (const auto configured : {Bit(Family::cbbe), Bit(Family::unp), Bit(Family::ube), Bit(Family::himbo)}) {
+            for (const auto actual : {0U, Bit(Family::cbbe), Bit(Family::unp), Bit(Family::ube), Bit(Family::himbo)}) {
+                for (const auto sex : {RE::SEX::kFemale, RE::SEX::kMale}) {
+                    npc.family=actual; npc.base.sex=sex; familyReads=0;
+                    skinResult=CompatibleSkinPoolIds(skinPool, &npc, configured);
+                    Check(familyReads==1, "skin family detection repeated per candidate");
+                    const auto skinSex=sex==RE::SEX::kFemale ? bcn::SkinSex::female : bcn::SkinSex::male;
+                    for (const auto& skinId : skinPool) {
+                        const auto profile=bcn::SkinProfiles::Get().Find(skinId);
+                        const bool expected=profile && profile->race==bcn::SkinRace::humanoid &&
+                            bcn::SkinProfileCompatibility(*profile,skinSex,npc.race,configured).Compatible() &&
+                            (actual==0 || bcn::SkinProfileCompatibility(*profile,skinSex,npc.race,actual).Compatible());
+                        Check(contains(skinResult,skinId)==expected, "skin distribution crossed configured/actual family or sex");
+                    }
+                }
+            }
+        }
+        npc.family=Bit(Family::ube); npc.base.sex=RE::SEX::kFemale;
+        npc.race=bcn::SkinRace::argonian;
+        Check(CompatibleSkinPoolIds(skinPool,&npc,Bit(Family::ube)).empty(), "UBE human skin distributed to beast race");
+        npc.race=bcn::SkinRace::humanoid;
+
         // Both sides of every family/sex boundary, repeated list mode switches
         // and a fresh immutable snapshot after each iteration (no state growth).
         for (unsigned iteration{}; iteration < 1000U; ++iteration) {
@@ -176,7 +223,7 @@ int main()
         Check(CompatiblePresetPoolIds(pool, nullptr, Bit(Family::ube)).empty(), "null actor accepted");
         npc.hasBase = false;
         Check(CompatiblePresetPoolIds(pool, &npc, Bit(Family::ube)).empty(), "missing actor base accepted");
-        std::cout << "Distribution presets: real UI/pool functions, UBE/3BA/UNP/HIMBO/SAM, Zeroed, "
+        std::cout << "Distribution presets/skins: real UI/pool functions, UBE/3BA/UNP/HIMBO/SAM, Zeroed, "
             "preview compatibility, unknown families and 1000 mode-switch cycles PASS\n";
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

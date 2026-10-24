@@ -45,6 +45,9 @@ enum class GameBranch { supported, unsupported };
 bool supported = true;
 GameBranch ResolveGameBranch(int) { return supported ? GameBranch::supported : GameBranch::unsupported; }
 }
+namespace bcn::transformation_skin {
+bool Suspended(const RE::Actor*) { return false; }
+}
 namespace bcn {
 struct Settings {
     bool removal{};
@@ -165,6 +168,7 @@ namespace native_test {
 struct AppliedSnapshot { void *skinGraph{}, *farGraph{}, *skinPointer{}, *farPointer{}; };
 struct Graph { void* armor{}; };
 struct BaseInstance {
+    std::uint64_t raceGeneration{};
     RE::TESNPC* base = &RE::instance.base;
     std::uint64_t generation = 7;
     std::string desiredProfileId;

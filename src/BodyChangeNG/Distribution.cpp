@@ -374,19 +374,24 @@ namespace
         const auto* base = actor->GetActorBase();
         if (!base) return {};
         const auto actorFemale = base->GetSex() == RE::SEX::kFemale;
-        std::vector<std::string> legacyPool;
-        legacyPool.reserve(pool.size());
+        std::vector<std::string> humanoidPool;
+        humanoidPool.reserve(pool.size());
         for (const auto& id : pool) {
             const auto profile = bcn::SkinProfiles::Get().Find(id);
-            if (!profile || profile->layout != bcn::SkinLayout::legacy ||
-                profile->race != bcn::SkinRace::humanoid ||
+            if (!profile || profile->race != bcn::SkinRace::humanoid ||
                 (actorFemale ? profile->sex != bcn::SkinSex::female :
                     profile->sex != bcn::SkinSex::male)) continue;
-            legacyPool.push_back(id);
+            humanoidPool.push_back(id);
         }
-        return bcn::SkinProfiles::Get().CompatibleIds(legacyPool,
-            actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male, distributionFamily,
-            bcn::ResolveActorSkinRace(actor));
+        const auto sex = actorFemale ? bcn::SkinSex::female : bcn::SkinSex::male;
+        const auto race = bcn::ResolveActorSkinRace(actor);
+        auto compatible = bcn::SkinProfiles::Get().CompatibleIds(humanoidPool,
+            sex, distributionFamily, race);
+        // As with presets, retain the configured distribution family and also
+        // respect explicit evidence from this NPC. UBE is not a Legacy pack.
+        const auto actorFamily = bcn::body_family::ResolveActor(actor);
+        if (actorFamily == 0U || actorFamily == distributionFamily) return compatible;
+        return bcn::SkinProfiles::Get().CompatibleIds(compatible, sex, actorFamily, race);
     }
 
     [[nodiscard]] std::vector<std::string> CompatibleOverlayPoolIds(

@@ -21,6 +21,7 @@
 #include <RE/R/RaceSexMenu.h>
 #include <RE/T/TESCellAttachDetachEvent.h>
 #include <RE/T/TESContainerChangedEvent.h>
+#include <RE/T/TESSwitchRaceCompleteEvent.h>
 #include <RE/T/TESObjectARMA.h>
 #include <RE/T/TESObjectARMO.h>
 #include <SKSE/Logger.h>
@@ -199,6 +200,7 @@ namespace bcn
     {
         if (Settings::Get().RemovalMode()) return;
         if (auto* player = RE::PlayerCharacter::GetSingleton()) {
+            skin_application::QueueTransformationReconcile(player);
             const auto generation = g_raceMenuRestoreGeneration.load(std::memory_order_acquire);
             // Use the existing skin/body restoration queue and its bounded
             // readiness checks, not a second polling service for addons.
@@ -214,6 +216,7 @@ namespace bcn
             events->AddEventSink<RE::TESCellAttachDetachEvent>(this);
             events->AddEventSink<RE::TESEquipEvent>(this);
             events->AddEventSink<RE::TESContainerChangedEvent>(this);
+            events->AddEventSink<RE::TESSwitchRaceCompleteEvent>(this);
             if (auto* ui = RE::UI::GetSingleton()) {
                 ui->AddEventSink<RE::MenuOpenCloseEvent>(this);
             }
@@ -230,6 +233,19 @@ namespace bcn
         g_raceMenuRestoreGeneration.fetch_add(1U, std::memory_order_acq_rel);
         std::scoped_lock lock(g_equipmentLock);
         g_equipmentGeneration.clear();
+    }
+
+    RE::BSEventNotifyControl ActorEvents::ProcessEvent(
+        const RE::TESSwitchRaceCompleteEvent* event,
+        RE::BSTEventSource<RE::TESSwitchRaceCompleteEvent>*)
+    {
+        if (event && event->subject) {
+            if (auto* actor = event->subject->As<RE::Actor>()) {
+                body_family::ForgetActorState(actor->GetFormID());
+                skin_application::QueueTransformationReconcile(actor);
+            }
+        }
+        return RE::BSEventNotifyControl::kContinue;
     }
 
     RE::BSEventNotifyControl ActorEvents::ProcessEvent(
@@ -398,6 +414,7 @@ namespace bcn
                 // Skin geometry can be replaced below an unchanged root. Drop
                 // only this actor's classification; recompute lazily on demand.
                 body_family::ForgetActorState(actor->GetFormID());
+                skin_application::QueueTransformationReconcile(actor);
                 // Notify before registry filtering: an addon-only rebuild can
                 // have a barrier without a general body-skin selection.
                 face_skin::OnNiNodeUpdate(actor);

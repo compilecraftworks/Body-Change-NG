@@ -53,6 +53,7 @@ struct MiddleHigh { Flag update3DModel; };
 struct Process { MiddleHigh* middleHigh{}; };
 struct Armor { std::vector<Addon*> armorAddons; };
 struct Base { unsigned id=2; Armor* skin{}; unsigned GetFormID() const { return id; } };
+struct Race { unsigned id=1; unsigned GetFormID() const { return id; } };
 class Actor;
 struct ActorHandle { Actor* value{}; std::shared_ptr<Actor> get() const { return value ? std::shared_ptr<Actor>{value, [](Actor*){}} : nullptr; } };
 class Actor {
@@ -67,6 +68,8 @@ public:
     const std::shared_ptr<Biped>& GetBiped(bool) const { return biped; }
     unsigned GetFormID() const { return id; }
     ActorHandle GetHandle() { return {this}; }
+    Race race;
+    Race* GetRace() { return &race; }
 };
 namespace BSVisit {
 enum class BSVisitControl { kContinue, kStop };
@@ -96,6 +99,10 @@ struct ActorRegistry {
     void InvalidateSkin(RE::Actor*) { ++invalidated; dataState.skin.application.applied=false; }
 };
 }
+namespace bcn::transformation_skin {
+bool suspended{};
+bool Suspended(const RE::Actor*) { return suspended; }
+}
 namespace bcn::skin_target {
 bool IsSkinGeometry(RE::BSGeometry* g,bool) { return g && g->shader && g->shader->material && g->shader->material->skin; }
 RE::TextureSet* StableTextureSet(RE::BSLightingShaderMaterialBase* m) { return m && m->stable ? m->textureSet : nullptr; }
@@ -117,6 +124,7 @@ struct TextureBinding { RE::BGSTextureSet* textureSet{}; };
 struct Graph { RE::Armor* armor{}; std::vector<TextureBinding> textures; };
 struct BaseInstance {
     RE::Base* base{}; Graph skin;
+    unsigned sourceRace=1;
     std::uint64_t generation=7, appliedContentHash=99, desiredContentHash=99;
     std::string appliedProfileId="custom",desiredProfileId="custom";
     bool tracked=true,skinAttached=true,appliedDefault=false;
@@ -300,6 +308,16 @@ void Run() {
         for (unsigned id=100;id<4196;++id) probe::g_bodyRecoveries[id]={7,2};
         f.material.diffuseTexture=nullptr; f.Verify();
         Check(f.refreshes==0 && probe::g_bodyRecoveries.size()==4096,"recovery state cap exceeded");
+    }
+    {
+        Fixture f; f.material.diffuseTexture=nullptr;
+        bcn::transformation_skin::suspended=true;
+        f.Verify(); bcn::frame_tasks::Drain();
+        Check(f.refreshes==0, "suspended creature triggered human body recovery");
+        bcn::transformation_skin::suspended=false;
+        f.actor.race.id=2;
+        f.Verify(); bcn::frame_tasks::Drain();
+        Check(f.refreshes==0, "old-race graph recovery survived race switch");
     }
     {
         Fixture f;

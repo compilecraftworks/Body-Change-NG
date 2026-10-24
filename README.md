@@ -1,11 +1,29 @@
-# Body Change NG — v1.3.7
+# Body Change NG — v1.3.8
 
 Native SKSE appearance control for Skyrim SE/AE: BodySlide presets, body and
 face skins, player tint masks, supported futanari skins, and Face/Body/Hands/Feet
 overlays. Direct player/NPC editing and opt-in NPC rules share one F7 interface.
 No BCNG ESP/ESL or MCM is required. Third-party meshes and texture packs are not bundled.
 
-## Current version — v1.3.7
+## Current version — v1.3.8
+
+Player Vampire Lord and Werewolf transformations use their native skin by
+default instead of retaining incompatible human skin overrides. Separate
+settings allow compatible humanoid transformation mods to keep the BCNG skin.
+The selected skin is retained and restored after reverting, including saves
+loaded while transformed. Ordinary vampires are unaffected.
+
+UBE body skins are available in the NPC distribution checklist, Change items
+popup and runtime candidate pool when the existing distribution body type is
+set to UBE. Known incompatible NPC bodies remain excluded; automatic mixed-body
+distribution and preset numerical calculations are unchanged.
+
+- [English changelog](CHANGELOG.md#138) · [한국어 변경 내역](CHANGELOG-KO.md#138)
+- [English text](docs/NEXUS-CHANGELOG-v1.3.8-EN.txt) · [한국어 텍스트](docs/NEXUS-CHANGELOG-v1.3.8-KO.txt)
+- [Nexus BBCode](docs/NEXUS-CHANGELOG-v1.3.8-EN.bbcode) · [한국어 HTML](docs/NEXUS-CHANGELOG-v1.3.8-KO.html)
+- [Release verification](docs/RELEASE-VERIFICATION-v1.3.8-KO.md) · [Transformation settings](docs/skin-profiles.md#player-transformations)
+
+## Preserved v1.3.7 features
 
 All NPCs distribution rules now exclude children by default across body presets,
 body skins, futa skins and overlays. Existing rules without the new field also

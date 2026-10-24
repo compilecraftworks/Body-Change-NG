@@ -1,6 +1,12 @@
 # Release documentation
 
-Current version: **Body Change NG v1.3.5**. See the [English changelog](../CHANGELOG.md#135), [한국어 변경 내역](../CHANGELOG-KO.md#135), [current usage / removal preparation](../README.md), and [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt). Earlier version files remain historical records.
+Current version: **Body Change NG v1.3.8**. See the [English changelog](../CHANGELOG.md#138), [한국어 변경 내역](../CHANGELOG-KO.md#138), [current usage / removal preparation](../README.md), and [cache utility guide](../package/Tools/BodyChangeNGCache-README.txt). Earlier version files remain historical records.
+
+## v1.3.8 release documents
+
+- Changelog: [English text](NEXUS-CHANGELOG-v1.3.8-EN.txt) · [한국어 텍스트](NEXUS-CHANGELOG-v1.3.8-KO.txt) · [English BBCode](NEXUS-CHANGELOG-v1.3.8-EN.bbcode) · [한국어 HTML](NEXUS-CHANGELOG-v1.3.8-KO.html).
+- [Bilingual release notes](RELEASE-NOTES-v1.3.8.md) · [Release verification](RELEASE-VERIFICATION-v1.3.8-KO.md).
+- [Transformation options and UBE skin distribution](skin-profiles.md).
 
 ## v1.3.5 release documents
 
@@ -65,7 +71,7 @@ Installation paths are written in full, relative to the game's Data folder. Copy
 
 Prior version files and dated engineering reports remain historical records. In particular, an old v1.2.0 experiment mentioning a Face TXST/HeadPart swap, preview commit on close, or rule auto-save on close does not describe the final release.
 
-Current verification evidence: [v1.3.2 results](RELEASE-VERIFICATION-v1.3.2-KO.md). Historical audits: [v1.3.1 results](RELEASE-VERIFICATION-v1.3.1-KO.md) · [v1.3.0 results](RELEASE-VERIFICATION-v1.3.0-KO.md) · [v1.2.9 precision audit](PRECISION-FUNCTIONAL-AUDIT-v1.2.9-20260919-KO.md) · [v1.2.9 results](RELEASE-VERIFICATION-v1.2.9-KO.md) · [v1.2.8 whole-feature results](RELEASE-VERIFICATION-v1.2.8-KO.md) · [compatibility and UI](COMPATIBILITY-UI-20260912-KO.md) · [raw tests](COMPATIBILITY-UI-20260912-TESTS.json) · [full audit](FULL-AUDIT-20260912-KO.md).
+Current verification evidence: [v1.3.8 results](RELEASE-VERIFICATION-v1.3.8-KO.md). Historical audits: [v1.3.7 results](RELEASE-VERIFICATION-v1.3.7-KO.md) · [v1.3.2 results](RELEASE-VERIFICATION-v1.3.2-KO.md) · [v1.3.1 results](RELEASE-VERIFICATION-v1.3.1-KO.md) · [v1.3.0 results](RELEASE-VERIFICATION-v1.3.0-KO.md) · [v1.2.9 precision audit](PRECISION-FUNCTIONAL-AUDIT-v1.2.9-20260919-KO.md) · [v1.2.9 results](RELEASE-VERIFICATION-v1.2.9-KO.md) · [v1.2.8 whole-feature results](RELEASE-VERIFICATION-v1.2.8-KO.md) · [compatibility and UI](COMPATIBILITY-UI-20260912-KO.md) · [raw tests](COMPATIBILITY-UI-20260912-TESTS.json) · [full audit](FULL-AUDIT-20260912-KO.md).
 
 Latest documentation includes optional [SFS](https://www.nexusmods.com/skyrimspecialedition/mods/187128) outfit-correction integration, remembered popup positions, per-candidate colors in NPC-distribution checkbox mode, the fitted title-bar rotation hint, and keyboard/gamepad Activate/Cancel bindings. See the [SFS integration audit](SFS-OREFIT-INTEGRATION-20260913-KO.md).
 

@@ -44,6 +44,11 @@ namespace bcn::native_skin
     void QueueVerifyBodyTextures(RE::Actor* actor, std::function<void(RE::Actor*)> refresh);
     void ForgetBodyTextureRecovery(std::uint32_t actor);
 
+    // Game task thread only. Detaches only owned forms, keeps reusable graphs
+    // per player race and invalidates old callbacks. Never changes selection.
+    // nullopt: no transition; bool: whether the native body needs a rebuild.
+    [[nodiscard]] std::optional<bool> PreparePlayerRace(RE::Actor* actor, bool suspended);
+
 #ifdef BCNG_SKIN_DIAGNOSTICS
     // Game task thread only. Reads current geometry by value, retains no
     // render pointers and never changes forms/materials/application markers.

@@ -980,5 +980,13 @@ int main()
         familySource.contains("IsBodyFamilyAddon(addon, actor->GetRace())"));
     Require(!familySource.contains("shape.name + ' ' + shape.diffuse") &&
         !familySource.contains("BSModelDB::Demand") && !familySource.contains("recursive_directory_iterator"));
+    const auto transformationEvents = readFeatureSource("ActorEvents.cpp");
+    // Both distribution entry points use the existing family compatibility
+    // policy. A Legacy-only pre-filter silently removes every UBE skin.
+    Require(!uiSource.contains("skin.layout != bcn::SkinLayout::legacy"));
+    const auto nodeEvent = transformationEvents.find("const SKSE::NiNodeUpdateEvent* event");
+    Require(nodeEvent != std::string::npos &&
+        transformationEvents.find("skin_application::QueueTransformationReconcile(actor)", nodeEvent) != std::string::npos &&
+        transformationEvents.contains("events->AddEventSink<RE::TESSwitchRaceCompleteEvent>(this)"));
     std::cout<<"CodePatternTests passed: callback, PE bounds, face queue, and preview lifecycle\n";
 }

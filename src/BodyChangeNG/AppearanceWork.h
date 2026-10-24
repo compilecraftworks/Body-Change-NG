@@ -38,7 +38,9 @@ namespace bcn::appearance
         skinFaceRefresh = 214,
         actorSearch = 215,
         distributionTargets = 216,
-        skinBodyVerify = 217
+        skinBodyVerify = 217,
+        skinTransformation = 218,
+        skinTransformationRestore = 219
     };
 
     [[nodiscard]] constexpr std::uint32_t ChannelValue(const WorkChannel channel) noexcept

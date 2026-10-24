@@ -9,6 +9,7 @@ namespace bcn
                               public RE::BSTEventSink<RE::TESCellAttachDetachEvent>,
                               public RE::BSTEventSink<RE::TESEquipEvent>,
                               public RE::BSTEventSink<RE::TESContainerChangedEvent>,
+                              public RE::BSTEventSink<RE::TESSwitchRaceCompleteEvent>,
                               public RE::BSTEventSink<RE::MenuOpenCloseEvent>,
                               public RE::BSTEventSink<SKSE::NiNodeUpdateEvent>
     {
@@ -20,6 +21,10 @@ namespace bcn
         // state whenever a new game/save session becomes active.
         void ResetSessionState();
         void QueuePlayerLoadRestoration();
+
+        RE::BSEventNotifyControl ProcessEvent(
+            const RE::TESSwitchRaceCompleteEvent* a_event,
+            RE::BSTEventSource<RE::TESSwitchRaceCompleteEvent>* a_source) override;
 
         RE::BSEventNotifyControl ProcessEvent(
             const RE::TESInitScriptEvent* a_event,

@@ -489,6 +489,8 @@ int main(const int argc, char** argv)
     }
 
     const bcn::SettingsData defaults;
+    if (!Require(!defaults.keepSkinDuringVampireLord && !defaults.keepSkinDuringWerewolf,
+            "transformations must default to native creature skin")) return 1;
     if (!Require(!defaults.orefitEnabled && !defaults.orefitNippleMorphing &&
             !defaults.nippleRandomization && !defaults.genitalRandomization,
             "all four correction/randomization settings must default off")) return 1;
@@ -562,6 +564,8 @@ int main(const int argc, char** argv)
     nonPreserving.pauseGameWhenOpen = true;
     nonPreserving.performanceMode = true;
     nonPreserving.removalMode = true;
+    nonPreserving.keepSkinDuringVampireLord = true;
+    nonPreserving.keepSkinDuringWerewolf = false;
     nonPreserving.favoriteBodyPresets = { "body-preset" };
     nonPreserving.favoriteSkinProfiles = { "auto:skin-pack:female" };
     nonPreserving.favoriteTintPacks = { "tint-pack" };
@@ -583,6 +587,9 @@ int main(const int argc, char** argv)
     std::filesystem::current_path(sandbox);
     if (!Require(popupSettings.Save(), "popup settings save failed")) return 1;
     popupSettings.Load();
+    if (!Require(popupSettings.Snapshot().keepSkinDuringVampireLord &&
+            !popupSettings.Snapshot().keepSkinDuringWerewolf,
+            "separate transformation settings did not survive save/load")) return 1;
     if (!Require(popupSettings.Snapshot().favoriteFutanariSkins == futanariFavorites,
             "futanari favorites must survive restart, deduplicate and preserve pack/type/UTF-8 IDs")) return 1;
     if (!Require(!popupSettings.Snapshot().preserveOtherMorphs &&

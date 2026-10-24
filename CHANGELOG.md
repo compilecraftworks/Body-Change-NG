@@ -2,6 +2,14 @@
 
 All notable public changes to Body Change NG are documented here.
 
+## 1.3.8
+
+- Fix human skin overrides remaining active during player Vampire Lord and Werewolf transformations, which could make creature bodies invisible. Both transformations now use their native skin by default.
+- Preserve the selected BCNG skin while transformed and restore it after reverting, including saves loaded in transformation form. Prevent pending skin previews from carrying over to a different race.
+- Add separate Vampire Lord and Werewolf settings to keep the BCNG skin for compatible humanoid transformation mods. Ordinary vampires are unaffected. The new controls and guidance support English, Korean and Chinese.
+- Fix UBE body skins being excluded from the NPC distribution selection list, Change items popup and runtime candidate pool. Keep the existing UBE body-type setting and compatibility checks; this does not add automatic mixed-body distribution.
+- Fully exit the game before updating. Preserve customized distribution rules, settings, favorites, skin packs and texture caches. Preset calculations, supported runtimes and save/distribution formats remain unchanged.
+
 ## 1.3.7
 
 - Add a default-on Exclude children checkbox beside the elder exclusion in All NPCs rules for body presets, body skins, futa skins and overlays. Existing rules without this option also exclude children, using the game's child check. This prevents future matches; it does not automatically reset previously applied appearances.

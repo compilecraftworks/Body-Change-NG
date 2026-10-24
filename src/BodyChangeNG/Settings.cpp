@@ -155,6 +155,8 @@ namespace bcn
             ReadIfPresent(root, "performanceMode", data_.performanceMode);
             ReadIfPresent(root, "removalMode", data_.removalMode);
             ReadIfPresent(root, "preserveOtherMorphs", data_.preserveOtherMorphs);
+            ReadIfPresent(root, "keepSkinDuringVampireLord", data_.keepSkinDuringVampireLord);
+            ReadIfPresent(root, "keepSkinDuringWerewolf", data_.keepSkinDuringWerewolf);
             int femaleNpcBodyType = static_cast<int>(data_.femaleNpcBodyType);
             int maleNpcBodyType = static_cast<int>(data_.maleNpcBodyType);
             ReadIfPresent(root, "femaleNpcBodyType", femaleNpcBodyType);
@@ -267,6 +269,8 @@ namespace bcn
                 { "performanceMode", copy.performanceMode },
                 { "removalMode", copy.removalMode },
                 { "preserveOtherMorphs", copy.preserveOtherMorphs },
+                { "keepSkinDuringVampireLord", copy.keepSkinDuringVampireLord },
+                { "keepSkinDuringWerewolf", copy.keepSkinDuringWerewolf },
                 { "femaleNpcBodyType", static_cast<int>(copy.femaleNpcBodyType) },
                 { "maleNpcBodyType", static_cast<int>(copy.maleNpcBodyType) },
                 { "orefitEnabled", copy.orefitEnabled },

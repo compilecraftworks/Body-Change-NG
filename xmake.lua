@@ -1,6 +1,6 @@
 set_xmakever("3.1.0")
 
-local version = "1.3.7"
+local version = "1.3.8"
 set_project("BodyChangeNG")
 set_version(version)
 set_license("GPL-3.0")
@@ -68,6 +68,34 @@ target("BodyChangeNG")
     add_syslinks("d3d11", "dxgi", "d3dcompiler", "windowscodecs", "ole32", "user32", "bcrypt")
     set_pcxxheader("src/PCH.h")
 
+
+target("BodyChangeNGTransformationSkinTests")
+    set_default(false)
+    set_kind("binary")
+    set_targetdir("build/v" .. version .. "/tests")
+    set_encodings("utf-8")
+    add_includedirs("src")
+    add_files("tests/TransformationSkinTests.cpp")
+    on_load(function (target)
+        local generated = path.join(target:autogendir(), "transformation-skin")
+        target:add("includedirs", generated)
+        local function extract(file, first, last, output)
+            local source = io.readfile(file)
+            local begin = assert(source:find(first, 1, true))
+            local finish = last and assert(source:find(last, begin + #first, true)) or #source
+            io.writefile(path.join(generated, output), source:sub(begin, finish - 1))
+        end
+        extract("src/BodyChangeNG/TransformationSkin.cpp", "    Form Classify(", nil, "transformation_policy.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    struct BaseInstance final", "    std::mutex g_lock;", "transformation_instance.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void RestorePlayerFallback()", "    std::atomic_uint64_t g_nextGeneration", "transformation_fallback.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    bool RestoreOwnedPointers(BaseInstance& instance)", "    std::shared_ptr<AppliedSnapshot> CaptureApplied", "transformation_detach.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    [[nodiscard]] std::optional<BaseInstance> BuildInstance(", "    [[nodiscard]] bool RequestStillCurrent(", "transformation_build.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    std::optional<bool> PreparePlayerRace(", "    SkinApplyResult QueueApply(", "transformation_prepare.inc")
+        extract("src/BodyChangeNG/NativeSkinBackend.cpp", "    void ResetSessionState()", nil, "transformation_reset.inc")
+        extract("src/BodyChangeNG/SkinApplication.cpp", "    void QueueTransformationResume(", "    [[nodiscard]] std::string LowerAscii", "transformation_resume.inc")
+        extract("src/BodyChangeNG/SkinApplication.cpp", "    void QueueTransformationReconcile(", "    void ResetSessionState()", "transformation_reconcile.inc")
+        extract("src/BodyChangeNG/FaceSkinOverrides.cpp", "        bool Current()", "        RE::NiPointer<RE::Actor> Actor()", "transformation_face_current.inc")
+    end)
 
 target("BodyChangeNGBodyTextureRecoveryTests")
     set_default(false)
@@ -387,6 +415,10 @@ target("BodyChangeNGDistributionPresetTests")
             "    [[nodiscard]] RE::Actor* SelectedActor()", "distribution_body_items.inc")
         extract("src/BodyChangeNG/Distribution.cpp", "    [[nodiscard]] std::vector<std::string> CompatiblePresetPoolIds(",
             "    [[nodiscard]] std::vector<std::string> CompatiblePresetPool(", "distribution_preset_pool.inc")
+        extract("src/BodyChangeNG/Distribution.cpp", "    [[nodiscard]] std::vector<std::string> CompatibleSkinPoolIds(",
+            "    [[nodiscard]] std::vector<std::string> CompatibleOverlayPoolIds(", "distribution_skin_pool.inc")
+        extract("src/BodyChangeNG/SkinProfiles.cpp", "    std::optional<SkinProfile> SkinProfiles::Find(",
+            "    FutanariSkinProfiles& FutanariSkinProfiles::Get()", "distribution_skin_catalog.inc")
     end)
 
 target("BodyChangeNGUbeMorphTests")

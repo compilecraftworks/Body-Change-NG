@@ -1,5 +1,6 @@
 #include "BodyChangeNG/SkinApplication.h"
 #include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/TransformationSkin.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/Distribution.h"
@@ -139,6 +140,25 @@ namespace
             }
             return queued;
         });
+    }
+
+    void QueueTransformationResume(RE::ActorHandle handle, std::uint64_t epoch,
+        RE::FormID race, unsigned retries = 120)
+    {
+        bcn::frame_tasks::QueueRestoration(0x14, [handle, epoch, race, retries] {
+            const auto actor = handle.get();
+            if (!actor || !bcn::frame_tasks::IsCurrent(epoch) || bcn::Settings::Get().RemovalMode() ||
+                !actor->GetRace() || actor->GetRace()->GetFormID() != race ||
+                bcn::transformation_skin::Suspended(actor.get())) return;
+            if (!actor->Is3DLoaded()) {
+                if (retries) QueueTransformationResume(handle, epoch, race, retries - 1);
+                return;
+            }
+            if (const auto id = bcn::ActorRegistry::Get().SelectedSkinId(actor.get())) {
+                [[maybe_unused]] const auto result = bcn::skin_application::QueueApply(actor.get(), *id,
+                    bcn::skin_transaction::Mode::commit, bcn::skin_transaction::Selection::direct);
+            }
+        }, 2U, bcn::appearance::WorkChannel::skinTransformationRestore);
     }
 
     [[nodiscard]] std::string LowerAscii(std::string value)
@@ -367,6 +387,36 @@ namespace
 
 namespace bcn::skin_application
 {
+    void QueueTransformationReconcile(RE::Actor* actor)
+    {
+        if (!actor || actor->GetFormID() != 0x14 || !frame_tasks::Active() ||
+            Settings::Get().RemovalMode()) return;
+        const auto handle = actor->GetHandle();
+        frame_tasks::QueueRestoration(actor->GetFormID(), [handle] {
+            const auto actor = handle.get();
+            if (!actor || Settings::Get().RemovalMode() || !actor->GetRace()) return;
+            if (!ActorRegistry::Get().SelectedSkinId(actor.get()) &&
+                !native_skin::HasTrackedSelection(actor.get())) return;
+            const auto suspended = transformation_skin::Suspended(actor.get());
+            const auto transition = native_skin::PreparePlayerRace(actor.get(), suspended);
+            if (!transition) return;
+            // A preview belongs to the old form, not to the saved choice.
+            skin_session::TrackSkinSelection(actor->GetFormID(),
+                ActorRegistry::Get().SelectedSkinId(actor.get()).value_or(std::string{}));
+            ActorRegistry::Get().InvalidateSkin(actor.get());
+            const auto epoch = frame_tasks::Epoch();
+            const auto race = actor->GetRace()->GetFormID();
+            // Remove owned saved face keys even when the creature has no
+            // FaceGen head. Do not repaint its head with the human baseline.
+            face_skin::Clear(actor.get(), [handle, epoch, race, suspended](bool success) {
+                if (!success || suspended || !frame_tasks::IsCurrent(epoch)) return;
+                // Read the committed choice at execution, not a prior preview.
+                QueueTransformationResume(handle, epoch, race);
+            }, *transition && actor->Is3DLoaded(), skin_transaction::Mode::commit, true, true);
+            if (*transition && actor->Is3DLoaded()) RefreshNativeSkin3D(actor.get());
+        }, 1U, appearance::WorkChannel::skinTransformation);
+    }
+
     void ResetSessionState()
     {
         face_skin::Reset(true); // PostLoadGame must retain the loaded restoration baseline.

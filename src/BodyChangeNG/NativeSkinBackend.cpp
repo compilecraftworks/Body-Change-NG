@@ -2,6 +2,7 @@
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/Settings.h"
+#include "BodyChangeNG/TransformationSkin.h"
 #include "BodyChangeNG/AppearanceWork.h"
 #include "BodyChangeNG/BodyFamily.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -161,6 +162,7 @@ namespace
         std::string appliedProfileId;
         std::uint64_t appliedContentHash{};
         std::uint64_t generation{};
+        std::uint64_t raceGeneration{};
         bool tracked{};
         bool appliedDefault{};
         bool skinAttached{};
@@ -170,6 +172,27 @@ namespace
 
     std::mutex g_lock;
     std::unordered_map<RE::FormID, BaseInstance> g_instances;
+    // Published forms may be retained by TNG. Reuse one graph per player race
+    // instead of allocating another set on every transform/revert or load.
+    std::unordered_map<RE::FormID, BaseInstance> g_playerRaceGraphs;
+    RE::FormID g_playerRace{};
+    bool g_playerSuspended{};
+    bool g_playerForeignOwner{};
+    RE::TESNPC* g_fallbackBase{};
+    RE::TESObjectARMO* g_fallbackSkin{};
+    RE::TESObjectARMO* g_fallbackFarSkin{};
+
+    void RestorePlayerFallback()
+    {
+        if (g_fallbackBase) {
+            // null is our temporary race-fallback value. Respect any subsequent
+            // explicit skin installed by another provider/transformation mod.
+            if (g_fallbackSkin && !g_fallbackBase->skin) g_fallbackBase->skin = g_fallbackSkin;
+            if (g_fallbackFarSkin && !g_fallbackBase->farSkin) g_fallbackBase->farSkin = g_fallbackFarSkin;
+        }
+        g_fallbackBase = nullptr;
+        g_fallbackSkin = g_fallbackFarSkin = nullptr;
+    }
     std::atomic_uint64_t g_nextGeneration{ 1U };
     // Failed recovery budgets store IDs/counters only, never scene pointers.
     // Healthy observation/detach/load releases them. Exhaustion stops cycles.
@@ -991,6 +1014,7 @@ namespace
         if (!bcn::frame_tasks::CurrentWorkAllowed() || bcn::Settings::Get().RemovalMode()) return;
         const auto actor = handle.get();
         if (!actor || !actor->GetActorBase() || actor->GetActorBase()->GetFormID() != baseId) return;
+        if (bcn::transformation_skin::Suspended(actor.get())) return;
         bool retry{}, missing{}, record{};
         std::string id;
         {
@@ -998,6 +1022,8 @@ namespace
             const auto found = g_instances.find(baseId);
             if (found == g_instances.end()) return;
             const auto& instance = found->second;
+            if (instance.sourceRace && (!actor->GetRace() ||
+                instance.sourceRace != actor->GetRace()->GetFormID())) return;
             if (instance.generation != generation || !instance.tracked || !instance.skinAttached ||
                 instance.appliedProfileId.empty() ||
                 !bcn::asset_identity::Equal{}(instance.desiredProfileId, instance.appliedProfileId) ||
@@ -1194,7 +1220,9 @@ namespace
             const auto found = g_instances.find(baseId);
             if (found == g_instances.end()) return;
             auto& instance = found->second;
-            current = instance.generation == generation && bcn::asset_identity::Equal{}(instance.desiredProfileId, id);
+            current = instance.generation == generation && bcn::asset_identity::Equal{}(instance.desiredProfileId, id) &&
+                (id.empty() || (!bcn::transformation_skin::Suspended(actor.get()) &&
+                    actor->GetRace() && instance.sourceRace == actor->GetRace()->GetFormID()));
             if (success) {
                 if (current && !id.empty()) {
                     const auto body = ReadBodyTextures(actor.get(), instance).state;
@@ -1203,7 +1231,10 @@ namespace
                 }
                 // Active face batches drain in order, including a batch that a
                 // newer click superseded. Remember its matching body snapshot.
-                if (completed && completed->skinGraph == instance.skin.armor &&
+                if (generation >= instance.raceGeneration && actor->GetRace() &&
+                    instance.sourceRace == actor->GetRace()->GetFormID() &&
+                    !bcn::transformation_skin::Suspended(actor.get()) &&
+                    completed && completed->skinGraph == instance.skin.armor &&
                     completed->farGraph == instance.farSkin.armor) instance.goodState = completed;
             } else if (current && OwnsCurrentPointers(instance) && completed &&
                 (instance.skinAttached || instance.base->skin == completed->skinPointer) &&
@@ -1238,7 +1269,9 @@ namespace
         BaseInstance instance;
         instance.base = base;
         instance.ownerActor = actor->GetFormID();
-        instance.originalSkin = currentSkin;
+        // GetSkin resolves race fallback; restoring that resolved armor into
+        // TESNPC::skin pins the human skin across subsequent race switches.
+        instance.originalSkin = base->skin;
         instance.originalFarSkin = base->farSkin;
         GraphConstruction construction;
         // Build reusable source evidence, not a graph limited to the first
@@ -1275,7 +1308,7 @@ namespace
 
     void ApplyNow(RE::ActorHandle handle, bcn::SkinProfile profile,
         bcn::skin_plan::ApplicationPlan plan, const RE::FormID baseId,
-        const std::uint64_t generation,
+        const std::uint64_t generation, const RE::FormID requestRace,
         const bcn::body_family::Mask sourceFamily,
         std::function<void(RE::Actor*)> afterMutation, bcn::skin_transaction::Mode mode)
     {
@@ -1283,6 +1316,8 @@ namespace
         const auto actor = handle.get();
         if (!actor || !RequestStillCurrent(baseId, generation, profile.id) ||
             profile.contentHash != bcn::SkinProfiles::Get().ContentHash(profile.id)) return;
+        if (bcn::transformation_skin::Suspended(actor.get()) || !actor->GetRace() ||
+            actor->GetRace()->GetFormID() != requestRace) return;
         auto* base = actor->GetActorBase();
         if (!base || base->GetFormID() != baseId) return;
 
@@ -1293,6 +1328,9 @@ namespace
             !bcn::asset_identity::Equal{}(found->second.desiredProfileId, profile.id)) return;
         if (!bcn::frame_tasks::CurrentWorkAllowed()) return;
         auto& instance = found->second;
+        // The race event owns graph detachment/rebasing. Never clone a human
+        // graph as the new creature's source while that transition is pending.
+        if (instance.skin.armor && instance.sourceRace != requestRace) return;
         const auto graphAction = bcn::native_skin::ResolveGraphAction(
             instance.skin.armor != nullptr,
             !instance.appliedProfileId.empty(),
@@ -1309,6 +1347,7 @@ namespace
             const auto desiredMode = instance.desiredMode;
             const auto desiredContentHash = instance.desiredContentHash;
             const auto currentGeneration = instance.generation;
+            const auto raceGeneration = instance.raceGeneration;
             const auto owner = instance.ownerActor;
             // RSV may replace only one member of the graph. Detach every
             // remaining pointer that BCNG still owns before taking the new
@@ -1324,6 +1363,7 @@ namespace
             instance.desiredMode = desiredMode;
             instance.desiredContentHash = desiredContentHash;
             instance.generation = currentGeneration;
+            instance.raceGeneration = raceGeneration;
             instance.tracked = true;
         }
         if (!instance.skin.armor) {
@@ -1340,6 +1380,7 @@ namespace
             built->sourceRace = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
             built->sourceSex = base->GetSex();
             built->generation = instance.generation;
+            built->raceGeneration = instance.raceGeneration;
             built->tracked = true;
             instance = std::move(*built);
         }
@@ -1519,6 +1560,96 @@ namespace
 
 namespace bcn::native_skin
 {
+    std::optional<bool> PreparePlayerRace(RE::Actor* actor, const bool suspended)
+    {
+        if (!actor || actor->GetFormID() != 0x14 || !actor->GetRace() || !actor->GetActorBase()) return std::nullopt;
+        const auto race = actor->GetRace()->GetFormID();
+        auto* base = actor->GetActorBase();
+        std::scoped_lock lock(g_lock);
+        if (g_playerRace == race && g_playerSuspended == suspended) return std::nullopt;
+        auto& instance = g_instances[base->GetFormID()];
+        // The first ordinary preview can create the graph before the first
+        // node notification. Observe that race without cancelling the preview
+        // or replacing it with the committed selection. Load reset detaches
+        // graphs, so this does not skip restoration after loading a save.
+        if (!g_playerRace && !suspended && instance.sourceRace == race &&
+            (instance.skinAttached || instance.farSkinAttached) && OwnsCurrentPointers(instance)) {
+            g_playerRace = race;
+            g_playerSuspended = false;
+            return std::nullopt;
+        }
+        if (g_playerSuspended && instance.base && UnownedSourceChanged(instance)) {
+            // A same-race option toggle can retain a detached graph whose
+            // explicit baseline we temporarily released. That null is ours,
+            // not a foreign replacement. Check skin/farSkin independently.
+            const auto ownSkinFallback = base == g_fallbackBase && !base->skin &&
+                instance.originalSkin == g_fallbackSkin;
+            const auto ownFarFallback = base == g_fallbackBase && !base->farSkin &&
+                instance.originalFarSkin == g_fallbackFarSkin;
+            if ((!instance.skinAttached && base->skin != instance.originalSkin && !ownSkinFallback) ||
+                (!instance.farSkinAttached && base->farSkin != instance.originalFarSkin && !ownFarFallback)) {
+                g_playerForeignOwner = true;
+            }
+        }
+        g_playerRace = race;
+        g_playerSuspended = suspended;
+        if (!suspended || (g_fallbackBase && g_fallbackBase != base)) RestorePlayerFallback();
+        const auto hadOwnedGraph = instance.skin.armor && OwnsCurrentPointers(instance);
+        const auto changedRace = instance.sourceRace && instance.sourceRace != race;
+        const auto wasAttached = instance.skinAttached || instance.farSkinAttached;
+        instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
+        g_bodyRecoveries.erase(actor->GetFormID());
+        // Do not turn a foreign replacement into a new BCNG baseline.
+        if (instance.skin.armor && !OwnsCurrentPointers(instance)) g_playerForeignOwner = true;
+        if (g_playerForeignOwner) {
+            // Still detach our remaining member (for example farSkin), and
+            // allow the facade to release owned face keys. Never rebase/apply
+            // over the foreign provider; QueueApply rejects until Default.
+            if (instance.base) RestoreOwnedPointers(instance);
+            return wasAttached;
+        }
+        if (instance.base && !RestoreOwnedPointers(instance)) return std::nullopt;
+
+        if (suspended && hadOwnedGraph && SourceStillMatches(instance)) {
+            // A custom NPC base may have an explicit human skin, unlike the
+            // vanilla player's null/race fallback. Temporarily release only
+            // the source that we just restored, never a foreign replacement.
+            g_fallbackBase = base;
+            g_fallbackSkin = base->skin;
+            g_fallbackFarSkin = base->farSkin;
+            base->skin = nullptr;
+            base->farSkin = nullptr;
+        }
+        if (changedRace && instance.skin.armor) {
+            g_playerRaceGraphs[instance.sourceRace] = std::move(instance);
+            instance = {};
+        }
+        if (!suspended && !instance.skin.armor) {
+            const auto cached = g_playerRaceGraphs.find(race);
+            if (cached != g_playerRaceGraphs.end() && cached->second.base == base &&
+                SourceStillMatches(cached->second)) {
+                instance = std::move(cached->second);
+                g_playerRaceGraphs.erase(cached);
+            }
+        }
+        if (!instance.base) {
+            instance.base = base;
+            instance.originalSkin = base->skin;
+            instance.originalFarSkin = base->farSkin;
+        }
+        instance.ownerActor = actor->GetFormID();
+        instance.desiredProfileId.clear();
+        instance.desiredContentHash = 0;
+        instance.appliedProfileId.clear();
+        instance.appliedContentHash = 0;
+        instance.appliedDefault = false;
+        instance.goodState.reset();
+        instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
+        instance.tracked = true;
+        instance.raceGeneration = instance.generation;
+        return wasAttached || g_fallbackSkin || g_fallbackFarSkin;
+    }
+
     SkinApplyResult QueueApply(RE::Actor* actor, std::string profileId,
         std::function<void(RE::Actor*)> afterMutation, skin_transaction::Mode mode,
         skin_transaction::Selection selection)
@@ -1526,6 +1657,7 @@ namespace bcn::native_skin
         body_family::SetSkinFamilyResolver(&SourceBodyFamily);
         if (!frame_tasks::Active()) return SkinApplyResult::noTaskInterface;
         if (!actor) return SkinApplyResult::invalidActor;
+        if (transformation_skin::Suspended(actor)) return SkinApplyResult::transformationSuspended;
         if (runtime::ResolveGameBranch(REL::Module::get().version()) ==
             runtime::GameBranch::unsupported) return SkinApplyResult::unsupportedRuntime;
         auto* base = actor->GetActorBase();
@@ -1564,6 +1696,7 @@ namespace bcn::native_skin
         {
             std::scoped_lock lock(g_lock);
             auto& instance = g_instances[baseId];
+            if (actorId == 0x14 && g_playerForeignOwner) return SkinApplyResult::ownershipConflict;
             if (instance.skin.armor && !instance.appliedProfileId.empty() &&
                 !OwnsCurrentPointers(instance) && !CanRebaseFromRsv(instance)) {
                 return SkinApplyResult::ownershipConflict;
@@ -1594,16 +1727,17 @@ namespace bcn::native_skin
 
         const auto plan = BuildPlan(*profile, base, faceDetailBaseline, actorFamily, selection);
         const auto handle = actor->GetHandle();
+        const auto requestRace = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
         const auto epoch = frame_tasks::Epoch();
         const auto restoring = skin_transaction::RestoresPreview(mode);
         // A detach cancels actor leases, but must not cancel an accepted undo.
         // Session and per-base generations still reject old undo after a newer
         // selection or load. No 3D is forced for an unloaded restoration.
-        auto work = [handle, profile = *profile, plan, baseId, generation, actorFamily, mode, epoch,
+        auto work = [handle, profile = *profile, plan, baseId, generation, requestRace, actorFamily, mode, epoch,
                                       afterMutation = std::move(afterMutation)]() mutable {
             if (!RequestStillCurrent(baseId, generation, profile.id)) return;
             const auto lease = frame_tasks::CurrentLease();
-            auto continueApply = [lease, handle, profile, plan, baseId, generation, actorFamily, mode, epoch,
+            auto continueApply = [lease, handle, profile, plan, baseId, generation, requestRace, actorFamily, mode, epoch,
                                      afterMutation = std::move(afterMutation)](const bool prepared) mutable {
                 if (!frame_tasks::IsCurrent(epoch) || !frame_tasks::ValidLease(lease)) return;
                 if (!prepared) {
@@ -1612,10 +1746,10 @@ namespace bcn::native_skin
                     return;
                 }
                 static_cast<void>(frame_tasks::Continue(lease,
-                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation, actorFamily, mode,
+                    [handle, profile = std::move(profile), plan = std::move(plan), baseId, generation, requestRace, actorFamily, mode,
                         afterMutation = std::move(afterMutation)]() mutable {
                         ApplyNow(handle, std::move(profile), std::move(plan), baseId,
-                            generation, actorFamily, std::move(afterMutation), mode);
+                            generation, requestRace, actorFamily, std::move(afterMutation), mode);
                     }));
             };
             if (!runtime_assets::PrepareTexturePathsAsync(
@@ -1667,6 +1801,7 @@ namespace bcn::native_skin
                 instance.generation = g_nextGeneration.fetch_add(1U, std::memory_order_relaxed);
             }
             instance.desiredProfileId.clear();
+            if (actorId == 0x14) g_playerForeignOwner = false;
             instance.desiredMode = mode;
             instance.desiredContentHash = 0;
             instance.tracked = true;
@@ -1744,6 +1879,7 @@ namespace bcn::native_skin
 
     void QueueVerifyBodyTextures(RE::Actor* actor, std::function<void(RE::Actor*)> refresh)
     {
+        if (transformation_skin::Suspended(actor)) return;
         if (!actor || !frame_tasks::Active() || !refresh || Settings::Get().RemovalMode() ||
             runtime::ResolveGameBranch(REL::Module::get().version()) == runtime::GameBranch::unsupported) return;
         const auto* base = actor->GetActorBase();
@@ -1874,6 +2010,10 @@ namespace bcn::native_skin
         {
             std::scoped_lock lock(g_lock);
             g_bodyRecoveries.clear();
+            RestorePlayerFallback();
+            g_playerRace = 0;
+            g_playerSuspended = false;
+            g_playerForeignOwner = false;
             for (auto& [baseId, instance] : g_instances) {
                 RestoreOwnedPointers(instance);
                 // TESNPC and the private duplicate forms are game-data forms,

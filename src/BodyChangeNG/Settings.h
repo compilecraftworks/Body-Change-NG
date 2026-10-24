@@ -94,6 +94,9 @@ namespace bcn
         bool performanceMode{ false };
         bool removalMode{ false };
         bool preserveOtherMorphs{ true };
+        // Creature-native skin by default; opt in separately for humanoid mods.
+        bool keepSkinDuringVampireLord{ false };
+        bool keepSkinDuringWerewolf{ false };
         FemaleNpcBodyType femaleNpcBodyType{ FemaleNpcBodyType::cbbe3ba };
         MaleNpcBodyType maleNpcBodyType{ MaleNpcBodyType::himbo };
         // Optional appearance changes are opt-in on new/missing settings.

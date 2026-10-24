@@ -1,5 +1,6 @@
 #include "BodyChangeNG/FaceSkinOverrides.h"
 #include "BodyChangeNG/AssetIdentity.h"
+#include "BodyChangeNG/TransformationSkin.h"
 
 #include "BodyChangeNG/ActorRegistry.h"
 #include "BodyChangeNG/FrameTasks.h"
@@ -49,6 +50,8 @@ namespace
         bool complete{};
         bool hasSelection{};
         bool allowUnloadedRestore{};
+        bool registryOnly{};
+        RE::FormID race{};
         RebuildGate rebuild;
         std::function<bool()> rebuildDispatch;
         std::uint64_t rebuildTicket{};
@@ -217,6 +220,12 @@ namespace
 
         bool Current()
         {
+            const auto actor = request.handle.get();
+            // A click may drain on the same head; a race switch must not write
+            // the former human face into the new creature's head instead.
+            if (!request.registryOnly && (!actor || !actor->GetRace() ||
+                    actor->GetRace()->GetFormID() != request.race ||
+                    (!request.profile.empty() && bcn::transformation_skin::Suspended(actor.get())))) return false;
             std::scoped_lock lock(g_mutex);
             auto it = g_requests.find(actorId);
             // A newer click replaces the pending request, not the batch that
@@ -848,7 +857,7 @@ namespace
             if (g_epoch != epoch || it == g_requests.end() || it->second.rebuildTicket != ticket ||
                 !it->second.rebuild.inFlight || !it->second.nativeReturned) return;
             handle = it->second.handle;
-            needsFace = it->second.hasSelection && NeedsFaceTarget(it->second.paths,
+            needsFace = !it->second.registryOnly && it->second.hasSelection && NeedsFaceTarget(it->second.paths,
                 std::ranges::any_of(g_baselines, [actorId](const auto& value) { return value.actor == actorId; }));
             expired = std::chrono::steady_clock::now() - it->second.rebuildStarted >= std::chrono::seconds(5);
         }
@@ -914,7 +923,11 @@ namespace
                 auto actor = it->second.handle.get();
                 auto* base = actor ? actor->GetActorBase() : nullptr;
                 if (!actor || !base) return;
-                batch->storedOnly = request.allowUnloadedRestore && !actor->Is3DLoaded();
+                if (!request.registryOnly && (!actor->GetRace() ||
+                    actor->GetRace()->GetFormID() != request.race ||
+                    (!request.profile.empty() && bcn::transformation_skin::Suspended(actor.get())))) return;
+                batch->storedOnly = request.registryOnly ||
+                    (request.allowUnloadedRestore && !actor->Is3DLoaded());
                 batch->noFaceWork = !NeedsFaceTarget(request.paths,
                     std::ranges::any_of(g_baselines, [actorId](const auto& value) { return value.actor == actorId; }));
                 const auto node = batch->storedOnly || batch->noFaceWork ? std::string{} : ResolveNodeName(actor.get());
@@ -955,7 +968,8 @@ namespace
         batch->BeginTarget();
     }
     void Submit(RE::Actor* actor, Paths paths, std::string profile, std::function<void(bool)> completion,
-        bool deferForRebuild, bcn::skin_transaction::Mode mode, bool allowUnloadedRestore = false)
+        bool deferForRebuild, bcn::skin_transaction::Mode mode, bool allowUnloadedRestore = false,
+        bool registryOnly = false)
     {
         if (!actor || !bcn::frame_tasks::Active()) { if (completion) completion(false); return; }
         bool capacityExceeded{};
@@ -969,6 +983,8 @@ namespace
                 request.profile = std::move(profile);
                 request.mode = mode;
                 request.allowUnloadedRestore = allowUnloadedRestore;
+                request.registryOnly = registryOnly;
+                request.race = actor->GetRace() ? actor->GetRace()->GetFormID() : 0U;
                 request.completion = std::move(completion);
                 request.generation = ++g_generation;
                 request.complete = false;
@@ -1007,9 +1023,10 @@ namespace bcn::face_skin
         Submit(actor, std::move(paths), std::move(profileId), std::move(completion), deferForRebuild, mode);
     }
     void Clear(RE::Actor* actor, std::function<void(bool)> completion, bool deferForRebuild,
-        skin_transaction::Mode mode, bool allowUnloadedRestore)
+        skin_transaction::Mode mode, bool allowUnloadedRestore, bool registryOnly)
     {
-        Submit(actor, {}, {}, std::move(completion), deferForRebuild, mode, allowUnloadedRestore);
+        Submit(actor, {}, {}, std::move(completion), deferForRebuild, mode, allowUnloadedRestore,
+            registryOnly || transformation_skin::Suspended(actor));
     }
     void QueueRebuild(RE::Actor* actor, std::function<bool()> dispatch)
     {
